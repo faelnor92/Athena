@@ -7,8 +7,9 @@ import shlex
 import secrets
 import asyncio
 import threading
+import contextvars
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -358,174 +359,138 @@ class ChatResponse(BaseModel):
     response: str
     steps: List[Dict[str, Any]]
 
+def _resolve_starting_agent(sess, req):
+    """Agent de départ : actif de session, ou ciblé par une mention @agent."""
+    starting_agent = sess.active_agent or swarm.agents.get("Jarvis")
+    last_user_content = req.message.strip().lower()
+    if not last_user_content:
+        return starting_agent
+    first_mention_idx = len(last_user_content)
+    mentioned_agent = None
+    for name, agent in swarm.agents.items():
+        aliases = [name.lower()]
+        if agent.display_name:
+            aliases.extend([p.lower() for p in agent.display_name.split() if len(p) > 2])
+        if name == "CommunityManager":
+            aliases.extend(["cm", "communitymanager", "lucas"])
+        elif name == "Auteur":
+            aliases.extend(["emilie", "éamilie", "auteur"])
+        elif name == "Correcteur":
+            aliases.extend(["marc", "correcteur"])
+        elif name == "Codeur":
+            aliases.extend(["robert", "codeur"])
+        elif name == "Traducteur":
+            aliases.extend(["sofia", "traducteur"])
+        for alias in aliases:
+            idx = last_user_content.find(f"@{alias}")
+            if idx != -1 and idx < first_mention_idx:
+                first_mention_idx = idx
+                mentioned_agent = agent
+    if mentioned_agent:
+        return mentioned_agent
+    if any(last_user_content.startswith(x) for x in ["bonjour jarvis", "jarvis,", "dis jarvis", "hey jarvis", "salut jarvis"]):
+        return swarm.agents.get("Jarvis")
+    return starting_agent
+
+
+def _chat_prepare(sess, req, run_id):
+    """Ajoute le message utilisateur, reconstruit la chaîne et choisit l'agent.
+    Renvoie (chain, starting_agent, original_chain_len)."""
+    parent_id = req.parent_id if req.parent_id is not None else sess.active_node_id
+    user_msg_id = uuid.uuid4().hex
+    sess.messages.append({"id": user_msg_id, "parent_id": parent_id, "role": "user", "content": req.message})
+    sess.active_node_id = user_msg_id
+
+    chain = []
+    curr_id = sess.active_node_id
+    node_map = {m["id"]: m for m in sess.messages}
+    while curr_id:
+        node = node_map.get(curr_id)
+        if not node:
+            break
+        chain.insert(0, {k: v for k, v in node.items() if k not in ["id", "parent_id"]})
+        curr_id = node["parent_id"]
+
+    starting_agent = _resolve_starting_agent(sess, req)
+    run_registry.append_step(run_id, {"type": "activation", "agent": starting_agent.name})
+    return chain, starting_agent, len(chain)
+
+
+def _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_chain_len):
+    """Persiste les nouveaux nœuds, calcule la télémétrie et sauvegarde le run.
+    Renvoie (final_response, run_agent)."""
+    global TELEMETRY
+    sess.active_agent = swarm.agents.get("Jarvis")
+    prev_id = sess.active_node_id
+    for msg in new_chain[original_chain_len:]:
+        new_id = uuid.uuid4().hex
+        sess.messages.append({"id": new_id, "parent_id": prev_id, **msg})
+        prev_id = new_id
+    sess.active_node_id = prev_id
+
+    final_response = ""
+    for step in reversed(steps):
+        if step["type"] == "message":
+            final_response = step["content"]
+            break
+    if not final_response:
+        final_response = "Tâche traitée en arrière-plan sans réponse formulée."
+
+    total_tokens_in_turn = 0
+    total_cost_in_turn = 0.0
+    for step in steps:
+        if step.get("type") == "tool_call":
+            TELEMETRY["tool_calls"] += 1
+        elif step.get("type") == "usage":
+            p_tok = step.get("prompt_tokens", 0)
+            c_tok = step.get("completion_tokens", 0)
+            total_tokens_in_turn += p_tok + c_tok
+            total_cost_in_turn += get_model_cost(step.get("model", "default"), p_tok, c_tok)
+    if total_tokens_in_turn == 0:
+        total_tokens_in_turn = (len(req.message) + len(final_response)) // 4 + 800
+        total_cost_in_turn = get_model_cost("default", total_tokens_in_turn, 0)
+    TELEMETRY["total_tokens"] += total_tokens_in_turn
+    TELEMETRY["total_cost"] += total_cost_in_turn
+
+    run_agent = sess.active_agent.name if sess.active_agent else "Jarvis"
+    run_store.save(
+        run_id=run_id, agent=run_agent, status="success",
+        user_message=req.message, final_response=final_response,
+        duration_ms=int((time.time() - run_started) * 1000),
+        total_tokens=total_tokens_in_turn, total_cost=total_cost_in_turn,
+        steps=steps, created_at=run_started,
+    )
+    logger.info("run %s ok | agent=%s tokens=%s coût=%.4f", run_id, run_agent,
+                total_tokens_in_turn, total_cost_in_turn)
+    return final_response, run_agent
+
+
+def _sse(event: str, data) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     global TELEMETRY
     TELEMETRY["total_queries"] += 1
-
     run_id = run_store.new_run_id()
     run_started = time.time()
-    run_agent = "Jarvis"
     run_registry.start(run_id)
     token = current_run_id.set(run_id)
-
-    # Session propre au canal (web/cli/voice/...).
     sess = sessions.get(req.client_id)
-
     try:
         if not sess.active_agent:
             raise HTTPException(status_code=500, detail="Jarvis n'est pas initialisé.")
-
-        # 1. Déterminer le parent_id : soit fourni, soit l'actif de session, soit None
-        parent_id = req.parent_id if req.parent_id is not None else sess.active_node_id
-
-        # Générer un ID de message unique
-        user_msg_id = uuid.uuid4().hex
-
-        user_node = {
-            "id": user_msg_id,
-            "parent_id": parent_id,
-            "role": "user",
-            "content": req.message
-        }
-
-        sess.messages.append(user_node)
-        sess.active_node_id = user_msg_id
-
-        # 2. Reconstruire la chaîne linéaire de messages menant au nœud actif pour le LLM
-        chain = []
-        curr_id = sess.active_node_id
-        node_map = {m["id"]: m for m in sess.messages}
-        while curr_id:
-            node = node_map.get(curr_id)
-            if not node:
-                break
-            # Convertir en format dictionnaire standard compatible Swarm/LiteLLM
-            standard_msg = {k: v for k, v in node.items() if k not in ["id", "parent_id"]}
-            chain.insert(0, standard_msg)
-            curr_id = node["parent_id"]
-            
-        # On démarre la discussion avec l'agent actuellement actif pour permettre un dialogue persistant
-        starting_agent = sess.active_agent or swarm.agents.get("Jarvis")
-        
-        # Détection proactive : Si l'utilisateur mentionne un agent avec @nom ou s'adresse à Jarvis
-        last_user_content = req.message.strip().lower()
-        if last_user_content:
-            # 1. Analyse des mentions @agent de gauche à droite pour trouver le premier ciblé
-            first_mention_idx = len(last_user_content)
-            mentioned_agent = None
-            
-            for name, agent in swarm.agents.items():
-                aliases = [name.lower()]
-                if agent.display_name:
-                    # ex: "Robert Développeur" -> ["robert", "développeur"]
-                    aliases.extend([p.lower() for p in agent.display_name.split() if len(p) > 2])
-                
-                # Raccourcis courants
-                if name == "CommunityManager":
-                    aliases.extend(["cm", "communitymanager", "lucas"])
-                elif name == "Auteur":
-                    aliases.extend(["emilie", "éamilie", "auteur"])
-                elif name == "Correcteur":
-                    aliases.extend(["marc", "correcteur"])
-                elif name == "Codeur":
-                    aliases.extend(["robert", "codeur"])
-                elif name == "Traducteur":
-                    aliases.extend(["sofia", "traducteur"])
-                
-                for alias in aliases:
-                    idx = last_user_content.find(f"@{alias}")
-                    if idx != -1 and idx < first_mention_idx:
-                        first_mention_idx = idx
-                        mentioned_agent = agent
-            
-            if mentioned_agent:
-                starting_agent = mentioned_agent
-            elif any(last_user_content.startswith(x) for x in ["bonjour jarvis", "jarvis,", "dis jarvis", "hey jarvis", "salut jarvis"]):
-                starting_agent = swarm.agents.get("Jarvis")
-        
-        # Publier immédiatement un step d'activation pour feedback instantané dans le cockpit
-        run_registry.append_step(run_id, {"type": "activation", "agent": starting_agent.name})
-
-        original_chain_len = len(chain)
-        # swarm.run est bloquant : on l'exécute dans un thread (le contexte —
-        # dont current_run_id — est copié par to_thread) pour ne pas bloquer la
-        # boucle asyncio et permettre des requêtes concurrentes.
-        next_agent, new_chain, steps = await asyncio.to_thread(swarm.run, starting_agent, chain)
-        sess.active_agent = swarm.agents.get("Jarvis")
-
-        # 3. Ajouter séquentiellement les nouvelles réponses du Swarm en tant que nœuds enfants
-        prev_id = sess.active_node_id
-        for msg in new_chain[original_chain_len:]:
-            new_id = uuid.uuid4().hex
-            node = {
-                "id": new_id,
-                "parent_id": prev_id,
-                **msg
-            }
-            sess.messages.append(node)
-            prev_id = new_id
-
-        sess.active_node_id = prev_id
-        
-        # Trouver la dernière réponse formulée par un agent
-        final_response = ""
-        for step in reversed(steps):
-            if step["type"] == "message":
-                final_response = step["content"]
-                break
-                
-        if not final_response:
-            final_response = "Tâche traitée en arrière-plan sans réponse formulée."
-            
-        # Comptage et estimation télémétrique exacte
-        total_tokens_in_turn = 0
-        total_cost_in_turn = 0.0
-        for step in steps:
-            if step.get("type") == "tool_call":
-                TELEMETRY["tool_calls"] += 1
-            elif step.get("type") == "usage":
-                p_tok = step.get("prompt_tokens", 0)
-                c_tok = step.get("completion_tokens", 0)
-                model = step.get("model", "default")
-                total_tokens_in_turn += p_tok + c_tok
-                total_cost_in_turn += get_model_cost(model, p_tok, c_tok)
-                
-        # Si aucun token n'a été comptabilisé par le modèle (par exemple en mode test local sans appel LLM)
-        if total_tokens_in_turn == 0:
-            input_chars = len(req.message)
-            output_chars = len(final_response)
-            total_tokens_in_turn = (input_chars + output_chars) // 4 + 800
-            total_cost_in_turn = get_model_cost("default", total_tokens_in_turn, 0)
-            
-        TELEMETRY["total_tokens"] += total_tokens_in_turn
-        TELEMETRY["total_cost"] += total_cost_in_turn
-
-        run_agent = sess.active_agent.name if sess.active_agent else run_agent
-        # Persistance du run (observabilité) — best-effort.
-        run_store.save(
-            run_id=run_id, agent=run_agent, status="success",
-            user_message=req.message, final_response=final_response,
-            duration_ms=int((time.time() - run_started) * 1000),
-            total_tokens=total_tokens_in_turn, total_cost=total_cost_in_turn,
-            steps=steps, created_at=run_started,
-        )
-        logger.info("run %s ok | agent=%s tokens=%s coût=%.4f durée=%dms",
-                    run_id, run_agent, total_tokens_in_turn, total_cost_in_turn,
-                    int((time.time() - run_started) * 1000))
-
-        return ChatResponse(
-            agent=sess.active_agent.name,
-            response=final_response,
-            steps=steps
-        )
+        chain, starting_agent, original_chain_len = _chat_prepare(sess, req, run_id)
+        # swarm.run est bloquant : exécuté dans un thread (contexte copié) pour
+        # ne pas bloquer la boucle asyncio (concurrence des requêtes).
+        _next, new_chain, steps = await asyncio.to_thread(swarm.run, starting_agent, chain)
+        final_response, run_agent = _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_chain_len)
+        return ChatResponse(agent=run_agent, response=final_response, steps=steps)
     except Exception as e:
-        import traceback
         logger.exception("Erreur Chat (run %s)", run_id)
-        traceback.print_exc()
-        # On persiste aussi les runs ratés pour pouvoir les inspecter/rejouer.
         run_store.save(
-            run_id=run_id, agent=run_agent, status="error",
+            run_id=run_id, agent="Jarvis", status="error",
             user_message=req.message, error=str(e),
             duration_ms=int((time.time() - run_started) * 1000),
             steps=run_registry.status(run_id)["steps"], created_at=run_started,
@@ -534,6 +499,74 @@ async def chat(req: ChatRequest):
     finally:
         run_registry.finish(run_id)
         current_run_id.reset(token)
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(req: ChatRequest):
+    """Streaming SSE : diffuse les étapes de l'essaim au fil de l'eau (events
+    'step'), puis un event 'done' avec la réponse finale. Idéal pour la latence
+    vocale (TTS au fil des messages) et l'affichage progressif côté UI."""
+    global TELEMETRY
+    TELEMETRY["total_queries"] += 1
+    run_id = run_store.new_run_id()
+    run_started = time.time()
+    run_registry.start(run_id)
+    sess = sessions.get(req.client_id)
+
+    async def gen():
+        token = current_run_id.set(run_id)
+        try:
+            if not sess.active_agent:
+                yield _sse("error", {"detail": "Jarvis n'est pas initialisé."})
+                return
+            chain, starting_agent, original_chain_len = _chat_prepare(sess, req, run_id)
+
+            # Exécuter swarm.run dans un thread en propageant le contexte (run_id).
+            ctx = contextvars.copy_context()
+            holder = {}
+
+            def _work():
+                holder["result"] = swarm.run(starting_agent, chain)
+
+            loop = asyncio.get_event_loop()
+            fut = loop.run_in_executor(None, lambda: ctx.run(_work))
+
+            yield _sse("run", {"run_id": run_id, "agent": starting_agent.name})
+            sent = 0
+            while True:
+                live = run_registry.status(run_id)["steps"]
+                while sent < len(live):
+                    yield _sse("step", live[sent])
+                    sent += 1
+                if fut.done():
+                    break
+                await asyncio.sleep(0.08)
+            # Drain des dernières étapes + propagation d'une éventuelle exception.
+            live = run_registry.status(run_id)["steps"]
+            while sent < len(live):
+                yield _sse("step", live[sent])
+                sent += 1
+            exc = fut.exception()
+            if exc:
+                raise exc
+
+            _next, new_chain, steps = holder["result"]
+            final_response, run_agent = _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_chain_len)
+            yield _sse("done", {"agent": run_agent, "response": final_response})
+        except Exception as e:
+            logger.exception("Erreur Chat stream (run %s)", run_id)
+            run_store.save(
+                run_id=run_id, agent="Jarvis", status="error",
+                user_message=req.message, error=str(e),
+                duration_ms=int((time.time() - run_started) * 1000),
+                steps=run_registry.status(run_id)["steps"], created_at=run_started,
+            )
+            yield _sse("error", {"detail": str(e)})
+        finally:
+            run_registry.finish(run_id)
+            current_run_id.reset(token)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 @app.get("/api/chat/status")
 async def get_chat_status(run_id: str = None):
