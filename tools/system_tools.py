@@ -20,42 +20,6 @@ BLACKLIST_PATTERNS = [
     r"\bcurl\b|\bwget\b",           # Bloquer le téléchargement de charges utiles (payloads) malveillantes de l'extérieur
 ]
 
-def execute_bash_command(command: str, user_confirmed: bool = False) -> str:
-    """
-    Exécute une commande système Bash sécurisée (compatible Linux et WSL).
-    
-    Les commandes d'administration (sudo, su), de téléchargement externe, d'obfuscation
-    et de création de reverse-shells sont strictement bloquées et surveillées pour la sécurité du VPS.
-    
-    Args:
-        command (str): La commande Bash complète à exécuter.
-        user_confirmed (bool): Indique si l'utilisateur a approuvé la commande (nécessaire pour sudo si autorisé).
-        
-    Returns:
-        str: La sortie de la console ou un rejet de sécurité strict.
-    """
-    # 1. Application des gardes-fous absolus renforcés
-    for pattern in BLACKLIST_PATTERNS:
-        if re.search(pattern, command, re.IGNORECASE):
-            return f"Sécurité : Commande refusée. La commande contient des motifs interdits ({pattern}) pour prévenir les jailbreaks, l'obfuscation, les reverse shells ou la destruction système."
-            
-    # 2. Gestion stricte des privilèges root (sudo/su) via variables d'environnement
-    requires_sudo = bool(re.search(r"\bsudo\b|\bsu\b", command, re.IGNORECASE))
-    if requires_sudo:
-        # Lire la politique de sécurité du .env (par défaut : interdiction absolue de sudo sur VPS)
-        allow_sudo_policy = os.getenv("ALLOW_SUDO_ON_VPS", "False").lower() in ("true", "1", "yes")
-        if not allow_sudo_policy:
-            return "Sécurité : Commande refusée. L'utilisation de 'sudo' ou 'su' est strictement désactivée sur ce serveur pour prévenir les élévations de privilèges."
-            
-        if not user_confirmed:
-            return (
-                f"Sécurité : La commande '{command}' nécessite des droits d'administration (sudo/su).\n"
-                "Tu dois OBLIGATOIREMENT interrompre ton exécution et demander explicitement "
-                "la confirmation à l'utilisateur dans ton message texte en lui affichant la commande exacte.\n"
-                "Une fois que l'utilisateur t'a répondu par l'affirmative, rappelle cet outil avec "
-                "le paramètre 'user_confirmed=True'."
-            )
-        
 def run_ssh_command(command: str) -> tuple[str, str, int]:
     """
     Exécute une commande de manière sécurisée sur une machine distante via SSH (Paramiko).

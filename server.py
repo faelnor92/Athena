@@ -897,7 +897,9 @@ async def get_workspace_file(path: str):
     try:
         base_dir = get_workspace_dir()
         clean_path = os.path.abspath(os.path.join(base_dir, path))
-        if not clean_path.startswith(base_dir):
+        # Empêche la traversée de répertoire : un simple startswith laisserait
+        # passer un dossier frère partageant le préfixe (ex: base + "_secret").
+        if os.path.commonpath([clean_path, base_dir]) != base_dir:
             raise HTTPException(status_code=403, detail="Accès interdit.")
             
         if not os.path.exists(clean_path) or os.path.isdir(clean_path):
@@ -915,7 +917,9 @@ async def download_workspace_file(path: str):
     try:
         base_dir = get_workspace_dir()
         clean_path = os.path.abspath(os.path.join(base_dir, path))
-        if not clean_path.startswith(base_dir):
+        # Empêche la traversée de répertoire : un simple startswith laisserait
+        # passer un dossier frère partageant le préfixe (ex: base + "_secret").
+        if os.path.commonpath([clean_path, base_dir]) != base_dir:
             raise HTTPException(status_code=403, detail="Accès interdit.")
             
         if not os.path.exists(clean_path) or os.path.isdir(clean_path):
