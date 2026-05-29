@@ -6,6 +6,8 @@
 .env
 .env.*
 !.env.example
+# Config MCP : peut contenir des tokens (GitHub, etc.)
+mcp_servers.json
 
 # --- Logs ------------------------------------------------------------------
 *.log

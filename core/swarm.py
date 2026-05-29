@@ -20,6 +20,7 @@ import tools.image_generator
 import tools.briefing_tools
 import tools.meeting_summarizer
 import tools.conversation_tools
+import tools.mcp_manager
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -266,6 +267,10 @@ class Swarm:
                 for skill_name, func in dynamic_skills.items():
                     # Évite d'ajouter deux fois le même outil
                     if not any(f.__name__ == skill_name for f in current_agent.tools):
+                        current_agent.tools.append(func)
+                # Outils MCP (serveurs externes) : injectés comme des outils natifs.
+                for tool_name, func in tools.mcp_manager.mcp_manager.tool_functions().items():
+                    if not any(f.__name__ == tool_name for f in current_agent.tools):
                         current_agent.tools.append(func)
             
             # Enregistrer l'activation de l'agent

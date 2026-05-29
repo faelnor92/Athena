@@ -8,7 +8,14 @@ def main():
     
     print("Initialisation de l'Orchestrateur...")
     swarm = Swarm("agents.yaml")
-    
+
+    # Démarrage des serveurs MCP configurés (no-op si mcp_servers.json absent).
+    try:
+        from tools.mcp_manager import mcp_manager
+        mcp_manager.start()
+    except Exception as e:
+        print(f"[MCP] Démarrage ignoré : {e}")
+
     # On démarre toujours avec Jarvis
     current_agent = swarm.agents.get("Jarvis")
     if not current_agent:

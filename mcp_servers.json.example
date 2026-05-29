@@ -1,0 +1,26 @@
+{
+  "_comment": "Copiez ce fichier en mcp_servers.json et adaptez. Format compatible Claude Desktop. Le vrai fichier est ignoré par git (peut contenir des tokens).",
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/chemin/explicite/autorise"],
+      "disabled": false,
+      "_note": "Serveur sensible (FS) : non démarré si ADMIN_PASSWORD est vide."
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxx"
+      }
+    },
+    "exemple_http": {
+      "url": "https://mon-serveur-mcp.example.com/mcp",
+      "transport": "http"
+    },
+    "exemple_sse": {
+      "url": "https://mon-serveur-mcp.example.com/sse",
+      "transport": "sse"
+    }
+  }
+}

@@ -7,9 +7,17 @@ pyyaml==6.0.2
 colorama==0.4.6
 chromadb==0.5.0
 fastapi==0.111.0
-uvicorn==0.30.1
+# uvicorn relevé à >=0.31.1 (requis par mcp) ; 0.48.0 reste compatible fastapi 0.111.
+uvicorn==0.48.0
 pydantic==2.13.4
 python-multipart==0.0.29
+
+# --- Support MCP (Model Context Protocol) ----------------------------------
+mcp==1.27.2
+# starlette/sse-starlette ÉPINGLÉS : la dernière sse-starlette (3.x) exige
+# starlette>=0.49 et casse fastapi 0.111 (qui veut starlette<0.38).
+starlette==0.37.2
+sse-starlette==2.1.3
 
 # --- Exécution distante SSH -------------------------------------------------
 paramiko==5.0.0

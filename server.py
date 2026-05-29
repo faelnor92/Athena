@@ -70,6 +70,13 @@ async def login(req: LoginRequest):
 # Initialisation du Swarm
 swarm = Swarm("agents.yaml")
 
+# Démarrage des serveurs MCP configurés (no-op si mcp_servers.json absent).
+try:
+    from tools.mcp_manager import mcp_manager
+    mcp_manager.start()
+except Exception as _e:
+    print(f"[MCP] Démarrage ignoré : {_e}")
+
 # Gestionnaire de conversations persistantes
 class ConversationManager:
     def __init__(self, filepath=None):
