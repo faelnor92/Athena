@@ -517,6 +517,16 @@ async def get_run(run_id: str):
     return run
 
 
+@app.post("/api/runs/{run_id}/replay")
+async def replay_run_endpoint(run_id: str):
+    """Rejoue le message d'un run et renvoie la comparaison ancien/nouveau."""
+    from core.eval import replay_run
+    result = await asyncio.to_thread(replay_run, swarm, run_id)
+    if result.get("error"):
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
 @app.get("/api/chat/tree")
 async def get_chat_tree():
     return {

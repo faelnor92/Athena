@@ -1,0 +1,20 @@
+{
+  "_comment": "Copiez en evals/cases.json et adaptez. Assertions possibles par cas : expect_contains (sous-chaîne dans la réponse), expect_agent (agent final), expect_tool (outil appelé). start_agent optionnel (défaut Jarvis).",
+  "cases": [
+    {
+      "name": "Routage vers le Codeur",
+      "message": "@Codeur écris une fonction Python qui additionne deux nombres",
+      "expect_agent": "Codeur"
+    },
+    {
+      "name": "Mémorisation d'une préférence",
+      "message": "Retiens que mon éditeur préféré est Neovim",
+      "expect_tool": "memorize_fact"
+    },
+    {
+      "name": "Réponse de salutation",
+      "message": "Bonjour Jarvis",
+      "expect_contains": "bonjour"
+    }
+  ]
+}

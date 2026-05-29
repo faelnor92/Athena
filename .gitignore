@@ -26,6 +26,9 @@ lists.json
 workspace/*
 !workspace/pricing_config.json
 
+# --- Cas d'évaluation locaux (le modèle .example est versionné) ------------
+evals/cases.json
+
 # --- Bases vectorielles / SQLite -------------------------------------------
 .chroma_db/
 chroma/
