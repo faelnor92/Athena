@@ -4,6 +4,8 @@ import inspect
 import importlib.util
 import glob
 import os
+import contextvars
+import concurrent.futures
 from typing import Callable, Tuple, List
 from litellm import completion
 from .agent import Agent, Result
@@ -593,73 +595,90 @@ class Swarm:
                 break
                 
             tool_calls = getattr(message, "tool_calls", None) or []
+
+            # 1. Préparation : résolution des fonctions + steps tool_call (dans l'ordre).
+            prepared = []  # (tool_call, func_name, args, func)
             for tool_call in tool_calls:
                 func_name = tool_call.function.name
-                # Par sécurité, on extrait les arguments
                 try:
                     args = json.loads(tool_call.function.arguments)
                 except Exception:
                     args = {}
-                    
                 print(f"[\033[93m{current_agent.name}\033[0m exécute \033[96m{func_name}\033[0m avec {args}]")
-                
                 steps.append({
                     "type": "tool_call",
                     "agent": current_agent.name,
                     "tool": func_name,
                     "args": args
                 })
-                
-                # Trouver la fonction Python correspondante (outil standard OU dynamique)
                 func = next((f for f in effective_tools if f.__name__ == func_name), None)
-                if func:
-                    try:
-                        result = func(**args)
-                    except Exception as e:
-                        result = f"Erreur lors de l'exécution de l'outil : {str(e)}"
-                    
-                    # Vérifier si c'est un transfert (Handoff)
-                    if isinstance(result, Result):
-                        if result.agent:
-                            previous_agent_name = current_agent.name
-                            current_agent = result.agent
-                            print(f"[\033[95mTRANSITION\033[0m -> Passage à l'agent \033[94m{current_agent.name}\033[0m]")
-                            steps.append({
-                                "type": "handoff",
-                                "from": previous_agent_name,
-                                "to": current_agent.name
-                            })
-                        result_value = result.value
-                    else:
-                        result_value = str(result)
-                        
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": func_name,
-                        "content": result_value
-                    })
-                    
-                    steps.append({
-                        "type": "tool_output",
-                        "agent": current_agent.name,
-                        "tool": func_name,
-                        "output": result_value
-                    })
-                else:
+                prepared.append((tool_call, func_name, args, func))
+
+            def _run_tool(fn, a):
+                try:
+                    return fn(**a)
+                except Exception as e:
+                    return f"Erreur lors de l'exécution de l'outil : {str(e)}"
+
+            # 2. Exécution. Si l'agent a demandé PLUSIEURS outils, on les lance en
+            #    PARALLÈLE (ex: plusieurs query_agent → sous-agents concurrents).
+            #    Le contexte (dont current_run_id) est copié dans chaque thread pour
+            #    que les étapes des sous-agents remontent dans le même run.
+            results = [None] * len(prepared)
+            runnable = [i for i, (_tc, _fn, _a, fu) in enumerate(prepared) if fu is not None]
+            max_parallel = int(os.getenv("SWARM_MAX_PARALLEL", "4"))
+
+            if len(runnable) > 1 and max_parallel > 1:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_parallel, len(runnable))) as ex:
+                    future_to_idx = {}
+                    for i in runnable:
+                        _tc, _fn, a, fu = prepared[i]
+                        ctx_i = contextvars.copy_context()  # snapshot par tâche
+                        future_to_idx[ex.submit(ctx_i.run, _run_tool, fu, a)] = i
+                    for fut in concurrent.futures.as_completed(future_to_idx):
+                        results[future_to_idx[fut]] = fut.result()
+            else:
+                for i in runnable:
+                    _tc, _fn, a, fu = prepared[i]
+                    results[i] = _run_tool(fu, a)
+
+            # 3. Traitement SÉQUENTIEL et ORDONNÉ des résultats (préserve la logique
+            #    de l'essaim : handoffs/transferts gérés dans l'ordre).
+            for i, (tool_call, func_name, args, func) in enumerate(prepared):
+                if func is None:
                     err_msg = f"Erreur: Outil {func_name} introuvable ou non autorisé."
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": func_name,
-                        "content": err_msg
-                    })
-                    steps.append({
-                        "type": "tool_output",
-                        "agent": current_agent.name,
-                        "tool": func_name,
-                        "output": err_msg
-                    })
+                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": err_msg})
+                    steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": err_msg})
+                    continue
+
+                result = results[i]
+                # Vérifier si c'est un transfert (Handoff)
+                if isinstance(result, Result):
+                    if result.agent:
+                        previous_agent_name = current_agent.name
+                        current_agent = result.agent
+                        print(f"[\033[95mTRANSITION\033[0m -> Passage à l'agent \033[94m{current_agent.name}\033[0m]")
+                        steps.append({
+                            "type": "handoff",
+                            "from": previous_agent_name,
+                            "to": current_agent.name
+                        })
+                    result_value = result.value
+                else:
+                    result_value = str(result)
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": func_name,
+                    "content": result_value
+                })
+                steps.append({
+                    "type": "tool_output",
+                    "agent": current_agent.name,
+                    "tool": func_name,
+                    "output": result_value
+                })
 
         # Hook post-tâche d'auto-amélioration (best-effort, ne bloque jamais le retour).
         self._write_experience_report(starting_agent, messages, steps)

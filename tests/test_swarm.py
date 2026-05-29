@@ -142,6 +142,82 @@ def test_hook_auto_amelioration_archive_un_retour():
     print("OK: le hook d'auto-amélioration archive un retour d'expérience")
 
 
+def test_outils_multiples_executes_en_parallele():
+    """Plusieurs tool_calls dans un même tour doivent s'exécuter concurremment,
+    en préservant l'ordre des résultats."""
+    import time
+    os.environ["SELF_IMPROVE"] = "false"
+
+    def slow_tool(x: str = ""):
+        """Outil lent de test."""
+        time.sleep(0.5)
+        return f"done-{x}"
+
+    class _F:
+        def __init__(self, name, args):
+            self.name = name
+            self.arguments = args
+
+    class _TC:
+        def __init__(self, cid, name, args):
+            self.id = cid
+            self.function = _F(name, args)
+
+    state = {"i": 0}
+
+    def _msg(content, tool_calls):
+        class _M:
+            def __init__(self):
+                self.content = content
+                self.tool_calls = tool_calls
+            def model_dump(self, exclude_none=True):
+                return {"role": "assistant", "content": content}
+        return _M()
+
+    class _Usage:
+        prompt_tokens = 1
+        completion_tokens = 1
+
+    def fake(**kwargs):
+        state["i"] += 1
+        if state["i"] == 1:
+            m = _msg(None, [
+                _TC("c1", "slow_tool", '{"x":"a"}'),
+                _TC("c2", "slow_tool", '{"x":"b"}'),
+                _TC("c3", "slow_tool", '{"x":"c"}'),
+            ])
+        else:
+            m = _msg("terminé", None)
+
+        class _Choice:
+            message = m
+
+        class _Resp:
+            choices = [_Choice()]
+            usage = _Usage()
+
+        return _Resp()
+
+    swarm_mod.completion = fake
+
+    s = Swarm.__new__(Swarm)
+    agent = Agent(name="Tester", system_prompt="t", model="gpt-4o")
+    agent.tools = [slow_tool]
+    s.agents = {"Tester": agent}
+
+    t0 = time.time()
+    _, messages, steps = s.run(agent, [{"role": "user", "content": "go"}], max_turns=5)
+    elapsed = time.time() - t0
+
+    # 3 outils à 0.5s : en parallèle ~0.5s, en séquentiel ~1.5s.
+    assert elapsed < 1.0, f"exécution non parallèle (durée {elapsed:.2f}s)"
+    # Résultats présents et dans l'ordre a, b, c.
+    tool_outputs = [m["content"] for m in messages if m.get("role") == "tool"]
+    assert tool_outputs == ["done-a", "done-b", "done-c"], f"ordre/résultats: {tool_outputs}"
+    print(f"OK: 3 outils exécutés en parallèle en {elapsed:.2f}s, ordre préservé")
+
+
 if __name__ == "__main__":
     test_max_turns_borne_la_boucle()
     test_hook_auto_amelioration_archive_un_retour()
+    test_outils_multiples_executes_en_parallele()
