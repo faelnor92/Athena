@@ -183,16 +183,40 @@ class Swarm:
         handoff.__doc__ = f"Appelle cette fonction pour transférer la demande à l'agent {target_agent.name} si elle relève de ses compétences."
         return handoff
 
-    def run(self, starting_agent: Agent, messages: list) -> Tuple[Agent, list, list]:
+    def run(self, starting_agent: Agent, messages: list, max_turns: int = 10) -> Tuple[Agent, list, list]:
         """
         Boucle principale de l'orchestrateur.
         Retourne l'agent final actif, les messages mis à jour, et l'historique des étapes (steps).
+
+        max_turns : nombre maximum d'itérations (appels LLM) avant arrêt forcé,
+        pour éviter une boucle d'orchestration infinie (handoffs/tool calls en boucle).
         """
         original_messages_len = len(messages)
         current_agent = starting_agent
         steps = SwarmStepsList()
-        
+        turn = 0
+
         while True:
+            # Garde-fou anti-boucle infinie : on borne le nombre de tours.
+            if turn >= max_turns:
+                limit_msg = (
+                    f"⚠️ Limite d'orchestration atteinte ({max_turns} tours). "
+                    "Arrêt de l'essaim pour éviter une boucle infinie ; la tâche est "
+                    "peut-être incomplète. Reformulez ou augmentez max_turns si nécessaire."
+                )
+                print(f"[\033[91mSWARM\033[0m] {limit_msg}")
+                steps.append({
+                    "type": "message",
+                    "agent": current_agent.name,
+                    "content": limit_msg
+                })
+                messages.append({
+                    "role": "assistant",
+                    "name": current_agent.name,
+                    "content": limit_msg
+                })
+                break
+            turn += 1
             # 1. Chargement des compétences dynamiques (Auto-Amélioration) à chaque tour
             dynamic_skills = load_dynamic_skills()
             
