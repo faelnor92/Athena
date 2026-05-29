@@ -69,7 +69,13 @@ swarm = Swarm("agents.yaml")
 
 # Gestionnaire de conversations persistantes
 class ConversationManager:
-    def __init__(self, filepath="/home/legrill@ad.unistra.fr/Bureau/test_orchestrator/conversations.json"):
+    def __init__(self, filepath=None):
+        # Chemin configurable : variable d'env CONVERSATIONS_PATH, sinon
+        # conversations.json à la racine du projet (chemin du présent fichier).
+        if filepath is None:
+            filepath = os.environ.get("CONVERSATIONS_PATH", "").strip() or os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "conversations.json"
+            )
         self.filepath = filepath
         self.conversations = {} # id -> {"name": str, "messages": list, "active_node_id": str, "active_agent": str}
         self.active_id = "default"
