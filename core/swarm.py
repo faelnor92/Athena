@@ -4,6 +4,7 @@ import inspect
 import importlib.util
 import glob
 import os
+import time
 import contextvars
 import concurrent.futures
 from typing import Callable, Tuple, List
@@ -160,6 +161,46 @@ def function_to_schema(func: Callable) -> dict:
         }
     }
 
+
+def _coerce_value(value, json_type):
+    """Coerce une valeur (souvent une string fournie par le modèle) vers le type attendu."""
+    if json_type == "integer" and isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return value
+    if json_type == "number" and isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return value
+    if json_type == "boolean" and isinstance(value, str):
+        low = value.strip().lower()
+        if low in ("true", "1", "yes", "oui"):
+            return True
+        if low in ("false", "0", "no", "non"):
+            return False
+        return value
+    if json_type in ("array", "object") and isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed
+        except Exception:
+            return value
+    return value
+
+
+def coerce_arguments(func: Callable, args: dict) -> dict:
+    """Valide/coerce les arguments d'un tool_call selon le schéma JSON de l'outil.
+    Évite les échecs quand le modèle renvoie '5' pour un entier ou 'true' pour un booléen."""
+    if not isinstance(args, dict):
+        return args
+    try:
+        props = function_to_schema(func)["function"]["parameters"].get("properties", {})
+    except Exception:
+        return args
+    return {k: _coerce_value(v, props.get(k, {}).get("type")) for k, v in args.items()}
+
 class SwarmStepsList(list):
     """Liste personnalisée qui intercepte les ajouts d'étapes pour les diffuser
     en temps réel dans le run courant (isolé par ContextVar, sûr en concurrence)."""
@@ -255,7 +296,19 @@ class Swarm:
             local_model = model or "qwen3"
             completion_kwargs["model"] = local_model if "/" in local_model else f"openai/{local_model}"
 
-        return completion(**completion_kwargs)
+        # Garde-fou : retries avec backoff exponentiel sur erreur LLM transitoire.
+        retries = int(os.getenv("LLM_MAX_RETRIES", "2"))
+        last_err = None
+        for attempt in range(retries + 1):
+            try:
+                return completion(**completion_kwargs)
+            except Exception as e:
+                last_err = e
+                if attempt < retries:
+                    wait = min(2 ** attempt, 8)
+                    print(f"[\033[93mLLM retry\033[0m] tentative {attempt + 1}/{retries} échouée ({e}); nouvelle tentative dans {wait}s")
+                    time.sleep(wait)
+        raise last_err
 
     def _write_experience_report(self, agent: Agent, messages: list, steps: list):
         """Hook post-tâche (auto-amélioration) : génère un court compte-rendu
@@ -300,20 +353,49 @@ class Swarm:
         except Exception as e:
             print(f"[\033[91mAuto-amélioration erreur\033[0m] {e}")
 
-    def run(self, starting_agent: Agent, messages: list, max_turns: int = 10) -> Tuple[Agent, list, list]:
+    def run(self, starting_agent: Agent, messages: list, max_turns: int = 10,
+            max_seconds: float = None, max_tokens: int = None) -> Tuple[Agent, list, list]:
         """
         Boucle principale de l'orchestrateur.
         Retourne l'agent final actif, les messages mis à jour, et l'historique des étapes (steps).
 
-        max_turns : nombre maximum d'itérations (appels LLM) avant arrêt forcé,
-        pour éviter une boucle d'orchestration infinie (handoffs/tool calls en boucle).
+        max_turns   : nombre maximum d'itérations (appels LLM) avant arrêt forcé.
+        max_seconds : budget temps mur (défaut env SWARM_MAX_SECONDS, 0 = illimité).
+        max_tokens  : budget tokens cumulés (défaut env SWARM_MAX_TOKENS, 0 = illimité).
         """
+        if max_seconds is None:
+            max_seconds = float(os.getenv("SWARM_MAX_SECONDS", "0") or 0)
+        if max_tokens is None:
+            max_tokens = int(os.getenv("SWARM_MAX_TOKENS", "0") or 0)
+
         original_messages_len = len(messages)
         current_agent = starting_agent
         steps = SwarmStepsList()
         turn = 0
+        started_at = time.time()
+        tokens_used = 0
 
         while True:
+            # Garde-fou : budget temps mur (latence vocale / runaway).
+            if max_seconds and (time.time() - started_at) > max_seconds:
+                budget_msg = (
+                    f"⏱️ Budget temps atteint ({max_seconds:.0f}s). Arrêt de l'essaim ; "
+                    "la tâche est peut-être incomplète."
+                )
+                print(f"[\033[91mSWARM\033[0m] {budget_msg}")
+                steps.append({"type": "message", "agent": current_agent.name, "content": budget_msg})
+                messages.append({"role": "assistant", "name": current_agent.name, "content": budget_msg})
+                break
+            # Garde-fou : budget tokens cumulés.
+            if max_tokens and tokens_used > max_tokens:
+                budget_msg = (
+                    f"🪙 Budget tokens atteint ({tokens_used}/{max_tokens}). Arrêt de l'essaim ; "
+                    "la tâche est peut-être incomplète."
+                )
+                print(f"[\033[91mSWARM\033[0m] {budget_msg}")
+                steps.append({"type": "message", "agent": current_agent.name, "content": budget_msg})
+                messages.append({"role": "assistant", "name": current_agent.name, "content": budget_msg})
+                break
             # Garde-fou anti-boucle infinie : on borne le nombre de tours.
             if turn >= max_turns:
                 limit_msg = (
@@ -507,6 +589,7 @@ class Swarm:
                 prompt_tokens = len(str(current_messages)) // 4
                 completion_tokens = len(str(msg_dict)) // 4
                 
+            tokens_used += prompt_tokens + completion_tokens
             steps.append({
                 "type": "usage",
                 "agent": current_agent.name,
@@ -514,7 +597,7 @@ class Swarm:
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens
             })
-            
+
             if message.content:
                 print(f"\033[92m{current_agent.name}:\033[0m {message.content}")
                 steps.append({
@@ -612,6 +695,9 @@ class Swarm:
                     "args": args
                 })
                 func = next((f for f in effective_tools if f.__name__ == func_name), None)
+                # Validation/coercition des arguments selon le schéma de l'outil.
+                if func is not None:
+                    args = coerce_arguments(func, args)
                 prepared.append((tool_call, func_name, args, func))
 
             def _run_tool(fn, a):
