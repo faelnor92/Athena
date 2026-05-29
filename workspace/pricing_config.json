@@ -27,6 +27,30 @@
         "input_cost_per_million": 0.37,
         "output_cost_per_million": 0.37
     },
+    "qwen3": {
+        "input_cost_per_million": 0.0,
+        "output_cost_per_million": 0.0
+    },
+    "coder-qwen": {
+        "input_cost_per_million": 0.0,
+        "output_cost_per_million": 0.0
+    },
+    "ministral": {
+        "input_cost_per_million": 0.0,
+        "output_cost_per_million": 0.0
+    },
+    "gemma": {
+        "input_cost_per_million": 0.0,
+        "output_cost_per_million": 0.0
+    },
+    "gpt-oss": {
+        "input_cost_per_million": 0.0,
+        "output_cost_per_million": 0.0
+    },
+    "chat-mistral": {
+        "input_cost_per_million": 0.0,
+        "output_cost_per_million": 0.0
+    },
     "default": {
         "input_cost_per_million": 0.50,
         "output_cost_per_million": 1.50

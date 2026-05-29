@@ -269,14 +269,26 @@ def get_model_cost(model_name: str, prompt_tokens: int, completion_tokens: int) 
         with open(pricing_path, "r", encoding="utf-8") as f:
             pricing = json.load(f)
             
+        def _norm(m: str) -> str:
+            # Ignore le préfixe fournisseur (openai/, custom_openai/, anthropic/, ...)
+            return m.lower().split("/")[-1].strip()
+
         matched = None
+        # 1. Correspondance exacte
         if model_name in pricing:
             matched = pricing[model_name]
         else:
-            for k, v in pricing.items():
-                if k in model_name or model_name in k:
-                    matched = v
-                    break
+            # 2. Correspondance normalisée (sans préfixe fournisseur)
+            target = _norm(model_name)
+            norm_index = {_norm(k): v for k, v in pricing.items() if k != "default"}
+            if target in norm_index:
+                matched = norm_index[target]
+            else:
+                # 3. Repli : inclusion mutuelle sur les noms normalisés
+                for k_norm, v in norm_index.items():
+                    if k_norm and (k_norm in target or target in k_norm):
+                        matched = v
+                        break
         if not matched:
             matched = pricing.get("default", {"input_cost_per_million": 0.50, "output_cost_per_million": 1.50})
             
