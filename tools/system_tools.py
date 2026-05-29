@@ -20,6 +20,20 @@ BLACKLIST_PATTERNS = [
     r"\bcurl\b|\bwget\b",           # Bloquer le téléchargement de charges utiles (payloads) malveillantes de l'extérieur
 ]
 
+
+def check_command_blacklist(command: str):
+    """Renvoie un message de rejet si la commande contient un motif interdit,
+    sinon None. Couche de filtrage partagée par l'outil bash et l'endpoint coder."""
+    for pattern in BLACKLIST_PATTERNS:
+        if re.search(pattern, command, re.IGNORECASE):
+            return (
+                f"Sécurité : Commande refusée. La commande contient des motifs interdits "
+                f"({pattern}) pour prévenir les jailbreaks, l'obfuscation, les reverse shells "
+                f"ou la destruction système."
+            )
+    return None
+
+
 def run_ssh_command(command: str) -> tuple[str, str, int]:
     """
     Exécute une commande de manière sécurisée sur une machine distante via SSH (Paramiko).
@@ -104,11 +118,11 @@ def execute_bash_command(command: str, user_confirmed: bool = False) -> str:
     Returns:
         str: La sortie de la console.
     """
-    # 1. Application des gardes-fous absolus renforcés
-    for pattern in BLACKLIST_PATTERNS:
-        if re.search(pattern, command, re.IGNORECASE):
-            return f"Sécurité : Commande refusée. La commande contient des motifs interdits ({pattern}) pour prévenir les jailbreaks, l'obfuscation, les reverse shells ou la destruction système."
-            
+    # 1. Application des gardes-fous absolus renforcés (couche partagée)
+    rejection = check_command_blacklist(command)
+    if rejection:
+        return rejection
+
     # 2. Gestion stricte des privilèges root (sudo/su) via variables d'environnement
     requires_sudo = bool(re.search(r"\bsudo\b|\bsu\b", command, re.IGNORECASE))
     if requires_sudo:
@@ -138,26 +152,31 @@ def execute_bash_command(command: str, user_confirmed: bool = False) -> str:
             output = "Commande SSH exécutée avec succès (aucune sortie)."
         return output
         
-    # 4. Exécution locale classique par défaut
+    # 4. Exécution locale : isolée en sandbox Docker si possible, sinon repli local.
+    from tools import sandbox_runner
     try:
-        cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
-        result = subprocess.run(
-            ["/bin/bash", "-c", command],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            cwd=cwd
-        )
-        
+        if sandbox_runner.sandbox_mode() != "off" and sandbox_runner.docker_available():
+            stdout, stderr, _rc = sandbox_runner.run_bash(command, timeout=15)
+        else:
+            cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
+            result = subprocess.run(
+                ["/bin/bash", "-c", command],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                cwd=cwd
+            )
+            stdout, stderr = result.stdout, result.stderr
+
         output = ""
-        if result.stdout:
-            output += f"--- SORTIE (stdout) ---\n{result.stdout}\n"
-        if result.stderr:
-            output += f"--- ERREUR (stderr) ---\n{result.stderr}\n"
-            
+        if stdout:
+            output += f"--- SORTIE (stdout) ---\n{stdout}\n"
+        if stderr:
+            output += f"--- ERREUR (stderr) ---\n{stderr}\n"
+
         if not output:
             output = "Commande exécutée avec succès (aucune sortie)."
-            
+
         return output
     except subprocess.TimeoutExpired:
         return "Erreur : Temps d'exécution de la commande dépassé (Timeout de 15 secondes)."

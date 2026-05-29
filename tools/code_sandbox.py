@@ -3,49 +3,68 @@ import subprocess
 import tempfile
 import os
 
-def execute_python_code(code: str) -> str:
-    """
-    Exécute de manière autonome un script Python dans un sous-processus sécurisé (sandbox locale)
-    et capture la sortie standard (stdout) et les erreurs (stderr).
-    Utile pour tester tes fonctions et valider qu'elles marchent avant de répondre à l'utilisateur.
-    
-    Args:
-        code (str): Le code Python complet à exécuter.
-        
-    Returns:
-        str: Le résultat de l'exécution (stdout ou les erreurs stderr).
-    """
-    # Crée un fichier temporaire pour stocker le code
+from tools import sandbox_runner
+
+
+def _format_output(stdout: str, stderr: str) -> str:
+    output = ""
+    if stdout:
+        output += f"--- SORTIE (stdout) ---\n{stdout}\n"
+    if stderr:
+        output += f"--- ERREUR (stderr) ---\n{stderr}\n"
+    if not output:
+        output = "Code exécuté avec succès (aucune sortie)."
+    return output
+
+
+def _run_local_unsandboxed(code: str) -> str:
+    """Repli NON ISOLÉ : exécute le code avec les droits du serveur.
+    Utilisé uniquement si SANDBOX_MODE=off (risque explicitement assumé)."""
     with tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w", encoding="utf-8") as f:
         f.write(code)
         temp_path = f.name
-        
     try:
-        # Exécution avec un timeout de 5 secondes dans le dossier actif
         cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
         result = subprocess.run(
             [sys.executable, temp_path],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=cwd
+            capture_output=True, text=True, timeout=15, cwd=cwd,
         )
-        
-        output = ""
-        if result.stdout:
-            output += f"--- SORTIE (stdout) ---\n{result.stdout}\n"
-        if result.stderr:
-            output += f"--- ERREUR (stderr) ---\n{result.stderr}\n"
-            
-        if not output:
-            output = "Code exécuté avec succès (aucune sortie)."
-            
-        return output
+        return _format_output(result.stdout, result.stderr)
     except subprocess.TimeoutExpired:
-        return "Erreur: Temps d'exécution dépassé (Timeout de 5 secondes)."
+        return "Erreur: Temps d'exécution dépassé (Timeout de 15 secondes)."
     except Exception as e:
         return f"Erreur lors de l'exécution: {str(e)}"
     finally:
-        # Nettoie le fichier temporaire
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+def execute_python_code(code: str) -> str:
+    """
+    Exécute un script Python dans une sandbox Docker jetable et isolée
+    (réseau coupé, RAM/CPU/PID bornés, racine en lecture seule, sans privilèges,
+    seul le workspace monté en écriture) puis capture stdout/stderr.
+
+    Si la variable d'environnement SANDBOX_MODE vaut "off", le code est exécuté
+    localement SANS isolation (avec les droits du serveur) — à n'utiliser qu'en
+    développement et en toute connaissance de cause.
+
+    Args:
+        code (str): Le code Python complet à exécuter.
+
+    Returns:
+        str: Le résultat de l'exécution (stdout ou les erreurs stderr).
+    """
+    if sandbox_runner.sandbox_mode() == "off":
+        return _run_local_unsandboxed(code)
+
+    if not sandbox_runner.docker_available():
+        return (
+            "Erreur sandbox : Docker est requis pour exécuter du code de manière isolée "
+            "mais n'est pas disponible (démon arrêté ou binaire absent). "
+            "Démarrez Docker, ou définissez SANDBOX_MODE=off pour une exécution locale "
+            "NON isolée (risque assumé)."
+        )
+
+    stdout, stderr, _rc = sandbox_runner.run_python(code, timeout=15)
+    return _format_output(stdout, stderr)
