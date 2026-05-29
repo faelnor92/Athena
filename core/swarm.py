@@ -10,6 +10,7 @@ import concurrent.futures
 from typing import Callable, Tuple, List
 from litellm import completion
 from .agent import Agent, Result
+from . import approvals
 import tools.home_assistant
 import tools.memory_tools
 import tools.code_sandbox
@@ -151,6 +152,14 @@ def function_to_schema(func: Callable) -> dict:
         }
         if param.default == inspect.Parameter.empty:
             parameters["required"].append(name)
+
+    # Outil sensible : on expose un paramètre user_confirmed (optionnel) pour le
+    # gate human-in-the-loop, même si la fonction ne le déclare pas.
+    if approvals.is_sensitive(func) and "user_confirmed" not in parameters["properties"]:
+        parameters["properties"]["user_confirmed"] = {
+            "type": "boolean",
+            "description": "Mettre à True UNIQUEMENT après accord explicite de l'utilisateur (action sensible).",
+        }
 
     return {
         "type": "function",
@@ -679,8 +688,8 @@ class Swarm:
                 
             tool_calls = getattr(message, "tool_calls", None) or []
 
-            # 1. Préparation : résolution des fonctions + steps tool_call (dans l'ordre).
-            prepared = []  # (tool_call, func_name, args, func)
+            # 1. Préparation : résolution + coercition + gate human-in-the-loop.
+            prepared = []  # (tool_call, func_name, args, func, blocked, call_args)
             for tool_call in tool_calls:
                 func_name = tool_call.function.name
                 try:
@@ -695,10 +704,22 @@ class Swarm:
                     "args": args
                 })
                 func = next((f for f in effective_tools if f.__name__ == func_name), None)
-                # Validation/coercition des arguments selon le schéma de l'outil.
+                blocked = False
+                call_args = args
                 if func is not None:
+                    # Validation/coercition des arguments selon le schéma de l'outil.
                     args = coerce_arguments(func, args)
-                prepared.append((tool_call, func_name, args, func))
+                    # Gate human-in-the-loop : outil sensible non confirmé et canal
+                    # non auto-approuvé → bloqué (on demande l'accord utilisateur).
+                    if approvals.is_sensitive(func) and not approvals.auto_approve_enabled() \
+                            and not args.get("user_confirmed"):
+                        blocked = True
+                    # Arguments réellement passés (on retire user_confirmed si la
+                    # fonction ne le déclare pas).
+                    call_args = dict(args)
+                    if "user_confirmed" in call_args and not approvals.accepts_kw(func, "user_confirmed"):
+                        call_args.pop("user_confirmed")
+                prepared.append((tool_call, func_name, args, func, blocked, call_args))
 
             def _run_tool(fn, a):
                 try:
@@ -710,31 +731,38 @@ class Swarm:
             #    PARALLÈLE (ex: plusieurs query_agent → sous-agents concurrents).
             #    Le contexte (dont current_run_id) est copié dans chaque thread pour
             #    que les étapes des sous-agents remontent dans le même run.
+            #    Les outils bloqués (approbation requise) ne sont PAS exécutés.
             results = [None] * len(prepared)
-            runnable = [i for i, (_tc, _fn, _a, fu) in enumerate(prepared) if fu is not None]
+            runnable = [i for i, (_tc, _fn, _a, fu, blk, _ca) in enumerate(prepared) if fu is not None and not blk]
             max_parallel = int(os.getenv("SWARM_MAX_PARALLEL", "4"))
 
             if len(runnable) > 1 and max_parallel > 1:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_parallel, len(runnable))) as ex:
                     future_to_idx = {}
                     for i in runnable:
-                        _tc, _fn, a, fu = prepared[i]
                         ctx_i = contextvars.copy_context()  # snapshot par tâche
-                        future_to_idx[ex.submit(ctx_i.run, _run_tool, fu, a)] = i
+                        future_to_idx[ex.submit(ctx_i.run, _run_tool, prepared[i][3], prepared[i][5])] = i
                     for fut in concurrent.futures.as_completed(future_to_idx):
                         results[future_to_idx[fut]] = fut.result()
             else:
                 for i in runnable:
-                    _tc, _fn, a, fu = prepared[i]
-                    results[i] = _run_tool(fu, a)
+                    results[i] = _run_tool(prepared[i][3], prepared[i][5])
 
             # 3. Traitement SÉQUENTIEL et ORDONNÉ des résultats (préserve la logique
             #    de l'essaim : handoffs/transferts gérés dans l'ordre).
-            for i, (tool_call, func_name, args, func) in enumerate(prepared):
+            for i, (tool_call, func_name, args, func, blocked, call_args) in enumerate(prepared):
                 if func is None:
                     err_msg = f"Erreur: Outil {func_name} introuvable ou non autorisé."
                     messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": err_msg})
                     steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": err_msg})
+                    continue
+
+                if blocked:
+                    # Action sensible non confirmée : on n'exécute pas, on demande l'accord.
+                    msg = approvals.confirmation_message(func_name, args)
+                    steps.append({"type": "approval_required", "agent": current_agent.name, "tool": func_name, "args": args})
+                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": msg})
+                    steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": msg})
                     continue
 
                 result = results[i]
