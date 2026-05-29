@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 import shlex
+import secrets
 import asyncio
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -58,7 +59,8 @@ async def login(req: LoginRequest):
     if not admin_password:
         return {"status": "success", "token": "no-auth-required"}
         
-    if req.password == admin_password:
+    # Comparaison à temps constant pour éviter les attaques temporelles.
+    if secrets.compare_digest(req.password, admin_password):
         token = uuid.uuid4().hex
         ACTIVE_SESSIONS.add(token)
         return {"status": "success", "token": token}
@@ -2042,9 +2044,38 @@ async def transcribe_meeting(file: UploadFile = File(...)):
 # Sert les fichiers statiques de l'interface Web
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
+def _is_exposed_host(host: str) -> bool:
+    """Vrai si le bind n'est pas strictement local (loopback)."""
+    return host not in ("127.0.0.1", "localhost", "::1")
+
+
 if __name__ == "__main__":
+    import sys
     import uvicorn
-    # Lance le serveur FastAPI de développement local sur le port 8000
+
+    host = os.getenv("HOST", "0.0.0.0").strip()
+    port = int(os.getenv("PORT", "8000"))
+    admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+
+    # Garde-fou : refus de démarrer exposé sur le réseau sans mot de passe admin.
+    # En exposition (0.0.0.0 / IP publique), l'absence d'ADMIN_PASSWORD ouvrirait
+    # l'interface (et l'exécution de commandes) à n'importe qui sur le réseau.
+    if _is_exposed_host(host) and not admin_password:
+        print(
+            "\n\033[91m[SÉCURITÉ] Démarrage refusé.\033[0m\n"
+            f"Le serveur est configuré pour écouter sur '{host}' (exposé réseau) "
+            "mais ADMIN_PASSWORD est vide.\n"
+            "  → Définissez ADMIN_PASSWORD dans votre .env, OU\n"
+            "  → Pour un usage purement local, lancez avec HOST=127.0.0.1.\n"
+            "Recommandation : placez le service derrière un reverse-proxy HTTPS "
+            "(Caddy, Nginx, Traefik) et n'exposez jamais le port 8000 en clair.\n"
+        )
+        sys.exit(1)
+
+    if not admin_password:
+        print("\033[93m[AVERTISSEMENT] ADMIN_PASSWORD vide : authentification désactivée "
+              "(autorisé uniquement car bind local).\033[0m")
+
     print("\n🚀 Lancement du serveur Jarvis Dashboard...")
-    print("👉 Accède à l'application ici : http://localhost:8000\n")
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    print(f"👉 Accède à l'application ici : http://{'localhost' if host == '0.0.0.0' else host}:{port}\n")
+    uvicorn.run("server:app", host=host, port=port, reload=True)
