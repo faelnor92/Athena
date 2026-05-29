@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import shlex
 import asyncio
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -563,10 +564,11 @@ async def terminal_coder(req: TerminalRequest):
             if raw_bash_cmd.startswith("cd "):
                 target_dir = raw_bash_cmd[3:].strip().strip("'\"")
                 current_remote_cwd = os.getenv("SSH_REMOTE_CWD")
+                # Échappement des chemins (issus d'entrée utilisateur) via shlex.quote.
                 if current_remote_cwd:
-                    remote_cmd = f"cd {current_remote_cwd} && cd {target_dir} && pwd"
+                    remote_cmd = f"cd {shlex.quote(current_remote_cwd)} && cd {shlex.quote(target_dir)} && pwd"
                 else:
-                    remote_cmd = f"cd {target_dir} && pwd"
+                    remote_cmd = f"cd {shlex.quote(target_dir)} && pwd"
                 
                 stdout_content, stderr_content, rc = run_ssh_command(remote_cmd)
                 if rc == 0 and stdout_content.strip():

@@ -25,15 +25,33 @@ def run_ssh_command(command: str) -> tuple[str, str, int]:
     Exécute une commande de manière sécurisée sur une machine distante via SSH (Paramiko).
     """
     import paramiko
-    
+    import shlex
+
     host = os.getenv("SSH_HOST")
     port = int(os.getenv("SSH_PORT", "22"))
     username = os.getenv("SSH_USERNAME")
     password = os.getenv("SSH_PASSWORD")
     key_path = os.getenv("SSH_KEY_PATH")
-    
+
     ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    # Vérification des clés d'hôte connues (anti-MITM). On charge le known_hosts
+    # système puis, si fourni, un fichier dédié via SSH_KNOWN_HOSTS.
+    ssh.load_system_host_keys()
+    known_hosts = os.getenv("SSH_KNOWN_HOSTS")
+    if known_hosts:
+        expanded_known = os.path.expanduser(known_hosts)
+        if os.path.exists(expanded_known):
+            try:
+                ssh.load_host_keys(expanded_known)
+            except Exception:
+                pass
+    # Politique stricte par défaut : on REFUSE un hôte inconnu plutôt que de
+    # l'ajouter aveuglément (AutoAddPolicy était vulnérable au MITM).
+    # Opt-in explicite et documenté pour le premier raccordement.
+    if os.getenv("SSH_AUTO_ADD_HOST_KEYS", "False").lower() in ("true", "1", "yes"):
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    else:
+        ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
     
     try:
         # 1. Connexion SSH
@@ -55,7 +73,8 @@ def run_ssh_command(command: str) -> tuple[str, str, int]:
         # 2. Gestion du dossier distant de travail
         remote_cwd = os.getenv("SSH_REMOTE_CWD")
         if remote_cwd:
-            full_command = f"cd {remote_cwd} && {command}"
+            # remote_cwd est échappé ; `command` reste une commande shell complète.
+            full_command = f"cd {shlex.quote(remote_cwd)} && {command}"
         else:
             full_command = command
             
