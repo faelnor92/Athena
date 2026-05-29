@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import uuid
 import shlex
 import secrets
@@ -15,7 +16,12 @@ from dotenv import load_dotenv
 # Chargement du .env
 load_dotenv()
 
+from core.logging_config import setup_logging, get_logger
+setup_logging()
+logger = get_logger("jarvis.server")
+
 from core.swarm import Swarm
+from core.tracing import run_store
 from tools.memory_tools import core_mem
 
 app = FastAPI(title="Jarvis Multi-Agent Dashboard")
@@ -321,7 +327,11 @@ async def chat(req: ChatRequest):
     TELEMETRY["total_queries"] += 1
     ACTIVE_STEPS = []
     IS_CHAT_RUNNING = True
-    
+
+    run_id = run_store.new_run_id()
+    run_started = time.time()
+    run_agent = "Jarvis"
+
     try:
         if not session.active_agent:
             raise HTTPException(status_code=500, detail="Jarvis n'est pas initialisé.")
@@ -447,7 +457,20 @@ async def chat(req: ChatRequest):
             
         TELEMETRY["total_tokens"] += total_tokens_in_turn
         TELEMETRY["total_cost"] += total_cost_in_turn
-            
+
+        run_agent = session.active_agent.name if session.active_agent else run_agent
+        # Persistance du run (observabilité) — best-effort.
+        run_store.save(
+            run_id=run_id, agent=run_agent, status="success",
+            user_message=req.message, final_response=final_response,
+            duration_ms=int((time.time() - run_started) * 1000),
+            total_tokens=total_tokens_in_turn, total_cost=total_cost_in_turn,
+            steps=steps, created_at=run_started,
+        )
+        logger.info("run %s ok | agent=%s tokens=%s coût=%.4f durée=%dms",
+                    run_id, run_agent, total_tokens_in_turn, total_cost_in_turn,
+                    int((time.time() - run_started) * 1000))
+
         return ChatResponse(
             agent=session.active_agent.name,
             response=final_response,
@@ -455,8 +478,15 @@ async def chat(req: ChatRequest):
         )
     except Exception as e:
         import traceback
-        print("\n[\033[91mErreur Chat\033[0m]")
+        logger.exception("Erreur Chat (run %s)", run_id)
         traceback.print_exc()
+        # On persiste aussi les runs ratés pour pouvoir les inspecter/rejouer.
+        run_store.save(
+            run_id=run_id, agent=run_agent, status="error",
+            user_message=req.message, error=str(e),
+            duration_ms=int((time.time() - run_started) * 1000),
+            steps=ACTIVE_STEPS, created_at=run_started,
+        )
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         IS_CHAT_RUNNING = False
@@ -468,6 +498,21 @@ async def get_chat_status():
         "steps": ACTIVE_STEPS,
         "running": IS_CHAT_RUNNING
     }
+
+@app.get("/api/runs")
+async def list_runs(limit: int = 50, status: str = None):
+    """Liste les derniers runs persistés (résumés) pour le cockpit / debug."""
+    return {"runs": run_store.list(limit=limit, status=status)}
+
+
+@app.get("/api/runs/{run_id}")
+async def get_run(run_id: str):
+    """Détail complet d'un run (étapes incluses) pour inspection/rejeu."""
+    run = run_store.get(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run introuvable.")
+    return run
+
 
 @app.get("/api/chat/tree")
 async def get_chat_tree():

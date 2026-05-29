@@ -5,7 +5,10 @@ from core.swarm import Swarm
 def main():
     # Chargement des variables d'environnement (.env)
     load_dotenv()
-    
+
+    from core.logging_config import setup_logging
+    setup_logging()
+
     print("Initialisation de l'Orchestrateur...")
     swarm = Swarm("agents.yaml")
 

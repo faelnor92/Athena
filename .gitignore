@@ -12,6 +12,7 @@ mcp_servers.json
 # --- Logs ------------------------------------------------------------------
 *.log
 server.log
+logs/
 
 # --- Données personnelles / état runtime ----------------------------------
 conversations.json
