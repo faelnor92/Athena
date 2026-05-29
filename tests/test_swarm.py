@@ -54,6 +54,8 @@ def noop_tool():
 
 
 def test_max_turns_borne_la_boucle(monkeypatch=None):
+    # Isole le test de la boucle du hook d'auto-amélioration (qui ferait +1 appel).
+    os.environ["SELF_IMPROVE"] = "false"
     calls = {"n": 0}
     fake = _fake_completion_factory(calls)
     # Patch du symbole completion utilisé dans core.swarm
@@ -75,5 +77,71 @@ def test_max_turns_borne_la_boucle(monkeypatch=None):
     print("OK: max_turns borne bien la boucle d'orchestration")
 
 
+def test_hook_auto_amelioration_archive_un_retour():
+    """Après une tâche avec outil, un retour d'expérience doit être archivé."""
+    os.environ["SELF_IMPROVE"] = "true"
+
+    # Séquence de réponses : 1) tool_call, 2) fin (sans tool), 3) compte-rendu.
+    state = {"i": 0}
+
+    class _ToolFunc:
+        name = "noop_tool"
+        arguments = "{}"
+
+    class _ToolCall:
+        id = "c1"
+        function = _ToolFunc()
+
+    def _msg(content, tool_calls):
+        class _M:
+            def __init__(self):
+                self.content = content
+                self.tool_calls = tool_calls
+            def model_dump(self, exclude_none=True):
+                return {"role": "assistant", "content": content}
+        return _M()
+
+    class _Usage:
+        prompt_tokens = 1
+        completion_tokens = 1
+
+    def fake(**kwargs):
+        state["i"] += 1
+        if state["i"] == 1:
+            m = _msg("j'utilise un outil", [_ToolCall()])
+        elif state["i"] == 2:
+            m = _msg("voici le résultat final", None)
+        else:
+            m = _msg("- Tâche: test\n- A marché: l'outil\n- À retenir: rien", None)
+
+        class _Choice:
+            message = m
+
+        class _Resp:
+            choices = [_Choice()]
+            usage = _Usage()
+
+        return _Resp()
+
+    swarm_mod.completion = fake
+
+    # Capture des archivages mémoire sans toucher ChromaDB.
+    import tools.memory_tools as mt
+    stored = []
+    mt.store_document = lambda content, source="general": stored.append((source, content)) or "ok"
+
+    s = Swarm.__new__(Swarm)
+    agent = Agent(name="Tester", system_prompt="test", model="gpt-4o")
+    agent.tools = [noop_tool]
+    s.agents = {"Tester": agent}
+
+    _, _messages, steps = s.run(agent, [{"role": "user", "content": "fais un truc"}], max_turns=5)
+
+    assert any(st.get("type") == "self_improve" for st in steps), "pas de step self_improve"
+    assert stored and stored[0][0] == "retour_experience", f"archivage incorrect: {stored}"
+    print("OK: le hook d'auto-amélioration archive un retour d'expérience")
+
+
 if __name__ == "__main__":
     test_max_turns_borne_la_boucle()
+    test_hook_auto_amelioration_archive_un_retour()

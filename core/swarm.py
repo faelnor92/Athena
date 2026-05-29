@@ -225,6 +225,79 @@ class Swarm:
         handoff.__doc__ = f"Appelle cette fonction pour transférer la demande à l'agent {target_agent.name} si elle relève de ses compétences."
         return handoff
 
+    def _complete(self, model: str, messages: list, tools_schema=None):
+        """Appel LLM via litellm avec routage clé officielle / endpoint custom."""
+        completion_kwargs = {"model": model, "messages": messages, "tools": tools_schema}
+        custom_base = os.environ.get("CUSTOM_LLM_API_BASE", "").strip()
+        custom_key = os.environ.get("CUSTOM_LLM_API_KEY", "").strip()
+        model_l = (model or "").lower()
+        is_standard = any(p in model_l for p in ["gpt-", "claude-", "gemini-", "groq/", "openrouter/", "ollama/", "mistral/"])
+        has_official_key = False
+        if "gpt-" in model_l:
+            has_official_key = bool(os.environ.get("OPENAI_API_KEY"))
+        elif "claude-" in model_l:
+            has_official_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        elif "gemini-" in model_l:
+            has_official_key = bool(os.environ.get("GEMINI_API_KEY"))
+
+        use_custom = custom_base and (
+            not is_standard or not has_official_key
+            or model.startswith("custom_openai/") or model.startswith("openai/")
+        )
+        if use_custom:
+            # Auto-correction pour Open WebUI (/v1 -> /api/v1)
+            if "/v1" in custom_base and "/api" not in custom_base:
+                custom_base = custom_base.replace("/v1", "/api/v1")
+            completion_kwargs["api_base"] = custom_base
+            completion_kwargs["api_key"] = custom_key or "placeholder-key"
+            local_model = model or "qwen3"
+            completion_kwargs["model"] = local_model if "/" in local_model else f"openai/{local_model}"
+
+        return completion(**completion_kwargs)
+
+    def _write_experience_report(self, agent: Agent, messages: list, steps: list):
+        """Hook post-tâche (auto-amélioration) : génère un court compte-rendu
+        structuré (ce qui a marché / échoué / à retenir) et l'archive en mémoire
+        sémantique, où il resurgira via le RAG lors d'une tâche similaire."""
+        if os.getenv("SELF_IMPROVE", "true").lower() not in ("true", "1", "yes"):
+            return
+        # On ne produit un retour que pour les tâches non triviales (avec outils/handoffs).
+        if not any(s.get("type") in ("tool_call", "handoff") for s in steps):
+            return
+        try:
+            # Reconstruit un transcript compact du dernier échange.
+            lines = []
+            for m in messages[-12:]:
+                role = m.get("role")
+                if role == "user":
+                    lines.append(f"UTILISATEUR: {m.get('content','')}")
+                elif role == "assistant" and m.get("content"):
+                    lines.append(f"{m.get('name','assistant')}: {m.get('content','')}")
+                elif role == "tool":
+                    lines.append(f"OUTIL[{m.get('name','?')}]: {str(m.get('content',''))[:400]}")
+            transcript = "\n".join(lines)[:6000]
+
+            report_messages = [
+                {"role": "system", "content": (
+                    "Tu es un module d'auto-amélioration. À partir de l'échange ci-dessous, rédige un "
+                    "COMPTE-RENDU TRÈS COURT (5 lignes max) et factuel, en français, au format :\n"
+                    "- Tâche: <résumé en une ligne>\n- A marché: <...>\n- A échoué/limites: <...>\n"
+                    "- À retenir pour la prochaine fois: <conseil actionnable>\n"
+                    "Si rien d'utile n'est à retenir, réponds exactement: RAS."
+                )},
+                {"role": "user", "content": transcript},
+            ]
+            resp = self._complete(agent.model, report_messages, tools_schema=None)
+            report = (resp.choices[0].message.content or "").strip()
+            if not report or report.upper().startswith("RAS"):
+                return
+            import tools.memory_tools
+            tools.memory_tools.store_document(report, source="retour_experience")
+            steps.append({"type": "self_improve", "agent": agent.name, "content": report})
+            print(f"[\033[96mAUTO-AMÉLIORATION\033[0m] Retour d'expérience archivé.")
+        except Exception as e:
+            print(f"[\033[91mAuto-amélioration erreur\033[0m] {e}")
+
     def run(self, starting_agent: Agent, messages: list, max_turns: int = 10) -> Tuple[Agent, list, list]:
         """
         Boucle principale de l'orchestrateur.
@@ -413,51 +486,7 @@ class Swarm:
             current_messages = [{"role": "system", "content": system_prompt}] + clean_history
             
             # Appel API via litellm (compatible OpenAI, Anthropic, Ollama...)
-            completion_kwargs = {
-                "model": current_agent.model,
-                "messages": current_messages,
-                "tools": tools_schema
-            }
-            
-            custom_base = os.environ.get("CUSTOM_LLM_API_BASE", "").strip()
-            custom_key = os.environ.get("CUSTOM_LLM_API_KEY", "").strip()
-            
-            # Vérifier si c'est un modèle standard des grands fournisseurs Cloud
-            is_standard = any(prefix in current_agent.model.lower() for prefix in ["gpt-", "claude-", "gemini-", "groq/", "openrouter/", "ollama/", "mistral/"])
-            
-            # Si on a une clé API officielle pour ce fournisseur, on le laisse passer en direct.
-            # Sinon (ou si le modèle n'est pas standard), on le redirige vers l'API custom.
-            has_official_key = False
-            if "gpt-" in current_agent.model.lower():
-                has_official_key = bool(os.environ.get("OPENAI_API_KEY"))
-            elif "claude-" in current_agent.model.lower():
-                has_official_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-            elif "gemini-" in current_agent.model.lower():
-                has_official_key = bool(os.environ.get("GEMINI_API_KEY"))
-                
-            use_custom = custom_base and (not is_standard or not has_official_key or current_agent.model.startswith("custom_openai/") or current_agent.model.startswith("openai/"))
-            
-            if use_custom:
-                # Auto-correction pour Open WebUI si l'utilisateur a mis /v1 au lieu de /api/v1
-                if "/v1" in custom_base and not "/api" in custom_base:
-                    custom_base = custom_base.replace("/v1", "/api/v1")
-                    
-                completion_kwargs["api_base"] = custom_base
-                if custom_key:
-                    completion_kwargs["api_key"] = custom_key
-                else:
-                    completion_kwargs["api_key"] = "placeholder-key"
-                
-                # Utiliser le modèle configuré de l'agent, avec un fallback de sécurité sur qwen3
-                local_model = current_agent.model if current_agent.model else "qwen3"
-                    
-                # Assurer que LiteLLM sait qu'il s'agit d'un endpoint compatible OpenAI
-                if not "/" in local_model:
-                    completion_kwargs["model"] = f"openai/{local_model}"
-                else:
-                    completion_kwargs["model"] = local_model
-            
-            response = completion(**completion_kwargs)
+            response = self._complete(current_agent.model, current_messages, tools_schema)
             
             message = response.choices[0].message
             msg_dict = message.model_dump(exclude_none=True)
@@ -629,5 +658,8 @@ class Swarm:
                         "tool": func_name,
                         "output": err_msg
                     })
-                    
+
+        # Hook post-tâche d'auto-amélioration (best-effort, ne bloque jamais le retour).
+        self._write_experience_report(starting_agent, messages, steps)
+
         return current_agent, messages, steps
