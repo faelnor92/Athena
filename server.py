@@ -1,10 +1,12 @@
 import os
+import re
 import json
 import time
 import uuid
 import shlex
 import secrets
 import asyncio
+import threading
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -162,10 +164,25 @@ class ConversationManager:
                 }
         return self.conversations[self.active_id]
 
+def _session_file(client_id: str) -> str:
+    """Chemin du fichier de conversations pour un canal/client donné.
+    Le canal 'web' conserve le conversations.json historique ; les autres
+    canaux (voice, cli, telegram:<id>...) ont leur propre fichier."""
+    base = os.environ.get("CONVERSATIONS_PATH", "").strip() or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "conversations.json"
+    )
+    if client_id == "web":
+        return base
+    root, ext = os.path.splitext(base)
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", client_id)
+    return f"{root}_{safe}{ext or '.json'}"
+
+
 class ChatSession:
-    def __init__(self):
-        self.manager = ConversationManager()
-        
+    def __init__(self, client_id: str = "web"):
+        self.client_id = client_id
+        self.manager = ConversationManager(filepath=_session_file(client_id))
+
     @property
     def messages(self):
         return self.manager.get_active()["messages"]
@@ -209,7 +226,25 @@ class ChatSession:
         active_conv["active_agent"] = "Jarvis"
         self.manager.save()
 
-session = ChatSession()
+class SessionManager:
+    """Sessions par canal/client (web, cli, voice, telegram:<id>...). Chaque
+    client a sa propre conversation/agent actif, isolés des autres canaux."""
+    def __init__(self):
+        self._sessions = {}
+        self._lock = threading.Lock()
+
+    def get(self, client_id: str = "web") -> "ChatSession":
+        client_id = (client_id or "web").strip() or "web"
+        with self._lock:
+            if client_id not in self._sessions:
+                self._sessions[client_id] = ChatSession(client_id=client_id)
+            return self._sessions[client_id]
+
+
+sessions = SessionManager()
+# Rétro-compatibilité : `session` = canal web (utilisé par les endpoints
+# d'arborescence/conversations/terminal qui n'ont pas encore de client_id).
+session = sessions.get("web")
 
 # Télémétrie en mémoire pour le cockpit de l'essaim
 TELEMETRY = {
@@ -316,6 +351,7 @@ def get_model_cost(model_name: str, prompt_tokens: int, completion_tokens: int) 
 class ChatRequest(BaseModel):
     message: str
     parent_id: str = None
+    client_id: str = "web"  # canal/session : web (défaut), cli, voice, ...
 
 class ChatResponse(BaseModel):
     agent: str
@@ -333,30 +369,33 @@ async def chat(req: ChatRequest):
     run_registry.start(run_id)
     token = current_run_id.set(run_id)
 
+    # Session propre au canal (web/cli/voice/...).
+    sess = sessions.get(req.client_id)
+
     try:
-        if not session.active_agent:
+        if not sess.active_agent:
             raise HTTPException(status_code=500, detail="Jarvis n'est pas initialisé.")
-        
+
         # 1. Déterminer le parent_id : soit fourni, soit l'actif de session, soit None
-        parent_id = req.parent_id if req.parent_id is not None else session.active_node_id
-        
+        parent_id = req.parent_id if req.parent_id is not None else sess.active_node_id
+
         # Générer un ID de message unique
         user_msg_id = uuid.uuid4().hex
-        
+
         user_node = {
             "id": user_msg_id,
             "parent_id": parent_id,
             "role": "user",
             "content": req.message
         }
-        
-        session.messages.append(user_node)
-        session.active_node_id = user_msg_id
-        
+
+        sess.messages.append(user_node)
+        sess.active_node_id = user_msg_id
+
         # 2. Reconstruire la chaîne linéaire de messages menant au nœud actif pour le LLM
         chain = []
-        curr_id = session.active_node_id
-        node_map = {m["id"]: m for m in session.messages}
+        curr_id = sess.active_node_id
+        node_map = {m["id"]: m for m in sess.messages}
         while curr_id:
             node = node_map.get(curr_id)
             if not node:
@@ -367,7 +406,7 @@ async def chat(req: ChatRequest):
             curr_id = node["parent_id"]
             
         # On démarre la discussion avec l'agent actuellement actif pour permettre un dialogue persistant
-        starting_agent = session.active_agent or swarm.agents.get("Jarvis")
+        starting_agent = sess.active_agent or swarm.agents.get("Jarvis")
         
         # Détection proactive : Si l'utilisateur mentionne un agent avec @nom ou s'adresse à Jarvis
         last_user_content = req.message.strip().lower()
@@ -413,10 +452,10 @@ async def chat(req: ChatRequest):
         # dont current_run_id — est copié par to_thread) pour ne pas bloquer la
         # boucle asyncio et permettre des requêtes concurrentes.
         next_agent, new_chain, steps = await asyncio.to_thread(swarm.run, starting_agent, chain)
-        session.active_agent = swarm.agents.get("Jarvis")
-        
+        sess.active_agent = swarm.agents.get("Jarvis")
+
         # 3. Ajouter séquentiellement les nouvelles réponses du Swarm en tant que nœuds enfants
-        prev_id = session.active_node_id
+        prev_id = sess.active_node_id
         for msg in new_chain[original_chain_len:]:
             new_id = uuid.uuid4().hex
             node = {
@@ -424,10 +463,10 @@ async def chat(req: ChatRequest):
                 "parent_id": prev_id,
                 **msg
             }
-            session.messages.append(node)
+            sess.messages.append(node)
             prev_id = new_id
-            
-        session.active_node_id = prev_id
+
+        sess.active_node_id = prev_id
         
         # Trouver la dernière réponse formulée par un agent
         final_response = ""
@@ -462,7 +501,7 @@ async def chat(req: ChatRequest):
         TELEMETRY["total_tokens"] += total_tokens_in_turn
         TELEMETRY["total_cost"] += total_cost_in_turn
 
-        run_agent = session.active_agent.name if session.active_agent else run_agent
+        run_agent = sess.active_agent.name if sess.active_agent else run_agent
         # Persistance du run (observabilité) — best-effort.
         run_store.save(
             run_id=run_id, agent=run_agent, status="success",
@@ -476,7 +515,7 @@ async def chat(req: ChatRequest):
                     int((time.time() - run_started) * 1000))
 
         return ChatResponse(
-            agent=session.active_agent.name,
+            agent=sess.active_agent.name,
             response=final_response,
             steps=steps
         )

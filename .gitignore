@@ -16,6 +16,7 @@ logs/
 
 # --- Données personnelles / état runtime ----------------------------------
 conversations.json
+conversations_*.json
 core_memory.json
 agenda.json
 lists.json
