@@ -613,34 +613,50 @@ async def terminal_coder(req: TerminalRequest):
                     stderr_content = f"cd: {str(e)}"
             else:
                 import sys
-                is_windows = (os.name == "nt" or sys.platform.startswith("win"))
-                
-                try:
-                    if is_windows:
-                        res = subprocess.run(
-                            raw_bash_cmd,
-                            shell=True,
-                            executable="powershell.exe",
-                            text=True,
-                            capture_output=True,
-                            timeout=30
-                        )
-                    else:
-                        res = subprocess.run(
-                            raw_bash_cmd,
-                            shell=True,
-                            text=True,
-                            capture_output=True,
-                            timeout=30
-                        )
-                    stdout_content = res.stdout
-                    stderr_content = res.stderr
-                except subprocess.TimeoutExpired:
+                from tools.system_tools import check_command_blacklist
+                from tools import sandbox_runner
+
+                # Filtrage de sécurité partagé (mêmes motifs que l'outil bash des agents).
+                rejection = check_command_blacklist(raw_bash_cmd)
+                if rejection:
                     stdout_content = ""
-                    stderr_content = "⏳ Erreur : La commande a dépassé le délai d'attente de 30 secondes."
-                except Exception as e:
-                    stdout_content = ""
-                    stderr_content = str(e)
+                    stderr_content = rejection
+                else:
+                    is_windows = (os.name == "nt" or sys.platform.startswith("win"))
+                    try:
+                        if is_windows:
+                            # Pas de sandbox Docker Linux ici : exécution PowerShell locale filtrée.
+                            res = subprocess.run(
+                                raw_bash_cmd,
+                                shell=True,
+                                executable="powershell.exe",
+                                text=True,
+                                capture_output=True,
+                                timeout=30
+                            )
+                            stdout_content = res.stdout
+                            stderr_content = res.stderr
+                        elif sandbox_runner.sandbox_mode() != "off" and sandbox_runner.docker_available():
+                            # Exécution isolée en conteneur Docker jetable.
+                            stdout_content, stderr_content, _rc = sandbox_runner.run_bash(raw_bash_cmd, timeout=30)
+                        else:
+                            # Repli local SANS shell=True (argv explicite via /bin/bash -c).
+                            cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
+                            res = subprocess.run(
+                                ["/bin/bash", "-c", raw_bash_cmd],
+                                text=True,
+                                capture_output=True,
+                                timeout=30,
+                                cwd=cwd
+                            )
+                            stdout_content = res.stdout
+                            stderr_content = res.stderr
+                    except subprocess.TimeoutExpired:
+                        stdout_content = ""
+                        stderr_content = "⏳ Erreur : La commande a dépassé le délai d'attente de 30 secondes."
+                    except Exception as e:
+                        stdout_content = ""
+                        stderr_content = str(e)
 
         # Construire la réponse formatée
         output_block = ""
