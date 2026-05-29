@@ -73,11 +73,48 @@ def load_dynamic_skills() -> dict:
             print(f"[\033[91mErreur Skill\033[0m] Impossible de charger {file_name} : {e}")
     return skills
 
+def _annotation_to_json_type(annotation) -> str:
+    """Mappe une annotation Python vers un type JSON Schema. Défaut: string."""
+    import typing
+    direct = {
+        str: "string", int: "integer", float: "number",
+        bool: "boolean", list: "array", dict: "object",
+    }
+    if annotation in direct:
+        return direct[annotation]
+    origin = typing.get_origin(annotation)
+    if origin in (list, tuple, set):
+        return "array"
+    if origin is dict:
+        return "object"
+    # Optional[X] / Union[...] : on prend le 1er argument non-None.
+    if origin is typing.Union:
+        for arg in typing.get_args(annotation):
+            if arg is not type(None):
+                return _annotation_to_json_type(arg)
+    return "string"
+
+
 def function_to_schema(func: Callable) -> dict:
-    """Convertit une fonction Python en schéma d'outil OpenAI avec descriptions de paramètres."""
+    """Convertit une fonction Python en schéma d'outil OpenAI avec descriptions de paramètres.
+
+    Si la fonction porte un attribut `_mcp_schema` (outils MCP), ce schéma JSON
+    fourni par le serveur MCP est utilisé tel quel pour les `parameters`."""
     sig = inspect.signature(func)
     doc = func.__doc__ or ""
-    
+
+    # Cas des outils MCP : schéma d'entrée fourni par le serveur, on le respecte.
+    mcp_schema = getattr(func, "_mcp_schema", None)
+    if isinstance(mcp_schema, dict) and mcp_schema:
+        return {
+            "type": "function",
+            "function": {
+                "name": func.__name__,
+                "description": doc.strip().split("\n")[0] if doc.strip() else f"Appelle {func.__name__}",
+                "parameters": mcp_schema,
+            }
+        }
+
     # Extraire les descriptions de paramètres à partir du docstring
     param_descriptions = {}
     lines = doc.split("\n")
@@ -100,13 +137,17 @@ def function_to_schema(func: Callable) -> dict:
     }
     for name, param in sig.parameters.items():
         desc = param_descriptions.get(name, f"Paramètre {name}")
+        # Type JSON déduit de l'annotation de signature (string par défaut).
+        json_type = "string"
+        if param.annotation is not inspect.Parameter.empty:
+            json_type = _annotation_to_json_type(param.annotation)
         parameters["properties"][name] = {
-            "type": "string",
+            "type": json_type,
             "description": desc
         }
         if param.default == inspect.Parameter.empty:
             parameters["required"].append(name)
-            
+
     return {
         "type": "function",
         "function": {
