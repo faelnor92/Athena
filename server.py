@@ -209,6 +209,36 @@ TELEMETRY = {
 ACTIVE_STEPS = []
 IS_CHAT_RUNNING = False
 
+# Répertoire de travail du terminal "coder". Remplace os.chdir() (qui mutait le
+# cwd de TOUT le process, affectant les threads Telegram/scheduler et provoquant
+# des courses entre utilisateurs). Toujours confiné à l'intérieur du workspace.
+CODER_CWD = None
+
+
+def get_coder_cwd() -> str:
+    global CODER_CWD
+    base = get_workspace_dir()
+    if CODER_CWD is None or not os.path.isdir(CODER_CWD):
+        CODER_CWD = base
+    return CODER_CWD
+
+
+def set_coder_cwd(target: str) -> str:
+    """Change le cwd du terminal coder en restant confiné au workspace.
+    Renvoie un message d'erreur, ou une chaîne vide si OK."""
+    global CODER_CWD
+    base = get_workspace_dir()
+    if target in ("", "~"):
+        CODER_CWD = base
+        return ""
+    candidate = os.path.abspath(os.path.join(get_coder_cwd(), os.path.expanduser(target)))
+    if os.path.commonpath([candidate, base]) != base:
+        return f"cd: accès interdit hors du workspace : {target}"
+    if not os.path.isdir(candidate):
+        return f"cd: {target}: répertoire introuvable"
+    CODER_CWD = candidate
+    return ""
+
 def get_model_cost(model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
     try:
         # Vérifier si l'utilisateur utilise un endpoint LLM privé/local (gratuit)
@@ -596,21 +626,18 @@ async def terminal_coder(req: TerminalRequest):
         else:
             if raw_bash_cmd.startswith("cd "):
                 target_dir = raw_bash_cmd[3:].strip().strip("'\"")
-                try:
-                    os.chdir(target_dir)
-                    stdout_content = f"📂 Répertoire de travail changé : {os.getcwd()}"
-                    stderr_content = ""
-                except Exception as e:
+                # Plus d'os.chdir() global : on suit un cwd dédié, confiné au workspace.
+                err = set_coder_cwd(target_dir)
+                if err:
                     stdout_content = ""
-                    stderr_content = f"cd: {str(e)}"
+                    stderr_content = err
+                else:
+                    stdout_content = f"📂 Répertoire de travail changé : {get_coder_cwd()}"
+                    stderr_content = ""
             elif raw_bash_cmd == "cd":
-                try:
-                    os.chdir(os.path.expanduser("~"))
-                    stdout_content = f"📂 Répertoire de travail changé : {os.getcwd()}"
-                    stderr_content = ""
-                except Exception as e:
-                    stdout_content = ""
-                    stderr_content = f"cd: {str(e)}"
+                set_coder_cwd("~")
+                stdout_content = f"📂 Répertoire de travail changé : {get_coder_cwd()}"
+                stderr_content = ""
             else:
                 import sys
                 from tools.system_tools import check_command_blacklist
@@ -637,17 +664,19 @@ async def terminal_coder(req: TerminalRequest):
                             stdout_content = res.stdout
                             stderr_content = res.stderr
                         elif sandbox_runner.sandbox_mode() != "off" and sandbox_runner.docker_available():
-                            # Exécution isolée en conteneur Docker jetable.
-                            stdout_content, stderr_content, _rc = sandbox_runner.run_bash(raw_bash_cmd, timeout=30)
+                            # Exécution isolée en conteneur Docker jetable, dans le sous-dossier courant.
+                            rel = os.path.relpath(get_coder_cwd(), get_workspace_dir())
+                            stdout_content, stderr_content, _rc = sandbox_runner.run_bash(
+                                raw_bash_cmd, timeout=30, workdir=rel
+                            )
                         else:
                             # Repli local SANS shell=True (argv explicite via /bin/bash -c).
-                            cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
                             res = subprocess.run(
                                 ["/bin/bash", "-c", raw_bash_cmd],
                                 text=True,
                                 capture_output=True,
                                 timeout=30,
-                                cwd=cwd
+                                cwd=get_coder_cwd()
                             )
                             stdout_content = res.stdout
                             stderr_content = res.stderr

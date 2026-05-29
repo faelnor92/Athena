@@ -19,10 +19,11 @@ Pilotage par variables d'environnement :
   SANDBOX_PIDS_LIMIT    ex: "128"
 """
 import os
+import shlex
 import shutil
 import subprocess
 import uuid
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 DEFAULT_IMAGE = "python:3.11-slim"
 
@@ -99,6 +100,10 @@ def run_python(code: str, timeout: int = 15) -> Tuple[str, str, int]:
     return _execute(["python", "-"], stdin_data=code, timeout=timeout)
 
 
-def run_bash(command: str, timeout: int = 15) -> Tuple[str, str, int]:
-    """Exécute une commande shell dans le conteneur."""
+def run_bash(command: str, timeout: int = 15, workdir: Optional[str] = None) -> Tuple[str, str, int]:
+    """Exécute une commande shell dans le conteneur.
+
+    workdir : sous-répertoire (relatif à /work) où se placer avant l'exécution."""
+    if workdir and workdir not in (".", ""):
+        command = f"cd {shlex.quote(workdir)} && {command}"
     return _execute(["bash", "-lc", command], stdin_data="", timeout=timeout)
