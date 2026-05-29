@@ -159,13 +159,13 @@ def function_to_schema(func: Callable) -> dict:
     }
 
 class SwarmStepsList(list):
-    """Liste personnalisée qui intercepte les ajouts d'étapes pour les diffuser en temps réel."""
+    """Liste personnalisée qui intercepte les ajouts d'étapes pour les diffuser
+    en temps réel dans le run courant (isolé par ContextVar, sûr en concurrence)."""
     def append(self, item):
         super().append(item)
         try:
-            import server
-            if hasattr(server, "ACTIVE_STEPS") and server.ACTIVE_STEPS is not None:
-                server.ACTIVE_STEPS.append(item)
+            from core.run_context import publish_step
+            publish_step(item)
         except Exception:
             pass
 
@@ -332,27 +332,29 @@ class Swarm:
                 })
                 break
             turn += 1
-            # 1. Chargement des compétences dynamiques (Auto-Amélioration) à chaque tour
-            dynamic_skills = load_dynamic_skills()
-            
-            # Injecter automatiquement les compétences acquises dans Jarvis et le Codeur
+            # 1. Outils effectifs du tour, calculés LOCALEMENT (on ne mute pas
+            #    l'objet Agent partagé : indispensable pour la concurrence).
+            effective_tools = list(current_agent.tools)
             if current_agent.name in ["Jarvis", "Codeur"]:
-                for skill_name, func in dynamic_skills.items():
-                    # Évite d'ajouter deux fois le même outil
-                    if not any(f.__name__ == skill_name for f in current_agent.tools):
-                        current_agent.tools.append(func)
-                # Outils MCP (serveurs externes) : injectés comme des outils natifs.
+                existing = {f.__name__ for f in effective_tools}
+                # Compétences dynamiques (auto-amélioration) rechargées à chaque tour.
+                for skill_name, func in load_dynamic_skills().items():
+                    if skill_name not in existing:
+                        effective_tools.append(func)
+                        existing.add(skill_name)
+                # Outils MCP (serveurs externes) injectés comme des outils natifs.
                 for tool_name, func in tools.mcp_manager.mcp_manager.tool_functions().items():
-                    if not any(f.__name__ == tool_name for f in current_agent.tools):
-                        current_agent.tools.append(func)
-            
+                    if tool_name not in existing:
+                        effective_tools.append(func)
+                        existing.add(tool_name)
+
             # Enregistrer l'activation de l'agent
             steps.append({
                 "type": "activation",
                 "agent": current_agent.name
             })
-            
-            tools_schema = [function_to_schema(f) for f in current_agent.tools] if (current_agent.tools and current_agent.supports_tools) else None
+
+            tools_schema = [function_to_schema(f) for f in effective_tools] if (effective_tools and current_agent.supports_tools) else None
             
             # Injection dynamique des informations mémorisées (Core Memory) dans Jarvis
             system_prompt = current_agent.system_prompt
@@ -609,7 +611,7 @@ class Swarm:
                 })
                 
                 # Trouver la fonction Python correspondante (outil standard OU dynamique)
-                func = next((f for f in current_agent.tools if f.__name__ == func_name), None)
+                func = next((f for f in effective_tools if f.__name__ == func_name), None)
                 if func:
                     try:
                         result = func(**args)

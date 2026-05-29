@@ -22,6 +22,7 @@ logger = get_logger("jarvis.server")
 
 from core.swarm import Swarm
 from core.tracing import run_store
+from core.run_context import registry as run_registry, current_run_id
 from tools.memory_tools import core_mem
 
 app = FastAPI(title="Jarvis Multi-Agent Dashboard")
@@ -218,9 +219,9 @@ TELEMETRY = {
     "total_cost": 0.0
 }
 
-# Suivi en temps réel des étapes de l'essaim pour animation UI live
-ACTIVE_STEPS = []
-IS_CHAT_RUNNING = False
+# Le suivi temps réel des étapes est désormais isolé PAR RUN dans
+# core.run_context.registry (sûr en concurrence : web + Telegram + agents
+# parallèles ne s'écrasent plus mutuellement).
 
 # Répertoire de travail du terminal "coder". Remplace os.chdir() (qui mutait le
 # cwd de TOUT le process, affectant les threads Telegram/scheduler et provoquant
@@ -323,14 +324,14 @@ class ChatResponse(BaseModel):
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
-    global TELEMETRY, ACTIVE_STEPS, IS_CHAT_RUNNING
+    global TELEMETRY
     TELEMETRY["total_queries"] += 1
-    ACTIVE_STEPS = []
-    IS_CHAT_RUNNING = True
 
     run_id = run_store.new_run_id()
     run_started = time.time()
     run_agent = "Jarvis"
+    run_registry.start(run_id)
+    token = current_run_id.set(run_id)
 
     try:
         if not session.active_agent:
@@ -405,10 +406,13 @@ async def chat(req: ChatRequest):
                 starting_agent = swarm.agents.get("Jarvis")
         
         # Publier immédiatement un step d'activation pour feedback instantané dans le cockpit
-        ACTIVE_STEPS.append({"type": "activation", "agent": starting_agent.name})
-        
+        run_registry.append_step(run_id, {"type": "activation", "agent": starting_agent.name})
+
         original_chain_len = len(chain)
-        next_agent, new_chain, steps = swarm.run(starting_agent, chain)
+        # swarm.run est bloquant : on l'exécute dans un thread (le contexte —
+        # dont current_run_id — est copié par to_thread) pour ne pas bloquer la
+        # boucle asyncio et permettre des requêtes concurrentes.
+        next_agent, new_chain, steps = await asyncio.to_thread(swarm.run, starting_agent, chain)
         session.active_agent = swarm.agents.get("Jarvis")
         
         # 3. Ajouter séquentiellement les nouvelles réponses du Swarm en tant que nœuds enfants
@@ -485,19 +489,18 @@ async def chat(req: ChatRequest):
             run_id=run_id, agent=run_agent, status="error",
             user_message=req.message, error=str(e),
             duration_ms=int((time.time() - run_started) * 1000),
-            steps=ACTIVE_STEPS, created_at=run_started,
+            steps=run_registry.status(run_id)["steps"], created_at=run_started,
         )
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        IS_CHAT_RUNNING = False
+        run_registry.finish(run_id)
+        current_run_id.reset(token)
 
 @app.get("/api/chat/status")
-async def get_chat_status():
-    global ACTIVE_STEPS, IS_CHAT_RUNNING
-    return {
-        "steps": ACTIVE_STEPS,
-        "running": IS_CHAT_RUNNING
-    }
+async def get_chat_status(run_id: str = None):
+    # Sans run_id : renvoie le dernier run (compat. frontend mono-session).
+    # Avec run_id : statut/étapes de ce run précis (utile en concurrence).
+    return run_registry.status(run_id)
 
 @app.get("/api/runs")
 async def list_runs(limit: int = 50, status: str = None):
@@ -805,16 +808,19 @@ async def terminal_coder(req: TerminalRequest):
     # On ajoute la commande de la console localement à la chaîne contextuelle
     chain.append({"role": "user", "content": f"[CLI] {req.command}"})
         
+    run_id = run_store.new_run_id()
+    run_registry.start(run_id)
+    token = current_run_id.set(run_id)
     try:
-        # Lancer l'exécution en ciblant directement l'Agent Codeur
-        next_agent, new_chain, steps = swarm.run(coder_agent, chain)
+        # Lancer l'exécution en ciblant directement l'Agent Codeur (dans un thread).
+        next_agent, new_chain, steps = await asyncio.to_thread(swarm.run, coder_agent, chain)
         session.active_agent = swarm.agents.get("Jarvis")
-        
+
         # Transformer les types "message" en "terminal_message" pour éviter de polluer le chat principal
         for step in steps:
             if step.get("type") == "message":
                 step["type"] = "terminal_message"
-                
+
         return {
             "status": "success",
             "steps": steps,
@@ -824,6 +830,9 @@ async def terminal_coder(req: TerminalRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        run_registry.finish(run_id)
+        current_run_id.reset(token)
 
 @app.get("/api/memory")
 async def get_memory():
@@ -1699,6 +1708,9 @@ def telegram_bot_worker():
                         "action": "typing"
                     })
                     
+                    tg_run_id = run_store.new_run_id()
+                    run_registry.start(tg_run_id)
+                    tg_token = current_run_id.set(tg_run_id)
                     try:
                         # On démarre avec l'agent actuellement actif pour un dialogue persistant
                         starting_agent = session_data["active_agent"] or swarm.agents.get("Jarvis")
@@ -1733,6 +1745,9 @@ def telegram_bot_worker():
                             "text": f"❌ *Erreur de l'essaim :* {str(swarm_err)}",
                             "parse_mode": "Markdown"
                         })
+                    finally:
+                        run_registry.finish(tg_run_id)
+                        current_run_id.reset(tg_token)
             elif r.status_code == 401:
                 print("🤖 [Telegram] Token invalide ou non autorisé.")
                 time.sleep(10)

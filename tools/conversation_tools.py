@@ -80,11 +80,11 @@ def debate_between_agents(agents: str, subject: str, turns: str = "2") -> str:
         
     swarm = server.swarm
     
-    # Helper pour publier des étapes live dans le cockpit
+    # Helper pour publier des étapes live dans le run courant (isolé par ContextVar).
     def publish_step(step_dict):
         try:
-            if hasattr(server, "ACTIVE_STEPS") and server.ACTIVE_STEPS is not None:
-                server.ACTIVE_STEPS.append(step_dict)
+            from core.run_context import publish_step as _pub
+            _pub(step_dict)
         except Exception:
             pass
     
