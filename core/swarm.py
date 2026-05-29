@@ -11,6 +11,7 @@ from typing import Callable, Tuple, List
 from litellm import completion
 from .agent import Agent, Result
 from . import approvals
+from . import run_context
 import tools.home_assistant
 import tools.memory_tools
 import tools.code_sandbox
@@ -385,6 +386,13 @@ class Swarm:
         tokens_used = 0
 
         while True:
+            # Annulation (barge-in vocal / bouton stop) : vérifiée à chaque tour.
+            if run_context.is_cancelled_current():
+                cancel_msg = "🛑 Run annulé par l'utilisateur."
+                print(f"[\033[91mSWARM\033[0m] {cancel_msg}")
+                steps.append({"type": "message", "agent": current_agent.name, "content": cancel_msg})
+                messages.append({"role": "assistant", "name": current_agent.name, "content": cancel_msg})
+                break
             # Garde-fou : budget temps mur (latence vocale / runaway).
             if max_seconds and (time.time() - started_at) > max_seconds:
                 budget_msg = (

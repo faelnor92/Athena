@@ -29,7 +29,7 @@ class RunRegistry:
 
     def start(self, run_id: str):
         with self._lock:
-            self._runs[run_id] = {"steps": [], "running": True}
+            self._runs[run_id] = {"steps": [], "running": True, "cancelled": False}
             self._order.append(run_id)
             self._last_run_id = run_id
             # Purge des runs live les plus anciens (la persistance durable est en SQLite).
@@ -42,6 +42,22 @@ class RunRegistry:
             run = self._runs.get(run_id)
             if run is not None:
                 run["running"] = False
+
+    def cancel(self, run_id: str) -> bool:
+        """Demande l'annulation d'un run. Renvoie True si le run existe et tourne."""
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is not None and run.get("running"):
+                run["cancelled"] = True
+                return True
+            return False
+
+    def is_cancelled(self, run_id: Optional[str]) -> bool:
+        if run_id is None:
+            return False
+        with self._lock:
+            run = self._runs.get(run_id)
+            return bool(run and run.get("cancelled"))
 
     def append_step(self, run_id: Optional[str], step: dict):
         if run_id is None:
@@ -66,3 +82,8 @@ registry = RunRegistry()
 def publish_step(step: dict):
     """Publie une étape live dans le run courant (déduit via la ContextVar)."""
     registry.append_step(current_run_id.get(), step)
+
+
+def is_cancelled_current() -> bool:
+    """Vrai si le run courant (ContextVar) a reçu une demande d'annulation."""
+    return registry.is_cancelled(current_run_id.get())

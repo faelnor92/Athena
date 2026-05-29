@@ -217,7 +217,35 @@ def test_outils_multiples_executes_en_parallele():
     print(f"OK: 3 outils exécutés en parallèle en {elapsed:.2f}s, ordre préservé")
 
 
+def test_annulation_arrete_le_run():
+    """Un run annulé doit s'arrêter sans appeler le LLM."""
+    os.environ["SELF_IMPROVE"] = "false"
+    from core import run_context
+
+    calls = {"n": 0}
+    swarm_mod.completion = _fake_completion_factory(calls)  # boucle sans fin sinon
+
+    s = Swarm.__new__(Swarm)
+    agent = Agent(name="Tester", system_prompt="t", model="gpt-4o")
+    agent.tools = [noop_tool]
+    s.agents = {"Tester": agent}
+
+    rid = "cancel-test"
+    token = run_context.current_run_id.set(rid)
+    run_context.registry.start(rid)
+    run_context.registry.cancel(rid)  # annulé avant le 1er tour
+    try:
+        _, _msgs, steps = s.run(agent, [{"role": "user", "content": "go"}], max_turns=10)
+    finally:
+        run_context.current_run_id.reset(token)
+
+    assert calls["n"] == 0, f"LLM appelé malgré l'annulation ({calls['n']})"
+    assert any("annulé" in str(st.get("content", "")) for st in steps), "pas de message d'annulation"
+    print("OK: l'annulation arrête le run avant tout appel LLM")
+
+
 if __name__ == "__main__":
     test_max_turns_borne_la_boucle()
     test_hook_auto_amelioration_archive_un_retour()
     test_outils_multiples_executes_en_parallele()
+    test_annulation_arrete_le_run()

@@ -556,6 +556,14 @@ async def get_run(run_id: str):
     return run
 
 
+@app.post("/api/runs/{run_id}/cancel")
+async def cancel_run_endpoint(run_id: str):
+    """Demande l'annulation d'un run en cours (barge-in vocal / bouton stop).
+    L'arrêt est effectif au prochain tour de l'essaim."""
+    ok = run_registry.cancel(run_id)
+    return {"run_id": run_id, "cancellation_requested": ok}
+
+
 @app.post("/api/runs/{run_id}/replay")
 async def replay_run_endpoint(run_id: str):
     """Rejoue le message d'un run et renvoie la comparaison ancien/nouveau."""
