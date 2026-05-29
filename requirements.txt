@@ -1,0 +1,23 @@
+# --- Coeur applicatif -------------------------------------------------------
+openai==1.55.3
+litellm==1.52.12
+python-dotenv==1.0.1
+requests==2.32.3
+pyyaml==6.0.2
+colorama==0.4.6
+chromadb==0.5.0
+fastapi==0.111.0
+uvicorn==0.30.1
+pydantic==2.13.4
+python-multipart==0.0.29
+
+# --- Exécution distante SSH -------------------------------------------------
+paramiko==5.0.0
+cryptography==38.0.4
+
+# --- Génération / traitement d'images --------------------------------------
+Pillow==9.4.0
+
+# --- Optionnel : transcription de réunions (lourd, tire PyTorch) ------------
+# Décommentez si vous utilisez transcribe_and_summarize_meeting :
+# openai-whisper==20250625

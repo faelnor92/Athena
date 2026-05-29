@@ -1,0 +1,46 @@
+# =========================================================================
+#  Jarvis v2 — .gitignore
+# =========================================================================
+
+# --- Secrets & configuration locale ---------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Logs ------------------------------------------------------------------
+*.log
+server.log
+
+# --- Données personnelles / état runtime ----------------------------------
+conversations.json
+core_memory.json
+agenda.json
+lists.json
+
+# Tout le contenu du workspace est volatil / personnel,
+# SAUF la configuration de pricing qui est versionnée.
+# (on ignore le contenu, pas le dossier, pour pouvoir ré-inclure un fichier)
+workspace/*
+!workspace/pricing_config.json
+
+# --- Bases vectorielles / SQLite -------------------------------------------
+.chroma_db/
+chroma/
+*.sqlite3
+
+# --- Environnements virtuels Python ----------------------------------------
+.venv/
+venv/
+
+# --- Caches & artefacts ----------------------------------------------------
+__pycache__/
+*.py[cod]
+*.bak
+
+# --- Outils locaux (Claude Code, IDE) --------------------------------------
+.claude/
+.idea/
+.vscode/
+
+# --- Artefacts de test ------------------------------------------------------
+test_video.mp4

@@ -1,0 +1,563 @@
+import yaml
+import json
+import inspect
+import importlib.util
+import glob
+import os
+from typing import Callable, Tuple, List
+from litellm import completion
+from .agent import Agent, Result
+import tools.home_assistant
+import tools.memory_tools
+import tools.code_sandbox
+import tools.system_tools
+import tools.skills_manager
+import tools.web_tools
+import tools.media_tools
+import tools.agenda_tools
+import tools.list_tools
+import tools.image_generator
+import tools.briefing_tools
+import tools.meeting_summarizer
+import tools.conversation_tools
+
+# Map statique des outils disponibles d'origine
+AVAILABLE_TOOLS = {
+    "get_ha_state": tools.home_assistant.get_ha_state,
+    "call_ha_service": tools.home_assistant.call_ha_service,
+    "memorize_fact": tools.memory_tools.memorize_fact,
+    "store_document": tools.memory_tools.store_document,
+    "search_memory": tools.memory_tools.search_memory,
+    "execute_python_code": tools.code_sandbox.execute_python_code,
+    "execute_bash_command": tools.system_tools.execute_bash_command,
+    "save_new_skill": tools.skills_manager.save_new_skill,
+    "delete_skill": tools.skills_manager.delete_skill,
+    "web_search": tools.web_tools.web_search,
+    "web_scrape": tools.web_tools.web_scrape,
+    "generate_image": tools.media_tools.generate_image,
+    "ingest_file": tools.memory_tools.ingest_file,
+    "add_calendar_event": tools.agenda_tools.add_calendar_event,
+    "list_calendar_events": tools.agenda_tools.list_calendar_events,
+    "delete_calendar_event": tools.agenda_tools.delete_calendar_event,
+    "add_list_item": tools.list_tools.add_list_item,
+    "get_list_items": tools.list_tools.get_list_items,
+    "toggle_list_item": tools.list_tools.toggle_list_item,
+    "delete_list_item": tools.list_tools.delete_list_item,
+    "generate_artistic_image": tools.image_generator.generate_artistic_image,
+    "generate_artistic_video": tools.image_generator.generate_artistic_video,
+    "get_daily_briefing": tools.briefing_tools.get_daily_briefing,
+    "transcribe_and_summarize_meeting": tools.meeting_summarizer.transcribe_and_summarize_meeting,
+    "manage_conversations": tools.conversation_tools.manage_conversations,
+    "query_agent": tools.conversation_tools.query_agent,
+    "debate_between_agents": tools.conversation_tools.debate_between_agents,
+}
+
+def load_dynamic_skills() -> dict:
+    """Charge dynamiquement tous les scripts Python du dossier skills/ comme des fonctions."""
+    skills = {}
+    if not os.path.exists("skills"):
+        return skills
+    for file_path in glob.glob("skills/*.py"):
+        file_name = os.path.basename(file_path)
+        skill_name = file_name.replace(".py", "")
+        try:
+            # Importation dynamique
+            spec = importlib.util.spec_from_file_location(skill_name, file_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            # Récupère la fonction qui porte le même nom que le fichier
+            func = getattr(module, skill_name, None)
+            if func:
+                skills[skill_name] = func
+        except Exception as e:
+            print(f"[\033[91mErreur Skill\033[0m] Impossible de charger {file_name} : {e}")
+    return skills
+
+def function_to_schema(func: Callable) -> dict:
+    """Convertit une fonction Python en schéma d'outil OpenAI avec descriptions de paramètres."""
+    sig = inspect.signature(func)
+    doc = func.__doc__ or ""
+    
+    # Extraire les descriptions de paramètres à partir du docstring
+    param_descriptions = {}
+    lines = doc.split("\n")
+    for line in lines:
+        line_str = line.strip()
+        # Supporter le format "param_name (type): description" ou "param_name: description"
+        if ":" in line_str:
+            parts = line_str.split(":", 1)
+            left = parts[0].strip()
+            right = parts[1].strip()
+            # Enlever le type éventuel ex: "key (str)" -> "key"
+            param_name = left.split("(")[0].strip()
+            if param_name in sig.parameters:
+                param_descriptions[param_name] = right
+
+    parameters = {
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+    for name, param in sig.parameters.items():
+        desc = param_descriptions.get(name, f"Paramètre {name}")
+        parameters["properties"][name] = {
+            "type": "string",
+            "description": desc
+        }
+        if param.default == inspect.Parameter.empty:
+            parameters["required"].append(name)
+            
+    return {
+        "type": "function",
+        "function": {
+            "name": func.__name__,
+            "description": doc.strip().split("\n")[0] if doc.strip() else f"Appelle {func.__name__}",
+            "parameters": parameters
+        }
+    }
+
+class SwarmStepsList(list):
+    """Liste personnalisée qui intercepte les ajouts d'étapes pour les diffuser en temps réel."""
+    def append(self, item):
+        super().append(item)
+        try:
+            import server
+            if hasattr(server, "ACTIVE_STEPS") and server.ACTIVE_STEPS is not None:
+                server.ACTIVE_STEPS.append(item)
+        except Exception:
+            pass
+
+class Swarm:
+    def __init__(self, agents_yaml_path="agents.yaml"):
+        self.agents = {}
+        self.load_agents(agents_yaml_path)
+        
+    def load_agents(self, path: str):
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            
+        # Première passe : créer les agents sans les fonctions de transfert (handoffs)
+        for agent_data in data.get("agents", []):
+            agent = Agent(
+                name=agent_data["name"],
+                system_prompt=agent_data["system_prompt"],
+                model=agent_data.get("model", "gpt-4o"),
+                supports_tools=agent_data.get("supports_tools", True),
+                display_name=agent_data.get("display_name"),
+                welcome_message=agent_data.get("welcome_message")
+            )
+            # Ajouter les outils standards
+            for tool_name in agent_data.get("tools", []):
+                if tool_name in AVAILABLE_TOOLS:
+                    agent.tools.append(AVAILABLE_TOOLS[tool_name])
+            
+            self.agents[agent.name] = agent
+            
+        # Seconde passe : injecter les fonctions de transfert dynamiquement
+        for agent_data in data.get("agents", []):
+            agent = self.agents[agent_data["name"]]
+            
+            # Jarvis a automatiquement des transferts vers TOUS les autres agents de l'essaim !
+            targets = list(agent_data.get("handoffs", []))
+            if agent.name == "Jarvis":
+                targets = [name for name in self.agents.keys() if name != "Jarvis"]
+            else:
+                if "Jarvis" not in targets and "Jarvis" in self.agents:
+                    targets.append("Jarvis")
+                
+            for target_name in targets:
+                if target_name in self.agents:
+                    target_agent = self.agents[target_name]
+                    # Éviter les doublons
+                    if not any(f.__name__ == f"transfer_to_{target_agent.name}" for f in agent.tools):
+                        handoff_func = self.create_handoff_function(target_agent)
+                        agent.tools.append(handoff_func)
+
+    def create_handoff_function(self, target_agent: Agent) -> Callable:
+        """Génère une fonction Python dynamiquement pour transférer la conversation."""
+        def handoff() -> Result:
+            return Result(value=f"Transféré avec succès à {target_agent.name}", agent=target_agent)
+        
+        # On renomme la fonction pour que le LLM comprenne son but
+        handoff.__name__ = f"transfer_to_{target_agent.name}"
+        handoff.__doc__ = f"Appelle cette fonction pour transférer la demande à l'agent {target_agent.name} si elle relève de ses compétences."
+        return handoff
+
+    def run(self, starting_agent: Agent, messages: list) -> Tuple[Agent, list, list]:
+        """
+        Boucle principale de l'orchestrateur.
+        Retourne l'agent final actif, les messages mis à jour, et l'historique des étapes (steps).
+        """
+        original_messages_len = len(messages)
+        current_agent = starting_agent
+        steps = SwarmStepsList()
+        
+        while True:
+            # 1. Chargement des compétences dynamiques (Auto-Amélioration) à chaque tour
+            dynamic_skills = load_dynamic_skills()
+            
+            # Injecter automatiquement les compétences acquises dans Jarvis et le Codeur
+            if current_agent.name in ["Jarvis", "Codeur"]:
+                for skill_name, func in dynamic_skills.items():
+                    # Évite d'ajouter deux fois le même outil
+                    if not any(f.__name__ == skill_name for f in current_agent.tools):
+                        current_agent.tools.append(func)
+            
+            # Enregistrer l'activation de l'agent
+            steps.append({
+                "type": "activation",
+                "agent": current_agent.name
+            })
+            
+            tools_schema = [function_to_schema(f) for f in current_agent.tools] if (current_agent.tools and current_agent.supports_tools) else None
+            
+            # Injection dynamique des informations mémorisées (Core Memory) dans Jarvis
+            system_prompt = current_agent.system_prompt
+            # Ne forcer la présentation que si aucun message de cet agent n'est déjà présent dans l'historique
+            has_agent_spoken = any(msg.get("role") == "assistant" and msg.get("name") == current_agent.name for msg in messages)
+            if getattr(current_agent, "welcome_message", None) and not has_agent_spoken and current_agent.name != "Jarvis":
+                system_prompt += f"\n\n⚠️ INSTRUCTION DE PRÉSENTATION OBLIGATOIRE :\n"
+                system_prompt += f"Tu DOIS commencer ta toute première réponse par la phrase d'introduction suivante exactement : \"{current_agent.welcome_message}\". Ne change pas un seul mot de cette phrase de présentation, commence directement par elle, puis poursuis naturellement pour répondre à l'utilisateur.\n"
+                
+            if current_agent.name == "Jarvis":
+                system_prompt += tools.memory_tools.core_mem.get_as_prompt()
+            
+            # Chargement en cascade des fichiers de prompt locaux (custom Jarvis Swarm)
+            local_instructions = ""
+            current_dir = os.getcwd()
+            while True:
+                system_md = os.path.join(current_dir, "SYSTEM.md")
+                append_system_md = os.path.join(current_dir, "APPEND_SYSTEM.md")
+                jarvis_md = os.path.join(current_dir, "JARVIS.md")
+                
+                if os.path.exists(system_md):
+                    try:
+                        with open(system_md, "r", encoding="utf-8") as f:
+                            system_prompt = f.read()
+                        break
+                    except Exception as e:
+                        print(f"[\033[91mErreur SYSTEM.md\033[0m] Impossible de lire {system_md}: {e}")
+                        
+                if os.path.exists(append_system_md):
+                    try:
+                        with open(append_system_md, "r", encoding="utf-8") as f:
+                            local_instructions = f.read() + "\n" + local_instructions
+                    except Exception as e:
+                        print(f"[\033[91mErreur APPEND_SYSTEM.md\033[0m] {e}")
+                        
+                if os.path.exists(jarvis_md):
+                    try:
+                        with open(jarvis_md, "r", encoding="utf-8") as f:
+                            local_instructions = f.read() + "\n" + local_instructions
+                    except Exception as e:
+                        print(f"[\033[91mErreur JARVIS.md\033[0m] {e}")
+                        
+                parent_dir = os.path.dirname(current_dir)
+                if parent_dir == current_dir:
+                    break
+                current_dir = parent_dir
+                
+            if local_instructions.strip():
+                system_prompt += "\n\n=== INSTRUCTIONS DE PROJET LOCALES ===\n" + local_instructions
+
+            # Règle d'or sur les mentions @agent
+            system_prompt += "\n\n⚠️ INSTRUCTIONS SUR LES MENTIONS @AGENT :\n"
+            system_prompt += "L'utilisateur peut cibler un ou plusieurs agents dans son message en écrivant `@NomDeLAgent` ou `@NomAmical` (ex: `@Auteur` ou `@Emilie`, `@CommunityManager` ou `@Lucas` ou `@CM`, `@Traducteur` ou `@Sofia`, `@Codeur` ou `@Robert`, `@Correcteur` ou `@Marc`, `@Jarvis`).\n"
+            system_prompt += "Si tu vois une mention `@` ciblant un AUTRE agent dans le message ou dans la suite d'instructions de l'utilisateur, tu as l'obligation absolue d'effectuer ton propre travail (ex: traduire si tu es la traductrice Sofia, rédiger si tu es l'auteur Émilie), PUIS de transférer immédiatement la main à cet autre agent via ta fonction de transfert appropriée pour qu'il exécute sa partie du travail.\n"
+
+            
+            # RAG Automatique en arrière-plan
+            user_messages = [m for m in messages if m.get("role") == "user"]
+            if user_messages:
+                last_user_msg = user_messages[-1]["content"]
+                try:
+                    rag_results = tools.memory_tools.semantic_mem.search(last_user_msg, limit=2)
+                    if rag_results:
+                        rag_context = "\n=== CONNAISSANCES PERTINENTES RETROUVÉES EN MÉMOIRE (RAG ARRIÈRE-PLAN) ===\n"
+                        for res in rag_results:
+                            rag_context += f"- {res}\n"
+                        rag_context += "========================================================================\n"
+                        system_prompt += rag_context
+                except Exception as e:
+                    print(f"[\033[91mRAG Erreur\033[0m] {e}")
+            
+            # Renforcer les consignes de transfert pour le superviseur principal (Jarvis)
+            if current_agent.name == "Jarvis":
+                system_prompt += "\n\n⚠️ CONSIGNES DE ROUTAGE DE L'ESSAIM (INTERDICTION ABSOLUE D'AGIR TOI-MÊME) :\n"
+                system_prompt += "Tu es Jarvis, le SUPERVISEUR et l'ORCHESTRATEUR principal de l'essaim. Tu n'es PAS un agent de production.\n"
+                system_prompt += "1. Tu as l'INTERDICTION STRICTE de réaliser le travail spécialisé des autres agents (comme coder, rédiger, traduire, relire, etc.) de manière directe. Tu ne dois générer AUCUNE réponse de production toi-même.\n"
+                system_prompt += "2. GESTION DES REQUÊTES MULTI-AGENTS (TRÈS IMPORTANT) :\n"
+                system_prompt += "   Si la demande de l'utilisateur comporte MULTIPLES tâches spécialisées différentes (ex: critique + code + traduction + post) :\n"
+                system_prompt += "   - Tu as l'INTERDICTION ABSOLUE d'utiliser les fonctions `transfer_to_...` pour ces cas, car cela annulerait et perdrait le travail des autres agents.\n"
+                system_prompt += "   - Tu DOIS obligatoirement et exclusivement utiliser l'outil `query_agent` pour CHAQUE tâche individuelle (ex: query_agent(agent_name='Codeur', prompt='...'), query_agent(agent_name='Traducteur', prompt='...'), etc.) afin d'interroger tous les spécialistes nécessaires.\n"
+                system_prompt += "   - Une fois que tu as obtenu tous les résultats d'outils, tu rédiges une magnifique synthèse globale structurée présentant le résultat final de chaque tâche.\n"
+                system_prompt += "3. GESTION DES REQUÊTES UNIQUES (UN SEUL DOMAINE) :\n"
+                system_prompt += "   S'il n'y a qu'une seule tâche spécialisée unique (ou si le contexte concerne un seul agent), n'utilise pas `query_agent`. À la place, appelle immédiatement la fonction de transfert `transfer_to_...` appropriée pour passer la main de manière fluide :\n\n"
+                
+                for other_name, other_agent in self.agents.items():
+                    if other_name == "Jarvis":
+                        continue
+                    # Extraire une description concise du rôle de l'agent à partir des deux premières phrases de son prompt
+                    agent_desc = ""
+                    if other_agent.system_prompt:
+                        sentences = [s.strip() for s in other_agent.system_prompt.replace("\n", " ").split(".") if s.strip()]
+                        agent_desc = ". ".join(sentences[:2]) + "."
+                    
+                    system_prompt += f"   - Pour tout ce qui relève du domaine de **{other_agent.display_name or other_name}** (Rôle: {agent_desc}) : appelle obligatoirement la fonction de tool call `transfer_to_{other_name}`.\n"
+                
+                system_prompt += "\n3.1 GESTION DES DÉBATS & TABLES RONDES (TRÈS IMPORTANT) :\n"
+                system_prompt += "   Si l'utilisateur te demande d'organiser un débat, une confrontation, une table ronde ou une discussion/collaboration entre plusieurs agents (ex: 'organise un débat entre toi, le codeur et l'auteur', 'faites une confrontation sur PostgreSQL vs MongoDB') :\n"
+                system_prompt += "   - Tu DOIS obligatoirement appeler l'outil `debate_between_agents` immédiatement.\n"
+                system_prompt += "   - Ne rédige pas de préambule inutile ou de réponse textuelle intermédiaire dans ton propre message. Appelle directement l'outil avec les bons paramètres (`agents`, `subject`, `turns`).\n"
+                
+                system_prompt += "\n4. N'essaie JAMAIS de simuler, d'écrire ou de modifier la réponse dans ton propre message. Tu as l'obligation d'effectuer uniquement le transfert d'agent via le tool call, d'interroger les agents via `query_agent` si la demande est multiple, ou de lancer un débat via `debate_between_agents`. C'est critique pour le bon fonctionnement et la dynamique de l'essaim !\n"
+                
+                system_prompt += "\n5. CONTEXTE ET SUIVI DE DISCUSSION (TRÈS IMPORTANT) :\n"
+                system_prompt += "   Si l'utilisateur pose une question de suivi ou demande une modification ('rajoute ça', 'regarde cette ligne', 'traduis le', 'corrige') sur une tâche ou un texte qui a été produit récemment par un spécialiste (ex: le Codeur ou l'Auteur), tu ne dois pas essayer d'y répondre toi-même ni d'appeler `query_agent`. Tu DOIS immédiatement transférer la main à ce spécialiste en appelant son tool de transfert (ex: `transfer_to_Codeur` ou `transfer_to_Auteur`). Sois extrêmement réactif aux intentions de l'utilisateur.\n"
+                
+                system_prompt += "\n6. GESTION DE LA MÉMOIRE & APPRENTISSAGE PROACTIF (TRÈS IMPORTANT) :\n"
+                system_prompt += "   - Si l'utilisateur te demande de retenir un fait, une préférence ou une information globale sur lui ou son environnement, appelle l'outil `memorize_fact` immédiatement.\n"
+                system_prompt += "   - SOIS PROACTIF : si tu détectes au fil des conversations une préférence utilisateur clé, un prénom, un choix technologique majeur, une configuration ou un élément durable de son projet, utilise automatiquement `memorize_fact` pour le mémoriser dans sa base de connaissances, sans attendre qu'il te le demande explicitement ! C'est ce qui fait que ta mémoire à long terme s'enrichit et vit d'elle-même.\n"
+                
+            # Épuration préventive de l'historique des tours passés (évite les bugs d'IDs d'outils VLLM/Mistral)
+            # On ne garde que les messages utilisateur et assistant contenant du texte pour l'historique passé,
+            # mais on garde l'intégralité du tour actuel en cours pour préserver le flux de tool calling actif.
+            clean_history = []
+            for i, msg in enumerate(messages):
+                if i >= original_messages_len:
+                    clean_history.append(msg)
+                else:
+                    if msg.get("role") == "user":
+                        clean_history.append(msg)
+                    elif msg.get("role") == "assistant":
+                        if msg.get("content"):
+                            clean_msg = {
+                                "role": "assistant",
+                                "content": msg["content"]
+                            }
+                            if "name" in msg:
+                                clean_msg["name"] = msg["name"]
+                            clean_history.append(clean_msg)
+                            
+            # Injection du system prompt de l'agent actif
+            current_messages = [{"role": "system", "content": system_prompt}] + clean_history
+            
+            # Appel API via litellm (compatible OpenAI, Anthropic, Ollama...)
+            completion_kwargs = {
+                "model": current_agent.model,
+                "messages": current_messages,
+                "tools": tools_schema
+            }
+            
+            custom_base = os.environ.get("CUSTOM_LLM_API_BASE", "").strip()
+            custom_key = os.environ.get("CUSTOM_LLM_API_KEY", "").strip()
+            
+            # Vérifier si c'est un modèle standard des grands fournisseurs Cloud
+            is_standard = any(prefix in current_agent.model.lower() for prefix in ["gpt-", "claude-", "gemini-", "groq/", "openrouter/", "ollama/", "mistral/"])
+            
+            # Si on a une clé API officielle pour ce fournisseur, on le laisse passer en direct.
+            # Sinon (ou si le modèle n'est pas standard), on le redirige vers l'API custom.
+            has_official_key = False
+            if "gpt-" in current_agent.model.lower():
+                has_official_key = bool(os.environ.get("OPENAI_API_KEY"))
+            elif "claude-" in current_agent.model.lower():
+                has_official_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+            elif "gemini-" in current_agent.model.lower():
+                has_official_key = bool(os.environ.get("GEMINI_API_KEY"))
+                
+            use_custom = custom_base and (not is_standard or not has_official_key or current_agent.model.startswith("custom_openai/") or current_agent.model.startswith("openai/"))
+            
+            if use_custom:
+                # Auto-correction pour Open WebUI si l'utilisateur a mis /v1 au lieu de /api/v1
+                if "/v1" in custom_base and not "/api" in custom_base:
+                    custom_base = custom_base.replace("/v1", "/api/v1")
+                    
+                completion_kwargs["api_base"] = custom_base
+                if custom_key:
+                    completion_kwargs["api_key"] = custom_key
+                else:
+                    completion_kwargs["api_key"] = "placeholder-key"
+                
+                # Utiliser le modèle configuré de l'agent, avec un fallback de sécurité sur qwen3
+                local_model = current_agent.model if current_agent.model else "qwen3"
+                    
+                # Assurer que LiteLLM sait qu'il s'agit d'un endpoint compatible OpenAI
+                if not "/" in local_model:
+                    completion_kwargs["model"] = f"openai/{local_model}"
+                else:
+                    completion_kwargs["model"] = local_model
+            
+            response = completion(**completion_kwargs)
+            
+            message = response.choices[0].message
+            msg_dict = message.model_dump(exclude_none=True)
+            msg_dict["name"] = current_agent.name
+            messages.append(msg_dict)
+            
+            # Enregistrer la consommation de tokens exacte
+            prompt_tokens = 0
+            completion_tokens = 0
+            if getattr(response, "usage", None):
+                prompt_tokens = getattr(response.usage, "prompt_tokens", 0) or 0
+                completion_tokens = getattr(response.usage, "completion_tokens", 0) or 0
+            if prompt_tokens == 0 and completion_tokens == 0:
+                prompt_tokens = len(str(current_messages)) // 4
+                completion_tokens = len(str(msg_dict)) // 4
+                
+            steps.append({
+                "type": "usage",
+                "agent": current_agent.name,
+                "model": current_agent.model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens
+            })
+            
+            if message.content:
+                print(f"\033[92m{current_agent.name}:\033[0m {message.content}")
+                steps.append({
+                    "type": "message",
+                    "agent": current_agent.name,
+                    "content": message.content
+                })
+                
+            if not getattr(message, "tool_calls", None):
+                # Fallback sémantique si le modèle n'a pas déclenché de tool_call standard
+                semantic_transitioned = False
+                if True:
+                    if message.content:
+                        content_lower = message.content.lower()
+                        
+                        # Liste des mots-clés indiquant une intention de transfert ou délégation
+                        handoff_keywords = [
+                            "transfère", "transfert", "transférer", 
+                            "relais", "délègue", "déléguer", "délégation", 
+                            "passe la main", "passer la main", "demande à", "demander à",
+                            "charge de", "charger de"
+                        ]
+                        
+                        has_handoff_keyword = any(kw in content_lower for kw in handoff_keywords)
+                        
+                        if has_handoff_keyword:
+                            for target_agent_name, target_agent in self.agents.items():
+                                if target_agent_name == current_agent.name:
+                                    continue
+                                
+                                # Identifiants sémantiques pour cet agent
+                                agent_identifiers = [target_agent_name.lower()]
+                                if target_agent.display_name:
+                                    agent_identifiers.append(target_agent.display_name.lower())
+                                    for part in target_agent.display_name.lower().split():
+                                        if len(part) > 2:
+                                            agent_identifiers.append(part)
+                                            
+                                # Synonymes métier spécifiques pour maximiser la réussite
+                                if target_agent_name == "Codeur":
+                                    agent_identifiers.extend(["développeur", "dev", "codeur"])
+                                elif target_agent_name == "Auteur":
+                                    agent_identifiers.extend(["écrivain", "romancier", "auteur"])
+                                elif target_agent_name == "CommunityManager":
+                                    agent_identifiers.extend(["cm", "influenceur", "community", "social", "facebook", "instagram", "twitter", "reseaux", "réseaux", "post", "promo", "promotion", "publication", "publier", "publie"])
+                                elif target_agent_name == "Traducteur":
+                                    agent_identifiers.extend(["traducteur", "traductrice", "traduction", "traduire"])
+                                    
+                                # Si le message mentionne explicitement cet agent, on effectue le relais
+                                import re
+                                matched = False
+                                for ident in agent_identifiers:
+                                    # \b assure qu'on matche le mot exact (évite "dev" dans "développer" ou "devenir")
+                                    if re.search(rf"\b{re.escape(ident)}\b", content_lower):
+                                        matched = True
+                                        break
+                                        
+                                if matched:
+                                    previous_agent_name = current_agent.name
+                                    current_agent = target_agent
+                                    print(f"[\033[95mTRANSITION SÉMANTIQUE ULTRA-ROBUSTE\033[0m -> Passage à l'agent \033[94m{current_agent.name}\033[0m]")
+                                    steps.append({
+                                        "type": "handoff",
+                                        "from": previous_agent_name,
+                                        "to": current_agent.name
+                                    })
+                                    messages.append({
+                                        "role": "user",
+                                        "content": f"[Relais système : La demande a été transférée à l'agent {target_agent_name} ({target_agent.display_name or target_agent_name}). Veuillez répondre à l'utilisateur.]"
+                                    })
+                                    semantic_transitioned = True
+                                    break
+                                    
+                    if semantic_transitioned:
+                        continue
+                        
+                # Plus aucun outil appelé, on a fini le tour
+                break
+                
+            tool_calls = getattr(message, "tool_calls", None) or []
+            for tool_call in tool_calls:
+                func_name = tool_call.function.name
+                # Par sécurité, on extrait les arguments
+                try:
+                    args = json.loads(tool_call.function.arguments)
+                except Exception:
+                    args = {}
+                    
+                print(f"[\033[93m{current_agent.name}\033[0m exécute \033[96m{func_name}\033[0m avec {args}]")
+                
+                steps.append({
+                    "type": "tool_call",
+                    "agent": current_agent.name,
+                    "tool": func_name,
+                    "args": args
+                })
+                
+                # Trouver la fonction Python correspondante (outil standard OU dynamique)
+                func = next((f for f in current_agent.tools if f.__name__ == func_name), None)
+                if func:
+                    try:
+                        result = func(**args)
+                    except Exception as e:
+                        result = f"Erreur lors de l'exécution de l'outil : {str(e)}"
+                    
+                    # Vérifier si c'est un transfert (Handoff)
+                    if isinstance(result, Result):
+                        if result.agent:
+                            previous_agent_name = current_agent.name
+                            current_agent = result.agent
+                            print(f"[\033[95mTRANSITION\033[0m -> Passage à l'agent \033[94m{current_agent.name}\033[0m]")
+                            steps.append({
+                                "type": "handoff",
+                                "from": previous_agent_name,
+                                "to": current_agent.name
+                            })
+                        result_value = result.value
+                    else:
+                        result_value = str(result)
+                        
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": func_name,
+                        "content": result_value
+                    })
+                    
+                    steps.append({
+                        "type": "tool_output",
+                        "agent": current_agent.name,
+                        "tool": func_name,
+                        "output": result_value
+                    })
+                else:
+                    err_msg = f"Erreur: Outil {func_name} introuvable ou non autorisé."
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": func_name,
+                        "content": err_msg
+                    })
+                    steps.append({
+                        "type": "tool_output",
+                        "agent": current_agent.name,
+                        "tool": func_name,
+                        "output": err_msg
+                    })
+                    
+        return current_agent, messages, steps

@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis - Dashboard Multi-Agent & Bureau Virtuel</title>
+    <link rel="stylesheet" href="style.css?v=20260528_v2">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Fira+Code:wght@400;500&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        
+        <!-- 1. LEFT NARROW ICON SIDEBAR DOCK -->
+        <nav class="sidebar-dock glass">
+            <div class="dock-logo">
+                <span class="dock-logo-box">🎛️</span>
+            </div>
+            
+            <div class="dock-icons">
+                <button class="dock-btn active" id="tab-office" title="Swarm Open Space (Bureau)">
+                    <span class="dock-icon">💬</span>
+                    <span class="dock-tooltip">Open Space</span>
+                </button>
+                
+                <button class="dock-btn" id="tab-files" title="Explorateur de Fichiers">
+                    <span class="dock-icon">📁</span>
+                    <span class="dock-tooltip">Fichiers</span>
+                </button>
+                
+                <button class="dock-btn" id="tab-agenda" title="Listes de Tâches">
+                    <span class="dock-icon">📋</span>
+                    <span class="dock-tooltip">Tâches</span>
+                </button>
+                
+                <button class="dock-btn" id="tab-graph" title="Graphe Sémantique">
+                    <span class="dock-icon">🕸️</span>
+                    <span class="dock-tooltip">Réseau Graphe</span>
+                </button>
+                
+                <button class="dock-btn" id="tab-branches" title="Arbre de Conversation">
+                    <span class="dock-icon">🌿</span>
+                    <span class="dock-tooltip">Branches</span>
+                </button>
+                
+                <button class="dock-btn" id="tab-memory" title="Mémoire à Long Terme">
+                    <span class="dock-icon">🧠</span>
+                    <span class="dock-tooltip">Mémoire JSON</span>
+                </button>
+                
+                <button class="dock-btn" id="tab-meeting" title="🎙️ Compte-rendu de Réunion">
+                    <span class="dock-icon">🎙️</span>
+                    <span class="dock-tooltip">Réunions</span>
+                </button>
+
+                <button class="dock-btn" id="tab-console" title="Console Coder Terminal">
+                    <span class="dock-icon">💻</span>
+                    <span class="dock-tooltip">Console Bash</span>
+                </button>
+            </div>
+            
+            <div class="dock-separator"></div>
+            
+            <div class="dock-footer">
+                <button class="dock-btn" id="tab-cockpit" title="Tableau de bord (Cockpit)">
+                    <span class="dock-icon">📊</span>
+                    <span class="dock-tooltip">Cockpit</span>
+                </button>
+                <button class="dock-btn" id="tab-orchestrator" title="Logs Orchestrateur & Débats">
+                    <span class="dock-icon">⚡</span>
+                    <span class="dock-tooltip">Orchestrateur</span>
+                </button>
+                <button id="btn-settings" class="dock-action-btn" title="Configuration de l'essaim">
+                    <span>⚙️</span>
+                </button>
+                <button id="btn-reset" class="dock-action-btn danger" title="Réinitialiser l'essaim">
+                    <span>🔄</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- 2. CENTRAL MASSIVE MAIN CONTENT VIEW -->
+        <main class="main-content-view">
+            
+            <!-- CENTRAL TOP BAR: LOGO & DYNAMIC TELEMETRY -->
+            <header class="top-telemetry-bar glass">
+                <div class="logo-space">
+                    <span class="logo-3d-box">🤖</span>
+                    <div class="logo-text">
+                        <h1 class="logo-title">JARVIS</h1>
+                        <span class="logo-subtitle">OPEN SPACE • <span id="top-agent-count">5</span> AGENTS</span>
+                    </div>
+                </div>
+                
+                <!-- Live Agent Status Badge -->
+                <div class="live-status-area">
+                    <span class="status-dot green"></span>
+                    <span id="top-occupied-count">4</span> occupés
+                    <span class="status-separator">•</span>
+                    <span class="status-dot orange"></span>
+                    <span id="top-paused-count">1</span> en pause
+                </div>
+                
+                <!-- Telemetry Badges -->
+                <div class="telemetry-badges">
+                    <div class="badge-item tokens-badge" title="Tokens Consommés">
+                        <span class="badge-icon">⚡</span>
+                        <span id="stat-tokens">0</span>
+                    </div>
+                    <div class="badge-item cost-badge" title="Estimation du Coût Réel">
+                        <span class="badge-icon">💎</span>
+                        <span id="stat-cost">0.00 €</span>
+                    </div>
+                    <div class="badge-item limit-badge" title="Quota d'agents utilisés">
+                        <span class="badge-icon">🏆</span>
+                        <span id="top-agent-limit">6/8</span>
+                    </div>
+                    
+                    <!-- Hidden elements mapping to old stats to preserve loadCockpitData outputs -->
+                    <span id="stat-queries" style="display:none;">0</span>
+                    <span id="stat-tools" style="display:none;">0</span>
+                </div>
+            </header>
+            
+            <!-- VIEWPORT PANELS AREA (Only one visible at a time) -->
+            <div class="viewport-panels">
+                
+                <!-- PANEL A: SWARM OPEN SPACE (ISOMETRIC FLOOR) -->
+                <div class="viewport-panel active" id="view-office">
+                    <!-- Sol isométrique -->
+                    <div class="office-floor" id="office-floor" style="transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1); transform-origin: center center;">
+                        <!-- Les bureaux des agents générés dynamiquement en JS -->
+                    </div>
+                    
+                    <!-- Floating Camera Controls inside viewport -->
+                    <div class="floating-office-controls glass">
+                        <button id="btn-office-zoom-in" class="floating-control-btn" title="Zoomer">+</button>
+                        <button id="btn-office-zoom-out" class="floating-control-btn" title="Dézoomer">−</button>
+                        <button id="btn-office-rotate" class="floating-control-btn" title="Pivoter (45°)">🔄</button>
+                    </div>
+                </div>
+                
+                <!-- PANEL B: COCKPIT TELEMETRY -->
+                <div class="viewport-panel" id="view-cockpit" style="display: none;">
+                    <div class="cockpit-container">
+                        <h4 class="view-panel-title">📊 Cockpit de l'Essaim</h4>
+                        
+                        <!-- Grid of Telemetry Details -->
+                        <div class="cockpit-stats-grid">
+                            <div class="stat-card glass">
+                                <div class="stat-icon">💬</div>
+                                <div class="stat-info">
+                                    <span class="stat-value" id="cockpit-queries-val">0</span>
+                                    <span class="stat-label">Requêtes Swarm</span>
+                                </div>
+                            </div>
+                            <div class="stat-card glass green">
+                                <div class="stat-icon">🛠️</div>
+                                <div class="stat-info">
+                                    <span class="stat-value" id="cockpit-tools-val">0</span>
+                                    <span class="stat-label">Appels d'Outils</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Services Connectés -->
+                        <div class="glass panel-card-content">
+                            <h5>🔌 Intégrations &amp; Services Connectés</h5>
+                            <div class="services-list" id="cockpit-services">
+                                <!-- Injecté dynamiquement par JS -->
+                            </div>
+                        </div>
+                        
+                        <!-- Compétences Créées (Skills) -->
+                        <div class="glass panel-card-content" style="margin-top: 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <h5>✨ Compétences Personnalisées de l'Essaim (Skills)</h5>
+                                <span class="badge" id="cockpit-skills-count" style="background: rgba(0, 243, 255, 0.2); color: var(--accent-cyan); font-weight: bold; border-radius: 12px; padding: 2px 8px; font-size: 0.75rem; border: 1px solid rgba(0, 243, 255, 0.4);">0</span>
+                            </div>
+                            <div class="services-list" id="cockpit-skills-list">
+                                <!-- Injecté dynamiquement par JS -->
+                            </div>
+                        </div>
+                        
+                        <!-- Galerie d'Art Générative -->
+                        <div class="glass panel-card-content">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <h5>🎨 Créations Artistiques de l'Essaim</h5>
+                                <button id="btn-refresh-gallery" class="btn" style="padding: 2px 8px; font-size: 0.7rem; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.15);" title="Actualiser la galerie">🔄 Galerie</button>
+                            </div>
+                            <div class="gallery-grid" id="cockpit-gallery">
+                                <!-- Injecté dynamiquement par JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- PANEL C: PROJECT FILES EXPLORER -->
+                <div class="viewport-panel" id="view-files" style="display: none;">
+                    <div class="files-explorer-container">
+                        <!-- Path Config bar -->
+                        <div class="glass files-path-bar">
+                            <span style="font-size: 0.75rem; user-select: none; white-space: nowrap; opacity: 0.75;">📁 Dossier :</span>
+                            <input type="text" id="workspace-path-input" placeholder="/chemin/vers/projet" class="path-input">
+                            <button id="btn-open-explorer-modal" class="btn btn-secondary" style="margin: 0; padding: 2px 10px; font-size: 0.75rem; font-weight: bold; height: 26px; white-space: nowrap;" title="Parcourir visuellement les dossiers">📂 Parcourir</button>
+                            <button id="btn-save-workspace-path" class="btn btn-primary" style="padding: 2px 10px; font-size: 0.75rem; font-weight: bold; height: 26px;">Set</button>
+                            
+                            <!-- Suggestions de dossiers -->
+                            <div id="workspace-path-suggestions" class="glass suggestions-dropdown">
+                                <!-- Généré en JS -->
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 6px 0;">
+                            <h4 class="view-panel-title" style="margin: 0;">📁 Fichiers du Projet</h4>
+                            <button id="btn-refresh-files" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Actualiser la liste">🔄 Actualiser</button>
+                        </div>
+                        
+                        <div class="files-columns-layout">
+                            <!-- Left: Upload zone + List -->
+                            <div class="files-list-col">
+                                <div id="upload-dropzone" class="glass upload-dropzone">
+                                    <span style="font-size: 1.2rem;">📥</span>
+                                    <span>Glissez ou cliquez pour téléverser un fichier</span>
+                                    <input type="file" id="file-upload-input" style="display: none;">
+                                </div>
+                                <div id="files-list-container" class="glass files-list-scroller">
+                                    <!-- Généré en JS -->
+                                </div>
+                            </div>
+                            
+                            <!-- Right: File viewer -->
+                            <div id="file-viewer-container" class="glass file-viewer-card">
+                                <div id="file-viewer-header" class="file-viewer-title-bar">
+                                    <span id="file-viewer-title">Sélectionnez un fichier pour l'examiner...</span>
+                                    <button id="btn-download-file" class="btn btn-primary" style="display: none; padding: 2px 8px; font-size: 0.75rem; border-radius: 4px;">📥 Télécharger</button>
+                                </div>
+                                <pre id="file-viewer-pre" class="file-pre-container"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- PANEL D: TASKS / INTERACTIVE LISTS -->
+                <div class="viewport-panel" id="view-agenda" style="display: none;">
+                    <div class="agenda-container">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <h4 class="view-panel-title" style="margin: 0;">📋 Listes Interactives</h4>
+                            <button id="btn-refresh-lists" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Actualiser la liste">🔄 Actualiser</button>
+                        </div>
+                        
+                        <div class="agenda-grid-layout">
+                            <!-- Items list -->
+                            <div class="agenda-items-col">
+                                <div id="list-items-container" class="glass list-items-scroller">
+                                    <!-- Rempli dynamiquement par JS -->
+                                </div>
+                            </div>
+                            
+                            <!-- Selector & Add Form -->
+                            <div class="agenda-actions-col">
+                                <div class="glass panel-card-content" style="height: fit-content;">
+                                    <label style="opacity: 0.7; font-size: 0.75rem; display: block; margin-bottom: 6px;">Choisir la liste :</label>
+                                    <select id="active-list-selector" class="active-list-dropdown">
+                                        <option value="taches" selected>📝 Liste des Tâches (TODOs)</option>
+                                        <option value="courses">🛒 Liste de Courses</option>
+                                        <option value="idees">💡 Boîte à Idées</option>
+                                    </select>
+                                    
+                                    <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; margin-top: 12px;">
+                                        <h5 style="margin: 0 0 8px 0; color: var(--color-Codeur); font-size: 0.85rem;">➕ Ajouter un Élément</h5>
+                                        <form id="list-item-add-form" onsubmit="event.preventDefault(); submitNewListItem();" style="display: flex; flex-direction: column; gap: 8px;">
+                                            <input type="text" id="list-item-input" required placeholder="ex: Acheter du lait, Bug fix..." class="list-item-textbox">
+                                            <button type="submit" class="btn btn-primary" style="padding: 8px; border-radius: 6px; font-weight: bold; margin-top: 4px;">➕ Ajouter</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- PANEL E: SEMANTIC NETWORK GRAPH -->
+                <div class="viewport-panel" id="view-graph" style="display: none;">
+                    <div class="agent-network-viewport">
+                        <h4 class="view-panel-title">🕸️ Graphe Sémantique de l'Essaim</h4>
+                        
+                        <div class="graph-nodes-viewport">
+                            <!-- Nœuds d'agents dynamiques -->
+                            <div id="nodes-container">
+                                <!-- Généré dynamiquement en JS -->
+                            </div>
+                            <!-- SVG pour tracer les connexions dynamiques entre agents -->
+                            <svg class="network-links"></svg>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- PANEL F: CONVERSATION BRANCHES TREE -->
+                <div class="viewport-panel" id="view-branches" style="display: none;">
+                    <div class="branches-container">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <h4 class="view-panel-title" style="margin: 0;">🌿 Arbre de Conversation (Time-Travel)</h4>
+                            <button id="btn-refresh-branches" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Actualiser l'arbre">🔄 Actualiser</button>
+                        </div>
+                        <div class="glass panel-card-content branches-tree-card">
+                            <div id="branches-tree-container">
+                                <!-- Généré dynamiquement par JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- PANEL G: LONG TERM MEMORY (JSON CORE MEMORY) -->
+                <div class="viewport-panel" id="view-memory" style="display: none;">
+                    <div class="memory-container">
+                        <h4 class="view-panel-title">🧠 Mémoire à Long Terme</h4>
+                        <p class="section-desc" style="margin-top: -6px; opacity: 0.6; font-size: 0.8rem;">Faits mémorisés dans la base de connaissances JSON de Jarvis</p>
+                        <div class="memory-grid" id="memory-grid">
+                            <div class="empty-memory">Aucun fait mémorisé.</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- PANEL H-BIS: ORCHESTRATOR LOGS TERMINAL -->
+                <div class="viewport-panel" id="view-orchestrator" style="display: none;">
+                    <div class="terminal-container">
+                        <h4 class="view-panel-title" style="display: flex; align-items: center; gap: 8px;">
+                            <span class="terminal-title-dot" style="background: #bd93f9;"></span> ⚡ Orchestrateur — Journal de l'Essaim
+                        </h4>
+                        
+                        <div class="logs-terminal" id="logs-orchestrator" style="border-color: rgba(189, 147, 249, 0.2);">
+                            <div class="log-line system">[Système] Terminal Orchestrateur initialisé. Les activités de l'essaim seront affichées ici.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PANEL H: BASH CODER INTERACTIVE TERMINAL -->
+                <div class="viewport-panel" id="view-console" style="display: none;">
+                    <div class="terminal-container">
+                        <h4 class="view-panel-title" style="display: flex; align-items: center; gap: 8px;">
+                            <span class="terminal-title-dot"></span> ⚙️ Console Codeur (Interactive Bash Terminal)
+                        </h4>
+                        
+                        <div class="logs-terminal" id="logs-terminal">
+                            <div class="log-line system">[Système] Console interactive Codeur démarrée. Prête.</div>
+                        </div>
+                        
+                        <div class="terminal-input-wrapper">
+                            <span class="terminal-prompt-symbol">$</span>
+                            <input type="text" id="terminal-coder-input" placeholder="Refactorer un fichier, exécuter bash..." autocomplete="off">
+                            <button id="btn-send-terminal" class="btn btn-primary" style="padding: 2px 12px; font-size: 0.75rem; border-radius: 4px; font-weight: bold; height: 28px; margin: 0;">Run</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PANEL I: COMPTE-RENDU DE RÉUNION (🎙️ TRANSCRIPTION & DIARISATION) -->
+                <div class="viewport-panel" id="view-meeting" style="display: none;">
+                    <div class="meeting-container" style="display: flex; flex-direction: column; gap: 16px; height: 100%; overflow: hidden; padding: 20px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 16px;">
+                            <div>
+                                <h4 class="view-panel-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">🎙️ Compte-rendu de Réunion & Transcription</h4>
+                                <p class="section-desc" style="margin: 4px 0 0 0; opacity: 0.6; font-size: 0.8rem;">Uploadez un enregistrement audio pour obtenir une transcription diarisée (différenciation des interlocuteurs) et un compte-rendu exécutif de réunion.</p>
+                            </div>
+                        </div>
+                        
+                        <div class="meeting-layout" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1; min-height: 0;">
+                            <!-- Colonne Gauche : Upload & Audio & Dialogue diarisé -->
+                            <div class="meeting-left glass" style="display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 12px; min-height: 0; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08);">
+                                <h5 style="margin: 0; font-size: 0.95rem; color: var(--color-Jarvis); text-transform: uppercase;">1. Audio & Transcription</h5>
+                                
+                                <!-- Zone de Drop / File Upload -->
+                                <div id="meeting-dropzone" style="border: 2px dashed rgba(255,255,255,0.15); border-radius: 10px; padding: 30px 20px; text-align: center; cursor: pointer; background: rgba(0,0,0,0.2); transition: all 0.3s ease;">
+                                    <span style="font-size: 2.5rem; display: block; margin-bottom: 8px;">🎙️</span>
+                                    <span style="font-weight: bold; display: block; margin-bottom: 4px;">Glissez-déposez votre fichier audio</span>
+                                    <span style="font-size: 0.75rem; opacity: 0.5;">Formats supportés : MP3, WAV, M4A, OGG (Max 25 Mo)</span>
+                                    <input type="file" id="meeting-audio-file" accept="audio/*" style="display: none;">
+                                </div>
+                                
+                                <!-- Bouton d'enregistrement direct au micro -->
+                                <div style="display: flex; justify-content: center; margin-top: -4px; margin-bottom: 4px;">
+                                    <button id="btn-record-meeting" class="btn btn-secondary" style="margin: 0; padding: 10px 20px; font-weight: bold; display: flex; align-items: center; gap: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                                        <span id="record-icon" style="color: #ff5555; font-size: 1.1rem; display: inline-block;">🔴</span>
+                                        <span id="record-text" style="font-size: 0.85rem; letter-spacing: 0.5px;">ENREGISTRER EN DIRECT</span>
+                                    </button>
+                                </div>
+                                
+                                <!-- Lecteur audio de prévisualisation (affiché si fichier choisi) -->
+                                <div id="meeting-player-wrapper" style="display: none; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; align-items: center; gap: 12px;">
+                                    <audio id="meeting-audio-player" controls style="flex: 1; height: 32px;"></audio>
+                                    <button id="btn-start-transcription" class="btn btn-primary" style="margin: 0; padding: 8px 16px; font-weight: bold;">Lancer</button>
+                                </div>
+                                
+                                <!-- Zone de chargement dynamique -->
+                                <div id="meeting-loading" style="display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px; flex: 1; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
+                                    <div class="neon-spinner" style="width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.05); border-top-color: var(--accent-color); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                                    <div style="text-align: center;">
+                                        <div id="meeting-status-text" style="font-weight: bold; color: var(--accent-color);">Transcription en cours...</div>
+                                        <div style="font-size: 0.75rem; opacity: 0.5; margin-top: 4px;">Analyse des voix par intelligence artificielle</div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Dialogue diarisé final -->
+                                <div id="meeting-transcript-box" style="display: flex; flex-direction: column; gap: 12px; flex: 1; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.05); min-height: 0;">
+                                    <div style="opacity: 0.4; text-align: center; margin: auto; font-size: 0.85rem;">La transcription diarisée apparaîtra ici après traitement.</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Colonne Droite : Compte-rendu & Actions -->
+                            <div class="meeting-right glass" style="display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 12px; min-height: 0; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08);">
+                                <div style="display: flex; align-items: center; justify-content: space-between;">
+                                    <h5 style="margin: 0; font-size: 0.95rem; color: var(--color-Jarvis); text-transform: uppercase;">2. Compte-rendu & Résumé exécutif</h5>
+                                    <button id="btn-download-meeting" class="btn btn-secondary" style="margin: 0; padding: 4px 10px; font-size: 0.75rem; font-weight: bold; display: none;">📥 Exporter MD</button>
+                                </div>
+                                
+                                <div id="meeting-summary-box" style="flex: 1; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.05); font-size: 0.9rem; line-height: 1.5; color: #e0e0e0; min-height: 0;">
+                                    <div style="opacity: 0.4; text-align: center; margin: auto; font-size: 0.85rem;">Le compte-rendu de réunion structuré apparaîtra ici après traitement.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </main>
+
+        <!-- Resizable Splitter Bar -->
+        <div class="layout-resizer" id="layout-resizer" title="Glisser pour redimensionner le chat"></div>
+
+        <!-- 3. PERSISTENT RIGHT CHAT SIDEBAR -->
+        <aside class="right-chat-sidebar glass">
+            
+            <!-- Chat Header Area with active streaming agent -->
+            <header class="chat-sidebar-header">
+                <span class="chat-title-meta">CONVERSATION ACTIVE</span>
+                
+                <!-- Pulsing Active Agent status card -->
+                <div class="active-agent-card">
+                    <div class="avatar-glow-ring">
+                        <div class="pulse-indicator"></div>
+                        <span id="active-chat-avatar" class="active-agent-avatar-icon">🤖</span>
+                    </div>
+                    <div class="active-agent-details">
+                        <h3 id="active-agent-title">Jarvis</h3>
+                        <span class="active-status-meta">
+                            <span class="status-dot green"></span>
+                            <span id="active-chat-status">écrit le code • streaming</span>
+                        </span>
+                    </div>
+                </div>
+            </header>
+            
+            <!-- Chat history and active conversation manager -->
+            <div class="chat-history-controls" style="display: flex; gap: 8px; margin: 12px 16px 8px 16px; padding: 4px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;">
+                <button id="btn-new-chat" class="glass" style="flex: 1; padding: 8px 6px; font-size: 0.72rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; font-weight: bold; transition: all 0.2s;" title="Nouvelle discussion" onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.borderColor='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.borderColor='rgba(255,255,255,0.1)'">
+                    ➕ Nouveau
+                </button>
+                <select id="select-conversations" style="flex: 2; padding: 8px; font-size: 0.75rem; border-radius: 6px; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; outline: none; transition: border-color 0.2s;">
+                    <option value="default">Discussion principale</option>
+                </select>
+                <button id="btn-delete-chat" class="glass" style="padding: 8px 10px; font-size: 0.72rem; border-radius: 6px; border: 1px solid rgba(255,85,85,0.2); background: rgba(255,85,85,0.05); color: #ff5555; cursor: pointer; transition: all 0.2s;" title="Supprimer cette discussion" onmouseover="this.style.background='rgba(255,85,85,0.2)'; this.style.borderColor='rgba(255,85,85,0.5)'" onmouseout="this.style.background='rgba(255,85,85,0.05)'; this.style.borderColor='rgba(255,85,85,0.2)'">
+                    🗑️
+                </button>
+            </div>
+            
+            <!-- Chat Scroll messages area -->
+            <div class="chat-messages" id="chat-messages">
+                <!-- Messages dynamic injections -->
+                <div class="message system-msg glass animate-fade-in">
+                    <div class="message-content">
+                        <strong>Système :</strong> Bonjour, je suis Jarvis. Comment puis-je vous aider aujourd'hui ?
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Floating control header buttons from old UI -->
+            <div class="chat-actions-row">
+                <button id="btn-voice-toggle" class="chat-utility-btn" title="Activer la lecture vocale (TTS)">🔇 Voix</button>
+                <button id="btn-notifications" class="chat-utility-btn" title="Notifications" style="position:relative;">
+                    🔔 <span id="notification-badge" class="badge" style="display: none;">0</span>
+                </button>
+                
+                <div id="notification-dropdown" class="glass shadow notification-dropdown" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 8px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 6px;">
+                        <span style="font-size: 0.75rem; font-weight: bold; color: var(--color-Jarvis); text-transform: uppercase;">🔔 Notifications</span>
+                        <button id="btn-clear-notifications" style="background: none; border: none; color: #ff5555; font-size: 0.7rem; cursor: pointer;">Tout effacer</button>
+                    </div>
+                    <div id="notification-items-list">
+                        <div style="padding: 16px; text-align: center; opacity: 0.5; font-size: 0.75rem;">Aucune notification</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Message Input Panel -->
+            <div class="chat-input-pill">
+                <form id="chat-form" style="display:flex; width:100%; align-items:center; gap:8px;">
+                    <button type="button" id="btn-chat-attach" class="chat-mic-btn" style="font-size: 1rem; padding: 0 4px;" title="Joindre un document/roman (Indexation sémantique)">📎</button>
+                    <input type="file" id="chat-file-input" style="display: none;" accept=".txt,.md,.markdown,.py,.js,.json,.html,.css,.csv">
+                    <button type="button" id="btn-mic" class="chat-mic-btn" title="Parler à l'essaim (Speech-to-Text)">🎤</button>
+                    <input type="text" id="chat-input" placeholder="Parle à l'essaim..." autocomplete="off">
+                    <button type="submit" class="chat-send-btn">
+                        <svg class="send-icon-svg" viewBox="0 0 24 24">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"></path>
+                        </svg>
+                    </button>
+                </form>
+            </div>
+            
+        </aside>
+
+    </div>
+
+    <!-- =========================================================================
+         MODALE DE CONFIGURATION NO-CODE (GÉSTION AGENTS & CLÉS) - CONSERVÉE
+         ========================================================================= -->
+    <div class="modal-overlay" id="settings-modal" style="display: none;">
+        <div class="modal-card glass animate-zoom-in">
+            <header class="modal-header">
+                <h2>⚙️ Configuration de l'Essaim (No-Code)</h2>
+                <button class="btn-close" id="modal-close">×</button>
+            </header>
+            
+            <div class="modal-tabs">
+                <button class="modal-tab-btn active" id="modal-tab-agents">👤 Gestion des Agents</button>
+                <button class="modal-tab-btn" id="modal-tab-keys">🔑 Clés API & Connexions</button>
+                <button class="modal-tab-btn" id="modal-tab-ssh">🖥️ Terminal & Sécurité</button>
+                <button class="modal-tab-btn" id="modal-tab-agenda">📅 Synchronisation Agenda</button>
+                <button class="modal-tab-btn" id="modal-tab-pricing">💰 Tarifs LLM</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- ONGLET 1 : GESTION DES AGENTS -->
+                <div class="modal-pane" id="pane-agents">
+                    <div class="pane-header">
+                        <h3>Liste des Agents Actifs</h3>
+                        <button class="btn btn-primary" id="btn-add-agent">+ Créer un Agent</button>
+                    </div>
+                    <div class="agents-list" id="agents-list">
+                        <!-- Rempli dynamiquement en JS -->
+                    </div>
+                </div>
+                
+                <!-- ONGLET 2 : CLÉS API & ENV -->
+                <div class="modal-pane" id="pane-keys" style="display: none;">
+                    <h3>Variables d'Environnement (.env)</h3>
+                    <p class="section-desc">Renseigne tes clés d'API. Les valeurs existantes sont masquées pour des raisons de sécurité.</p>
+                    
+                    <form id="env-form" class="config-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="key-openai">OpenAI API Key (OPENAI_API_KEY)</label>
+                                <input type="password" id="key-openai" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-anthropic">Anthropic API Key (ANTHROPIC_API_KEY)</label>
+                                <input type="password" id="key-anthropic" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-gemini">Google Gemini Key (GEMINI_API_KEY)</label>
+                                <input type="password" id="key-gemini" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-openrouter">OpenRouter Key (OPENROUTER_API_KEY)</label>
+                                <input type="password" id="key-openrouter" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-groq">Groq API Key (GROQ_API_KEY)</label>
+                                <input type="password" id="key-groq" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-mistral">Mistral API Key (MISTRAL_API_KEY)</label>
+                                <input type="password" id="key-mistral" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-dashscope">Qwen Cloud Key (DASHSCOPE_API_KEY)</label>
+                                <input type="password" id="key-dashscope" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-qwen">Qwen API Key (QWEN_API_KEY)</label>
+                                <input type="password" id="key-qwen" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-ollama">Ollama API Base (OLLAMA_API_BASE)</label>
+                                <input type="text" id="key-ollama" placeholder="Ex: http://localhost:11434">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-custom-base">Custom LLM Endpoint (CUSTOM_LLM_API_BASE)</label>
+                                <input type="text" id="key-custom-base" placeholder="Ex: http://localhost:8080/v1">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-custom-key">Custom LLM API Key (CUSTOM_LLM_API_KEY)</label>
+                                <input type="password" id="key-custom-key" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-ha-url">Home Assistant URL (HA_URL)</label>
+                                <input type="text" id="key-ha-url" placeholder="Ex: http://192.168.1.50:8123">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-ha-token">Home Assistant Token (HA_TOKEN)</label>
+                                <input type="password" id="key-ha-token" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-telegram">Telegram Bot Token (TELEGRAM_BOT_TOKEN)</label>
+                                <input type="password" id="key-telegram" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <!-- MOTEUR DE GÉNÉRATION D'IMAGES -->
+                            <div class="form-group" style="grid-column: span 2; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
+                                <h4 style="margin: 0 0 8px 0; font-size: 0.85rem; color: var(--color-Jarvis); text-transform: uppercase; letter-spacing: 0.5px;">🎨 Moteur de Génération d'Images & Vidéos</h4>
+                            </div>
+                            <div class="form-group">
+                                <label for="key-img-provider">API de Génération (IMAGE_GENERATOR_PROVIDER)</label>
+                                <select id="key-img-provider" style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; padding: 10px; cursor: pointer; outline: none; width: 100%;">
+                                    <option value="pollinations">🌐 Pollinations AI (Gratuit, Haute Résolution)</option>
+                                    <option value="openai">🤖 OpenAI DALL-E 3 (Payant)</option>
+                                    <option value="stability">✨ Stability AI (Payant)</option>
+                                    <option value="gemini">♊ Google Gemini (Imagen 3)</option>
+                                    <option value="custom">🛠️ Endpoint Custom / Local / Banana / Fal</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="key-stability">Stability AI Key (STABILITY_API_KEY)</label>
+                                <input type="password" id="key-stability" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-custom-img-base">Custom Image Base (CUSTOM_IMAGE_API_BASE)</label>
+                                <input type="text" id="key-custom-img-base" placeholder="Ex: https://api.fal.ai/v1 ou http://localhost:5000/v1">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-custom-img-key">Custom Image Key (CUSTOM_IMAGE_API_KEY)</label>
+                                <input type="password" id="key-custom-img-key" placeholder="Laisser vide si inchangée">
+                            </div>
+
+                            <!-- MOTEUR DE GÉNÉRATION DE VIDÉOS -->
+                            <div class="form-group" style="grid-column: span 2; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
+                                <h4 style="margin: 0 0 8px 0; font-size: 0.85rem; color: var(--accent-color); text-transform: uppercase; letter-spacing: 0.5px;">🎬 Moteur de Génération de Vidéos</h4>
+                            </div>
+                            <div class="form-group">
+                                <label for="key-video-provider">API de Génération Vidéo (VIDEO_GENERATOR_PROVIDER)</label>
+                                <select id="key-video-provider" style="background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; padding: 10px; cursor: pointer; outline: none; width: 100%;">
+                                    <option value="local">🔄 Cinémagraphe Local GIF (Instant & Gratuit)</option>
+                                    <option value="gemini">♊ Google Gemini (Cinémagraphe Imagen 3 + Compilateur Local)</option>
+                                    <option value="fal">🔥 Fal.ai Hunyuan Video (Qualité Cinéma, Asynchrone)</option>
+                                    <option value="replicate">🚀 Replicate Hunyuan Video / SVD (Asynchrone)</option>
+                                    <option value="custom">🛠️ Endpoint Custom Video (Asynchrone)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="key-fal">Fal.ai API Key (FAL_API_KEY)</label>
+                                <input type="password" id="key-fal" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-replicate">Replicate Token (REPLICATE_API_TOKEN)</label>
+                                <input type="password" id="key-replicate" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-custom-video-base">Custom Video Base (CUSTOM_VIDEO_API_BASE)</label>
+                                <input type="text" id="key-custom-video-base" placeholder="Ex: https://api.myvideo.ai/v1">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-custom-video-key">Custom Video Key (CUSTOM_VIDEO_API_KEY)</label>
+                                <input type="password" id="key-custom-video-key" placeholder="Laisser vide si inchangée">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 16px;">Sauvegarder les Clés</button>
+                    </form>
+                </div>
+
+                <!-- ONGLET SSH : INTEGRATION TERMINAL SSH -->
+                <div class="modal-pane" id="pane-ssh" style="display: none;">
+                    <h3>🖥️ Intégration Terminal SSH (Exécution Distante)</h3>
+                    <p class="section-desc">Configure les identifiants pour exécuter toutes les commandes du cockpit et de l'Agent Codeur sur un poste de travail local ou un VPS distant via SSH.</p>
+                    
+                    <form id="ssh-form" class="config-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="key-ssh-host">SSH Host (SSH_HOST)</label>
+                                <input type="text" id="key-ssh-host" placeholder="Ex: 192.168.1.50 ou monposte.local">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-ssh-port">SSH Port (SSH_PORT)</label>
+                                <input type="text" id="key-ssh-port" placeholder="Ex: 22">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-ssh-username">SSH Username (SSH_USERNAME)</label>
+                                <input type="text" id="key-ssh-username" placeholder="Ex: legrill">
+                            </div>
+                            <div class="form-group">
+                                <label for="key-ssh-password">SSH Password (SSH_PASSWORD)</label>
+                                <input type="password" id="key-ssh-password" placeholder="Laisser vide si inchangée">
+                            </div>
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label for="key-ssh-key-path">Chemin de la Clé Privée SSH (SSH_KEY_PATH)</label>
+                                <input type="text" id="key-ssh-key-path" placeholder="Ex: ~/.ssh/id_rsa (Alternative au mot de passe)">
+                            </div>
+                            
+                            <!-- PROTECTION DE SÉCURITÉ -->
+                            <div class="form-group" style="grid-column: span 2; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
+                                <label for="key-admin-password" style="color: var(--accent-color); font-weight: bold;">Mot de passe de protection du Cockpit (ADMIN_PASSWORD)</label>
+                                <input type="password" id="key-admin-password" placeholder="Laisser vide pour désactiver ou inchangé">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 16px;">Sauvegarder la configuration SSH</button>
+                    </form>
+                </div>
+                
+                <!-- ONGLET 3 : CONFIGURATION AGENDA EXTERNE -->
+                <div class="modal-pane" id="pane-agenda" style="display: none;">
+                    <h3>📅 Synchronisation Universelle de l'Agenda</h3>
+                    <p class="section-desc">Connecte Jarvis à ton agenda Google, Apple, Outlook ou Nextcloud (CalDAV).</p>
+                    
+                    <form id="agenda-sync-form" class="config-form">
+                        <div style="font-weight: bold; font-size: 0.9rem; color: var(--color-Jarvis); margin: 16px 0 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">🔗 1. Flux iCal / ICS (Lecture seule - Google/Apple/Outlook)</div>
+                        <div class="form-grid">
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label for="agenda-ical-url">Adresse privée iCal / Lien URL .ics</label>
+                                <input type="url" id="agenda-ical-url" placeholder="Ex: https://calendar.google.com/calendar/ical/.../basic.ics" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff;">
+                            </div>
+                        </div>
+                        
+                        <div style="font-weight: bold; font-size: 0.9rem; color: var(--color-Jarvis); margin: 20px 0 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">🤖 2. Google Calendar API (Lecture/Écriture - via Compte de Service)</div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="agenda-google-id">Google Calendar ID (ex: ton adresse gmail)</label>
+                                <input type="text" id="agenda-google-id" placeholder="Ex: monadresse@gmail.com" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff;">
+                            </div>
+                            <div class="form-group">
+                                <label>Fichier Google Credentials JSON</label>
+                                <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
+                                    <input type="file" id="agenda-google-file" accept=".json" style="display: none;">
+                                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('agenda-google-file').click()" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px;">Choisir JSON...</button>
+                                    <span id="agenda-google-status" style="font-size: 0.8rem; opacity: 0.7;">Clé absente ❌</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="font-weight: bold; font-size: 0.9rem; color: var(--color-Jarvis); margin: 20px 0 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">☁️ 3. Serveur CalDAV (Lecture/Écriture - Nextcloud/Synology)</div>
+                        <div class="form-grid">
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label for="agenda-caldav-url">URL du Calendrier CalDAV</label>
+                                <input type="url" id="agenda-caldav-url" placeholder="Ex: https://nextcloud.domain.com/remote.php/dav/calendars/username/personal/" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff;">
+                            </div>
+                            <div class="form-group">
+                                <label for="agenda-caldav-user">Nom d'utilisateur</label>
+                                <input type="text" id="agenda-caldav-user" placeholder="Ex: admin" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff;">
+                            </div>
+                            <div class="form-group">
+                                <label for="agenda-caldav-password">Mot de passe d'application</label>
+                                <input type="password" id="agenda-caldav-password" placeholder="Laisser vide si inchangé" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff;">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" style="margin-top: 20px; width: 100%; padding: 10px; font-weight: bold;">Enregistrer la Configuration Agenda</button>
+                    </form>
+                </div>
+
+                <!-- ONGLET 4 : TARIFICATION PAR MODÈLE LLM -->
+                <div class="modal-pane" id="pane-pricing" style="display: none;">
+                    <h3>💰 Tarification des Modèles LLM</h3>
+                    <p class="section-desc">Configure le coût en <strong>€ par million de tokens</strong> pour chaque modèle (entrée = tokens envoyés, sortie = tokens reçus). Ces tarifs sont utilisés par le Cockpit pour calculer le coût réel de vos requêtes.</p>
+
+                    <div id="pricing-rows-container" style="display: flex; flex-direction: column; gap: 8px; margin: 12px 0; max-height: 320px; overflow-y: auto; padding-right: 4px;"></div>
+
+                    <button type="button" id="btn-add-pricing-row" class="btn btn-secondary" style="width: 100%; margin-bottom: 12px; font-size: 0.8rem;">+ Ajouter un modèle</button>
+
+                    <div style="display: flex; gap: 10px;">
+                        <button type="button" id="btn-save-pricing" class="btn btn-primary" style="flex: 1;">💾 Sauvegarder les Tarifs</button>
+                        <button type="button" id="btn-reset-pricing" class="btn btn-secondary" style="flex: 1;">↺ Réinitialiser par défaut</button>
+                    </div>
+
+                    <div id="pricing-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALE INTERNE : FORMULAIRE AGENT (AJOUT/EDITION) - CONSERVÉE -->
+    <div class="modal-overlay" id="agent-form-modal" style="display: none; z-index: 6000;">
+        <div class="modal-card glass animate-zoom-in" style="max-width: 550px; max-height: 85vh;">
+            <header class="modal-header">
+                <h3 id="agent-form-title">Créer un Agent</h3>
+                <button class="btn-close" id="agent-form-close">×</button>
+            </header>
+            <div class="modal-body">
+                <form id="agent-config-form" class="config-form">
+                    <input type="hidden" id="agent-orig-name">
+                    
+                    <div class="form-group">
+                        <label for="agent-name">Rôle / Identifiant Unique (Ex: Codeur)</label>
+                        <input type="text" id="agent-name" required placeholder="Ex: Codeur">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="agent-display-name">Nom d'usage (Ex: Robert Développeur)</label>
+                        <input type="text" id="agent-display-name" placeholder="Ex: Robert Développeur">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="agent-avatar-type">Apparence (Sprite 2.5D)</label>
+                        <select id="agent-avatar-type" style="width: 100%; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; padding: 10px; outline: none; cursor: pointer;">
+                            <option value="robot_neon">🤖 Robot Néon (Jarvis)</option>
+                            <option value="dev_purple">💻 Codeur Violet (Robert)</option>
+                            <option value="writer_orange">✍️ Écrivain Orange (Auteur)</option>
+                            <option value="manager_gold">👑 Manager Or (Chef)</option>
+                            <option value="artist_pink">🎨 Artiste Rose (Créatif)</option>
+                            <option value="support_green">🎧 Support Vert (Helpdesk)</option>
+                            <option value="scientist_blue">🔬 Scientifique Bleu (Data/IA)</option>
+                            <option value="agent_dark">🕶️ Agent Secret (Sécurité)</option>
+                            <option value="wizard_purple">🧙‍♂️ Mage Violet (Mystique)</option>
+                            <option value="cyber_neko">🐱 Cyber Chat (Neko)</option>
+                            <option value="astronaut_white">🚀 Spationaute (Explorateur)</option>
+                            <option value="cyber_ninja">🥷 Ninja Ombre (Infiltration)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="agent-model">Modèle LLM</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="agent-model" required placeholder="Ex: gpt-4o" style="flex-grow: 1;">
+                            <select id="agent-model-helper" style="width: 170px; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; padding: 10px; outline: none; cursor: pointer; font-size: 0.8rem;">
+                                <option value="">⚡ Choix rapide...</option>
+                            </select>
+                        </div>
+                    <div class="form-group">
+                        <label for="agent-welcome">Phrase d'introduction / Présentation</label>
+                        <input type="text" id="agent-welcome" placeholder="Ex: Bonjour ! C'est Lucas, votre Community Manager... (Optionnel)">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="agent-prompt">Prompt Système</label>
+                        <textarea id="agent-prompt" rows="6" required placeholder="Définis précisément le comportement de l'agent..."></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Outils disponibles</label>
+                        <div class="checkbox-grid" id="agent-tools-checkboxes">
+                            <!-- Les outils standards seront injectés ici -->
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Autoriser le transfert vers (Handoffs)</label>
+                        <div class="checkbox-grid" id="agent-handoffs-checkboxes">
+                            <!-- Les autres agents seront listés ici -->
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 16px;">Enregistrer l'Agent</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- MODALE INTERNE : EXPLORATEUR DE DOSSIERS INTERACTIF - CONSERVÉE -->
+    <div class="modal-overlay" id="explorer-modal" style="display: none; z-index: 6010;">
+        <div class="modal-card glass animate-zoom-in" style="max-width: 500px; max-height: 80vh; display: flex; flex-direction: column; gap: 16px;">
+            <header class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                <h3 style="margin: 0; color: var(--color-Jarvis); font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">📂 Sélectionner un Dossier</h3>
+                <button class="btn-close" id="btn-close-explorer-modal">×</button>
+            </header>
+            
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden; padding: 0;">
+                <div style="font-size: 0.8rem; font-family: monospace; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); word-break: break-all;" id="explorer-current-path">
+                    /
+                </div>
+                
+                <div style="font-size: 0.75rem; color: rgba(255,255,255,0.4); font-style: italic; margin-bottom: -4px;">
+                    💡 Double-cliquez sur un dossier pour y entrer, simple clic pour le sélectionner.
+                </div>
+                
+                <div id="explorer-dirs-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; min-height: 250px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 8px;">
+                    <!-- Généré en JS -->
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 8px;">
+                    <button id="btn-explorer-cancel" class="btn btn-secondary" style="font-size: 0.8rem; padding: 6px 12px; border-radius: 6px;">Annuler</button>
+                    <button id="btn-explorer-confirm" class="btn btn-primary" style="font-size: 0.8rem; padding: 6px 16px; border-radius: 6px; font-weight: bold;">Sélectionner ce dossier</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Écran de Connexion Sécurisé (Overlay) - CONSERVÉ -->
+    <div id="login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 10, 15, 0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 10000; align-items: center; justify-content: center; transition: all 0.4s ease;">
+        <div class="glass" style="width: 380px; padding: 32px 24px; border-radius: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; gap: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+            <div>
+                <span style="font-size: 3rem; filter: drop-shadow(0 0 10px rgba(255,255,255,0.2));">🔒</span>
+                <h2 style="margin-top: 12px; font-weight: 600; color: #fff; letter-spacing: 0.5px;">Accès Sécurisé</h2>
+                <p style="font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-top: 4px; line-height: 1.4;">Entrez le mot de passe administrateur configuré dans votre .env pour vous connecter.</p>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 8px; text-align: left;">
+                <label for="login-password" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4);">Mot de passe</label>
+                <input type="password" id="login-password" placeholder="••••••••" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; outline: none; transition: all 0.2s;" onkeydown="if(event.key==='Enter') submitLogin()">
+            </div>
+            
+            <div id="login-error" style="display: none; color: #ff5555; font-size: 0.8rem; text-align: center; font-weight: 500;">❌ Mot de passe incorrect.</div>
+            
+            <button onclick="submitLogin()" class="btn btn-primary" style="width: 100%; padding: 11px; font-size: 0.9rem; border-radius: 6px; font-weight: 600;">
+                Se connecter
+            </button>
+        </div>
+    </div>
+    
+    <!-- Conteneur des toasts volants -->
+    <div id="toast-container" style="position: fixed; top: 70px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 9999; pointer-events: none; width: 320px;"></div>
+
+    <!-- Bouton flottant de Chat pour mobiles & tablettes -->
+    <button id="btn-mobile-chat-toggle" class="mobile-chat-toggle-btn" title="Afficher/Masquer le Chat">💬</button>
+
+    <!-- PrismJS pour la coloration syntaxique dans l'explorateur -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+
+    <script src="app.js?v=20260529_ssh_settings"></script>
+</body>
+</html>

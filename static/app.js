@@ -1,0 +1,4602 @@
+// Authentification et Gestion de Session
+let sessionToken = localStorage.getItem("jarvis_session_token") || "";
+
+// Wrapper de fetch sécurisé avec injecteur de jeton d'autorisation Bearer
+async function apiFetch(url, options = {}) {
+    if (!options.headers) {
+        options.headers = {};
+    }
+    if (sessionToken) {
+        options.headers["Authorization"] = `Bearer ${sessionToken}`;
+    }
+    const response = await fetch(url, options);
+    if (response.status === 401) {
+        localStorage.removeItem("jarvis_session_token");
+        sessionToken = "";
+        showLoginOverlay();
+    }
+    return response;
+}
+
+function showLoginOverlay() {
+    const overlay = document.getElementById("login-overlay");
+    if (overlay) {
+        overlay.style.display = "flex";
+        document.getElementById("btn-logout").style.display = "none";
+        document.getElementById("login-password").focus();
+    }
+}
+
+function hideLoginOverlay() {
+    const overlay = document.getElementById("login-overlay");
+    if (overlay) {
+        overlay.style.display = "none";
+        if (sessionToken && sessionToken !== "no-auth-required") {
+            document.getElementById("btn-logout").style.display = "inline-block";
+        }
+    }
+}
+
+async function submitLogin() {
+    const passwordInput = document.getElementById("login-password");
+    const errorMsg = document.getElementById("login-error");
+    const password = passwordInput.value.trim();
+    
+    errorMsg.style.display = "none";
+    
+    try {
+        const response = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            sessionToken = data.token;
+            localStorage.setItem("jarvis_session_token", sessionToken);
+            passwordInput.value = "";
+            hideLoginOverlay();
+            
+            // Recharger les données du dashboard après connexion réussie
+            reloadSwarmConfig();
+            loadWorkspaceFiles();
+            loadGlobalConfig();
+            loadAvailableModels();
+        } else {
+            errorMsg.style.display = "block";
+            passwordInput.value = "";
+            passwordInput.focus();
+        }
+    } catch (err) {
+        console.error("Erreur de connexion:", err);
+        errorMsg.textContent = "❌ Impossible de contacter le serveur.";
+        errorMsg.style.display = "block";
+    }
+}
+
+function handleLogout() {
+    localStorage.removeItem("jarvis_session_token");
+    sessionToken = "";
+    showLoginOverlay();
+}
+
+// Initialisation de la sécurité au chargement
+window.addEventListener("DOMContentLoaded", () => {
+    const btnLogout = document.getElementById("btn-logout");
+    if (btnLogout) {
+        btnLogout.addEventListener("click", handleLogout);
+    }
+    checkAuthRequirements();
+});
+
+async function checkAuthRequirements() {
+    try {
+        const response = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: "" })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.token === "no-auth-required") {
+                hideLoginOverlay();
+                return;
+            }
+        }
+        
+        if (sessionToken) {
+            hideLoginOverlay();
+            reloadSwarmConfig();
+        } else {
+            showLoginOverlay();
+        }
+    } catch (err) {
+        console.error("Erreur d'initialisation auth:", err);
+        showLoginOverlay();
+    }
+}
+
+// Configuration générale
+const AGENT_COLORS = {
+    Jarvis: "#00f0ff",
+    Codeur: "#00ff66",
+    Auteur: "#d600ff",
+    Correcteur: "#ffb700",
+    Traducteur: "#ff007f"
+};
+
+const AGENT_EMOJIS = {
+    Jarvis: "🤖",
+    Codeur: "💻",
+    Auteur: "✍️",
+    Correcteur: "🔍",
+    Traducteur: "🌐",
+    robot_neon: "🤖",
+    dev_purple: "💻",
+    writer_orange: "✍️",
+    manager_gold: "👑",
+    artist_pink: "🎨",
+    support_green: "🎧",
+    scientist_blue: "🔬",
+    agent_dark: "🕶️",
+    wizard_purple: "🧙‍♂️",
+    cyber_neko: "🐱",
+    astronaut_white: "🚀",
+    cyber_ninja: "🥷"
+};
+
+// Obtenir une couleur aléatoire si non définie d'origine
+function getAgentColor(name) {
+    if (AGENT_COLORS[name]) return AGENT_COLORS[name];
+    // Génère une couleur HSL harmonieuse
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    let h = Math.abs(hash % 360);
+    return `hsl(${h}, 85%, 50%)`;
+}
+
+function getAgentEmoji(name) {
+    const key = name ? name.toLowerCase() : "";
+    if (AGENT_EMOJIS[name]) return AGENT_EMOJIS[name];
+    if (AGENT_EMOJIS[key]) return AGENT_EMOJIS[key];
+    return "👤";
+}
+
+// Variables d'état
+let currentActiveAgent = "Jarvis";
+let agentsConfig = [];
+let activeAbortController = null;
+
+// Éléments du DOM
+const chatForm = document.getElementById("chat-form");
+const chatInput = document.getElementById("chat-input");
+const chatSendBtn = document.querySelector(".chat-send-btn");
+const chatMessages = document.getElementById("chat-messages");
+const activeAgentTitle = document.getElementById("active-agent-title");
+const pulseIndicator = document.querySelector(".pulse-indicator");
+const logsTerminal = document.getElementById("logs-terminal");
+const memoryGrid = document.getElementById("memory-grid");
+const btnReset = document.getElementById("btn-reset");
+
+// Onglets Panneau Gauche / Sidebar Dock
+const tabCockpit = document.getElementById("tab-cockpit");
+const tabGraph = document.getElementById("tab-graph");
+const tabOffice = document.getElementById("tab-office");
+const tabFiles = document.getElementById("tab-files");
+const tabAgenda = document.getElementById("tab-agenda");
+const tabBranches = document.getElementById("tab-branches");
+const tabMemory = document.getElementById("tab-memory");
+const tabConsole = document.getElementById("tab-console");
+const tabMeeting = document.getElementById("tab-meeting");
+const tabOrchestrator = document.getElementById("tab-orchestrator");
+
+const viewCockpit = document.getElementById("view-cockpit");
+const viewGraph = document.getElementById("view-graph");
+const viewOffice = document.getElementById("view-office");
+const viewFiles = document.getElementById("view-files");
+const viewAgenda = document.getElementById("view-agenda");
+const viewBranches = document.getElementById("view-branches");
+const viewMemory = document.getElementById("view-memory");
+const viewConsole = document.getElementById("view-console");
+const viewMeeting = document.getElementById("view-meeting");
+const viewOrchestrator = document.getElementById("view-orchestrator");
+const logsOrchestrator = document.getElementById("logs-orchestrator");
+
+// Gestion de la Modale Paramètres
+const btnSettings = document.getElementById("btn-settings");
+const settingsModal = document.getElementById("settings-modal");
+const modalClose = document.getElementById("modal-close");
+const modalTabAgents = document.getElementById("modal-tab-agents");
+const modalTabKeys = document.getElementById("modal-tab-keys");
+const modalTabSsh = document.getElementById("modal-tab-ssh");
+const modalTabAgenda = document.getElementById("modal-tab-agenda");
+const modalTabPricing = document.getElementById("modal-tab-pricing");
+const paneAgents = document.getElementById("pane-agents");
+const paneKeys = document.getElementById("pane-keys");
+const paneSsh = document.getElementById("pane-ssh");
+const paneAgenda = document.getElementById("pane-agenda");
+const panePricing = document.getElementById("pane-pricing");
+
+// Gestion de la Modale Interne Agent Form
+const agentFormModal = document.getElementById("agent-form-modal");
+const agentFormClose = document.getElementById("agent-form-close");
+const btnAddAgent = document.getElementById("btn-add-agent");
+const agentConfigForm = document.getElementById("agent-config-form");
+const agentsList = document.getElementById("agents-list");
+
+// =========================================================================
+// NAVIGATION DES ONGLETS GAUCHE DOCK (OFFICE vs COCKPIT vs FILES vs AGENDA vs GRAPH vs BRANCHES vs MEMORY vs CONSOLE)
+// =========================================================================
+function selectActiveTab(tab, view, extraAction = null) {
+    const allTabs = [tabCockpit, tabGraph, tabOffice, tabFiles, tabAgenda, tabBranches, tabMemory, tabOrchestrator, tabConsole, tabMeeting];
+    const allViews = [viewCockpit, viewGraph, viewOffice, viewFiles, viewAgenda, viewBranches, viewMemory, viewOrchestrator, viewConsole, viewMeeting];
+    
+    allTabs.forEach(t => { if (t) t.classList.remove("active"); });
+    allViews.forEach(v => { if (v) v.style.display = "none"; });
+    
+    if (tab) tab.classList.add("active");
+    if (view) {
+        // Le graphe et la mémoire ont besoin de display block, les autres flex
+        if (view === viewGraph || view === viewMemory) {
+            view.style.display = "block";
+        } else {
+            view.style.display = "flex";
+        }
+    }
+    
+    if (extraAction) extraAction();
+}
+
+if (tabOffice) {
+    tabOffice.addEventListener("click", () => {
+        selectActiveTab(tabOffice, viewOffice, () => {
+            rebuildOfficeFloor();
+        });
+    });
+}
+
+if (tabCockpit) {
+    tabCockpit.addEventListener("click", () => {
+        selectActiveTab(tabCockpit, viewCockpit, () => {
+            loadCockpitData();
+            loadGalleryMedia();
+        });
+    });
+}
+
+if (tabGraph) {
+    tabGraph.addEventListener("click", () => {
+        selectActiveTab(tabGraph, viewGraph, () => {
+            setTimeout(updateNetworkLines, 100);
+        });
+    });
+}
+
+if (tabFiles) {
+    tabFiles.addEventListener("click", () => {
+        selectActiveTab(tabFiles, viewFiles, () => {
+            loadWorkspaceFiles();
+        });
+    });
+}
+
+if (tabAgenda) {
+    tabAgenda.addEventListener("click", () => {
+        selectActiveTab(tabAgenda, viewAgenda, () => {
+            loadListItems();
+        });
+    });
+}
+
+if (tabBranches) {
+    tabBranches.addEventListener("click", () => {
+        selectActiveTab(tabBranches, viewBranches, () => {
+            reloadChatHistory(false);
+        });
+    });
+}
+
+if (tabMemory) {
+    tabMemory.addEventListener("click", () => {
+        selectActiveTab(tabMemory, viewMemory, () => {
+            refreshMemory();
+        });
+    });
+}
+
+if (tabConsole) {
+    tabConsole.addEventListener("click", () => {
+        selectActiveTab(tabConsole, viewConsole);
+    });
+}
+
+if (tabOrchestrator) {
+    tabOrchestrator.addEventListener("click", () => {
+        selectActiveTab(tabOrchestrator, viewOrchestrator);
+    });
+}
+
+if (tabMeeting) {
+    tabMeeting.addEventListener("click", () => {
+        selectActiveTab(tabMeeting, viewMeeting);
+    });
+}
+
+// =========================================================================
+// RECONSTRUCTION DYNAMIQUE DU RESEAU & DES BUREAUX
+// =========================================================================
+async function reloadSwarmConfig() {
+    try {
+        const response = await apiFetch("/api/config/agents");
+        agentsConfig = await response.json();
+        
+        // Mettre à jour dynamiquement le badge du nombre d'agents
+        const badgeOffice = document.getElementById("badge-office");
+        if (badgeOffice) {
+            badgeOffice.textContent = agentsConfig.length;
+            badgeOffice.style.display = agentsConfig.length > 0 ? "flex" : "none";
+        }
+        
+        rebuildGraphView();
+        rebuildOfficeFloor();
+        
+        // Charger également l'historique arborescent et la mémoire
+        reloadChatHistory();
+        refreshMemory();
+    } catch (err) {
+        logToTerminal("Erreur de chargement de la config essaim: " + err, "error");
+    }
+}
+
+// 1. Reconstruction de la vue Graphe (Nœuds positionnés en polygone)
+function rebuildGraphView() {
+    const container = document.getElementById("nodes-container");
+    container.innerHTML = "";
+    
+    const svg = document.querySelector(".network-links");
+    svg.innerHTML = ""; // Vider les anciennes liaisons SVG
+    
+    const count = agentsConfig.length;
+    if (count === 0) return;
+    
+    // Rayon du cercle de positionnement
+    const radiusX = 100;
+    const radiusY = 110;
+    const centerX = 160;
+    const centerY = 160;
+    
+    // Génération des nœuds
+    agentsConfig.forEach((agent, i) => {
+        // Coordonnées trigonométriques pour le cercle
+        const angle = (i * 2 * Math.PI) / count - Math.PI / 2; // Commencer en haut
+        const x = centerX + radiusX * Math.cos(angle);
+        const y = centerY + radiusY * Math.sin(angle);
+        
+        const node = document.createElement("div");
+        node.className = "agent-node";
+        if (agent.name === currentActiveAgent) node.classList.add("active");
+        node.id = `node-${agent.name}`;
+        node.style.left = `${x}px`;
+        node.style.top = `${y}px`;
+        node.style.transform = "translate(-50%, -50%)";
+        
+        node.innerHTML = `
+            <div class="node-glow"></div>
+            <div class="node-avatar">${getAgentEmoji(agent.name)}</div>
+            <span class="node-name">${agent.name}</span>
+        `;
+        container.appendChild(node);
+    });
+    
+    // Génération des connexions (handoffs) dynamiques
+    agentsConfig.forEach(agent => {
+        const handoffs = agent.handoffs || [];
+        handoffs.forEach(target => {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.id = `link-${agent.name}-${target}`;
+            line.setAttribute("class", "link-line");
+            svg.appendChild(line);
+        });
+    });
+    
+    updateNetworkLines();
+}
+
+// 2. Mettre à jour le tracé physique des lignes du graphe sémantique
+function updateNetworkLines() {
+    if (viewGraph.style.display === "none") return;
+    
+    agentsConfig.forEach(agent => {
+        const handoffs = agent.handoffs || [];
+        handoffs.forEach(target => {
+            const fromNode = document.getElementById(`node-${agent.name}`);
+            const toNode = document.getElementById(`node-${target}`);
+            const line = document.getElementById(`link-${agent.name}-${target}`);
+            
+            if (fromNode && toNode && line) {
+                // Centre des avatars
+                const fromX = fromNode.offsetLeft;
+                const fromY = fromNode.offsetTop;
+                const toX = toNode.offsetLeft;
+                const toY = toNode.offsetTop;
+                
+                line.setAttribute("x1", fromX);
+                line.setAttribute("y1", fromY);
+                line.setAttribute("x2", toX);
+                line.setAttribute("y2", toY);
+            }
+        });
+    });
+}
+
+// 3. Reconstruction du Bureau Virtuel (Swarm Open Space - Rendu Isométrique)
+const agentOfficePositions = {
+    "Jarvis": { top: "24%", left: "54%" },            // Bureau principal surélevé
+    "Codeur": { top: "70%", left: "68%" },            // Grand bureau de dev (Robert)
+    "Auteur": { top: "58%", left: "26%" },            // Bureau créatif avec tablette (Émilie)
+    "Correcteur": { top: "72%", left: "28%" },        // Bureau d'édition méticuleux (Marc)
+    "Traducteur": { top: "52%", left: "72%" },        // Bureau linguistique (Sofia)
+    "CommunityManager": { top: "38%", left: "44%" }   // Bureau de communication (Lucas)
+};
+
+function getAgentPosition(agentName, index) {
+    if (agentOfficePositions[agentName]) {
+        return agentOfficePositions[agentName];
+    }
+    // Génération d'une position circulaire/procédurale pour les agents supplémentaires
+    const angle = (index * 72) % 360;
+    const rad = (angle * Math.PI) / 180;
+    const top = Math.round(50 + 25 * Math.sin(rad)) + "%";
+    const left = Math.round(50 + 25 * Math.cos(rad)) + "%";
+    return { top, left };
+}
+
+function getAgentSpriteSVG(typeOrName) {
+    const key = (typeOrName || "").toLowerCase();
+    
+    // Scale standard de 80px de large par 90px de haut pour tous les avatars
+    const baseStyle = "width: 80px; height: 90px; filter: drop-shadow(0 4px 12px var(--agent-color, rgba(0,240,255,0.4))); transition: all 0.3s;";
+    
+    if (key === "robot_neon" || key === "jarvis") {
+        return `
+        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
+            <!-- CHEVEUX & CASQUETTE CYBER -->
+            <path d="M9 8 C11 4, 21 4, 23 8 Z" fill="#00f0ff" />
+            <!-- TÊTE CHIBI (PEAU MÉLANGÉE CYBER) -->
+            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
+            <!-- YEUX & SOURIRE -->
+            <circle cx="14" cy="11" r="0.8" fill="#0b0f19" />
+            <circle cx="18" cy="11" r="0.8" fill="#0b0f19" />
+            <path d="M14.5 13.5 Q16 15 17.5 13.5" fill="none" stroke="#ff007f" stroke-width="0.8" stroke-linecap="round" />
+            <!-- LUNETTES HUD GLOWING -->
+            <rect x="11.5" y="10" width="9" height="1.8" fill="none" stroke="#00f0ff" stroke-width="0.8" rx="0.5" />
+            <!-- CORPS / MANTEAU DE CHEF -->
+            <rect x="9" y="18.5" width="14" height="11.5" fill="#0b0f19" stroke="#00f0ff" stroke-width="1.8" rx="1.5" />
+            <!-- MAINS -->
+            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
+            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
+            <!-- JAMBES (PANTALON BLEU) -->
+            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#1e3a8a" />
+            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#1e3a8a" />
+            <!-- CHAUSSURES -->
+            <rect x="11" y="35" width="4.7" height="1" fill="#00f0ff" />
+            <rect x="16.3" y="35" width="4.7" height="1" fill="#00f0ff" />
+            <!-- ACCESSOIRE FLOTTANT (TABLETTE DE SUPERVISION) -->
+            <rect x="25" y="21" width="5" height="7.5" fill="rgba(0,240,255,0.2)" stroke="#00f0ff" stroke-width="0.8" rx="0.5" />
+            <line x1="26" y1="23" x2="29" y2="23" stroke="#00f0ff" stroke-width="0.6" />
+            <line x1="26" y1="25" x2="28" y2="25" stroke="#00f0ff" stroke-width="0.6" />
+        </svg>
+        `;
+    } else if (key === "dev_purple" || key === "codeur" || key === "developer") {
+        return `
+        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
+            <!-- CAPUCHE CYBER SOMBRE -->
+            <path d="M7 14 Q16 2 25 14" fill="none" stroke="#a855f7" stroke-width="2.5" />
+            <!-- TÊTE CHIBI -->
+            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
+            <!-- VISIÈRE CYBER VERT FLUO -->
+            <rect x="11.5" y="10" width="9" height="2" fill="#022c22" stroke="#10b981" stroke-width="0.8" rx="0.5" />
+            <!-- SOURIRE -->
+            <path d="M14.5 14 Q16 15.2 17.5 14" fill="none" stroke="#ff007f" stroke-width="0.8" stroke-linecap="round" />
+            <!-- CORPS / HOODIE DE CODEUR -->
+            <rect x="9" y="18.5" width="14" height="11.5" fill="#1e1b4b" stroke="#a855f7" stroke-width="1.8" rx="1.5" />
+            <!-- MAINS -->
+            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
+            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
+            <!-- JAMBES (JEAN GRIS) -->
+            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#475569" />
+            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#475569" />
+            <!-- CHAUSSURES NÉON -->
+            <rect x="11" y="35" width="4.7" height="1" fill="#a855f7" />
+            <rect x="16.3" y="35" width="4.7" height="1" fill="#a855f7" />
+            <!-- CLAVIER FLOTTANT HOLOGRAPHIQUE -->
+            <line x1="9" y1="27" x2="23" y2="27" stroke="#10b981" stroke-width="1.5" stroke-dasharray="1.5,1.5" />
+        </svg>
+        `;
+    } else if (key === "writer_orange" || key === "redacteur" || key === "rédacteur" || key === "auteur") {
+        return `
+        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
+            <!-- BÉRET ROSE INCLINÉ (COMME L'IMAGE) -->
+            <path d="M8 8 C10 4, 22 4, 24 8 C24 8, 25 10.5, 21 10.5 C17 10.5, 11 10.5, 8 9 Z" fill="#ec4899" />
+            <rect x="15" y="4" width="2" height="2" fill="#ec4899" />
+            <!-- TÊTE CHIBI -->
+            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
+            <!-- YEUX & SOURIRE -->
+            <circle cx="14" cy="11.5" r="0.8" fill="#0b0f19" />
+            <circle cx="18" cy="11.5" r="0.8" fill="#0b0f19" />
+            <path d="M14.5 14 Q16 15.2 17.5 14" fill="none" stroke="#ec4899" stroke-width="0.8" stroke-linecap="round" />
+            <!-- CORPS / MANTEAU CRÉATIF BEIGE -->
+            <rect x="9" y="18.5" width="14" height="11.5" fill="#f5f5f4" stroke="#ec4899" stroke-width="1.8" rx="1.5" />
+            <!-- ÉCHARPE -->
+            <path d="M10.5 18.5 L21.5 18.5 L19 21.5 L13 21.5 Z" fill="#db2777" />
+            <!-- MAINS -->
+            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
+            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
+            <!-- JAMBES (PANTALON COMPATIBLE IMAGE) -->
+            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#4c1d95" />
+            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#4c1d95" />
+            <!-- CHAUSSURES -->
+            <rect x="11" y="35" width="4.7" height="1" fill="#1e1b4b" />
+            <rect x="16.3" y="35" width="4.7" height="1" fill="#1e1b4b" />
+            <!-- PETIT CHEVALET DE PEINTURE / ÉCRITURE À GAUCHE -->
+            <line x1="26" y1="20" x2="28" y2="34" stroke="#78350f" stroke-width="1" />
+            <line x1="30" y1="20" x2="31" y2="34" stroke="#78350f" stroke-width="1" />
+            <rect x="25" y="22" width="6" height="5" fill="#f8fafc" stroke="#ec4899" stroke-width="0.8" />
+            <circle cx="28" cy="24.5" r="1" fill="#ec4899" />
+        </svg>
+        `;
+    } else if (key === "translator" || key === "traducteur" || key === "linguiste" || key === "sofia") {
+        return `
+        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
+            <!-- CHEVEUX BLEUS ANIME -->
+            <path d="M8 12 Q16 4 24 12" fill="none" stroke="#3b82f6" stroke-width="2.5" />
+            <!-- CASQUE AUDIO BLEU CYBER -->
+            <rect x="8.5" y="10" width="2" height="5.5" fill="#3b82f6" rx="1" />
+            <rect x="21.5" y="10" width="2" height="5.5" fill="#3b82f6" rx="1" />
+            <!-- TÊTE CHIBI -->
+            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
+            <!-- YEUX & SOURIRE -->
+            <circle cx="14" cy="11.5" r="0.8" fill="#1e293b" />
+            <circle cx="18" cy="11.5" r="0.8" fill="#1e293b" />
+            <path d="M14.5 14 Q16 15.2 17.5 14" fill="none" stroke="#3b82f6" stroke-width="0.8" stroke-linecap="round" />
+            <!-- CORPS / VESTE BLEU AZUR -->
+            <rect x="9" y="18.5" width="14" height="11.5" fill="#f1f5f9" stroke="#3b82f6" stroke-width="1.8" rx="1.5" />
+            <!-- MAINS -->
+            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
+            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
+            <!-- JAMBES (PANTALON FONCÉ) -->
+            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#1e293b" />
+            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#1e293b" />
+            <!-- CHAUSSURES -->
+            <rect x="11" y="35" width="4.7" height="1" fill="#3b82f6" />
+            <rect x="16.3" y="35" width="4.7" height="1" fill="#3b82f6" />
+            <!-- GLOBE HOLOGRAPHIQUE TERRESTRE -->
+            <circle cx="28" cy="24" r="3.5" fill="none" stroke="#3b82f6" stroke-width="0.8" />
+            <circle cx="28" cy="24" r="1.5" fill="#3b82f6" opacity="0.6" />
+        </svg>
+        `;
+    } else if (key === "correcteur" || key === "critique" || key === "critic" || key === "manager_gold") {
+        return `
+        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
+            <!-- COURONNE D'ÉDITEUR DORÉE -->
+            <polygon points="10,8 13,3 16,6 19,3 22,8" fill="#eab308" stroke="#fbbf24" stroke-width="0.5" />
+            <!-- TÊTE CHIBI -->
+            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
+            <!-- LUNETTES DE LECTURE CHIC -->
+            <rect x="11.5" y="10" width="9" height="1.8" fill="none" stroke="#eab308" stroke-width="0.8" rx="0.5" />
+            <!-- SOURIRE -->
+            <path d="M14.5 14 Q16 15.2 17.5 14" fill="none" stroke="#eab308" stroke-width="0.8" stroke-linecap="round" />
+            <!-- CORPS / COSTUME SMOKING TWEED -->
+            <rect x="9" y="18.5" width="14" height="11.5" fill="#334155" stroke="#eab308" stroke-width="1.8" rx="1.5" />
+            <!-- COL BLANC & CRAVATE -->
+            <path d="M13.5 18.5 L18.5 18.5 L16 21 Z" fill="#ffffff" />
+            <path d="M15.5 19.5 L16.5 19.5 L16 23 Z" fill="#eab308" />
+            <!-- MAINS -->
+            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
+            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
+            <!-- JAMBES (PANTALON VERT CHIC) -->
+            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#064e3b" />
+            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#064e3b" />
+            <!-- CHAUSSURES -->
+            <rect x="11" y="35" width="4.7" height="1" fill="#eab308" />
+            <rect x="16.3" y="35" width="4.7" height="1" fill="#eab308" />
+            <!-- LOUPE D'ÉDITION HOLOGRAPHIQUE -->
+            <circle cx="28" cy="22" r="3" fill="none" stroke="#eab308" stroke-width="1.0" />
+            <line x1="30" y1="24" x2="33" y2="28" stroke="#eab308" stroke-width="1.5" />
+        </svg>
+        `;
+    } else if (key === "communitymanager" || key === "influenceur" || key === "artist_pink" || key === "artiste") {
+        return `
+        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
+            <!-- CASQUE DJ ROSE CRÉATEUR -->
+            <rect x="8.5" y="10" width="2" height="5.5" fill="#ff007f" rx="1" />
+            <rect x="21.5" y="10" width="2" height="5.5" fill="#ff007f" rx="1" />
+            <path d="M8 11 Q16 4 24 11" fill="none" stroke="#ff007f" stroke-width="2.5" />
+            <!-- TÊTE CHIBI -->
+            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
+            <!-- YEUX & SOURIRE -->
+            <circle cx="14" cy="11.5" r="0.8" fill="#1e1b4b" />
+            <circle cx="18" cy="11.5" r="0.8" fill="#1e1b4b" />
+            <path d="M14.5 14 Q16 15.2 17.5 14" fill="none" stroke="#ff007f" stroke-width="0.8" stroke-linecap="round" />
+            <!-- CORPS / HOODIE BRANCHÉ NOIR/ROSE -->
+            <rect x="9" y="18.5" width="14" height="11.5" fill="#111827" stroke="#ff007f" stroke-width="1.8" rx="1.5" />
+            <!-- LOGO COEUR POITRINE -->
+            <circle cx="16" cy="23" r="1.5" fill="#ff007f" />
+            <!-- MAINS -->
+            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
+            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
+            <!-- JAMBES (JEAN SLIM MAGENTA) -->
+            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#db2777" />
+            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#db2777" />
+            <!-- CHAUSSURES -->
+            <rect x="11" y="35" width="4.7" height="1" fill="#ff007f" />
+            <rect x="16.3" y="35" width="4.7" height="1" fill="#ff007f" />
+            <!-- COEURS ET LIKES EN LÉVITATION -->
+            <circle cx="28" cy="12" r="2" fill="#ff007f" />
+            <polygon points="26,13.5 28,13.5 28,12" fill="#ff007f" />
+        </svg>
+        `;
+    }
+    
+    // Fallback par défaut de haute qualité (Android métallique)
+    return `
+    <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
+        <ellipse cx="16" cy="33" rx="8" ry="2" fill="none" stroke="#e2e8f0" stroke-width="0.8" stroke-dasharray="2,2" />
+        <rect x="9" y="9" width="14" height="12" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="3" />
+        <circle cx="13" cy="14" r="1.5" fill="#38bdf8" />
+        <circle cx="19" cy="14" r="1.5" fill="#38bdf8" />
+        <rect x="6" y="20" width="20" height="12" fill="#475569" stroke="#64748b" stroke-width="2" rx="4" />
+        <line x1="11" y1="26" x2="21" y2="26" stroke="#e2e8f0" stroke-width="1" />
+    </svg>
+    `;
+}
+
+// SIMULATION DE VIE ET DE MOUVEMENT DE L'ESSAIM
+let officeWanderingInterval = null;
+const agentBreakStates = {}; // Suivi de l'état de break des agents
+
+function getAgentWorkingStatus(agentName) {
+    switch(agentName) {
+        case "Jarvis": return "Supervise l'essaim... 🤖";
+        case "Codeur": return "Optimise le code source... 💻";
+        case "Auteur": return "Écrit le prochain best-seller... ✍️";
+        case "Correcteur": return "Chasse les fautes de frappe... 🔍";
+        case "Traducteur": return "Localise les écrits... 🌐";
+        case "CommunityManager": return "Prépare les campagnes... 🚀";
+        default: return "En veille active... ⚡";
+    }
+}
+
+function startOfficeWandering() {
+    if (officeWanderingInterval) clearInterval(officeWanderingInterval);
+    
+    officeWanderingInterval = setInterval(() => {
+        // Ne choisir qu'un agent inactif au hasard pour simuler une action
+        const idleAgents = agentsConfig.filter(a => a.name !== currentActiveAgent);
+        if (idleAgents.length === 0) return;
+        
+        const agent = idleAgents[Math.floor(Math.random() * idleAgents.length)];
+        const deskEl = document.getElementById(`desk-${agent.name}`);
+        if (!deskEl) return;
+        
+        const bubble = document.getElementById(`bubble-${agent.name}`);
+        const isOnBreak = agentBreakStates[agent.name] || false;
+        
+        deskEl.classList.add("walking");
+        
+        if (isOnBreak) {
+            // L'agent termine sa pause et retourne à son bureau
+            const index = agentsConfig.findIndex(a => a.name === agent.name);
+            const defaultPos = getAgentPosition(agent.name, index);
+            
+            if (bubble) bubble.textContent = "Retourne à son poste... 🚶";
+            deskEl.style.top = defaultPos.top;
+            deskEl.style.left = defaultPos.left;
+            
+            agentBreakStates[agent.name] = false;
+            
+            setTimeout(() => {
+                deskEl.classList.remove("walking");
+                if (bubble) {
+                    bubble.textContent = getAgentWorkingStatus(agent.name);
+                }
+            }, 4000);
+        } else {
+            // L'agent décide de faire une pause dans un lieu de détente
+            const destinations = [
+                { name: "Prend un café... ☕", top: "42%", left: "16%" },
+                { name: "Joue au ping-pong ! 🏓", top: "84%", left: "48%" },
+                { name: "Se détend dans le lounge 🛋️", top: "32%", left: "22%" },
+                { name: "Réfléchit dans la salle de réunion 🧠", top: "16%", left: "48%" }
+            ];
+            
+            const dest = destinations[Math.floor(Math.random() * destinations.length)];
+            if (bubble) bubble.textContent = `S'absente : ${dest.name.toLowerCase()} 🚶`;
+            
+            deskEl.style.top = dest.top;
+            deskEl.style.left = dest.left;
+            
+            agentBreakStates[agent.name] = true;
+            
+            setTimeout(() => {
+                deskEl.classList.remove("walking");
+                if (bubble) bubble.textContent = dest.name;
+            }, 4000);
+        }
+        
+    }, 15000); // Exécuté toutes les 15 secondes
+}
+
+// Variables globales de caméra RTS pour le Bureau Virtuel
+let officeZoomScale = 1.0;
+let officeRotationDeg = 0;
+
+function applyOfficeCameraTransform() {
+    const floor = document.getElementById("office-floor");
+    if (!floor) return;
+    floor.style.transform = `scale(${officeZoomScale}) rotate(${officeRotationDeg}deg)`;
+    
+    // Effet "billboard" : tourner les personnages dans le sens opposé pour qu'ils restent droits
+    document.querySelectorAll(".agent-desk-iso").forEach(d => {
+        d.style.transform = `translate(-50%, -50%) rotate(${-officeRotationDeg}deg)`;
+    });
+}
+
+function rebuildOfficeFloor() {
+    const floor = document.getElementById("office-floor");
+    if (!floor) return;
+    floor.innerHTML = "";
+    
+    // Configurer le style de base du conteneur floor pour afficher l'image isométrique
+    floor.style.backgroundImage = "url('office_background.png?v=' + new Date().getTime())";
+    floor.style.backgroundSize = "cover";
+    floor.style.backgroundPosition = "center";
+    
+    agentsConfig.forEach((agent, index) => {
+        const pos = getAgentPosition(agent.name, index);
+        
+        const desk = document.createElement("div");
+        desk.className = "agent-desk-iso";
+        if (agent.name === currentActiveAgent) desk.classList.add("active");
+        desk.id = `desk-${agent.name}`;
+        desk.style.setProperty("--agent-color", getAgentColor(agent.name));
+        desk.style.position = "absolute";
+        desk.style.top = pos.top;
+        desk.style.left = pos.left;
+        
+        desk.innerHTML = `
+            <div class="iso-avatar-wrapper" style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+                <!-- Bulle de statut -->
+                <div class="desk-bubble-iso" id="bubble-${agent.name}" style="position: absolute; bottom: 100%; margin-bottom: 8px; background: rgba(10,15,30,0.9); border: 1px solid var(--agent-color, rgba(255,255,255,0.2)); color: #fff; font-size: 0.65rem; padding: 4px 8px; border-radius: 8px; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.4); pointer-events: none; z-index: 10; transition: all 0.3s;">${agent.name === currentActiveAgent ? 'En plein travail... 💻⚡' : getAgentWorkingStatus(agent.name)}</div>
+                
+                <!-- Sprite Humain Libre (Debout directement sur le sol !) -->
+                <div class="iso-sprite-container" style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 105px; width: 100px; transition: all 0.3s;">
+                    ${getAgentSpriteSVG(agent.avatar_type || agent.name)}
+                    
+                    <!-- Ombre ovale floue sous ses pieds -->
+                    <div class="sprite-shadow" style="width: 48px; height: 10px; background: rgba(0,0,0,0.45); border-radius: 50%; margin-top: -6px; filter: blur(2px); z-index: -1;"></div>
+                    
+                    <!-- Anneau de sélection RTS au sol (dashed, ne brille que si actif) -->
+                    <div class="rts-selection-ring" style="position: absolute; bottom: -6px; width: 65px; height: 24px; border-radius: 50%; border: 2px dashed var(--agent-color, #00f0ff); box-shadow: 0 0 10px var(--agent-color, #00f0ff); opacity: ${agent.name === currentActiveAgent ? '1' : '0'}; transform: scale(1); transition: all 0.3s; z-index: -2;"></div>
+                    
+                    <!-- Indicateur de café au-dessus du personnage -->
+                    ${agent.name === currentActiveAgent ? '<span class="iso-coffee-indicator" style="position: absolute; top: 0; right: 0; font-size: 0.8rem; background: rgba(0,0,0,0.65); border-radius: 50%; padding: 2px; z-index: 10;">☕</span>' : ''}
+                </div>
+                
+                <!-- Badge de Nom -->
+                <div class="iso-name-badge" style="margin-top: 4px; background: rgba(0,0,0,0.85); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 2px 6px; font-size: 0.65rem; font-weight: bold; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); display: flex; flex-direction: column; align-items: center; gap: 1px; pointer-events: none;">
+                    <span>${agent.display_name || agent.name}</span>
+                    <span style="font-size: 0.5rem; color: rgba(255,255,255,0.5);">${(agent.display_name && agent.display_name !== agent.name) ? agent.name + ' • ' : ''}${agent.model}</span>
+                </div>
+            </div>
+        `;
+        
+        desk.addEventListener("click", () => {
+            setActiveAgentVisual(agent.name);
+            logToTerminal(`Focus sur l'agent : ${agent.name}`, "system");
+        });
+        
+        floor.appendChild(desk);
+    });
+    
+    // Appliquer la transformation de caméra actuelle (Zoom / Rotation)
+    applyOfficeCameraTransform();
+    
+    // Démarrer la boucle de déplacement
+    startOfficeWandering();
+}
+
+// =========================================================================
+// LOGIQUE DE COMMUNICATON CHAT & ESSAIM
+// =========================================================================
+function logToTerminal(text, type = "system", isHtml = false) {
+    const line = document.createElement("div");
+    line.className = `log-line ${type}`;
+    
+    // Si c'est du stdout, stderr ou raw, on n'affiche pas l'horodatage pour faire vrai terminal
+    const prefix = (type === "stdout" || type === "stderr" || type === "raw") ? "" : `[${new Date().toLocaleTimeString()}] `;
+    
+    if (isHtml) {
+        line.innerHTML = `${prefix}${text}`;
+    } else {
+        line.textContent = `${prefix}${text}`;
+    }
+    
+    logsTerminal.appendChild(line);
+    logsTerminal.scrollTop = logsTerminal.scrollHeight;
+}
+
+function logToOrchestrator(text, type = "system", isHtml = false) {
+    if (!logsOrchestrator) return;
+    const line = document.createElement("div");
+    line.className = `log-line ${type}`;
+    const prefix = `[${new Date().toLocaleTimeString()}] `;
+    if (isHtml) {
+        line.innerHTML = `${prefix}${text}`;
+    } else {
+        line.textContent = `${prefix}${text}`;
+    }
+    logsOrchestrator.appendChild(line);
+    logsOrchestrator.scrollTop = logsOrchestrator.scrollHeight;
+}
+
+function setActiveAgentVisual(agentName) {
+    currentActiveAgent = agentName;
+    
+    // Graphe
+    document.querySelectorAll(".agent-node").forEach(n => n.classList.remove("active"));
+    const node = document.getElementById(`node-${agentName}`);
+    if (node) node.classList.add("active");
+    
+    // Open Space Rendu Isométrique
+    document.querySelectorAll(".agent-desk-iso").forEach(d => {
+        d.classList.remove("active");
+        
+        // Masquer l'anneau RTS au sol et l'icône café
+        const ring = d.querySelector(".rts-selection-ring");
+        if (ring) ring.style.opacity = "0";
+        
+        const coffee = d.querySelector(".iso-coffee-indicator");
+        if (coffee) coffee.remove();
+        
+        const name = d.id.replace("desk-", "");
+        if (name !== agentName) {
+            const bubble = document.getElementById(`bubble-${name}`);
+            if (bubble) bubble.textContent = "Prend une pause... ☕";
+        }
+    });
+    
+    const desk = document.getElementById(`desk-${agentName}`);
+    if (desk) {
+        desk.classList.add("active");
+        
+        // Activer le cercle au sol
+        const ring = desk.querySelector(".rts-selection-ring");
+        if (ring) ring.style.opacity = "1";
+        
+        // Ajouter l'icône café active
+        const spriteContainer = desk.querySelector(".iso-sprite-container");
+        if (spriteContainer && !desk.querySelector(".iso-coffee-indicator")) {
+            const coffeeSpan = document.createElement("span");
+            coffeeSpan.className = "iso-coffee-indicator";
+            coffeeSpan.style.cssText = "position: absolute; top: 0; right: 0; font-size: 0.8rem; background: rgba(0,0,0,0.65); border-radius: 50%; padding: 2px; z-index: 10;";
+            coffeeSpan.innerText = "☕";
+            spriteContainer.appendChild(coffeeSpan);
+        }
+        
+        // Le forcer à revenir immédiatement à son poste de travail attitré si il se baladait !
+        const index = agentsConfig.findIndex(a => a.name === agentName);
+        const defaultPos = getAgentPosition(agentName, index);
+        
+        desk.classList.add("walking");
+        desk.style.top = defaultPos.top;
+        desk.style.left = defaultPos.left;
+        
+        const bubble = document.getElementById(`bubble-${agentName}`);
+        if (bubble) bubble.textContent = "Se concentre... 🧠";
+        
+        setTimeout(() => {
+            desk.classList.remove("walking");
+            if (bubble) bubble.textContent = "Au travail ! 💻";
+        }, 4000);
+    }
+    
+    // Bannière centrale & Fiche Active Agent
+    const agentObj = agentsConfig.find(a => a.name === agentName);
+    const dispName = agentObj && agentObj.display_name ? agentObj.display_name : agentName;
+    const color = getAgentColor(agentName);
+    
+    // Mettre à jour l'avatar, le titre et le statut de la conversation active (panneau de droite)
+    const activeChatAvatar = document.getElementById("active-chat-avatar");
+    if (activeChatAvatar && typeof getAgentSpriteSVG === "function") {
+        activeChatAvatar.innerHTML = getAgentSpriteSVG(agentObj ? (agentObj.avatar_type || agentObj.name) : agentName);
+        const svg = activeChatAvatar.querySelector("svg");
+        if (svg) {
+            svg.style.width = "30px";
+            svg.style.height = "30px";
+        }
+    }
+    
+    const ring = document.querySelector(".avatar-glow-ring");
+    if (ring) {
+        ring.style.borderColor = color;
+        ring.style.boxShadow = `0 0 12px ${color}`;
+    }
+    
+    const statusMap = {
+        "Jarvis": "superviser • actif",
+        "Codeur": "écrit le code • streaming",
+        "Auteur": "compose un post • actif",
+        "Chef": "coordonne l'équipe • actif",
+        "Correcteur": "analyse le code • actif",
+        "Traducteur": "traduit le texte • actif"
+    };
+    
+    const activeChatStatus = document.getElementById("active-chat-status");
+    if (activeChatStatus) {
+        activeChatStatus.innerText = statusMap[agentName] || "expert • actif";
+    }
+    
+    if (activeAgentTitle) {
+        activeAgentTitle.textContent = dispName;
+    }
+    if (pulseIndicator) {
+        pulseIndicator.style.backgroundColor = color;
+        pulseIndicator.style.boxShadow = `0 0 12px ${color}`;
+    }
+    
+    // Mettre à jour les statistiques de quotas et d'occupation en temps réel dans le header
+    const occupiedCount = 1;
+    const pausedCount = Math.max(0, agentsConfig.length - occupiedCount);
+    
+    const topOccupied = document.getElementById("top-occupied-count");
+    const topPaused = document.getElementById("top-paused-count");
+    if (topOccupied) topOccupied.innerText = occupiedCount;
+    if (topPaused) topPaused.innerText = pausedCount;
+    
+    const topAgentCount = document.getElementById("top-agent-count");
+    if (topAgentCount) topAgentCount.innerText = agentsConfig.length;
+    
+    const topAgentLimit = document.getElementById("top-agent-limit");
+    if (topAgentLimit) topAgentLimit.innerText = `${agentsConfig.length}/8`;
+}
+
+// Faire voler une enveloppe de courrier physique d'un bureau à un autre
+function animateHandoffMail(fromAgent, toAgent) {
+    const fromDesk = document.getElementById(`desk-${fromAgent}`);
+    const toDesk = document.getElementById(`desk-${toAgent}`);
+    
+    if (!fromDesk || !toDesk || viewOffice.style.display === "none") return;
+    
+    // Obtenir les coordonnées physiques absolues
+    const fromRect = fromDesk.getBoundingClientRect();
+    const toRect = toDesk.getBoundingClientRect();
+    
+    const mail = document.createElement("div");
+    mail.className = "flying-mail";
+    mail.innerHTML = "📨";
+    mail.style.left = `${fromRect.left + fromRect.width/2}px`;
+    mail.style.top = `${fromRect.top + fromRect.height/2}px`;
+    
+    document.body.appendChild(mail);
+    
+    // Petit timer pour lancer la transition CSS sémantiquement
+    setTimeout(() => {
+        mail.style.transform = `translate(${toRect.left - fromRect.left}px, ${toRect.top - fromRect.top}px) scale(1.5)`;
+        setTimeout(() => {
+            mail.style.opacity = "0";
+            setTimeout(() => mail.remove(), 500);
+        }, 1000);
+    }, 50);
+}
+
+// Jouer pas à pas la séquence d'événements de l'essaim
+async function playAgentSteps(steps) {
+    return new Promise(resolve => {
+        let delay = 0;
+        
+        document.querySelectorAll(".link-line").forEach(l => l.classList.remove("active-flow"));
+        
+        steps.forEach((step, idx) => {
+            setTimeout(() => {
+                if (step.type === "activation") {
+                    setActiveAgentVisual(step.agent);
+                    logToOrchestrator(`${step.agent} prend la main.`, "system");
+                }
+                
+                else if (step.type === "tool_call") {
+                    logToOrchestrator(`${step.agent} exécute '${step.tool}'...`, "tool");
+                    
+                    // Statut dans sa bulle open space
+                    const bubble = document.getElementById(`bubble-${step.agent}`);
+                    if (bubble) bubble.textContent = `Utilise l'outil : ${step.tool}... ⚙️`;
+                    
+                    // Support spécialisé pour la consultation d'agent en arrière-plan (query_agent)
+                    if (step.tool === "query_agent" && step.args && step.args.agent_name) {
+                        const targetAgent = step.args.agent_name;
+                        // Activer le spécialiste visuellement pour montrer qu'il travaille
+                        setActiveAgentVisual(targetAgent);
+                        
+                        // Modifier la bulle du spécialiste pour dire qu'il travaille sur sa tâche
+                        const targetBubble = document.getElementById(`bubble-${targetAgent}`);
+                        if (targetBubble) {
+                            targetBubble.textContent = "Reçoit la demande et se met au travail... ⚙️💻";
+                        }
+                        logToOrchestrator(`[Coopération] ${targetAgent} commence à travailler en arrière-plan... 🛠️`, "system");
+                    }
+                    
+                    // Allumer la ligne du graphe s'il s'agit d'un transfert
+                    if (step.tool.startsWith("transfer_to_")) {
+                        const target = step.tool.replace("transfer_to_", "");
+                        const link = document.getElementById(`link-${step.agent}-${target}`) || 
+                                     document.getElementById(`link-${target}-${step.agent}`);
+                        if (link) {
+                            link.style.setProperty("--active-color", getAgentColor(step.agent));
+                            link.classList.add("active-flow");
+                        }
+                    }
+                }
+                
+                else if (step.type === "tool_output") {
+                    logToOrchestrator(`${step.output.substring(0, 120)}`, "success");
+                    
+                    // Support spécialisé pour la fin de consultation d'agent en arrière-plan
+                    const prevStep = steps.slice(0, idx).reverse().find(s => s.type === "tool_call");
+                    if (prevStep && prevStep.tool === "query_agent" && prevStep.args && prevStep.args.agent_name) {
+                        const targetAgent = prevStep.args.agent_name;
+                        const targetBubble = document.getElementById(`bubble-${targetAgent}`);
+                        if (targetBubble) {
+                            targetBubble.textContent = "A terminé son travail et renvoie ses résultats ! ✅";
+                        }
+                        logToOrchestrator(`[Coopération] ${targetAgent} a renvoyé ses résultats avec succès !`, "success");
+                    }
+                    
+                    const bubble = document.getElementById(`bubble-${step.agent}`);
+                    if (bubble) bubble.textContent = "Interprète le résultat... 📊";
+                }
+                
+                else if (step.type === "handoff") {
+                    logToOrchestrator(`Passage de relais : ${step.from} ➔ ${step.to}`, "transition");
+                    if (typeof pushNotification === "function") {
+                        pushNotification("Relais", `${step.from} ➔ ${step.to}`, "warning");
+                    }
+                    
+                    // Bulle open space
+                    const bubble = document.getElementById(`bubble-${step.from}`);
+                    if (bubble) bubble.textContent = `Envoie ses dossiers à ${step.to}... 📨`;
+                    
+                    // Lancer l'enveloppe volante dans le bureau
+                    animateHandoffMail(step.from, step.to);
+                    
+                    // Ajouter le log de coordination rose fluo au milieu du chat
+                    const handoffMsg = document.createElement("div");
+                    handoffMsg.className = "swarm-coordination-log animate-fade-in";
+                    handoffMsg.innerText = `${step.from.toUpperCase()} ➔ ${step.to.toUpperCase()} • DELEGATION`;
+                    chatMessages.appendChild(handoffMsg);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    
+                    // Éteindre le flux après un moment
+                    setTimeout(() => {
+                        const link = document.getElementById(`link-${step.from}-${step.to}`) ||
+                                     document.getElementById(`link-${step.to}-${step.from}`);
+                        if (link) link.classList.remove("active-flow");
+                    }, 1000);
+                }
+                
+                else if (step.type === "terminal_output_direct") {
+                    const lines = step.output.split("\n");
+                    const streamType = step.stream === "stderr" ? "stderr" : "stdout";
+                    lines.forEach(l => {
+                        logToTerminal(l, streamType);
+                    });
+                }
+                
+                else if (step.type === "message" || step.type === "terminal_message") {
+                    if (step.type === "terminal_message") {
+                        // Afficher le message directement dans la console interactive avec rendu Markdown HTML
+                        let htmlContent = step.content;
+                        if (window.marked && typeof window.marked.parse === "function") {
+                            htmlContent = window.marked.parse(step.content);
+                        }
+                        logToTerminal(htmlContent, "success", true);
+                    } else {
+                        appendAgentMessage(step.agent, step.content);
+                    }
+                    const bubble = document.getElementById(`bubble-${step.agent}`);
+                    if (bubble) bubble.textContent = "Explique sa réponse à l'utilisateur. 💬";
+                    if (isVoiceTtsEnabled) {
+                        speakText(step.content, step.agent);
+                    }
+                }
+                
+                if (idx === steps.length - 1) {
+                    setTimeout(resolve, 300);
+                }
+            }, delay);
+            
+            // Timing dégressif pour l'animation séquentielle cinéma
+            if (step.type === "handoff") delay += 800;
+            else if (step.type === "activation") delay += 300;
+            else if (step.type === "tool_call") delay += 500;
+            else if (step.type === "tool_output") delay += 200;
+            else if (step.type === "message" || step.type === "terminal_message" || step.type === "terminal_output_direct") delay += 150;
+        });
+        
+        if (steps.length === 0) resolve();
+    });
+}
+
+function appendAgentMessage(agentName, content, id = null) {
+    if (!content) return;
+    
+    const msg = document.createElement("div");
+    msg.className = `message agent-msg agent-${agentName} animate-fade-in`;
+    if (id) msg.setAttribute("data-msg-id", id);
+    
+    let formattedContent = content;
+    
+    // 1. Détection et formatage des images Markdown ![alt](url)
+    formattedContent = formattedContent.replace(/!\[(.*?)\]\((.*?)\)/g, (match, alt, url) => {
+        return `
+        <div class="chat-generated-image-card animate-zoom-in" style="display: block; margin-top: 10px;" onclick="openLightbox('${url}', '${alt}')">
+            <img src="${url}" alt="${alt}" class="chat-zoomable-image" />
+            <div class="chat-image-overlay">
+                <span>🖼️ ${alt}</span>
+                <span>🔍 Cliquer pour agrandir</span>
+            </div>
+        </div>
+        `;
+    });
+    
+    if (content && content.includes("```")) {
+        formattedContent = formattedContent.replace(/```python([\s\S]*?)```/g, "<pre><code>$1</code></pre>");
+        formattedContent = formattedContent.replace(/```([\s\S]*?)```/g, "<pre><code>$1</code></pre>");
+    }
+    
+    // 2. Détection automatique des fichiers d'images générées bruts (image_generee_xxxx.png)
+    const imgRegex = /image_generee_\d+\.png/gi;
+    const foundImages = [...new Set(content.match(imgRegex) || [])];
+    
+    let imagesHtml = "";
+    if (foundImages.length > 0) {
+        foundImages.forEach(filename => {
+            // Éviter le doublon si déjà rendu par le parser markdown
+            if (!formattedContent.includes("chat-generated-image-card") || !formattedContent.includes(filename)) {
+                imagesHtml += `
+                <div class="chat-generated-image-card animate-zoom-in" style="display: block; margin-top: 10px;" onclick="openLightbox('/api/workspace/download?path=${filename}', '${filename}')">
+                    <img src="/api/workspace/download?path=${filename}" alt="${filename}" class="chat-zoomable-image" />
+                    <div class="chat-image-overlay">
+                        <span>🖼️ ${filename}</span>
+                        <span>🔍 Cliquer pour agrandir</span>
+                    </div>
+                </div>`;
+            }
+        });
+    }
+    
+    formattedContent = formattedContent.replace(/\n/g, "<br>");
+    
+    let actionsHtml = "";
+    if (id) {
+        actionsHtml = `
+        <div class="message-actions">
+            <button class="btn-fork-here" onclick="forkConversation('${id}')">🌿 Brancher d'ici</button>
+        </div>`;
+    }
+    
+    msg.innerHTML = `
+        <div class="message-meta">
+            <span class="agent-tag" style="color: ${getAgentColor(agentName)}">${agentName}</span>
+        </div>
+        <div class="message-content">${formattedContent}${imagesHtml}</div>
+        ${actionsHtml}
+    `;
+    chatMessages.appendChild(msg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function appendUserMessage(content, id = null) {
+    const msg = document.createElement("div");
+    msg.className = "message user-msg animate-fade-in";
+    if (id) msg.setAttribute("data-msg-id", id);
+    
+    let actionsHtml = "";
+    if (id) {
+        actionsHtml = `
+        <div class="message-actions">
+            <button class="btn-fork-here" onclick="forkConversation('${id}')">🌿 Brancher d'ici</button>
+        </div>`;
+    }
+    
+    msg.innerHTML = `
+        <div class="message-meta" style="color: var(--color-user)">Vous</div>
+        <div class="message-content">${content.replace(/\n/g, "<br>")}</div>
+        ${actionsHtml}
+    `;
+    chatMessages.appendChild(msg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+let currentChatTree = { messages: [], active_node_id: null };
+
+async function reloadChatHistory(redrawChat = true) {
+    try {
+        const response = await apiFetch("/api/chat/tree");
+        if (!response.ok) return;
+        currentChatTree = await response.json();
+        
+        // Mettre à jour l'affichage de l'agent actif
+        if (currentChatTree.active_agent) {
+            setActiveAgentVisual(currentChatTree.active_agent);
+        }
+        
+        const messages = currentChatTree.messages;
+        const activeNodeId = currentChatTree.active_node_id;
+        
+        const nodeMap = {};
+        messages.forEach(m => { nodeMap[m.id] = m; });
+        
+        const activeChain = [];
+        let currId = activeNodeId;
+        while (currId) {
+            const node = nodeMap[currId];
+            if (!node) break;
+            activeChain.unshift(node);
+            currId = node.parent_id;
+        }
+        
+        if (redrawChat) {
+            chatMessages.innerHTML = "";
+            
+            if (activeChain.length === 0) {
+                const jarvisAgent = agentsConfig.find(a => a.name === "Jarvis");
+                const intro = (jarvisAgent && jarvisAgent.welcome_message) 
+                    ? jarvisAgent.welcome_message 
+                    : "Bonjour, je suis Jarvis. Comment puis-je vous aider aujourd'hui ?";
+                chatMessages.innerHTML = `
+                    <div class="message system-msg glass animate-fade-in">
+                        <div class="message-content">
+                            <strong>Système :</strong> ${intro}
+                        </div>
+                    </div>
+                `;
+            } else {
+                activeChain.forEach(msg => {
+                    if (msg.role === "user") {
+                        if (msg.content && msg.content.startsWith("[Relais système")) {
+                            // Extraire le nom de l'agent si possible
+                            // Format: [Relais système : La demande a été transférée à l'agent Jarvis (Jarvis). Veuillez répondre à l'utilisateur.]
+                            const match = msg.content.match(/transférée à l'agent (.*?)(?:\s|$|\.|\()/);
+                            let label = "PASSAGE DE RELAIS";
+                            if (match && match[1]) {
+                                label = `RELAIS VERS ${match[1].toUpperCase()}`;
+                            }
+                            const handoffMsg = document.createElement("div");
+                            handoffMsg.className = "swarm-coordination-log animate-fade-in";
+                            handoffMsg.innerText = label;
+                            if (msg.id) handoffMsg.setAttribute("data-msg-id", msg.id);
+                            chatMessages.appendChild(handoffMsg);
+                        } else {
+                            appendUserMessage(msg.content, msg.id);
+                        }
+                    } else if (msg.role === "assistant") {
+                        const agentName = msg.name || "Jarvis";
+                        appendAgentMessage(agentName, msg.content, msg.id);
+                    }
+                });
+            }
+        }
+        
+        rebuildBranchesTreeView();
+        
+    } catch (err) {
+        console.error("Erreur de chargement de l'historique:", err);
+    }
+}
+
+async function forkConversation(messageId) {
+    if (!confirm("Voulez-vous repositionner la conversation sur ce message et forker à partir d'ici ?")) return;
+    
+    try {
+        const response = await apiFetch("/api/chat/fork", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message_id: messageId })
+        });
+        
+        if (response.ok) {
+            logToTerminal("Branchement réussi ! Fil de discussion repositionné.", "system");
+            await reloadChatHistory(true);
+        } else {
+            const data = await response.json();
+            alert("Erreur de branchement: " + data.detail);
+        }
+    } catch (err) {
+        logToTerminal("Erreur de connexion lors du forking: " + err, "error");
+    }
+}
+
+function rebuildBranchesTreeView() {
+    const container = document.getElementById("branches-tree-container");
+    if (!container) return;
+    container.innerHTML = "";
+    
+    const messages = currentChatTree.messages;
+    const activeNodeId = currentChatTree.active_node_id;
+    
+    if (messages.length === 0) {
+        container.innerHTML = `<div style="text-align: center; opacity: 0.5; padding: 20px;">Aucun historique de branche pour le moment. Répondez au moins une fois !</div>`;
+        return;
+    }
+    
+    const childrenMap = {};
+    const rootNodes = [];
+    
+    messages.forEach(msg => {
+        const pId = msg.parent_id;
+        if (!pId) {
+            rootNodes.push(msg);
+        } else {
+            if (!childrenMap[pId]) {
+                childrenMap[pId] = [];
+            }
+            childrenMap[pId].push(msg);
+        }
+    });
+    
+    function buildNodeHtml(msg) {
+        const nodeDiv = document.createElement("div");
+        nodeDiv.className = "tree-node";
+        
+        const isUser = msg.role === "user";
+        const roleLabel = isUser ? "Vous" : (msg.name || "Jarvis");
+        const roleClass = isUser ? "tree-role-user" : "tree-role-agent";
+        const isActive = msg.id === activeNodeId;
+        const activeClass = isActive ? "active" : "";
+        
+        const textPreview = msg.content ? msg.content.substring(0, 30) + (msg.content.length > 30 ? "..." : "") : "(vide)";
+        
+        nodeDiv.innerHTML = `
+            <div class="tree-node-content ${activeClass}" onclick="selectTreeNode('${msg.id}')">
+                <span class="tree-role-tag ${roleClass}">${roleLabel}</span>
+                <span class="tree-text-preview" title="${msg.content || ''}">${textPreview}</span>
+            </div>
+        `;
+        
+        const children = childrenMap[msg.id] || [];
+        if (children.length > 0) {
+            children.forEach(child => {
+                nodeDiv.appendChild(buildNodeHtml(child));
+            });
+        }
+        
+        return nodeDiv;
+    }
+    
+    rootNodes.forEach(root => {
+        container.appendChild(buildNodeHtml(root));
+    });
+}
+
+async function selectTreeNode(messageId) {
+    try {
+        const response = await apiFetch("/api/chat/fork", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message_id: messageId })
+        });
+        
+        if (response.ok) {
+            logToTerminal(`Passage au nœud de conversation ${messageId}`, "system");
+            await reloadChatHistory(true);
+        } else {
+            const data = await response.json();
+            alert("Erreur lors de la sélection du nœud: " + data.detail);
+        }
+    } catch (err) {
+        logToTerminal("Erreur de connexion: " + err, "error");
+    }
+}
+
+window.forkConversation = forkConversation;
+window.selectTreeNode = selectTreeNode;
+
+
+// Charger la mémoire clé-valeur JSON
+async function refreshMemory() {
+    try {
+        const response = await apiFetch("/api/memory");
+        const data = await response.json();
+        memoryGrid.innerHTML = "";
+        const keys = Object.keys(data);
+        if (keys.length === 0) {
+            memoryGrid.innerHTML = '<div class="empty-memory">Aucun fait mémorisé.</div>';
+            return;
+        }
+        keys.forEach(key => {
+            const item = document.createElement("div");
+            item.className = "memory-item";
+            item.innerHTML = `
+                <span class="memory-key">${key.replace(/_/g, ' ')}</span>
+                <span class="memory-val">${data[key]}</span>
+                <button class="memory-delete-btn" onclick="deleteMemoryFact('${key}')" title="Supprimer ce fait">×</button>
+            `;
+            memoryGrid.appendChild(item);
+        });
+    } catch (err) {
+        console.error("Erreur de chargement mémoire:", err);
+    }
+}
+
+async function deleteMemoryFact(key) {
+    if (!confirm(`Voulez-vous vraiment supprimer le fait "${key.replace(/_/g, ' ')}" de la mémoire ?`)) return;
+    try {
+        const response = await apiFetch(`/api/memory/${key}`, { method: "DELETE" });
+        if (response.ok) {
+            refreshMemory();
+            logToTerminal(`Fait mémorisé "${key}" supprimé avec succès.`, "success");
+        } else {
+            const data = await response.json();
+            alert("Erreur lors de la suppression : " + data.detail);
+        }
+    } catch (err) {
+        console.error("Erreur de suppression mémoire:", err);
+    }
+}
+window.deleteMemoryFact = deleteMemoryFact;
+
+// Soumettre un message dans le chat
+chatForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    
+    // Si une génération est déjà en cours, cliquer sur le bouton agit comme un bouton "Stop" !
+    if (activeAbortController) {
+        activeAbortController.abort();
+        logToTerminal("Génération interrompue par l'utilisateur.", "warning");
+        return;
+    }
+    
+    const text = chatInput.value.trim();
+    if (!text) return;
+    
+    chatInput.disabled = true;
+    chatInput.value = "";
+    chatInput.placeholder = "Génération en cours... Clique sur ⏹️ pour arrêter";
+    
+    // Remplacer l'icône du bouton d'envoi par un bouton Stop rouge ⏹️
+    chatSendBtn.innerHTML = `
+        <svg class="send-icon-svg" viewBox="0 0 24 24" style="color: #ff5555; width: 18px; height: 18px;">
+            <rect x="4" y="4" width="16" height="16" fill="currentColor" rx="2"></rect>
+        </svg>
+    `;
+    chatSendBtn.title = "Arrêter la génération";
+    
+    appendUserMessage(text);
+    
+    // Activer visuellement Jarvis immédiatement pendant le chargement en arrière-plan
+    setActiveAgentVisual("Jarvis");
+    const jarvisBubble = document.getElementById("bubble-Jarvis");
+    if (jarvisBubble) {
+        jarvisBubble.textContent = "Analyse de la demande et coordination de l'essaim... 🧠⚙️";
+    }
+    logToOrchestrator("Jarvis analyse votre demande et orchestre les agents spécialisés en arrière-plan...", "system");
+    
+    activeAbortController = new AbortController();
+    
+    // Polling en temps réel des étapes de l'essaim pour une map 100% vivante et interactive
+    let processedStepCount = 0;
+    let pollInterval = setInterval(async () => {
+        try {
+            const res = await apiFetch("/api/chat/status");
+            if (res.ok) {
+                const data = await res.json();
+                if (data.steps && data.steps.length > processedStepCount) {
+                    const newSteps = data.steps.slice(processedStepCount);
+                    processedStepCount = data.steps.length;
+                    // Jouer les étapes en temps réel
+                    playAgentSteps(newSteps);
+                }
+            }
+        } catch (e) {
+            console.warn("Erreur lors du polling du statut de l'essaim:", e);
+        }
+    }, 600);
+    
+    try {
+        const response = await apiFetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: text }),
+            signal: activeAbortController.signal
+        });
+        
+        clearInterval(pollInterval);
+        const data = await response.json();
+        
+        if (response.ok) {
+            // Jouer les dernières étapes non encore animées AVANT d'afficher la réponse
+            if (data.steps && data.steps.length > processedStepCount) {
+                const finalNewSteps = data.steps.slice(processedStepCount);
+                await playAgentSteps(finalNewSteps);
+            }
+            // Petit délai pour laisser les dernières animations terminer visuellement
+            await new Promise(r => setTimeout(r, 400));
+            await reloadChatHistory(true);
+            await loadConversations();
+            await refreshMemory();
+            if (typeof loadCockpitData === "function") {
+                loadCockpitData();
+                loadGalleryMedia();
+            }
+        } else {
+            logToTerminal("Erreur API: " + data.detail, "error");
+        }
+    } catch (err) {
+        clearInterval(pollInterval);
+        if (err.name === 'AbortError') {
+            logToTerminal("Génération interrompue avec succès.", "info");
+        } else {
+            logToTerminal("Erreur de connexion: " + err, "error");
+        }
+    } finally {
+        clearInterval(pollInterval);
+        activeAbortController = null;
+        chatInput.disabled = false;
+        chatInput.placeholder = "Parle à l'essaim...";
+        
+        // Rétablir l'icône d'envoi originale
+        chatSendBtn.innerHTML = `
+            <svg class="send-icon-svg" viewBox="0 0 24 24">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"></path>
+            </svg>
+        `;
+        chatSendBtn.title = "Envoyer";
+        chatInput.focus();
+    }
+});
+
+// Réinitialiser la conversation
+btnReset.addEventListener("click", async () => {
+    if (confirm("Réinitialiser l'essaim et vider le fil de discussion ?")) {
+        try {
+            await apiFetch("/api/reset", { method: "POST" });
+            await loadConversations();
+            await reloadChatHistory(true);
+            setActiveAgentVisual("Jarvis");
+            logToTerminal("Essaim réinitialisé.");
+            document.querySelectorAll(".link-line").forEach(l => l.classList.remove("active-flow"));
+        } catch (err) {
+            logToTerminal("Erreur de réinitialisation: " + err, "error");
+        }
+    }
+});
+
+// =========================================================================
+// MODALE PRINCIPALE DE CONFIGURATION NO-CODE (⚙️)
+// =========================================================================
+btnSettings.addEventListener("click", async () => {
+    settingsModal.style.display = "flex";
+    loadConfigAgentsPane();
+    loadConfigEnvPane();
+});
+
+modalClose.addEventListener("click", () => {
+    settingsModal.style.display = "none";
+});
+
+// Alternance entre les onglets de la modale paramètres
+function switchModalTab(activeTab, activePaneFn) {
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing].forEach(p => p && (p.style.display = "none"));
+    activeTab && activeTab.classList.add("active");
+    activePaneFn();
+}
+
+modalTabAgents.addEventListener("click", () => switchModalTab(modalTabAgents, () => {
+    paneAgents.style.display = "block";
+}));
+
+modalTabKeys.addEventListener("click", () => switchModalTab(modalTabKeys, () => {
+    paneKeys.style.display = "block";
+}));
+
+if (modalTabSsh) {
+    modalTabSsh.addEventListener("click", () => switchModalTab(modalTabSsh, () => {
+        paneSsh.style.display = "block";
+    }));
+}
+
+modalTabAgenda.addEventListener("click", () => switchModalTab(modalTabAgenda, () => {
+    paneAgenda.style.display = "block";
+    loadAgendaConfig();
+}));
+
+if (modalTabPricing && panePricing) {
+    modalTabPricing.addEventListener("click", () => switchModalTab(modalTabPricing, () => {
+        panePricing.style.display = "block";
+        loadPricingConfig();
+    }));
+}
+
+// -------------------------------------------------------------------------
+// ONGLET 1 : GESTION DES AGENTS (LISTER / EDITER / SUPPRIMER)
+// -------------------------------------------------------------------------
+function loadConfigAgentsPane() {
+    agentsList.innerHTML = "";
+    agentsConfig.forEach(agent => {
+        const card = document.createElement("div");
+        card.className = "agent-item-card";
+        const displayName = agent.display_name || agent.name;
+        const subtitle = agent.display_name && agent.display_name !== agent.name ? `${agent.name} • ${agent.model}` : agent.model;
+        card.innerHTML = `
+            <div class="agent-meta-info">
+                <h4>${getAgentEmoji(agent.avatar_type || agent.name)} ${displayName}</h4>
+                <span>Modèle : ${subtitle}</span>
+            </div>
+            <div class="agent-actions">
+                <button class="btn btn-secondary btn-edit-agent" data-name="${agent.name}" style="padding: 6px 12px; margin: 0;">Modifier</button>
+                <button class="btn btn-secondary btn-del-agent" data-name="${agent.name}" style="padding: 6px 12px; margin: 0; border-color: rgba(239, 68, 68, 0.4); color: #f87171;">Supprimer</button>
+            </div>
+        `;
+        agentsList.appendChild(card);
+    });
+    
+    // Attacher les écouteurs de modification
+    document.querySelectorAll(".btn-edit-agent").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const name = e.target.getAttribute("data-name");
+            openAgentFormModal(name);
+        });
+    });
+    
+    // Attacher les écouteurs de suppression
+    document.querySelectorAll(".btn-del-agent").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+            const name = e.target.getAttribute("data-name");
+            if (confirm(`Supprimer définitivement l'agent ${name} de l'essaim ?`)) {
+                const newAgents = agentsConfig.filter(a => a.name !== name);
+                await saveAgentsConfigToServer(newAgents);
+            }
+        });
+    });
+}
+
+// -------------------------------------------------------------------------
+// ONGLET 2 : CLÉS D'API & ENV
+// -------------------------------------------------------------------------
+async function loadConfigEnvPane() {
+    try {
+        const response = await apiFetch("/api/config/env");
+        const env = await response.json();
+        
+        document.getElementById("key-openai").placeholder = env.OPENAI_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-anthropic").placeholder = env.ANTHROPIC_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-gemini").placeholder = env.GEMINI_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-openrouter").placeholder = env.OPENROUTER_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-groq").placeholder = env.GROQ_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-mistral").placeholder = env.MISTRAL_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-dashscope").placeholder = env.DASHSCOPE_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-qwen").placeholder = env.QWEN_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-ollama").value = env.OLLAMA_API_BASE || "";
+        document.getElementById("key-custom-base").value = env.CUSTOM_LLM_API_BASE || "";
+        document.getElementById("key-custom-key").placeholder = env.CUSTOM_LLM_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-ha-url").value = env.HA_URL || "";
+        document.getElementById("key-ha-token").placeholder = env.HA_TOKEN ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-telegram").placeholder = env.TELEGRAM_BOT_TOKEN ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-img-provider").value = env.IMAGE_GENERATOR_PROVIDER || "pollinations";
+        document.getElementById("key-stability").placeholder = env.STABILITY_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-custom-img-base").value = env.CUSTOM_IMAGE_API_BASE || "";
+        document.getElementById("key-custom-img-key").placeholder = env.CUSTOM_IMAGE_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-video-provider").value = env.VIDEO_GENERATOR_PROVIDER || "local";
+        document.getElementById("key-fal").placeholder = env.FAL_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-replicate").placeholder = env.REPLICATE_API_TOKEN ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-custom-video-base").value = env.CUSTOM_VIDEO_API_BASE || "";
+        document.getElementById("key-custom-video-key").placeholder = env.CUSTOM_VIDEO_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-ssh-host").value = env.SSH_HOST || "";
+        document.getElementById("key-ssh-port").value = env.SSH_PORT || "";
+        document.getElementById("key-ssh-username").value = env.SSH_USERNAME || "";
+        document.getElementById("key-ssh-password").placeholder = env.SSH_PASSWORD ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
+        document.getElementById("key-ssh-key-path").value = env.SSH_KEY_PATH || "";
+        document.getElementById("key-admin-password").placeholder = env.ADMIN_PASSWORD ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Aucun (Désactivé)";
+    } catch (err) {
+        logToTerminal("Impossible de charger les clés d'API: " + err, "error");
+    }
+}
+
+document.getElementById("env-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const envData = {
+        OPENAI_API_KEY: document.getElementById("key-openai").value,
+        ANTHROPIC_API_KEY: document.getElementById("key-anthropic").value,
+        GEMINI_API_KEY: document.getElementById("key-gemini").value,
+        OPENROUTER_API_KEY: document.getElementById("key-openrouter").value,
+        GROQ_API_KEY: document.getElementById("key-groq").value,
+        MISTRAL_API_KEY: document.getElementById("key-mistral").value,
+        DASHSCOPE_API_KEY: document.getElementById("key-dashscope").value,
+        QWEN_API_KEY: document.getElementById("key-qwen").value,
+        OLLAMA_API_BASE: document.getElementById("key-ollama").value,
+        CUSTOM_LLM_API_BASE: document.getElementById("key-custom-base").value,
+        CUSTOM_LLM_API_KEY: document.getElementById("key-custom-key").value,
+        HA_URL: document.getElementById("key-ha-url").value,
+        HA_TOKEN: document.getElementById("key-ha-token").value,
+        TELEGRAM_BOT_TOKEN: document.getElementById("key-telegram").value,
+        IMAGE_GENERATOR_PROVIDER: document.getElementById("key-img-provider").value,
+        STABILITY_API_KEY: document.getElementById("key-stability").value,
+        CUSTOM_IMAGE_API_BASE: document.getElementById("key-custom-img-base").value,
+        CUSTOM_IMAGE_API_KEY: document.getElementById("key-custom-img-key").value,
+        VIDEO_GENERATOR_PROVIDER: document.getElementById("key-video-provider").value,
+        FAL_API_KEY: document.getElementById("key-fal").value,
+        REPLICATE_API_TOKEN: document.getElementById("key-replicate").value,
+        CUSTOM_VIDEO_API_BASE: document.getElementById("key-custom-video-base").value,
+        CUSTOM_VIDEO_API_KEY: document.getElementById("key-custom-video-key").value
+    };
+    
+    // Nettoyer les clés vides (qui ne doivent pas être envoyées si inchangées)
+    Object.keys(envData).forEach(key => {
+        if (envData[key] === "") delete envData[key];
+    });
+    
+    try {
+        const response = await apiFetch("/api/config/env", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ env: envData })
+        });
+        const res = await response.json();
+        if (response.ok) {
+            alert(res.message);
+            loadConfigEnvPane();
+        } else {
+            alert("Erreur de sauvegarde: " + res.detail);
+        }
+    } catch (err) {
+        alert("Erreur réseau: " + err);
+    }
+});
+
+// Soumission dédiée pour la configuration Terminal SSH
+const sshForm = document.getElementById("ssh-form");
+if (sshForm) {
+    sshForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const sshData = {
+            SSH_HOST: document.getElementById("key-ssh-host").value,
+            SSH_PORT: document.getElementById("key-ssh-port").value,
+            SSH_USERNAME: document.getElementById("key-ssh-username").value,
+            SSH_PASSWORD: document.getElementById("key-ssh-password").value,
+            SSH_KEY_PATH: document.getElementById("key-ssh-key-path").value,
+            ADMIN_PASSWORD: document.getElementById("key-admin-password").value
+        };
+        
+        // Nettoyer les champs vides pour ne pas écraser s'ils n'ont pas changé
+        Object.keys(sshData).forEach(key => {
+            if (sshData[key] === "") delete sshData[key];
+        });
+        
+        try {
+            const response = await apiFetch("/api/config/env", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ env: sshData })
+            });
+            const res = await response.json();
+            if (response.ok) {
+                alert("Configuration SSH sauvegardée avec succès !");
+                loadConfigEnvPane();
+            } else {
+                alert("Erreur de sauvegarde SSH : " + res.detail);
+            }
+        } catch (err) {
+            alert("Erreur réseau : " + err);
+        }
+    });
+}
+
+// =========================================================================
+// MODALE INTERNE FORMULAIRE AGENT (AJOUT/EDITION D'UN AGENT)
+// =========================================================================
+const ALL_AVAILABLE_TOOLS = [
+    {
+        key: "get_ha_state",
+        title: "🏠 Home Assistant : État des capteurs",
+        desc: "Consulter l'état de vos lumières, capteurs ou interrupteurs connectés."
+    },
+    {
+        key: "call_ha_service",
+        title: "⚡ Home Assistant : Contrôler des appareils",
+        desc: "Allumer/éteindre vos lumières, régler le thermostat ou lancer un automatisme."
+    },
+    {
+        key: "memorize_fact",
+        title: "🧠 Mémoriser des informations clés",
+        desc: "Enregistrer à long terme des détails sur vous, vos goûts ou vos préférences."
+    },
+    {
+        key: "store_document",
+        title: "📁 Archiver des notes / documents",
+        desc: "Stocker des fichiers textuels longs ou notes pour qu'ils soient gardés en mémoire."
+    },
+    {
+        key: "search_memory",
+        title: "🔍 Consulter la mémoire sémantique",
+        desc: "Rechercher parmi tous vos faits mémorisés et vos documents archivés."
+    },
+    {
+        key: "execute_python_code",
+        title: "🐍 Exécuter du Code Python",
+        desc: "Résoudre des calculs complexes ou lancer du code Python isolé dans un sandbox."
+    },
+    {
+        key: "execute_bash_command",
+        title: "🐚 Exécuter des Commandes Linux",
+        desc: "Lancer des commandes shell système non-destructrices sur votre machine."
+    },
+    {
+        key: "save_new_skill",
+        title: "💾 Enregistrer un nouvel outil (Skill)",
+        desc: "Transformer une fonction écrite par l'agent en un outil utilisable pour toujours."
+    },
+    {
+        key: "delete_skill",
+        title: "🗑️ Supprimer un outil (Skill)",
+        desc: "Supprimer définitivement une compétence personnalisée (Skill) créée par les agents."
+    },
+    {
+        key: "query_agent",
+        title: "🤝 Consulter un agent en arrière-plan",
+        desc: "Permettre au superviseur d'interroger un agent spécialiste en tâche de fond et de synthétiser ses résultats."
+    },
+    {
+        key: "web_search",
+        title: "🌐 Recherche Web en direct",
+        desc: "Parcourir le Web sur Google/DuckDuckGo pour obtenir des infos en temps réel."
+    },
+    {
+        key: "web_scrape",
+        title: "📄 Extraire le contenu d'un site",
+        desc: "Lire et extraire tout le texte d'un article ou d'un lien web pour analyse."
+    },
+    {
+        key: "generate_image",
+        title: "🎨 Générer des images standards",
+        desc: "Créer des illustrations, logos ou mockups UI avec DALL-E/Flux."
+    },
+    {
+        key: "ingest_file",
+        title: "📥 Importer & Analyser un fichier",
+        desc: "Analyser le contenu brut d'un fichier texte local dans le chat."
+    },
+    {
+        key: "add_calendar_event",
+        title: "📅 Ajouter à l'Agenda",
+        desc: "Ajouter des rendez-vous ou événements à votre calendrier."
+    },
+    {
+        key: "list_calendar_events",
+        title: "📋 Consulter l'Agenda",
+        desc: "Consulter la liste de vos événements et tâches planifiées."
+    },
+    {
+        key: "delete_calendar_event",
+        title: "❌ Retirer de l'Agenda",
+        desc: "Supprimer définitivement un rendez-vous de votre calendrier."
+    },
+    {
+        key: "add_list_item",
+        title: "📝 Ajouter à une Liste (Tâches/Idées)",
+        desc: "Ajouter un élément à une liste de courses, TODO ou brainstorming."
+    },
+    {
+        key: "get_list_items",
+        title: "👁️ Voir le contenu des Listes",
+        desc: "Afficher tous les éléments d'une de vos listes interactives."
+    },
+    {
+        key: "toggle_list_item",
+        title: "🔘 Cocher / Valider un élément",
+        desc: "Valider ou dévalider un élément ou tâche d'une liste."
+    },
+    {
+        key: "delete_list_item",
+        title: "🗑️ Supprimer d'une Liste",
+        desc: "Retirer un élément spécifique d'une de vos listes."
+    },
+    {
+        key: "generate_artistic_image",
+        title: "🖼️ Générer des œuvres d'art HD",
+        desc: "Créer des peintures et illustrations artistiques haute fidélité."
+    },
+    {
+        key: "generate_artistic_video",
+        title: "🎬 Générer des vidéos artistiques",
+        desc: "Créer de courtes animations ou clips vidéos générés par IA."
+    },
+    {
+        key: "get_daily_briefing",
+        title: "☀️ Rapport du Matin (Briefing)",
+        desc: "Générer un briefing matinal complet (météo, tâches, agenda)."
+    }
+];
+
+agentFormClose.addEventListener("click", () => {
+    agentFormModal.style.display = "none";
+});
+
+btnAddAgent.addEventListener("click", () => {
+    openAgentFormModal(null);
+});
+
+function openAgentFormModal(agentName = null) {
+    agentFormModal.style.display = "flex";
+    
+    const checkboxesTools = document.getElementById("agent-tools-checkboxes");
+    const checkboxesHandoffs = document.getElementById("agent-handoffs-checkboxes");
+    const modelHelper = document.getElementById("agent-model-helper");
+    
+    checkboxesTools.innerHTML = "";
+    checkboxesHandoffs.innerHTML = "";
+    modelHelper.innerHTML = '<option value="">⚡ Choix rapide...</option>';
+    
+    const isEdit = agentName !== null;
+    document.getElementById("agent-form-title").textContent = isEdit ? `Modifier l'Agent ${agentName}` : "Créer un nouvel Agent";
+    document.getElementById("agent-orig-name").value = isEdit ? agentName : "";
+    
+    const agent = isEdit ? agentsConfig.find(a => a.name === agentName) : null;
+    
+    document.getElementById("agent-name").value = isEdit ? agent.name : "";
+    document.getElementById("agent-display-name").value = (isEdit && agent.display_name) ? agent.display_name : "";
+    document.getElementById("agent-avatar-type").value = (isEdit && agent.avatar_type) ? agent.avatar_type : "robot_neon";
+    document.getElementById("agent-model").value = isEdit ? agent.model : "gpt-4o";
+    document.getElementById("agent-prompt").value = isEdit ? agent.system_prompt : "";
+    document.getElementById("agent-welcome").value = (isEdit && agent.welcome_message) ? agent.welcome_message : "";
+    
+    // Charger dynamiquement les modèles disponibles
+    apiFetch("/api/config/models")
+        .then(res => res.json())
+        .then(data => {
+            Object.keys(data).forEach(provider => {
+                const group = document.createElement("optgroup");
+                group.label = provider;
+                
+                data[provider].forEach(model => {
+                    const opt = document.createElement("option");
+                    opt.value = model;
+                    opt.textContent = model.includes("/") ? model.split("/").slice(1).join("/") : model;
+                    // Sélectionner par défaut si le modèle actuel correspond
+                    if (isEdit && agent.model === model) {
+                        opt.selected = true;
+                    }
+                    group.appendChild(opt);
+                });
+                modelHelper.appendChild(group);
+            });
+        })
+        .catch(err => console.error("Erreur de récupération des modèles:", err));
+        
+    // Listener pour copier la valeur sélectionnée dans le champ texte principal
+    modelHelper.onchange = (e) => {
+        if (e.target.value) {
+            document.getElementById("agent-model").value = e.target.value;
+        }
+    };
+    
+    // Injecter les outils standards avec descriptions et badges clairs
+    ALL_AVAILABLE_TOOLS.forEach(tool => {
+        const item = document.createElement("div");
+        item.className = "tool-checkbox-card";
+        const checked = isEdit && agent.tools && agent.tools.includes(tool.key) ? "checked" : "";
+        item.innerHTML = `
+            <input type="checkbox" name="tools" value="${tool.key}" id="tool-${tool.key}" ${checked}>
+            <label for="tool-${tool.key}" class="tool-checkbox-label">
+                <span class="tool-checkbox-title">${tool.title}</span>
+                <span class="tool-checkbox-desc">${tool.desc}</span>
+                <span class="tool-checkbox-key"><code>${tool.key}</code></span>
+            </label>
+        `;
+        checkboxesTools.appendChild(item);
+    });
+    
+    // Injecter les autres agents pour cocher les handoffs
+    agentsConfig.forEach(otherAgent => {
+        // Un agent ne se transfère pas à lui-même
+        if (isEdit && otherAgent.name === agentName) return;
+        
+        const label = document.createElement("label");
+        label.className = "checkbox-label";
+        const checked = isEdit && agent.handoffs && agent.handoffs.includes(otherAgent.name) ? "checked" : "";
+        label.innerHTML = `<input type="checkbox" name="handoffs" value="${otherAgent.name}" ${checked}> ${otherAgent.name}`;
+        checkboxesHandoffs.appendChild(label);
+    });
+}
+
+// Soumission du formulaire agent (sauvegarde locale + rechargement)
+agentConfigForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    
+    const origName = document.getElementById("agent-orig-name").value;
+    const name = document.getElementById("agent-name").value.trim();
+    const displayNameInput = document.getElementById("agent-display-name").value.trim();
+    const display_name = displayNameInput || name; // Fallback sur name si vide
+    const avatar_type = document.getElementById("agent-avatar-type").value;
+    const model = document.getElementById("agent-model").value.trim();
+    const system_prompt = document.getElementById("agent-prompt").value.trim();
+    const welcome_message = document.getElementById("agent-welcome").value.trim() || "";
+    
+    // Outils cochés
+    const tools = [];
+    document.querySelectorAll("input[name='tools']:checked").forEach(cb => {
+        tools.push(cb.value);
+    });
+    
+    // Handoffs cochés
+    const handoffs = [];
+    document.querySelectorAll("input[name='handoffs']:checked").forEach(cb => {
+        handoffs.push(cb.value);
+    });
+    
+    const updatedAgent = { name, display_name, welcome_message, avatar_type, model, system_prompt, tools, handoffs };
+    
+    let newAgents = [];
+    if (origName) {
+        // Edition : on remplace
+        newAgents = agentsConfig.map(a => a.name === origName ? updatedAgent : a);
+    } else {
+        // Création : on ajoute
+        newAgents = [...agentsConfig, updatedAgent];
+    }
+    
+    await saveAgentsConfigToServer(newAgents);
+    agentFormModal.style.display = "none";
+});
+
+// Envoyer la structure d'agents modifiée au serveur FastAPI
+async function saveAgentsConfigToServer(newAgentsList) {
+    try {
+        const response = await apiFetch("/api/config/agents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agents: newAgentsList })
+        });
+        const res = await response.json();
+        
+        if (response.ok) {
+            logToTerminal("Configuration de l'essaim mise à jour à chaud avec succès !");
+            await reloadSwarmConfig();
+            loadConfigAgentsPane();
+        } else {
+            alert("Erreur de sauvegarde: " + res.detail);
+        }
+    } catch (err) {
+        alert("Erreur réseau lors de la sauvegarde: " + err);
+    }
+}
+
+// =========================================================================
+// INITIALISATION
+// =========================================================================
+// =========================================================================
+// INITIALISATION & GESTION VOCALE (STT & TTS)
+// =========================================================================
+let isVoiceTtsEnabled = false;
+let currentUtterance = null;
+let recognition = null;
+let isMicRecording = false;
+
+function speakText(text, agentName) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    
+    // Nettoyer les balises HTML et markdown simples pour la lecture vocale
+    let cleanText = text.replace(/<[^>]*>/g, "").replace(/[\*_`#]/g, "");
+    
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    const voices = window.speechSynthesis.getVoices();
+    const frVoice = voices.find(v => v.lang.startsWith("fr") || v.lang.includes("FR"));
+    if (frVoice) utterance.voice = frVoice;
+    
+    // Adapter la voix et le ton selon l'agent
+    if (agentName === "Jarvis") {
+        utterance.pitch = 1.0;
+        utterance.rate = 1.05;
+    } else if (agentName === "Codeur") {
+        utterance.pitch = 0.9;
+        utterance.rate = 1.15;
+    } else if (agentName === "Auteur") {
+        utterance.pitch = 1.15;
+        utterance.rate = 0.95;
+    } else {
+        utterance.pitch = 1.0;
+        utterance.rate = 1.0;
+    }
+    
+    currentUtterance = utterance;
+    window.speechSynthesis.speak(utterance);
+}
+
+function initSpeech() {
+    // Bouton Voix ON/OFF dans le Header
+    const btnVoiceToggle = document.getElementById("btn-voice-toggle");
+    if (btnVoiceToggle) {
+        btnVoiceToggle.style.transition = "all 0.3s";
+        btnVoiceToggle.addEventListener("click", () => {
+            isVoiceTtsEnabled = !isVoiceTtsEnabled;
+            if (isVoiceTtsEnabled) {
+                btnVoiceToggle.textContent = "🔊 Voix ON";
+                btnVoiceToggle.style.backgroundColor = "rgba(16, 185, 129, 0.2)";
+                btnVoiceToggle.style.borderColor = "var(--success-color)";
+                speakText("Lecture vocale activée. Bonjour !", "Jarvis");
+            } else {
+                btnVoiceToggle.textContent = "🔇 Voix OFF";
+                btnVoiceToggle.style.backgroundColor = "";
+                btnVoiceToggle.style.borderColor = "";
+                if (window.speechSynthesis) window.speechSynthesis.cancel();
+            }
+        });
+    }
+    
+    // Configuration Speech Recognition (Reconnaissance vocale)
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.lang = 'fr-FR';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        
+        const btnMic = document.getElementById("btn-mic");
+        
+        recognition.onstart = () => {
+            isMicRecording = true;
+            btnMic.style.opacity = "1";
+            btnMic.style.color = "#ef4444";
+            btnMic.style.transform = "scale(1.3)";
+            btnMic.title = "En écoute... Cliquez pour arrêter";
+            chatInput.placeholder = "Jarvis t'écoute... Parle maintenant 🎙️";
+        };
+        
+        recognition.onend = () => {
+            isMicRecording = false;
+            btnMic.style.opacity = "0.7";
+            btnMic.style.color = "var(--text-color)";
+            btnMic.style.transform = "none";
+            btnMic.title = "Parler à l'essaim (Speech-to-Text)";
+            chatInput.placeholder = "Discutez avec Jarvis ou demandez-lui d'activer une équipe...";
+        };
+        
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            chatInput.value = transcript;
+            
+            // Soumission automatique après transcription
+            setTimeout(() => {
+                chatForm.dispatchEvent(new Event("submit"));
+            }, 500);
+        };
+        
+        recognition.onerror = (err) => {
+            console.error("Speech Recognition Error:", err);
+        };
+        
+        btnMic.addEventListener("click", () => {
+            if (isMicRecording) {
+                recognition.stop();
+            } else {
+                if (window.speechSynthesis) window.speechSynthesis.cancel();
+                recognition.start();
+            }
+        });
+    } else {
+        // Laisser le bouton visible et expliquer le requis HTTPS/localhost si cliqué !
+        const btnMic = document.getElementById("btn-mic");
+        if (btnMic) {
+            btnMic.style.display = "block";
+            btnMic.title = "Dictée vocale non disponible";
+            btnMic.addEventListener("click", () => {
+                alert("La dictée vocale nécessite un navigateur compatible (comme Google Chrome ou Microsoft Edge) et un contexte sécurisé (connexion HTTPS ou accès via 'localhost'). Si vous utilisez une adresse IP ou un nom de domaine non sécurisé en HTTP, le navigateur bloque l'accès au microphone.");
+            });
+        }
+    }
+    
+    // Charger les voix du système
+    if (window.speechSynthesis) {
+        window.speechSynthesis.getVoices();
+        if (window.speechSynthesis.onvoiceschanged !== undefined) {
+            window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+        }
+    }
+    
+    // Gestion du bouton trombone (attachement de fichiers) dans le chat
+    const btnAttach = document.getElementById("btn-chat-attach");
+    const chatFileInput = document.getElementById("chat-file-input");
+    const chatInputEl = document.getElementById("chat-input");
+    
+    if (btnAttach && chatFileInput && chatInputEl) {
+        btnAttach.addEventListener("click", () => chatFileInput.click());
+        
+        chatFileInput.addEventListener("change", async () => {
+            if (chatFileInput.files.length > 0) {
+                const file = chatFileInput.files[0];
+                await uploadAndIngestFromChat(file);
+                chatFileInput.value = ""; // Réinitialiser le sélecteur
+            }
+        });
+    }
+
+    // Gestion du Drag & Drop de fichiers directement sur le conteneur du chat
+    const chatMessagesContainer = document.getElementById("chat-messages");
+    if (chatMessagesContainer) {
+        chatMessagesContainer.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            chatMessagesContainer.style.background = "rgba(0, 240, 255, 0.03)";
+        });
+        chatMessagesContainer.addEventListener("dragleave", () => {
+            chatMessagesContainer.style.background = "";
+        });
+        chatMessagesContainer.addEventListener("drop", async (e) => {
+            e.preventDefault();
+            chatMessagesContainer.style.background = "";
+            if (e.dataTransfer.files.length > 0) {
+                await uploadAndIngestFromChat(e.dataTransfer.files[0]);
+            }
+        });
+    }
+}
+
+// =========================================================================
+// GESTIONNAIRE DE FICHIERS DU WORKSPACE
+// =========================================================================
+async function loadWorkspaceFiles() {
+    const listContainer = document.getElementById("files-list-container");
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = "<div style='padding: 8px; opacity: 0.7;'>Chargement des fichiers...</div>";
+    
+    try {
+        const response = await apiFetch("/api/workspace/files");
+        const files = await response.json();
+        
+        if (files.length === 0) {
+            listContainer.innerHTML = "<div style='padding: 8px; opacity: 0.5;'>Aucun fichier trouvé.</div>";
+            return;
+        }
+        
+        listContainer.innerHTML = "";
+        files.forEach(f => {
+            const sizeKb = (f.size / 1024).toFixed(1);
+            const item = document.createElement("div");
+            item.style.padding = "6px 8px";
+            item.style.margin = "4px 0";
+            item.style.borderRadius = "4px";
+            item.style.cursor = "pointer";
+            item.style.transition = "background-color 0.2s";
+            item.style.display = "flex";
+            item.style.justifyContent = "space-between";
+            item.style.alignItems = "center";
+            item.className = "file-item-row";
+            item.innerHTML = `
+                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80%;" title="${f.path}">📄 ${f.path}</span>
+                <span style="font-size: 0.75rem; opacity: 0.5;">${sizeKb} KB</span>
+            `;
+            
+            item.addEventListener("mouseenter", () => item.style.backgroundColor = "rgba(255,255,255,0.08)");
+            item.addEventListener("mouseleave", () => item.style.backgroundColor = "");
+            
+            item.addEventListener("click", () => {
+                document.querySelectorAll(".file-item-row").forEach(el => el.style.borderLeft = "");
+                item.style.borderLeft = "3px solid var(--accent-color)";
+                viewWorkspaceFile(f.path);
+            });
+            
+            listContainer.appendChild(item);
+        });
+    } catch (err) {
+        listContainer.innerHTML = `<div style='padding: 8px; color: var(--error-color);'>Erreur: ${err}</div>`;
+    }
+}
+
+let activeSelectedFilePath = null;
+
+async function viewWorkspaceFile(filePath) {
+    const titleEl = document.getElementById("file-viewer-title");
+    const preEl = document.getElementById("file-viewer-pre");
+    const downloadBtn = document.getElementById("btn-download-file");
+    
+    titleEl.textContent = `Lecture de ${filePath}... ⏳`;
+    preEl.textContent = "";
+    downloadBtn.style.display = "none";
+    activeSelectedFilePath = filePath;
+    
+    try {
+        const response = await apiFetch(`/api/workspace/file?path=${encodeURIComponent(filePath)}`);
+        const data = await response.json();
+        
+        if (response.ok) {
+            titleEl.textContent = `📄 ${filePath}`;
+            
+            // Déterminer la classe de coloration de syntaxe PrismJS selon l'extension
+            const ext = (filePath.split('.').pop() || "").toLowerCase();
+            let langClass = "language-plaintext";
+            
+            if (ext === "js" || ext === "mjs") langClass = "language-javascript";
+            else if (ext === "py") langClass = "language-python";
+            else if (ext === "html") langClass = "language-html";
+            else if (ext === "css") langClass = "language-css";
+            else if (ext === "json") langClass = "language-json";
+            else if (ext === "sh" || ext === "bash") langClass = "language-bash";
+            else if (ext === "md" || ext === "markdown") langClass = "language-markdown";
+            
+            // Injecter la structure <code> et colorer
+            preEl.innerHTML = `<code class="${langClass}"></code>`;
+            const codeEl = preEl.querySelector("code");
+            codeEl.textContent = data.content;
+            
+            if (typeof Prism !== "undefined") {
+                Prism.highlightElement(codeEl);
+            }
+            
+            downloadBtn.style.display = "block";
+        } else {
+            titleEl.textContent = "⚠️ Erreur de chargement";
+            preEl.textContent = data.detail || "Impossible de lire ce fichier.";
+        }
+    } catch (err) {
+        titleEl.textContent = "⚠️ Erreur réseau";
+        preEl.textContent = err;
+    }
+}
+
+// Bouton de téléchargement
+const downloadBtn = document.getElementById("btn-download-file");
+if (downloadBtn) {
+    downloadBtn.addEventListener("click", () => {
+        if (activeSelectedFilePath) {
+            window.open(`/api/workspace/download?path=${encodeURIComponent(activeSelectedFilePath)}`, "_blank");
+        }
+    });
+}
+
+// Zone de téléversement (Drag & Drop + Clic)
+const dropzone = document.getElementById("upload-dropzone");
+const uploadInput = document.getElementById("file-upload-input");
+
+if (dropzone && uploadInput) {
+    dropzone.addEventListener("click", () => uploadInput.click());
+    
+    uploadInput.addEventListener("change", async () => {
+        if (uploadInput.files.length > 0) {
+            await uploadFileToServer(uploadInput.files[0]);
+        }
+    });
+    
+    dropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = "var(--accent-color)";
+        dropzone.style.backgroundColor = "rgba(255,255,255,0.05)";
+    });
+    
+    dropzone.addEventListener("dragleave", () => {
+        dropzone.style.borderColor = "rgba(255,255,255,0.15)";
+        dropzone.style.backgroundColor = "";
+    });
+    
+    dropzone.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = "rgba(255,255,255,0.15)";
+        dropzone.style.backgroundColor = "";
+        
+        if (e.dataTransfer.files.length > 0) {
+            await uploadFileToServer(e.dataTransfer.files[0]);
+        }
+    });
+}
+
+async function uploadFileToServer(file) {
+    const listContainer = document.getElementById("files-list-container");
+    const origHtml = listContainer.innerHTML;
+    listContainer.innerHTML = `<div style='padding: 8px; opacity: 0.7;'>Téléversement de ${file.name}... ⏳</div>`;
+    
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    try {
+        const response = await apiFetch("/api/workspace/upload", {
+            method: "POST",
+            body: formData
+        });
+        const res = await response.json();
+        
+        if (response.ok) {
+            logToTerminal(`Fichier '${file.name}' téléversé avec succès.`, "success");
+            if (res.ingested && res.report) {
+                // Log le rapport d'ingestion RAG (découpage intelligent en morceaux) dans la console de l'essaim
+                logToTerminal(res.report, "success");
+            }
+            await loadWorkspaceFiles();
+            viewWorkspaceFile(file.name);
+        } else {
+            alert("Erreur de téléversement : " + res.detail);
+            listContainer.innerHTML = origHtml;
+        }
+    } catch (err) {
+        alert("Erreur réseau de téléversement : " + err);
+        listContainer.innerHTML = origHtml;
+    }
+}
+
+// =========================================================================
+// GESTION DE L'AGENDA (NEW INTERACTIVE VIEW !)
+// =========================================================================
+async function loadAgendaEvents() {
+    const listContainer = document.getElementById("agenda-list");
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = "<div style='padding: 8px; opacity: 0.7;'>Chargement des événements...</div>";
+    
+    try {
+        const response = await apiFetch("/api/agenda");
+        const events = await response.json();
+        
+        if (events.length === 0) {
+            listContainer.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 0; opacity: 0.5;">
+                    <span style="font-size: 2rem;">📅</span>
+                    <span>Aucun événement ou rendez-vous enregistré.</span>
+                </div>`;
+            return;
+        }
+        
+        listContainer.innerHTML = "";
+        
+        // Obtenir la date/heure actuelle
+        const now = new Date();
+        
+        // Mettre à jour dynamiquement le badge de l'agenda (événements futurs)
+        const badgeAgenda = document.getElementById("badge-agenda");
+        if (badgeAgenda) {
+            const pendingCount = events.filter(e => new Date(e.datetime.replace(" ", "T")) >= now).length;
+            badgeAgenda.textContent = pendingCount;
+            badgeAgenda.style.display = pendingCount > 0 ? "flex" : "none";
+        }
+        
+        events.forEach(e => {
+            const eventCard = document.createElement("div");
+            eventCard.className = "agenda-item glass";
+            
+            // Calculer si l'événement est passé
+            const eventDate = new Date(e.datetime.replace(" ", "T"));
+            const isPast = eventDate < now;
+            
+            eventCard.style.border = "1px solid rgba(255, 255, 255, 0.08)";
+            eventCard.style.borderRadius = "8px";
+            eventCard.style.padding = "10px 12px";
+            eventCard.style.display = "flex";
+            eventCard.style.justifyContent = "space-between";
+            eventCard.style.alignItems = "center";
+            eventCard.style.background = isPast ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.04)";
+            eventCard.style.opacity = isPast ? "0.5" : "1";
+            if (!isPast) {
+                eventCard.style.boxShadow = "0 2px 10px rgba(0, 240, 255, 0.05)";
+                eventCard.style.borderLeft = "3px solid var(--accent-color)";
+            } else {
+                eventCard.style.borderLeft = "3px solid rgba(255, 255, 255, 0.2)";
+            }
+            
+            eventCard.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 4px; text-align: left;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <strong style="color: ${isPast ? 'rgba(255,255,255,0.8)' : '#fff'};">${e.title}</strong>
+                        <span style="font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);">${e.duration_minutes} min</span>
+                    </div>
+                    <span style="font-size: 0.75rem; color: var(--success-color); font-weight: 500;">📅 ${e.datetime}</span>
+                    ${e.description ? `<p style="margin: 2px 0 0 0; font-size: 0.75rem; opacity: 0.7; line-height: 1.3;">${e.description}</p>` : ''}
+                </div>
+                <button class="btn btn-icon" onclick="deleteAgendaEvent('${e.id}')" title="Supprimer ce rendez-vous" style="padding: 4px 8px; font-size: 0.8rem; color: #ff5555; background: transparent; border: none; cursor: pointer; transition: transform 0.2s;">❌</button>
+            `;
+            
+            listContainer.appendChild(eventCard);
+        });
+    } catch (err) {
+        listContainer.innerHTML = `<div style='padding: 8px; color: #ff5555;'>Erreur de chargement : ${err}</div>`;
+    }
+}
+
+async function submitNewAgendaEvent() {
+    const titleInput = document.getElementById("agenda-title");
+    const dateInput = document.getElementById("agenda-date");
+    const durationInput = document.getElementById("agenda-duration");
+    const descInput = document.getElementById("agenda-description");
+    
+    const payload = {
+        title: titleInput.value.trim(),
+        datetime_str: dateInput.value.trim(),
+        duration_minutes: parseInt(durationInput.value) || 60,
+        description: descInput.value.trim()
+    };
+    
+    try {
+        const response = await apiFetch("/api/agenda", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const res = await response.json();
+        
+        if (response.ok) {
+            logToTerminal("Nouveau rendez-vous enregistré : " + payload.title, "success");
+            titleInput.value = "";
+            dateInput.value = "";
+            descInput.value = "";
+            loadAgendaEvents();
+        } else {
+            alert("Erreur : " + res.detail);
+        }
+    } catch (err) {
+        alert("Erreur réseau : " + err);
+    }
+}
+
+async function deleteAgendaEvent(id) {
+    if (!confirm("Supprimer ce rendez-vous de votre agenda ?")) return;
+    
+    try {
+        const response = await apiFetch(`/api/agenda/${id}`, {
+            method: "DELETE"
+        });
+        const res = await response.json();
+        
+        if (response.ok) {
+            logToTerminal("Rendez-vous supprimé de l'agenda.", "success");
+            loadAgendaEvents();
+        } else {
+            alert("Erreur : " + res.detail);
+        }
+    } catch (err) {
+        alert("Erreur réseau : " + err);
+    }
+}
+
+// =========================================================================
+// SYNCHRONISATION AGENDA EXTERNE (RÉGLABLE VIA INTERFACE WEB)
+// =========================================================================
+async function loadAgendaConfig() {
+    try {
+        const response = await apiFetch("/api/config/agenda");
+        const config = await response.json();
+        
+        document.getElementById("agenda-ical-url").value = config.external_ical_url || "";
+        document.getElementById("agenda-google-id").value = config.google_calendar_id || "";
+        document.getElementById("agenda-caldav-url").value = config.caldav_url || "";
+        document.getElementById("agenda-caldav-user").value = config.caldav_username || "";
+        
+        // Gérer le mot de passe CalDAV masqué
+        const pwdInput = document.getElementById("agenda-caldav-password");
+        if (config.caldav_password) {
+            pwdInput.value = config.caldav_password;
+        } else {
+            pwdInput.value = "";
+        }
+        
+        // Mettre à jour l'étiquette Google credentials JSON
+        const statusSpan = document.getElementById("agenda-google-status");
+        if (config.has_google_credentials) {
+            statusSpan.innerHTML = "Clé configurée ✅";
+            statusSpan.style.color = "var(--success-color)";
+        } else {
+            statusSpan.innerHTML = "Clé absente ❌";
+            statusSpan.style.color = "#ff5555";
+        }
+    } catch (err) {
+        console.error("Erreur lors de la récupération des paramètres agenda :", err);
+    }
+}
+
+// Enregistrer les variables agenda (.env)
+const agendaSyncForm = document.getElementById("agenda-sync-form");
+if (agendaSyncForm) {
+    agendaSyncForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        
+        const payload = {
+            external_ical_url: document.getElementById("agenda-ical-url").value.trim(),
+            google_calendar_id: document.getElementById("agenda-google-id").value.trim(),
+            caldav_url: document.getElementById("agenda-caldav-url").value.trim(),
+            caldav_username: document.getElementById("agenda-caldav-user").value.trim(),
+            caldav_password: document.getElementById("agenda-caldav-password").value.trim()
+        };
+        
+        try {
+            const response = await apiFetch("/api/config/agenda", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            const res = await response.json();
+            
+            if (response.ok) {
+                logToTerminal("Paramètres d'agenda synchronisés et enregistrés avec succès !", "success");
+                alert("Paramètres d'agenda enregistrés ! Synchronisation lancée...");
+                loadAgendaEvents();
+                settingsModal.style.display = "none";
+            } else {
+                alert("Erreur de sauvegarde agenda : " + res.detail);
+            }
+        } catch (err) {
+            alert("Erreur réseau : " + err);
+        }
+    });
+}
+
+// Gérer le téléversement du fichier Google Credentials JSON
+const googleFileInput = document.getElementById("agenda-google-file");
+if (googleFileInput) {
+    googleFileInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const formData = new FormData();
+        formData.append("file", file);
+        
+        try {
+            const response = await apiFetch("/api/config/agenda/google-key", {
+                method: "POST",
+                body: formData
+            });
+            const res = await response.json();
+            
+            if (response.ok) {
+                logToTerminal("Fichier google_credentials.json téléversé avec succès !", "success");
+                alert("Clé Google Credentials JSON téléversée avec succès !");
+                loadAgendaConfig();
+            } else {
+                alert("Erreur lors du téléversement de la clé Google : " + res.detail);
+            }
+        } catch (err) {
+            alert("Erreur réseau de clé Google : " + err);
+        }
+    });
+}
+
+// Synchronisation manuelle (Bouton Synchro de la vue Agenda)
+const btnSyncAgenda = document.getElementById("btn-sync-agenda");
+if (btnSyncAgenda) {
+    btnSyncAgenda.addEventListener("click", async () => {
+        const origText = btnSyncAgenda.innerHTML;
+        btnSyncAgenda.innerHTML = "Synchro... ⏳";
+        btnSyncAgenda.disabled = true;
+        
+        try {
+            const response = await apiFetch("/api/agenda/sync", { method: "POST" });
+            const res = await response.json();
+            
+            if (response.ok) {
+                logToTerminal(res.message, "success");
+                loadAgendaEvents();
+            } else {
+                alert("Erreur de synchro : " + res.detail);
+            }
+        } catch (err) {
+            alert("Erreur réseau de synchro : " + err);
+        } finally {
+            btnSyncAgenda.innerHTML = origText;
+            btnSyncAgenda.disabled = false;
+        }
+    });
+}
+
+// Hooks de l'actualisation
+document.getElementById("btn-refresh-files").addEventListener("click", loadWorkspaceFiles);
+const btnRefreshAgenda = document.getElementById("btn-refresh-agenda");
+if (btnRefreshAgenda) {
+    btnRefreshAgenda.addEventListener("click", loadAgendaEvents);
+}
+const btnRefreshBranches = document.getElementById("btn-refresh-branches");
+if (btnRefreshBranches) {
+    btnRefreshBranches.addEventListener("click", () => reloadChatHistory(false));
+}
+
+// =========================================================================
+// GESTION DES LISTES UNIVERSELLES (NEW INTERACTIVE CHECKLISTS !)
+// =========================================================================
+const subTabEvents = document.getElementById("agenda-sub-tab-events");
+const subTabLists = document.getElementById("agenda-sub-tab-lists");
+const paneEvents = document.getElementById("agenda-sub-pane-events");
+const paneLists = document.getElementById("agenda-sub-pane-lists");
+
+if (subTabEvents && subTabLists && paneEvents && paneLists) {
+    subTabEvents.addEventListener("click", () => {
+        subTabEvents.className = "btn active";
+        subTabEvents.style.background = "rgba(255,255,255,0.08)";
+        subTabEvents.style.color = "#fff";
+        
+        subTabLists.className = "btn";
+        subTabLists.style.background = "transparent";
+        subTabLists.style.color = "#aaa";
+        
+        paneEvents.style.display = "flex";
+        paneLists.style.display = "none";
+        
+        loadAgendaEvents();
+    });
+
+    subTabLists.addEventListener("click", () => {
+        subTabLists.className = "btn active";
+        subTabLists.style.background = "rgba(255,255,255,0.08)";
+        subTabLists.style.color = "#fff";
+        
+        subTabEvents.className = "btn";
+        subTabEvents.style.background = "transparent";
+        subTabEvents.style.color = "#aaa";
+        
+        paneEvents.style.display = "none";
+        paneLists.style.display = "flex";
+        
+        loadListItems();
+    });
+}
+
+const listSelector = document.getElementById("active-list-selector");
+if (listSelector) {
+    listSelector.addEventListener("change", loadListItems);
+}
+
+const btnRefreshLists = document.getElementById("btn-refresh-lists");
+if (btnRefreshLists) {
+    btnRefreshLists.addEventListener("click", loadListItems);
+}
+
+async function loadListItems() {
+    const listContainer = document.getElementById("list-items-container");
+    const activeList = document.getElementById("active-list-selector").value;
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = "<div style='padding: 8px; opacity: 0.7;'>Chargement des éléments...</div>";
+    
+    try {
+        const response = await apiFetch(`/api/lists?list_name=${activeList}`);
+        const items = await response.json();
+        
+        if (items.length === 0) {
+            listContainer.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 0; opacity: 0.5;">
+                    <span style="font-size: 2rem;">📋</span>
+                    <span>Cette liste est vide.</span>
+                </div>`;
+            return;
+        }
+        
+        listContainer.innerHTML = "";
+        
+        items.forEach(item => {
+            const itemRow = document.createElement("div");
+            itemRow.className = "list-item glass";
+            
+            itemRow.style.border = "1px solid rgba(255, 255, 255, 0.08)";
+            itemRow.style.borderRadius = "6px";
+            itemRow.style.padding = "8px 10px";
+            itemRow.style.display = "flex";
+            itemRow.style.justifyContent = "space-between";
+            itemRow.style.alignItems = "center";
+            itemRow.style.background = item.completed ? "rgba(255,255,255,0.01)" : "rgba(255,255,255,0.04)";
+            
+            const checkIcon = item.completed ? "☑️" : "⬜";
+            const strikeStyle = item.completed ? "text-decoration: line-through; opacity: 0.5;" : "";
+            
+            itemRow.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; text-align: left;" onclick="toggleListItem('${item.id}')">
+                    <span style="font-size: 1.1rem; user-select: none;">${checkIcon}</span>
+                    <span style="${strikeStyle} font-size: 0.85rem; color: #fff;">${item.text}</span>
+                </div>
+                <button class="btn-icon" style="padding: 2px 6px; font-size: 0.8rem; background: rgba(255,0,0,0.15); border: 1px solid rgba(255,0,0,0.3); color: #ff5555; border-radius: 4px;" onclick="deleteListItem('${item.id}')" title="Supprimer">🗑️</button>
+            `;
+            
+            listContainer.appendChild(itemRow);
+        });
+    } catch (err) {
+        listContainer.innerHTML = `<div style="padding: 8px; color: var(--danger-color);">Erreur de chargement : ${err}</div>`;
+    }
+}
+
+async function submitNewListItem() {
+    const activeList = document.getElementById("active-list-selector").value;
+    const inputField = document.getElementById("list-item-input");
+    const text = inputField.value.strip ? inputField.value.strip() : inputField.value.trim();
+    if (!text) return;
+    
+    try {
+        const response = await apiFetch("/api/lists", {
+            method: "POST",
+            body: JSON.stringify({ list_name: activeList, text: text })
+        });
+        
+        if (response.ok) {
+            inputField.value = "";
+            loadListItems();
+        } else {
+            const err = await response.json();
+            alert("Erreur de création : " + err.detail);
+        }
+    } catch (err) {
+        alert("Erreur réseau : " + err);
+    }
+}
+
+async function toggleListItem(itemId) {
+    const activeList = document.getElementById("active-list-selector").value;
+    try {
+        const response = await apiFetch(`/api/lists/${activeList}/${itemId}/toggle`, {
+            method: "PUT"
+        });
+        if (response.ok) {
+            loadListItems();
+        }
+    } catch (err) {
+        console.error("Erreur toggle item :", err);
+    }
+}
+
+async function deleteListItem(itemId) {
+    if (!confirm("Voulez-vous vraiment supprimer cet élément ?")) return;
+    
+    const activeList = document.getElementById("active-list-selector").value;
+    try {
+        const response = await apiFetch(`/api/lists/${activeList}/${itemId}`, {
+            method: "DELETE"
+        });
+        if (response.ok) {
+            loadListItems();
+        }
+    } catch (err) {
+        console.error("Erreur suppression item :", err);
+    }
+}
+
+// Exposer les fonctions globales pour le DOM onclick
+window.toggleListItem = toggleListItem;
+window.deleteListItem = deleteListItem;
+window.submitNewListItem = submitNewListItem;
+
+async function init() {
+    await reloadSwarmConfig();
+    await refreshMemory();
+    await loadWorkspaceConfig();
+    loadWorkspaceFiles();
+    loadAgendaEvents();
+    loadListItems();
+    logToTerminal("Dashboard No-Code, Bureau Virtuel, Agenda et Listes connectés.");
+    setActiveAgentVisual("Jarvis");
+    initSpeech();
+}
+
+init();
+
+// GESTION DYNAMIQUE DE L'AGRANDISSEMENT DU PANNEAU GAUCHE
+const btnToggleLeftExpand = document.getElementById("btn-toggle-left-expand");
+const appContainer = document.querySelector(".app-container");
+let isLeftExpanded = false;
+
+if (btnToggleLeftExpand && appContainer) {
+    btnToggleLeftExpand.addEventListener("click", () => {
+        isLeftExpanded = !isLeftExpanded;
+        if (isLeftExpanded) {
+            appContainer.style.setProperty("--left-panel-width", "600px");
+            btnToggleLeftExpand.innerHTML = "↔️ Collapse";
+            btnToggleLeftExpand.style.background = "rgba(0, 240, 255, 0.2)";
+        } else {
+            appContainer.style.setProperty("--left-panel-width", "350px");
+            btnToggleLeftExpand.innerHTML = "↔️ Expand";
+            btnToggleLeftExpand.style.background = "";
+        }
+    });
+}
+
+// GESTION DU DOSSIER DE TRAVAIL ACTIF (WORKSPACE TARGET FOLDER)
+const workspacePathInput = document.getElementById("workspace-path-input");
+const btnSaveWorkspacePath = document.getElementById("btn-save-workspace-path");
+
+async function loadWorkspaceConfig() {
+    try {
+        const response = await apiFetch("/api/workspace/config");
+        if (response.ok) {
+            const data = await response.json();
+            if (workspacePathInput) {
+                workspacePathInput.value = data.active_workspace_dir;
+            }
+            logToTerminal(`Dossier de travail actif connecté : ${data.active_workspace_dir}`, "system");
+        }
+    } catch (err) {
+        console.error("Erreur lors du chargement de la config workspace:", err);
+    }
+}
+
+async function saveWorkspaceConfig() {
+    if (!workspacePathInput) return;
+    const targetPath = workspacePathInput.value.trim();
+    if (!targetPath) return;
+    
+    if (btnSaveWorkspacePath) btnSaveWorkspacePath.disabled = true;
+    
+    try {
+        const response = await apiFetch("/api/workspace/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: targetPath })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            logToTerminal(`📁 Dossier de travail repositionné avec succès sur : ${data.active_workspace_dir}`, "system");
+            workspacePathInput.value = data.active_workspace_dir;
+            
+            // Recharger la liste des fichiers du projet
+            loadWorkspaceFiles();
+        } else {
+            logToTerminal(`Erreur changement de dossier : ${data.detail}`, "error");
+        }
+    } catch (err) {
+        logToTerminal(`Erreur réseau : ${err}`, "error");
+    } finally {
+        if (btnSaveWorkspacePath) btnSaveWorkspacePath.disabled = false;
+    }
+}
+
+if (btnSaveWorkspacePath) {
+    btnSaveWorkspacePath.addEventListener("click", saveWorkspaceConfig);
+}
+if (workspacePathInput) {
+    workspacePathInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            saveWorkspaceConfig();
+        }
+    });
+}
+
+// SYSTÈME DE NAVIGATION ET D'AUTOCAMPÉTITION DE DOSSIERS VISUELLE
+const workspaceSuggestions = document.getElementById("workspace-path-suggestions");
+
+async function showWorkspacePathSuggestions() {
+    if (!workspacePathInput || !workspaceSuggestions) return;
+    const currentVal = workspacePathInput.value.trim();
+    
+    try {
+        const response = await apiFetch(`/api/workspace/dirs?path=${encodeURIComponent(currentVal)}`);
+        if (response.ok) {
+            const data = await response.json();
+            workspaceSuggestions.innerHTML = "";
+            workspaceSuggestions.style.display = "block";
+            
+            // 1. Ajouter l'option Dossier Parent ".." si on n'est pas à la racine du système
+            if (data.parent_path && data.parent_path !== data.current_path) {
+                const parentDiv = document.createElement("div");
+                parentDiv.style.cssText = "padding: 6px 8px; font-family: monospace; font-size: 0.75rem; border-radius: 4px; color: #38bdf8; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.2s;";
+                parentDiv.innerHTML = "<span>📁</span> <strong>.. (Remonter d'un dossier)</strong>";
+                parentDiv.addEventListener("click", () => {
+                    workspacePathInput.value = data.parent_path;
+                    showWorkspacePathSuggestions(); // Rafraîchir
+                });
+                parentDiv.addEventListener("mouseenter", () => {
+                    parentDiv.style.background = "rgba(255,255,255,0.08)";
+                });
+                parentDiv.addEventListener("mouseleave", () => {
+                    parentDiv.style.background = "";
+                });
+                workspaceSuggestions.appendChild(parentDiv);
+            }
+            
+            // 2. Ajouter tous les sous-dossiers trouvés
+            if (data.subdirs.length === 0) {
+                const emptyDiv = document.createElement("div");
+                emptyDiv.style.cssText = "padding: 6px 8px; font-size: 0.7rem; color: rgba(255,255,255,0.4); font-style: italic;";
+                emptyDiv.innerText = "Aucun sous-dossier trouvé.";
+                workspaceSuggestions.appendChild(emptyDiv);
+            } else {
+                data.subdirs.forEach(sub => {
+                    const subDiv = document.createElement("div");
+                    subDiv.style.cssText = "padding: 6px 8px; font-family: monospace; font-size: 0.75rem; border-radius: 4px; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.2s;";
+                    subDiv.innerHTML = `<span>📁</span> <span>${sub}</span>`;
+                    subDiv.addEventListener("click", () => {
+                        const separator = data.current_path.endsWith("/") || data.current_path.endsWith("\\") ? "" : "/";
+                        workspacePathInput.value = data.current_path + separator + sub;
+                        showWorkspacePathSuggestions(); // Descendre dans ce dossier et rafraîchir !
+                    });
+                    subDiv.addEventListener("mouseenter", () => {
+                        subDiv.style.background = "rgba(255,255,255,0.08)";
+                    });
+                    subDiv.addEventListener("mouseleave", () => {
+                        subDiv.style.background = "";
+                    });
+                    workspaceSuggestions.appendChild(subDiv);
+                });
+            }
+        }
+    } catch (err) {
+        console.error("Erreur suggestions dossier:", err);
+    }
+}
+
+if (workspacePathInput) {
+    workspacePathInput.addEventListener("focus", showWorkspacePathSuggestions);
+    workspacePathInput.addEventListener("input", showWorkspacePathSuggestions);
+}
+
+// Fermer les suggestions lors d'un clic en dehors
+document.addEventListener("click", (e) => {
+    if (workspaceSuggestions && workspacePathInput) {
+        if (!workspacePathInput.contains(e.target) && !workspaceSuggestions.contains(e.target)) {
+            workspaceSuggestions.style.display = "none";
+        }
+    }
+});
+
+// GESTION DU TERMINAL INTERACTIF CODER (Claude Code / OpenCode style)
+const terminalCoderInput = document.getElementById("terminal-coder-input");
+const btnSendTerminal = document.getElementById("btn-send-terminal");
+
+async function executeTerminalCommand() {
+    if (!terminalCoderInput) return;
+    const command = terminalCoderInput.value.trim();
+    if (!command) return;
+    
+    terminalCoderInput.disabled = true;
+    if (btnSendTerminal) btnSendTerminal.disabled = true;
+    terminalCoderInput.value = "";
+    
+    // Afficher la commande tapée dans la console avec style
+    logToTerminal(`$ jarvis-coder > ${command}`, "transition");
+    
+    try {
+        const response = await apiFetch("/api/terminal/coder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command: command })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            // Jouer les étapes d'exécution de l'Agent Codeur dans le terminal de logs
+            await playAgentSteps(data.steps);
+            // Recharger l'arbre des conversations
+            await reloadChatHistory(true);
+            await refreshMemory();
+        } else {
+            logToTerminal("Erreur terminal: " + data.detail, "error");
+        }
+    } catch (err) {
+        logToTerminal("Erreur de connexion terminal: " + err, "error");
+    } finally {
+        terminalCoderInput.disabled = false;
+        if (btnSendTerminal) btnSendTerminal.disabled = false;
+        terminalCoderInput.focus();
+    }
+}
+
+if (terminalCoderInput) {
+    terminalCoderInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            executeTerminalCommand();
+        }
+    });
+}
+
+if (btnSendTerminal) {
+    btnSendTerminal.addEventListener("click", () => {
+        executeTerminalCommand();
+    });
+}
+
+// EXPLORATEUR DE DOSSIERS DE TRAVAIL INTERACTIF VISUEL (VISUAL DIRECTORY EXPLORER)
+const explorerModal = document.getElementById("explorer-modal");
+const explorerDirsList = document.getElementById("explorer-dirs-list");
+const explorerCurrentPathSpan = document.getElementById("explorer-current-path");
+const btnOpenExplorer = document.getElementById("btn-open-explorer-modal");
+const btnCloseExplorer = document.getElementById("btn-close-explorer-modal");
+const btnExplorerCancel = document.getElementById("btn-explorer-cancel");
+const btnExplorerConfirm = document.getElementById("btn-explorer-confirm");
+
+let explorerActivePath = "";
+let explorerSelectedPath = "";
+
+async function loadExplorerPath(path) {
+    try {
+        const response = await apiFetch(`/api/workspace/dirs?path=${encodeURIComponent(path)}`);
+        if (response.ok) {
+            const data = await response.json();
+            explorerActivePath = data.current_path;
+            explorerSelectedPath = data.current_path; // Par défaut, on sélectionne le dossier actif actuel
+            
+            if (explorerCurrentPathSpan) {
+                explorerCurrentPathSpan.innerText = data.current_path;
+            }
+            
+            if (explorerDirsList) {
+                explorerDirsList.innerHTML = "";
+                
+                // 1. Dossier Parent ".." si disponible
+                if (data.parent_path && data.parent_path !== data.current_path) {
+                    const row = document.createElement("div");
+                    row.style.cssText = "padding: 8px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; color: #38bdf8; font-family: monospace; font-size: 0.8rem; user-select: none; transition: background 0.2s;";
+                    row.innerHTML = "<span>📁</span> <strong>.. (Dossier Parent)</strong>";
+                    
+                    row.addEventListener("mouseenter", () => row.style.background = "rgba(255,255,255,0.05)");
+                    row.addEventListener("mouseleave", () => row.style.background = "");
+                    row.addEventListener("click", () => {
+                        // Un simple clic sélectionne le dossier parent
+                        explorerSelectedPath = data.parent_path;
+                        clearExplorerSelections();
+                        row.style.background = "rgba(56, 189, 248, 0.15)";
+                        row.style.border = "1px solid rgba(56, 189, 248, 0.3)";
+                    });
+                    row.addEventListener("dblclick", () => {
+                        loadExplorerPath(data.parent_path);
+                    });
+                    
+                    explorerDirsList.appendChild(row);
+                }
+                
+                // 2. Liste des sous-dossiers
+                if (data.subdirs.length === 0) {
+                    const empty = document.createElement("div");
+                    empty.style.cssText = "padding: 12px; font-size: 0.75rem; color: rgba(255,255,255,0.4); text-align: center; font-style: italic;";
+                    empty.innerText = "Aucun sous-dossier dans ce répertoire.";
+                    explorerDirsList.appendChild(empty);
+                } else {
+                    data.subdirs.forEach(subdir => {
+                        const row = document.createElement("div");
+                        row.className = "explorer-dir-row";
+                        row.style.cssText = "padding: 8px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; color: #fff; font-family: monospace; font-size: 0.8rem; user-select: none; transition: all 0.2s; border: 1px solid transparent;";
+                        row.innerHTML = `<span>📁</span> <span>${subdir}</span>`;
+                        
+                        row.addEventListener("mouseenter", () => {
+                            if (!row.classList.contains("selected")) {
+                                row.style.background = "rgba(255,255,255,0.05)";
+                            }
+                        });
+                        row.addEventListener("mouseleave", () => {
+                            if (!row.classList.contains("selected")) {
+                                row.style.background = "";
+                            }
+                        });
+                        row.addEventListener("click", () => {
+                            clearExplorerSelections();
+                            row.classList.add("selected");
+                            row.style.background = "rgba(0, 240, 255, 0.12)";
+                            row.style.borderColor = "rgba(0, 240, 255, 0.3)";
+                            
+                            const separator = explorerActivePath.endsWith("/") || explorerActivePath.endsWith("\\") ? "" : "/";
+                            explorerSelectedPath = explorerActivePath + separator + subdir;
+                        });
+                        row.addEventListener("dblclick", () => {
+                            const separator = explorerActivePath.endsWith("/") || explorerActivePath.endsWith("\\") ? "" : "/";
+                            loadExplorerPath(explorerActivePath + separator + subdir);
+                        });
+                        
+                        explorerDirsList.appendChild(row);
+                    });
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Erreur lors de la lecture du répertoire dans l'explorateur:", err);
+    }
+}
+
+function clearExplorerSelections() {
+    if (!explorerDirsList) return;
+    const rows = explorerDirsList.querySelectorAll(".explorer-dir-row, div");
+    rows.forEach(r => {
+        r.classList.remove("selected");
+        r.style.background = "";
+        r.style.borderColor = "transparent";
+        r.style.border = "none";
+    });
+}
+
+if (btnOpenExplorer) {
+    btnOpenExplorer.addEventListener("click", () => {
+        if (explorerModal) {
+            explorerModal.style.display = "flex";
+            const currentPath = workspacePathInput ? workspacePathInput.value : ".";
+            loadExplorerPath(currentPath);
+        }
+    });
+}
+
+function closeExplorerModal() {
+    if (explorerModal) {
+        explorerModal.style.display = "none";
+    }
+}
+
+if (btnCloseExplorer) btnCloseExplorer.addEventListener("click", closeExplorerModal);
+if (btnExplorerCancel) btnExplorerCancel.addEventListener("click", closeExplorerModal);
+
+if (btnExplorerConfirm) {
+    btnExplorerConfirm.addEventListener("click", () => {
+        if (workspacePathInput) {
+            workspacePathInput.value = explorerSelectedPath;
+            saveWorkspaceConfig();
+        }
+        closeExplorerModal();
+    });
+}
+
+// CONTRÔLES DE CAMÉRA RTS À LA SOURIS (MOLETTE POUR LE ZOOM, DRAG POUR LA ROTATION)
+let isDraggingOffice = false;
+let startX = 0;
+let startRotation = 0;
+
+if (viewOffice) {
+    // 1. Zoom avec la molette de la souris (Wheel Zoom)
+    viewOffice.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const zoomSpeed = 0.06;
+        if (e.deltaY < 0) {
+            officeZoomScale = Math.min(2.5, officeZoomScale + zoomSpeed);
+        } else {
+            officeZoomScale = Math.max(0.4, officeZoomScale - zoomSpeed);
+        }
+        applyOfficeCameraTransform();
+    }, { passive: false });
+
+    // 2. Rotation continue en glissant la souris (Drag Rotation)
+    viewOffice.addEventListener("mousedown", (e) => {
+        // Ignorer le drag si on clique sur un agent pour le sélectionner
+        if (e.target.closest(".agent-desk-iso")) return;
+        
+        isDraggingOffice = true;
+        startX = e.clientX;
+        startRotation = officeRotationDeg;
+        viewOffice.style.cursor = "grabbing";
+    });
+
+    window.addEventListener("mousemove", (e) => {
+        if (!isDraggingOffice) return;
+        const deltaX = e.clientX - startX;
+        // Calculer la nouvelle rotation continue de la pièce
+        officeRotationDeg = (startRotation + deltaX * 0.4) % 360;
+        applyOfficeCameraTransform();
+    });
+
+    window.addEventListener("mouseup", () => {
+        if (isDraggingOffice) {
+            isDraggingOffice = false;
+            if (viewOffice) viewOffice.style.cursor = "default";
+        }
+    });
+
+    // 3. Support des gestes tactiles pour mobiles et tablettes (Touch Rotation)
+    viewOffice.addEventListener("touchstart", (e) => {
+        if (e.target.closest(".agent-desk-iso")) return;
+        if (e.touches.length === 1) {
+            isDraggingOffice = true;
+            startX = e.touches[0].clientX;
+            startRotation = officeRotationDeg;
+        }
+    }, { passive: true });
+
+    viewOffice.addEventListener("touchmove", (e) => {
+        if (!isDraggingOffice || e.touches.length !== 1) return;
+        const deltaX = e.touches[0].clientX - startX;
+        officeRotationDeg = (startRotation + deltaX * 0.4) % 360;
+        applyOfficeCameraTransform();
+    }, { passive: true });
+
+    viewOffice.addEventListener("touchend", () => {
+        isDraggingOffice = false;
+    });
+}
+
+// Conserver les boutons physiques en tant que raccourcis d'appoint rapides
+const btnOfficeZoomIn = document.getElementById("btn-office-zoom-in");
+const btnOfficeZoomOut = document.getElementById("btn-office-zoom-out");
+const btnOfficeRotate = document.getElementById("btn-office-rotate");
+
+if (btnOfficeZoomIn) {
+    btnOfficeZoomIn.addEventListener("click", () => {
+        officeZoomScale = Math.min(2.5, officeZoomScale + 0.2);
+        applyOfficeCameraTransform();
+    });
+}
+if (btnOfficeZoomOut) {
+    btnOfficeZoomOut.addEventListener("click", () => {
+        officeZoomScale = Math.max(0.4, officeZoomScale - 0.2);
+        applyOfficeCameraTransform();
+    });
+}
+if (btnOfficeRotate) {
+    btnOfficeRotate.addEventListener("click", () => {
+        officeRotationDeg = (officeRotationDeg + 45) % 360;
+        applyOfficeCameraTransform();
+    });
+}
+
+// =========================================================================
+// GESTION DU COCKPIT, DE LA GALERIE MÉDIA & DES NOTIFICATIONS
+// =========================================================================
+
+// Télémétrie & Rafraîchissement
+async function loadCockpitData() {
+    try {
+        const response = await apiFetch("/api/telemetry");
+        if (!response.ok) return;
+        const data = await response.json();
+        
+        // Mettre à jour les statistiques
+        document.getElementById("stat-queries").innerText = data.total_queries || 0;
+        document.getElementById("stat-tools").innerText = data.tool_calls || 0;
+        document.getElementById("stat-tokens").innerText = data.total_tokens ? data.total_tokens.toLocaleString() : 0;
+        
+        // Afficher le coût exact calculé par le serveur
+        const costVal = data.total_cost !== undefined ? data.total_cost.toFixed(4) : ((data.total_tokens || 0) * 0.000015).toFixed(4);
+        document.getElementById("stat-cost").innerText = `${costVal} €`;
+        
+        // Mettre à jour les indicateurs des services connectés
+        const servicesList = document.getElementById("cockpit-services");
+        if (servicesList) {
+            servicesList.innerHTML = "";
+            Object.values(data.services).forEach(srv => {
+                const item = document.createElement("div");
+                item.className = "service-item";
+                
+                const srvName = document.createElement("div");
+                srvName.style.display = "flex";
+                srvName.style.alignItems = "center";
+                srvName.style.gap = "8px";
+                srvName.innerHTML = `<span>${srv.icon}</span> <strong style="color: #fff;">${srv.name}</strong>`;
+                
+                const srvStatus = document.createElement("span");
+                srvStatus.className = `service-status-badge ${srv.status === 'online' || srv.status === 'configured' ? 'online' : 'offline'}`;
+                srvStatus.innerText = srv.status === 'online' ? "🟢 En ligne" : srv.status === 'configured' ? "🟡 Configuré" : "🔴 Hors ligne";
+                
+                item.appendChild(srvName);
+                item.appendChild(srvStatus);
+                servicesList.appendChild(item);
+            });
+        }
+        
+        // Mettre à jour la liste des compétences dynamiques (Skills)
+        const skillsList = document.getElementById("cockpit-skills-list");
+        const skillsCount = document.getElementById("cockpit-skills-count");
+        if (skillsList) {
+            try {
+                const skillsRes = await apiFetch("/api/config/skills");
+                if (skillsRes.ok) {
+                    const skillsData = await skillsRes.json();
+                    if (skillsCount) skillsCount.innerText = skillsData.length;
+                    skillsList.innerHTML = "";
+                    if (skillsData.length === 0) {
+                        skillsList.innerHTML = `
+                            <div style="text-align: center; padding: 12px; opacity: 0.5; font-size: 0.75rem; width: 100%;">
+                                ✨ Aucune compétence personnalisée créée pour l'instant.
+                            </div>
+                        `;
+                    } else {
+                        skillsData.forEach(sk => {
+                            const item = document.createElement("div");
+                            item.className = "service-item";
+                            item.style.flexDirection = "column";
+                            item.style.alignItems = "flex-start";
+                            item.style.gap = "4px";
+                            item.style.padding = "10px 14px";
+                            
+                            item.innerHTML = `
+                                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span>🛠️</span>
+                                        <strong style="color: var(--accent-cyan); font-family: monospace; font-size: 0.85rem;">${sk.name}()</strong>
+                                    </div>
+                                    <span style="font-size: 0.65rem; background: rgba(0, 243, 255, 0.08); border: 1px solid rgba(0, 243, 255, 0.2); border-radius: 4px; padding: 1px 6px; color: var(--accent-cyan);">Active</span>
+                                </div>
+                                <span style="font-size: 0.72rem; opacity: 0.8; margin-top: 2px;">${sk.description}</span>
+                            `;
+                            skillsList.appendChild(item);
+                        });
+                    }
+                }
+            } catch (errSk) {
+                console.error("Erreur de chargement des skills dans le cockpit :", errSk);
+            }
+        }
+    } catch (err) {
+        console.error("Erreur de télémétrie Cockpit :", err);
+    }
+}
+
+// Galerie Média
+async function loadGalleryMedia() {
+    const galleryContainer = document.getElementById("cockpit-gallery");
+    if (!galleryContainer) return;
+    
+    galleryContainer.innerHTML = "<div style='grid-column: 1/-1; text-align: center; padding: 16px; opacity: 0.5; font-size: 0.75rem;'>Chargement des créations...</div>";
+    
+    try {
+        const response = await apiFetch("/api/gallery");
+        if (!response.ok) {
+            galleryContainer.innerHTML = "<div style='grid-column: 1/-1; text-align: center; color: #ff5555; padding: 16px; font-size: 0.75rem;'>Erreur de chargement</div>";
+            return;
+        }
+        const media = await response.json();
+        
+        if (media.length === 0) {
+            galleryContainer.innerHTML = `
+                <div style="grid-column: 1/-1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 24px 0; opacity: 0.4;">
+                    <span style="font-size: 1.5rem;">🎨</span>
+                    <span style="font-size: 0.75rem;">Aucun média généré pour l'instant.</span>
+                </div>`;
+            return;
+        }
+        
+        galleryContainer.innerHTML = "";
+        
+        media.forEach(item => {
+            const galleryItem = document.createElement("div");
+            galleryItem.className = "gallery-item";
+            
+            // Si c'est une vidéo (GIF), ajouter un badge
+            if (item.type === "video") {
+                const badge = document.createElement("span");
+                badge.className = "gallery-video-badge";
+                badge.innerText = "ANIMATION";
+                galleryItem.appendChild(badge);
+            }
+            
+            const img = document.createElement("img");
+            img.src = item.url;
+            img.loading = "lazy";
+            
+            const overlay = document.createElement("div");
+            overlay.className = "gallery-item-overlay";
+            
+            const btnZoom = document.createElement("button");
+            btnZoom.className = "gallery-btn-icon";
+            btnZoom.innerHTML = "🔍";
+            btnZoom.title = "Agrandir";
+            btnZoom.onclick = (e) => {
+                e.stopPropagation();
+                openLightbox(item.url, item.name);
+            };
+            
+            const btnDL = document.createElement("a");
+            btnDL.className = "gallery-btn-icon";
+            btnDL.innerHTML = "💾";
+            btnDL.title = "Télécharger";
+            btnDL.href = item.url;
+            btnDL.download = item.name;
+            btnDL.onclick = (e) => e.stopPropagation();
+            
+            const btnDel = document.createElement("button");
+            btnDel.className = "gallery-btn-icon";
+            btnDel.style.backgroundColor = "rgba(255, 68, 68, 0.25)";
+            btnDel.innerHTML = "🗑️";
+            btnDel.title = "Supprimer";
+            btnDel.onclick = async (e) => {
+                e.stopPropagation();
+                if (confirm(`Voulez-vous vraiment supprimer définitivement la création "${item.name}" ?`)) {
+                    try {
+                        const res = await apiFetch("/api/gallery/delete", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ path: item.path })
+                        });
+                        if (res.ok) {
+                            logToTerminal(`Création '${item.name}' supprimée avec succès.`, "info");
+                            loadGalleryMedia();
+                        } else {
+                            const errData = await res.json();
+                            logToTerminal(`Erreur lors de la suppression : ${errData.detail}`, "error");
+                        }
+                    } catch (err) {
+                        logToTerminal(`Erreur de connexion : ${err}`, "error");
+                    }
+                }
+            };
+            
+            overlay.appendChild(btnZoom);
+            overlay.appendChild(btnDL);
+            overlay.appendChild(btnDel);
+            galleryItem.appendChild(img);
+            galleryItem.appendChild(overlay);
+            
+            // Cliquer sur l'item ouvre la lightbox
+            galleryItem.onclick = () => openLightbox(item.url, item.name);
+            
+            galleryContainer.appendChild(galleryItem);
+        });
+    } catch (err) {
+        galleryContainer.innerHTML = `<div style='grid-column: 1/-1; text-align: center; color: #ff5555; padding: 16px; font-size: 0.75rem;'>Exception : ${err}</div>`;
+    }
+}
+
+// Lightbox pour affichage HD
+function openLightbox(url, name) {
+    const overlay = document.createElement("div");
+    overlay.className = "lightbox-overlay";
+    overlay.onclick = () => overlay.remove();
+    
+    const card = document.createElement("div");
+    card.className = "lightbox-card";
+    card.onclick = (e) => e.stopPropagation();
+    
+    const mediaElement = document.createElement("img");
+    mediaElement.className = "lightbox-media";
+    mediaElement.src = url;
+    
+    const title = document.createElement("div");
+    title.className = "lightbox-title";
+    title.innerText = name;
+    
+    card.appendChild(mediaElement);
+    card.appendChild(title);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    
+    // Fermeture avec la touche Échap
+    const escHandler = (e) => {
+        if (e.key === "Escape") {
+            overlay.remove();
+            document.removeEventListener("keydown", escHandler);
+        }
+    };
+    document.addEventListener("keydown", escHandler);
+}
+
+// Centre de Notifications & Toasts
+const NOTIFICATION_HISTORY = [];
+let UNREAD_NOTIFICATIONS_COUNT = 0;
+
+function pushNotification(title, text, type = "info") {
+    const notif = {
+        id: Date.now() + Math.random().toString(36).substr(2, 4),
+        title,
+        text,
+        type,
+        time: new Date().toLocaleTimeString(),
+        unread: true
+    };
+    
+    NOTIFICATION_HISTORY.unshift(notif);
+    UNREAD_NOTIFICATIONS_COUNT++;
+    
+    updateNotificationBadge();
+    renderNotificationList();
+    
+    const toastContainer = document.getElementById("toast-container");
+    if (toastContainer) {
+        const toast = document.createElement("div");
+        toast.className = `toast-alert ${type}`;
+        
+        let typeIcon = "ℹ️";
+        if (type === "success") typeIcon = "✅";
+        if (type === "warning") typeIcon = "⚠️";
+        if (type === "error") typeIcon = "🚨";
+        
+        toast.innerHTML = `
+            <span style="font-size: 1.1rem; flex-shrink: 0;">${typeIcon}</span>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; text-align: left;">
+                <strong style="color: #fff; font-size: 0.8rem;">${title}</strong>
+                <span style="color: rgba(255,255,255,0.7); font-size: 0.72rem;">${text}</span>
+            </div>
+            <button class="toast-close">×</button>
+        `;
+        
+        toast.querySelector(".toast-close").onclick = () => {
+            toast.style.opacity = "0";
+            toast.style.transform = "translateX(50px) scale(0.9)";
+            setTimeout(() => toast.remove(), 300);
+        };
+        
+        toastContainer.appendChild(toast);
+        
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.style.opacity = "0";
+                toast.style.transform = "translateX(50px) scale(0.9)";
+                setTimeout(() => toast.remove(), 300);
+            }
+        }, 5000);
+    }
+}
+
+function updateNotificationBadge() {
+    const badge = document.getElementById("notification-badge");
+    if (!badge) return;
+    
+    if (UNREAD_NOTIFICATIONS_COUNT > 0) {
+        badge.innerText = UNREAD_NOTIFICATIONS_COUNT;
+        badge.style.display = "block";
+    } else {
+        badge.style.display = "none";
+    }
+}
+
+function renderNotificationList() {
+    const list = document.getElementById("notification-items-list");
+    if (!list) return;
+    
+    if (NOTIFICATION_HISTORY.length === 0) {
+        list.innerHTML = `<div style="padding: 16px; text-align: center; opacity: 0.5; font-size: 0.75rem;">Aucune notification</div>`;
+        return;
+    }
+    
+    list.innerHTML = "";
+    
+    NOTIFICATION_HISTORY.forEach(notif => {
+        const item = document.createElement("div");
+        item.className = `notification-item ${notif.unread ? 'unread' : ''}`;
+        
+        let icon = "ℹ️";
+        if (notif.type === "success") icon = "✅";
+        if (notif.type === "warning") icon = "⚠️";
+        if (notif.type === "error") icon = "🚨";
+        
+        item.innerHTML = `
+            <span style="font-size: 1rem; flex-shrink: 0; margin-top: 2px;">${icon}</span>
+            <div style="flex: 1; text-align: left;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 4px; margin-bottom: 2px;">
+                    <strong style="color: #fff; font-size: 0.75rem;">${notif.title}</strong>
+                    <span style="font-size: 0.6rem; opacity: 0.4;">${notif.time}</span>
+                </div>
+                <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem; overflow-wrap: anywhere;">${notif.text}</div>
+            </div>
+        `;
+        
+        item.onclick = () => {
+            if (notif.unread) {
+                notif.unread = false;
+                UNREAD_NOTIFICATIONS_COUNT = Math.max(0, UNREAD_NOTIFICATIONS_COUNT - 1);
+                updateNotificationBadge();
+                item.classList.remove("unread");
+            }
+        };
+        
+        list.appendChild(item);
+    });
+}
+
+// Liaison événementielle
+const btnNotifications = document.getElementById("btn-notifications");
+const notifDropdown = document.getElementById("notification-dropdown");
+if (btnNotifications && notifDropdown) {
+    btnNotifications.onclick = (e) => {
+        e.stopPropagation();
+        const shown = notifDropdown.style.display === "block";
+        notifDropdown.style.display = shown ? "none" : "block";
+        
+        if (!shown) {
+            NOTIFICATION_HISTORY.forEach(n => n.unread = false);
+            UNREAD_NOTIFICATIONS_COUNT = 0;
+            updateNotificationBadge();
+            renderNotificationList();
+        }
+    };
+    
+    document.addEventListener("click", () => {
+        notifDropdown.style.display = "none";
+    });
+    notifDropdown.onclick = (e) => e.stopPropagation();
+}
+
+const btnClearNotifications = document.getElementById("btn-clear-notifications");
+if (btnClearNotifications) {
+    btnClearNotifications.onclick = (e) => {
+        e.stopPropagation();
+        NOTIFICATION_HISTORY.length = 0;
+        UNREAD_NOTIFICATIONS_COUNT = 0;
+        updateNotificationBadge();
+        renderNotificationList();
+    };
+}
+
+// Liaison des boutons d'actualisation Cockpit & Galerie
+const btnRefreshCockpit = document.getElementById("btn-refresh-cockpit");
+if (btnRefreshCockpit) {
+    btnRefreshCockpit.onclick = () => {
+        loadCockpitData();
+    };
+}
+const btnRefreshGallery = document.getElementById("btn-refresh-gallery");
+if (btnRefreshGallery) {
+    btnRefreshGallery.onclick = () => {
+        loadGalleryMedia();
+    };
+}
+
+// =========================================================================
+// GESTIONNAIRE DE CONVERSATIONS (PERSISTENCE DE L'HISTORIQUE)
+// =========================================================================
+const selectConversations = document.getElementById("select-conversations");
+const btnNewChat = document.getElementById("btn-new-chat");
+const btnDeleteChat = document.getElementById("btn-delete-chat");
+
+async function loadConversations() {
+    if (!selectConversations) return;
+    try {
+        const response = await apiFetch("/api/conversations");
+        if (!response.ok) return;
+        const data = await response.json();
+        
+        selectConversations.innerHTML = "";
+        data.conversations.forEach(conv => {
+            const opt = document.createElement("option");
+            opt.value = conv.id;
+            opt.textContent = conv.name;
+            opt.selected = conv.active;
+            selectConversations.appendChild(opt);
+        });
+    } catch (e) {
+        console.error("Error loading conversations:", e);
+    }
+}
+
+if (selectConversations) {
+    selectConversations.onchange = async () => {
+        const convId = selectConversations.value;
+        try {
+            const response = await apiFetch("/api/conversations/select", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: convId })
+            });
+            if (response.ok) {
+                await reloadChatHistory(true);
+                pushNotification("Conversation", "Discussion chargée avec succès", "success");
+            }
+        } catch (e) {
+            console.error("Error selecting conversation:", e);
+        }
+    };
+}
+
+if (btnNewChat) {
+    btnNewChat.onclick = async () => {
+        try {
+            const response = await apiFetch("/api/conversations/new", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({})
+            });
+            if (response.ok) {
+                await loadConversations();
+                await reloadChatHistory(true);
+                pushNotification("Conversation", "Nouvelle discussion créée !", "success");
+            }
+        } catch (e) {
+            console.error("Error creating conversation:", e);
+        }
+    };
+}
+
+if (btnDeleteChat) {
+    btnDeleteChat.onclick = async () => {
+        const convId = selectConversations ? selectConversations.value : "default";
+        if (convId === "default") {
+            if (confirm("Voulez-vous vider l'historique de cette discussion principale ?")) {
+                try {
+                    const response = await apiFetch("/api/reset", { method: "POST" });
+                    if (response.ok) {
+                        await reloadChatHistory(true);
+                        pushNotification("Conversation", "Discussion réinitialisée", "success");
+                    }
+                } catch (e) {
+                    console.error("Error clearing chat:", e);
+                }
+            }
+            return;
+        }
+        
+        if (confirm("Voulez-vous supprimer définitivement cette discussion ?")) {
+            try {
+                const response = await apiFetch(`/api/conversations/${convId}`, { method: "DELETE" });
+                if (response.ok) {
+                    await loadConversations();
+                    await reloadChatHistory(true);
+                    pushNotification("Conversation", "Discussion supprimée", "success");
+                }
+            } catch (e) {
+                console.error("Error deleting conversation:", e);
+            }
+        }
+    };
+}
+
+// Charger l'historique au démarrage
+loadConversations();
+
+// Boucle de rafraîchissement automatique du cockpit en tâche de fond (toutes les 4 secondes)
+// Ne s'exécute activement que si l'onglet Cockpit est au premier plan
+setInterval(() => {
+    const tabCockpit = document.getElementById("tab-cockpit");
+    if (tabCockpit && tabCockpit.classList.contains("active")) {
+        if (typeof loadCockpitData === "function") loadCockpitData();
+        if (typeof loadGalleryMedia === "function") loadGalleryMedia();
+    }
+}, 4000);
+
+
+
+// =========================================================================
+// CONFIGURATION DES TARIFS LLM (PRICING UI)
+// =========================================================================
+
+let _pricingData = {};
+
+async function loadPricingConfig() {
+    const container = document.getElementById("pricing-rows-container");
+    if (!container) return;
+    container.innerHTML = "<div style='padding: 12px; text-align: center; opacity: 0.5; font-size: 0.8rem;'>Chargement des tarifs...</div>";
+    try {
+        const resp = await apiFetch("/api/pricing");
+        if (!resp.ok) throw new Error("Erreur serveur");
+        _pricingData = await resp.json();
+        renderPricingRows(_pricingData);
+    } catch (e) {
+        container.innerHTML = `<div style='color: #ff5555; padding: 12px; font-size: 0.8rem;'>Erreur: ${e}</div>`;
+    }
+}
+
+function renderPricingRows(data) {
+    const container = document.getElementById("pricing-rows-container");
+    if (!container) return;
+    container.innerHTML = "";
+    const header = document.createElement("div");
+    header.style.cssText = "display: grid; grid-template-columns: 1fr 120px 120px 36px; gap: 6px; padding: 2px 10px; font-size: 0.65rem; text-transform: uppercase; color: rgba(255,255,255,0.4); letter-spacing: 0.05em;";
+    header.innerHTML = "<span>Modèle</span><span style='text-align:right;color:#4ade80;'>Entrée €/M</span><span style='text-align:right;color:#f59e0b;'>Sortie €/M</span><span></span>";
+    container.appendChild(header);
+    Object.entries(data).forEach(([model, costs]) => {
+        container.appendChild(createPricingRow(model, costs.input_cost_per_million, costs.output_cost_per_million));
+    });
+}
+
+function createPricingRow(modelName, inputCost, outputCost) {
+    const row = document.createElement("div");
+    row.className = "pricing-row";
+    row.style.cssText = "display: grid; grid-template-columns: 1fr 120px 120px 36px; gap: 6px; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; padding: 8px 10px;";
+    const inputModel = document.createElement("input");
+    inputModel.type = "text"; inputModel.value = modelName || "";
+    inputModel.placeholder = "Ex: gpt-4o-mini"; inputModel.className = "pricing-model-name";
+    inputModel.style.cssText = "background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; padding: 5px 8px; font-size: 0.75rem; outline: none; font-family: 'Fira Code', monospace; width: 100%;";
+    const inputIn = document.createElement("input");
+    inputIn.type = "number"; inputIn.value = inputCost || 0; inputIn.step = "0.01"; inputIn.min = "0";
+    inputIn.className = "pricing-input-cost"; inputIn.title = "Coût entrée €/million tokens";
+    inputIn.style.cssText = "background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #4ade80; padding: 5px 8px; font-size: 0.75rem; outline: none; text-align: right; width: 100%;";
+    const inputOut = document.createElement("input");
+    inputOut.type = "number"; inputOut.value = outputCost || 0; inputOut.step = "0.01"; inputOut.min = "0";
+    inputOut.className = "pricing-output-cost"; inputOut.title = "Coût sortie €/million tokens";
+    inputOut.style.cssText = "background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #f59e0b; padding: 5px 8px; font-size: 0.75rem; outline: none; text-align: right; width: 100%;";
+    const btnDel = document.createElement("button");
+    btnDel.innerText = "🗑"; btnDel.title = "Supprimer";
+    btnDel.style.cssText = "background: rgba(255,85,85,0.15); border: 1px solid rgba(255,85,85,0.3); border-radius: 4px; color: #ff5555; cursor: pointer; padding: 4px 8px; font-size: 0.85rem;";
+    btnDel.onclick = () => row.remove();
+    row.appendChild(inputModel); row.appendChild(inputIn); row.appendChild(inputOut); row.appendChild(btnDel);
+    return row;
+}
+
+const btnAddPricingRow = document.getElementById("btn-add-pricing-row");
+if (btnAddPricingRow) {
+    btnAddPricingRow.onclick = () => {
+        const container = document.getElementById("pricing-rows-container");
+        if (!container) return;
+        container.appendChild(createPricingRow("", 0.50, 1.50));
+    };
+}
+
+const btnSavePricing = document.getElementById("btn-save-pricing");
+if (btnSavePricing) {
+    btnSavePricing.onclick = async () => {
+        const container = document.getElementById("pricing-rows-container");
+        const status = document.getElementById("pricing-save-status");
+        if (!container) return;
+        const payload = {};
+        container.querySelectorAll(".pricing-row").forEach(row => {
+            const name = row.querySelector(".pricing-model-name")?.value?.trim();
+            const inCost = parseFloat(row.querySelector(".pricing-input-cost")?.value || 0);
+            const outCost = parseFloat(row.querySelector(".pricing-output-cost")?.value || 0);
+            if (name) payload[name] = { input_cost_per_million: inCost, output_cost_per_million: outCost };
+        });
+        try {
+            const resp = await apiFetch("/api/pricing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+            if (resp.ok) {
+                const result = await resp.json();
+                if (status) status.innerHTML = `<span style='color:#4ade80;'>✅ ${result.models_count} modèle(s) sauvegardé(s)</span>`;
+                pushNotification("Tarifs LLM", `${result.models_count} modèles mis à jour`, "success");
+                setTimeout(() => { if (status) status.innerHTML = ""; }, 4000);
+            } else { throw new Error(await resp.text()); }
+        } catch (e) {
+            if (status) status.innerHTML = `<span style='color:#ff5555;'>❌ Erreur : ${e}</span>`;
+        }
+    };
+}
+
+const btnResetPricing = document.getElementById("btn-reset-pricing");
+if (btnResetPricing) {
+    btnResetPricing.onclick = async () => {
+        if (!confirm("Réinitialiser aux tarifs par défaut ?")) return;
+        const status = document.getElementById("pricing-save-status");
+        try {
+            const resp = await apiFetch("/api/pricing/reset", { method: "POST" });
+            if (resp.ok) {
+                const result = await resp.json();
+                renderPricingRows(result.data);
+                if (status) status.innerHTML = `<span style='color:#f59e0b;'>↺ Tarifs réinitialisés par défaut</span>`;
+                setTimeout(() => { if (status) status.innerHTML = ""; }, 4000);
+            }
+        } catch (e) {
+            if (status) status.innerHTML = `<span style='color:#ff5555;'>Erreur: ${e}</span>`;
+        }
+    };
+}
+
+// =========================================================================
+// GESTION DU REDIMENSIONNEMENT DU PANNEAU DE CHAT EN DRAG-AND-DROP
+// =========================================================================
+window.addEventListener("DOMContentLoaded", () => {
+    const resizer = document.getElementById("layout-resizer");
+    const appContainer = document.querySelector(".app-container");
+    
+    if (resizer && appContainer) {
+        let isDragging = false;
+        
+        resizer.addEventListener("mousedown", (e) => {
+            isDragging = true;
+            resizer.classList.add("dragging");
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+        });
+        
+        document.addEventListener("mousemove", (e) => {
+            if (!isDragging) return;
+            
+            // Calculer la nouvelle largeur du chat
+            const containerWidth = window.innerWidth;
+            const newChatWidth = containerWidth - e.clientX - 3;
+            
+            // Permettre au chat d'occuper presque tout l'écran (jusqu'à 150px de viewport central)
+            const maxChatWidth = containerWidth - 150;
+            if (newChatWidth >= 260 && newChatWidth <= maxChatWidth) {
+                appContainer.style.gridTemplateColumns = `76px 1fr 6px ${newChatWidth}px`;
+            }
+        });
+        
+        document.addEventListener("mouseup", () => {
+            if (isDragging) {
+                isDragging = false;
+                resizer.classList.remove("dragging");
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+                
+                // Forcer le recalcul du bureau virtuel isométrique et du graphe
+                if (typeof rebuildOfficeFloor === "function") {
+                    rebuildOfficeFloor();
+                }
+                if (typeof rebuildGraphView === "function") {
+                    rebuildGraphView();
+                }
+            }
+        });
+    }
+
+    // Gestion du bouton flottant pour tablettes et mobiles
+    const mobileChatToggleBtn = document.getElementById("btn-mobile-chat-toggle");
+    const rightChatSidebar = document.querySelector(".right-chat-sidebar");
+    
+    if (mobileChatToggleBtn && rightChatSidebar) {
+        mobileChatToggleBtn.addEventListener("click", () => {
+            rightChatSidebar.classList.toggle("mobile-open");
+            if (rightChatSidebar.classList.contains("mobile-open")) {
+                mobileChatToggleBtn.innerHTML = "❌";
+                mobileChatToggleBtn.style.background = "#ff5555";
+                mobileChatToggleBtn.style.boxShadow = "0 0 15px #ff5555";
+            } else {
+                mobileChatToggleBtn.innerHTML = "💬";
+                mobileChatToggleBtn.style.background = "";
+                mobileChatToggleBtn.style.boxShadow = "";
+            }
+        });
+    }
+
+    // =========================================================================
+    // CONTRÔLEUR DU RESUMEUR DE RÉUNION (TRANCRIPTION & DIARISATION AUDIO)
+    // =========================================================================
+    const dropzone = document.getElementById("meeting-dropzone");
+    const audioInput = document.getElementById("meeting-audio-file");
+    const playerWrapper = document.getElementById("meeting-player-wrapper");
+    const audioPlayer = document.getElementById("meeting-audio-player");
+    const btnStart = document.getElementById("btn-start-transcription");
+    const loadingArea = document.getElementById("meeting-loading");
+    const statusText = document.getElementById("meeting-status-text");
+    const transcriptBox = document.getElementById("meeting-transcript-box");
+    const summaryBox = document.getElementById("meeting-summary-box");
+    const btnDownload = document.getElementById("btn-download-meeting");
+    
+    // Éléments pour l'enregistrement direct au micro
+    const btnRecord = document.getElementById("btn-record-meeting");
+    const recordIcon = document.getElementById("record-icon");
+    const recordText = document.getElementById("record-text");
+    
+    let selectedAudioFile = null;
+    let transcriptionResult = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+    let recordingStartTime = 0;
+    let recordingInterval = null;
+    
+    if (btnRecord) {
+        btnRecord.addEventListener("click", async (e) => {
+            e.stopPropagation(); // Évite de déclencher le click de la dropzone
+            
+            if (!isRecording) {
+                // Démarre l'enregistrement
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    audioChunks = [];
+                    mediaRecorder = new MediaRecorder(stream);
+                    
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);
+                        }
+                    };
+                    
+                    mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+                        const audioFile = new File([audioBlob], `enregistrement_${Date.now()}.webm`, { type: "audio/webm" });
+                        handleAudioFileSelected(audioFile);
+                        
+                        // Libérer le micro en coupant toutes les pistes
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+                    
+                    mediaRecorder.start();
+                    isRecording = true;
+                    recordingStartTime = Date.now();
+                    
+                    // Modifier l'apparence du bouton
+                    btnRecord.style.borderColor = "#ff5555";
+                    btnRecord.style.background = "rgba(255, 85, 85, 0.15)";
+                    btnRecord.style.boxShadow = "0 0 15px rgba(255, 85, 85, 0.4)";
+                    recordIcon.style.animation = "pulse 1s infinite alternate";
+                    recordIcon.textContent = "⏹️";
+                    
+                    // Lancer le chronomètre en temps réel
+                    recordingInterval = setInterval(() => {
+                        const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                        const mins = String(Math.floor(elapsed / 60)).padStart(2, "0");
+                        const secs = String(elapsed % 60).padStart(2, "0");
+                        recordText.textContent = `ARRÊTER L'ENREGISTREMENT (${mins}:${secs})`;
+                    }, 500);
+                    
+                } catch (err) {
+                    console.error("Erreur d'accès au microphone :", err);
+                    alert("Impossible d'accéder à votre microphone. Veuillez accorder les permissions d'enregistrement audio.");
+                }
+            } else {
+                // Arrête l'enregistrement
+                if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                    mediaRecorder.stop();
+                }
+                
+                isRecording = false;
+                clearInterval(recordingInterval);
+                
+                // Réinitialiser le style du bouton
+                btnRecord.style.borderColor = "rgba(255,255,255,0.15)";
+                btnRecord.style.background = "rgba(255,255,255,0.05)";
+                btnRecord.style.boxShadow = "0 4px 15px rgba(0,0,0,0.2)";
+                recordIcon.style.animation = "";
+                recordIcon.textContent = "🔴";
+                recordText.textContent = "ENREGISTRER EN DIRECT";
+            }
+        });
+    }
+    
+    if (dropzone && audioInput) {
+        // Clic sur la zone de drop pour ouvrir le sélecteur
+        dropzone.addEventListener("click", () => {
+            audioInput.click();
+        });
+        
+        // Drag & Drop visual highlights
+        dropzone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropzone.style.borderColor = "var(--accent-color)";
+            dropzone.style.background = "rgba(0, 0, 0, 0.4)";
+        });
+        
+        dropzone.addEventListener("dragleave", () => {
+            dropzone.style.borderColor = "rgba(255, 255, 255, 0.15)";
+            dropzone.style.background = "rgba(0, 0, 0, 0.2)";
+        });
+        
+        dropzone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropzone.style.borderColor = "rgba(255, 255, 255, 0.15)";
+            dropzone.style.background = "rgba(0, 0, 0, 0.2)";
+            
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleAudioFileSelected(e.dataTransfer.files[0]);
+            }
+        });
+        
+        audioInput.addEventListener("change", (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleAudioFileSelected(e.target.files[0]);
+            }
+        });
+    }
+    
+    function handleAudioFileSelected(file) {
+        selectedAudioFile = file;
+        
+        // Charger dans le lecteur audio
+        const fileURL = URL.createObjectURL(file);
+        audioPlayer.src = fileURL;
+        
+        // Mettre à jour l'UI
+        dropzone.querySelector("span[style*='font-weight']").textContent = `Fichier prêt : ${file.name}`;
+        dropzone.style.borderColor = "var(--color-Jarvis)";
+        
+        playerWrapper.style.display = "flex";
+        btnStart.style.display = "inline-block";
+        btnStart.disabled = false;
+        btnStart.textContent = "Lancer la transcription";
+    }
+    
+    if (btnStart) {
+        btnStart.addEventListener("click", async () => {
+            if (!selectedAudioFile) return;
+            
+            // Masquer le bouton de départ et afficher la zone de chargement
+            btnStart.style.display = "none";
+            loadingArea.style.display = "flex";
+            statusText.textContent = "Téléchargement et analyse du fichier audio...";
+            
+            transcriptBox.innerHTML = '<div style="opacity: 0.5; text-align: center; margin: auto;">Analyse des voix en cours...</div>';
+            summaryBox.innerHTML = '<div style="opacity: 0.5; text-align: center; margin: auto;">Rédaction du compte-rendu en cours...</div>';
+            btnDownload.style.display = "none";
+            
+            const formData = new FormData();
+            formData.append("file", selectedAudioFile);
+            
+            try {
+                // Étape 2: Envoyer au serveur de transcription
+                statusText.textContent = "Transcription des voix & Diarisation par l'IA...";
+                const res = await fetch("/api/meeting/transcribe", {
+                    method: "POST",
+                    body: formData
+                });
+                
+                const data = await res.json();
+                loadingArea.style.display = "none";
+                
+                if (data.error) {
+                    transcriptBox.innerHTML = `<div style="color: #ff5555; text-align: center; margin: auto; padding: 12px;">❌ Erreur : ${data.error}</div>`;
+                    summaryBox.innerHTML = `<div style="color: #ff5555; text-align: center; margin: auto; padding: 12px;">Impossible de générer le compte-rendu.</div>`;
+                    btnStart.style.display = "inline-block";
+                    return;
+                }
+                
+                transcriptionResult = data;
+                renderDiarizedTranscript(data.transcript);
+                renderStructuredSummary(data.summary);
+                
+                // Activer l'export
+                btnDownload.style.display = "inline-block";
+                
+            } catch (err) {
+                loadingArea.style.display = "none";
+                transcriptBox.innerHTML = `<div style="color: #ff5555; text-align: center; margin: auto; padding: 12px;">❌ Exception : ${err.message}</div>`;
+                summaryBox.innerHTML = `<div style="color: #ff5555; text-align: center; margin: auto; padding: 12px;">Échec de la connexion avec le serveur.</div>`;
+                btnStart.style.display = "inline-block";
+            }
+        });
+    }
+    
+    // Rendu du dialogue diarisé sous forme de bulles stylisées
+    function renderDiarizedTranscript(dialogue) {
+        if (!dialogue || dialogue.length === 0) {
+            transcriptBox.innerHTML = '<div style="opacity: 0.4; text-align: center; margin: auto;">Aucun dialogue détecté.</div>';
+            return;
+        }
+        
+        transcriptBox.innerHTML = "";
+        
+        // Assigner dynamiquement des couleurs aux locuteurs distincts
+        const speakerColors = {};
+        const colors = [
+            "var(--color-Jarvis)", // Cyan
+            "#a855f7", // Violet
+            "#eab308", // Jaune
+            "#ec4899", // Rose
+            "#10b981", // Vert
+            "#3b82f6"  // Bleu
+        ];
+        let colorIdx = 0;
+        
+        dialogue.forEach(line => {
+            const speaker = line.speaker || "Locuteur Inconnu";
+            if (!speakerColors[speaker]) {
+                speakerColors[speaker] = colors[colorIdx % colors.length];
+                colorIdx++;
+            }
+            
+            const color = speakerColors[speaker];
+            
+            const lineEl = document.createElement("div");
+            lineEl.className = "transcript-bubble glass";
+            lineEl.style.padding = "10px 14px";
+            lineEl.style.borderRadius = "8px";
+            lineEl.style.background = "rgba(255, 255, 255, 0.02)";
+            lineEl.style.borderLeft = `3px solid ${color}`;
+            lineEl.style.display = "flex";
+            lineEl.style.flexDirection = "column";
+            lineEl.style.gap = "4px";
+            lineEl.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
+            
+            lineEl.innerHTML = `
+                <div style="font-weight: bold; font-size: 0.8rem; color: ${color};">${speaker}</div>
+                <div style="font-size: 0.85rem; line-height: 1.4; color: #fff;">${line.text}</div>
+            `;
+            
+            transcriptBox.appendChild(lineEl);
+        });
+    }
+    
+    // Rendu du compte-rendu markdown
+    function renderStructuredSummary(markdownText) {
+        if (!markdownText) {
+            summaryBox.innerHTML = '<div style="opacity: 0.4; text-align: center; margin: auto;">Aucun compte-rendu généré.</div>';
+            return;
+        }
+        
+        // Utiliser marked.parse si présent, sinon afficher en texte brut formaté
+        if (window.marked && typeof window.marked.parse === "function") {
+            summaryBox.innerHTML = window.marked.parse(markdownText);
+        } else {
+            summaryBox.textContent = markdownText;
+        }
+    }
+    
+    // Export/téléchargement du compte-rendu Markdown
+    if (btnDownload) {
+        btnDownload.addEventListener("click", () => {
+            if (!transcriptionResult || !transcriptionResult.summary) return;
+            
+            const blob = new Blob([transcriptionResult.summary], { type: "text/markdown;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.setAttribute("download", `compte_rendu_${Date.now()}.md`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    }
+});
+
+// =========================================================================
+// MODULE DE SAISIE ET AUTOCOMPLÉTION PREMIUM POUR LES MENTIONS @AGENT
+// =========================================================================
+let selectedMentionIndex = 0;
+let filteredAgentsList = [];
+
+function initMentionAutocomplete() {
+    const chatInput = document.getElementById("chat-input");
+    if (!chatInput) return;
+
+    // Création du dropdown flottant
+    const dropdown = document.createElement("div");
+    dropdown.id = "mention-autocomplete-dropdown";
+    document.body.appendChild(dropdown);
+
+    // Injection des styles haut de gamme pour l'autocomplétion
+    const style = document.createElement("style");
+    style.textContent = `
+        #mention-autocomplete-dropdown {
+            position: absolute;
+            background: rgba(15, 15, 20, 0.92);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(0, 240, 255, 0.25);
+            border-radius: 14px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 15px rgba(0, 240, 255, 0.1);
+            z-index: 999999;
+            display: none;
+            flex-direction: column;
+            max-height: 250px;
+            overflow-y: auto;
+            width: 280px;
+            padding: 6px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(0, 240, 255, 0.3) transparent;
+        }
+        #mention-autocomplete-dropdown::-webkit-scrollbar {
+            width: 4px;
+        }
+        #mention-autocomplete-dropdown::-webkit-scrollbar-thumb {
+            background: rgba(0, 240, 255, 0.3);
+            border-radius: 2px;
+        }
+        .mention-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: 'Inter', sans-serif;
+            border: 1px solid transparent;
+        }
+        .mention-item:hover, .mention-item.active {
+            background: linear-gradient(90deg, rgba(0, 240, 255, 0.12) 0%, rgba(0, 240, 255, 0.03) 100%);
+            border-color: rgba(0, 240, 255, 0.25);
+            color: #ffffff;
+            transform: translateX(4px);
+        }
+        .mention-emoji {
+            font-size: 1.2rem;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+        .mention-details {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+        .mention-name {
+            font-weight: 600;
+            color: #ffffff;
+            font-family: 'Fira Code', monospace;
+        }
+        .mention-role {
+            font-size: 0.72rem;
+            color: rgba(255, 255, 255, 0.45);
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Ajustement dynamique du positionnement
+    function positionDropdown() {
+        const rect = chatInput.getBoundingClientRect();
+        dropdown.style.left = `${rect.left}px`;
+        dropdown.style.bottom = `${window.innerHeight - window.scrollY - rect.top + 8}px`;
+    }
+
+    // Capture des frappes utilisateur
+    chatInput.addEventListener("input", () => {
+        const text = chatInput.value;
+        const selectionStart = chatInput.selectionStart;
+        
+        // Détecter si on écrit derrière un caractère @
+        const lastAtIndex = text.lastIndexOf("@", selectionStart - 1);
+        
+        if (lastAtIndex !== -1) {
+            // S'assurer qu'aucun espace n'est présent entre le @ et le curseur (mot en cours)
+            const prefix = text.substring(lastAtIndex + 1, selectionStart);
+            if (!prefix.includes(" ")) {
+                showMentions(prefix, lastAtIndex);
+                return;
+            }
+        }
+        
+        hideMentions();
+    });
+
+    // Génération et affichage de la liste de suggestions
+    function showMentions(prefix, lastAtIndex) {
+        // Filtrer les agents dynamiquement basés sur la config courante
+        filteredAgentsList = agentsConfig.filter(agent => {
+            const nameMatch = agent.name.toLowerCase().includes(prefix.toLowerCase());
+            const displayMatch = agent.display_name && agent.display_name.toLowerCase().includes(prefix.toLowerCase());
+            return nameMatch || displayMatch;
+        });
+
+        // Toujours proposer Jarvis s'il correspond au préfixe
+        if ("jarvis".includes(prefix.toLowerCase()) && !filteredAgentsList.some(a => a.name.toLowerCase() === "jarvis")) {
+            filteredAgentsList.unshift({ name: "Jarvis", display_name: "Jarvis Superviseur", avatar_type: "robot_neon" });
+        }
+
+        if (filteredAgentsList.length === 0) {
+            hideMentions();
+            return;
+        }
+
+        dropdown.innerHTML = "";
+        selectedMentionIndex = 0;
+
+        filteredAgentsList.forEach((agent, index) => {
+            const item = document.createElement("div");
+            item.className = `mention-item ${index === selectedMentionIndex ? 'active' : ''}`;
+            
+            const emoji = getAgentEmoji(agent.avatar_type || agent.name);
+            
+            item.innerHTML = `
+                <span class="mention-emoji">${emoji}</span>
+                <div class="mention-details">
+                    <span class="mention-name">@${agent.name}</span>
+                    <span class="mention-role">${agent.display_name || 'Agent Spécialiste'}</span>
+                </div>
+            `;
+
+            // Sélection au clic de la souris
+            item.addEventListener("click", () => {
+                insertMention(agent.name, lastAtIndex);
+            });
+
+            dropdown.appendChild(item);
+        });
+
+        positionDropdown();
+        dropdown.style.display = "flex";
+    }
+
+    // Insertion intelligente de la mention sélectionnée
+    function insertMention(agentName, lastAtIndex) {
+        const text = chatInput.value;
+        const selectionStart = chatInput.selectionStart;
+        const before = text.substring(0, lastAtIndex);
+        const after = text.substring(selectionStart);
+        
+        chatInput.value = before + "@" + agentName + " " + after;
+        chatInput.focus();
+        
+        // Repositionner le curseur juste après le tag inséré
+        const newCursorPos = lastAtIndex + agentName.length + 2;
+        chatInput.setSelectionRange(newCursorPos, newCursorPos);
+        
+        hideMentions();
+    }
+
+    function hideMentions() {
+        dropdown.style.display = "none";
+    }
+
+    // Masquer le dropdown en cas de clic en dehors
+    document.addEventListener("click", (e) => {
+        if (e.target !== chatInput && !dropdown.contains(e.target)) {
+            hideMentions();
+        }
+    });
+
+    // Mettre à jour la position en cas de resize/scroll
+    window.addEventListener("resize", positionDropdown);
+    window.addEventListener("scroll", positionDropdown);
+
+    // Gestion de la navigation au clavier (Premium User Experience)
+    chatInput.addEventListener("keydown", (e) => {
+        if (dropdown.style.display === "flex") {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                selectedMentionIndex = (selectedMentionIndex + 1) % filteredAgentsList.length;
+                updateActiveItem();
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                selectedMentionIndex = (selectedMentionIndex - 1 + filteredAgentsList.length) % filteredAgentsList.length;
+                updateActiveItem();
+            } else if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                const activeAgent = filteredAgentsList[selectedMentionIndex];
+                if (activeAgent) {
+                    const text = chatInput.value;
+                    const selectionStart = chatInput.selectionStart;
+                    const lastAtIndex = text.lastIndexOf("@", selectionStart - 1);
+                    insertMention(activeAgent.name, lastAtIndex);
+                }
+            } else if (e.key === "Escape") {
+                e.preventDefault();
+                hideMentions();
+            }
+        }
+    });
+
+    // Mettre à jour visuellement l'élément sélectionné
+    function updateActiveItem() {
+        const items = dropdown.querySelectorAll(".mention-item");
+        items.forEach((item, index) => {
+            if (index === selectedMentionIndex) {
+                item.classList.add("active");
+                item.scrollIntoView({ block: "nearest" });
+            } else {
+                item.classList.remove("active");
+            }
+        });
+    }
+}
+
+// Initialisation globale au chargement de la page
+if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", initMentionAutocomplete);
+} else {
+    initMentionAutocomplete();
+}
+
+// =========================================================================
+// GESTION PREMIUM DES ENVOIS DE DOCUMENTS DEPUIS LA ZONE DE CHAT
+// =========================================================================
+async function uploadAndIngestFromChat(file) {
+    const chatInput = document.getElementById("chat-input");
+    if (!chatInput) return;
+    
+    logToTerminal(`Traitement du fichier '${file.name}' depuis le chat... ⏳`, "info");
+    
+    // Mettre un indicateur de chargement dans le placeholder de l'input
+    const origPlaceholder = chatInput.placeholder;
+    chatInput.placeholder = `Ingestion de ${file.name} en cours... ⏳`;
+    chatInput.disabled = true;
+    
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    try {
+        const response = await apiFetch("/api/workspace/upload", {
+            method: "POST",
+            body: formData
+        });
+        const res = await response.json();
+        
+        if (response.ok) {
+            logToTerminal(`Fichier '${file.name}' téléversé avec succès.`, "success");
+            
+            if (res.ingested && res.report) {
+                // Log le rapport RAG
+                logToTerminal(res.report, "success");
+                
+                // Afficher un message de confirmation spécial dans le flux de chat
+                appendSystemMessage(`📖 **Document ingéré** : \`${file.name}\` a été segmenté et indexé avec succès dans ma mémoire sémantique. Vous pouvez maintenant me poser des questions sur son contenu !`);
+            } else {
+                appendSystemMessage(`📁 **Fichier téléversé** : \`${file.name}\` est disponible dans le dossier de travail.`);
+            }
+            
+            // Proposer une action de prompt prête à l'emploi
+            chatInput.value = `Analyse le document "${file.name}" que je viens d'importer et résume ses points clés.`;
+            
+            // Actualiser l'explorateur de fichiers s'il est visible en arrière-plan
+            if (typeof loadWorkspaceFiles === "function") {
+                await loadWorkspaceFiles();
+            }
+        } else {
+            alert("Erreur lors de l'envoi du fichier : " + res.detail);
+        }
+    } catch (err) {
+        alert("Erreur réseau : " + err);
+    } finally {
+        chatInput.placeholder = origPlaceholder;
+        chatInput.disabled = false;
+        chatInput.focus();
+    }
+}
+
+// Petite fonction utilitaire pour ajouter un message système dans le flux de chat
+function appendSystemMessage(text) {
+    const chatMessages = document.getElementById("chat-messages");
+    if (!chatMessages) return;
+    
+    const msgDiv = document.createElement("div");
+    msgDiv.className = "chat-message system";
+    msgDiv.style.alignSelf = "center";
+    msgDiv.style.margin = "8px auto";
+    msgDiv.style.padding = "6px 12px";
+    msgDiv.style.borderRadius = "8px";
+    msgDiv.style.background = "rgba(0, 240, 255, 0.05)";
+    msgDiv.style.border = "1px solid rgba(0, 240, 255, 0.15)";
+    msgDiv.style.color = "var(--accent-color)";
+    msgDiv.style.fontSize = "0.75rem";
+    msgDiv.style.maxWidth = "80%";
+    msgDiv.style.textAlign = "center";
+    
+    // Parser le markdown basique (* ou `)
+    msgDiv.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                           .replace(/\`(.*?)\`/g, '<code>$1</code>');
+                           
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+

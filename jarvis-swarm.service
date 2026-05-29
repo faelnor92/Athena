@@ -1,0 +1,16 @@
+[Unit]
+Description=Jarvis Multi-Agent Swarm Orchestration Service
+After=network.target
+
+[Service]
+Type=simple
+User=legrill@ad.unistra.fr
+WorkingDirectory=/home/legrill@ad.unistra.fr/Bureau/test_orchestrator
+ExecStart=/home/legrill@ad.unistra.fr/Bureau/test_orchestrator/.venv/bin/python3 server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
