@@ -1,5 +1,6 @@
 // Authentification et Gestion de Session
 let sessionToken = localStorage.getItem("jarvis_session_token") || "";
+let chatClientId = localStorage.getItem("jarvis_client_id") || "web";
 
 // Wrapper de fetch sécurisé avec injecteur de jeton d'autorisation Bearer
 async function apiFetch(url, options = {}) {
@@ -39,22 +40,27 @@ function hideLoginOverlay() {
 
 async function submitLogin() {
     const passwordInput = document.getElementById("login-password");
+    const usernameInput = document.getElementById("login-username");
     const errorMsg = document.getElementById("login-error");
     const password = passwordInput.value.trim();
-    
+    const username = usernameInput ? usernameInput.value.trim() : "";
+
     errorMsg.style.display = "none";
-    
+
     try {
         const response = await fetch("/api/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ password })
+            body: JSON.stringify({ password, username: username || undefined })
         });
-        
+
         if (response.ok) {
             const data = await response.json();
             sessionToken = data.token;
             localStorage.setItem("jarvis_session_token", sessionToken);
+            // Conversation par utilisateur (sauf admin/local -> 'web' historique).
+            chatClientId = (data.username && !["admin", "local"].includes(data.username)) ? `web:${data.username}` : "web";
+            localStorage.setItem("jarvis_client_id", chatClientId);
             passwordInput.value = "";
             hideLoginOverlay();
             
@@ -225,6 +231,8 @@ const modalTabRoutines = document.getElementById("modal-tab-routines");
 const paneRoutines = document.getElementById("pane-routines");
 const modalTabKnowledge = document.getElementById("modal-tab-knowledge");
 const paneKnowledge = document.getElementById("pane-knowledge");
+const modalTabUsers = document.getElementById("modal-tab-users");
+const paneUsers = document.getElementById("pane-users");
 const paneAgents = document.getElementById("pane-agents");
 const paneKeys = document.getElementById("pane-keys");
 const paneSsh = document.getElementById("pane-ssh");
@@ -1570,7 +1578,7 @@ chatForm.addEventListener("submit", async (e) => {
         const response = await apiFetch("/api/chat/stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: text }),
+            body: JSON.stringify({ message: text, client_id: chatClientId }),
             signal: activeAbortController.signal
         });
 
@@ -1673,8 +1681,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabKnowledge].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneKnowledge].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabKnowledge, modalTabUsers].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneKnowledge, paneUsers].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -2104,6 +2112,65 @@ const _btnKbText = document.getElementById("btn-kb-text");
 if (_btnKbText) _btnKbText.addEventListener("click", () => {
     const t = document.getElementById("kb-text");
     if (t && t.value.trim()) { ingestKnowledge({ text: t.value.trim(), source: "manuel" }, "du texte"); t.value = ""; }
+});
+
+// -------------------------------------------------------------------------
+// ONGLET : UTILISATEURS (multi-utilisateur, admin)
+// -------------------------------------------------------------------------
+async function loadUsersPane() {
+    const list = document.getElementById("users-list");
+    const st = document.getElementById("users-status");
+    if (!list) return;
+    try {
+        const r = await apiFetch("/api/users");
+        if (r.status === 403) { list.innerHTML = "<div style='opacity:0.6;font-size:0.78rem;'>Réservé à l'administrateur.</div>"; return; }
+        const d = await r.json();
+        const users = d.users || [];
+        if (st) st.textContent = d.auth_active ? "" : "Aucune auth active : créez un compte pour activer la connexion.";
+        if (users.length === 0) { list.innerHTML = "<div style='opacity:0.5;font-size:0.78rem;text-align:center;padding:8px;'>Aucun compte (accès libre/admin).</div>"; return; }
+        list.innerHTML = "";
+        users.forEach(u => {
+            const row = document.createElement("div");
+            row.className = "service-item";
+            row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;";
+            const info = document.createElement("div");
+            info.innerHTML = `<strong>${u.username}</strong> <span style="font-size:0.7rem;opacity:0.7;">· ${u.role === "admin" ? "👑 admin" : "utilisateur"}</span>`;
+            const del = document.createElement("button");
+            del.type = "button"; del.textContent = "🗑️";
+            del.style.cssText = "background:rgba(255,0,80,0.12);border:1px solid rgba(255,0,80,0.4);color:#ff5b89;border-radius:4px;padding:1px 7px;cursor:pointer;font-size:0.72rem;";
+            del.addEventListener("click", async () => {
+                if (!confirm(`Supprimer l'utilisateur « ${u.username} » ?`)) return;
+                const rr = await apiFetch(`/api/users/${encodeURIComponent(u.username)}`, { method: "DELETE" });
+                if (!rr.ok) { const dd = await rr.json().catch(() => ({})); if (st) st.textContent = "❌ " + (dd.detail || "Erreur"); }
+                loadUsersPane();
+            });
+            row.append(info, del);
+            list.appendChild(row);
+        });
+    } catch (e) {
+        list.innerHTML = `<div style="color:#ff5b89;font-size:0.78rem;">Erreur : ${e}</div>`;
+    }
+}
+
+if (modalTabUsers && paneUsers) {
+    modalTabUsers.addEventListener("click", () => switchModalTab(modalTabUsers, () => {
+        paneUsers.style.display = "block";
+        loadUsersPane();
+    }));
+}
+const _btnAddUser = document.getElementById("btn-add-user");
+if (_btnAddUser) _btnAddUser.addEventListener("click", async () => {
+    const name = document.getElementById("user-name").value.trim();
+    const pass = document.getElementById("user-pass").value;
+    const role = document.getElementById("user-role").value;
+    const st = document.getElementById("users-status");
+    if (!name || !pass) { if (st) st.textContent = "❌ Nom et mot de passe requis."; return; }
+    try {
+        const r = await apiFetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: name, password: pass, role }) });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) { if (st) st.textContent = `✅ Compte « ${name} » créé.`; document.getElementById("user-name").value = ""; document.getElementById("user-pass").value = ""; loadUsersPane(); }
+        else { if (st) st.textContent = "❌ " + (d.detail || "Erreur"); }
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
 });
 
 // -------------------------------------------------------------------------

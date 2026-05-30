@@ -153,6 +153,8 @@ Fonctionne sur **Linux**, **macOS** et **Windows** :
 * **Secrets jamais committés** : `.env`, `mcp_servers.json`, `channel_policies.json`, `conversations*.json`, logs, `*.sqlite3` (couverts par `.gitignore`).
 * **SSH** : vérification des clés d'hôte connues (anti-MITM) + échappement `shlex`.
 * **Workspace confiné** à `workspace/` par défaut (le `.env`/source ne sont pas lisibles via l'explorateur).
+* **Multi-utilisateur** : comptes du foyer avec rôles (admin/user), gérés dans ⚙️ Réglages → Utilisateurs. Dès qu'un compte existe, connexion par identifiant obligatoire ; chaque utilisateur a sa conversation. `ADMIN_PASSWORD` = admin de secours.
+* **Sauvegarde/restauration** de tout l'état en .zip (⚙️ Comportement) ; **PWA** installable (mobile/desktop).
 
 Toutes les variables sont documentées dans **`.env.example`**.
 

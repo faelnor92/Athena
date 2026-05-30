@@ -524,6 +524,7 @@
                 <div class="modal-tab-group">Système</div>
                 <button class="modal-tab-btn" id="modal-tab-behavior">⚙️ Comportement</button>
                 <button class="modal-tab-btn" id="modal-tab-pricing">💰 Tarifs LLM</button>
+                <button class="modal-tab-btn" id="modal-tab-users">👥 Utilisateurs</button>
                 <div class="modal-tab-group">Extensions</div>
                 <button class="modal-tab-btn" id="modal-tab-mcp">🧩 Serveurs MCP</button>
                 <button class="modal-tab-btn" id="modal-tab-routines">🗓️ Routines</button>
@@ -818,6 +819,19 @@
                     <div id="routine-save-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
                 </div>
 
+                <div class="modal-pane" id="pane-users" style="display: none;">
+                    <h3>👥 Utilisateurs du foyer</h3>
+                    <p class="section-desc">Dès qu'au moins un compte existe, la connexion par <strong>identifiant + mot de passe</strong> devient obligatoire. L'<code>ADMIN_PASSWORD</code> reste un accès admin de secours.</p>
+                    <div id="users-list" style="display: flex; flex-direction: column; gap: 6px; margin: 10px 0; max-height: 220px; overflow-y: auto;"></div>
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;">
+                    <h5 style="color: var(--accent-cyan); margin: 8px 0;">Nouvel utilisateur</h5>
+                    <div class="form-group"><label>Nom d'utilisateur</label><input id="user-name" type="text" placeholder="ex: gaetan"></div>
+                    <div class="form-group"><label>Mot de passe</label><input id="user-pass" type="password" placeholder="••••••••"></div>
+                    <div class="form-group"><label>Rôle</label><select id="user-role"><option value="user">Utilisateur</option><option value="admin">Administrateur</option></select></div>
+                    <button type="button" id="btn-add-user" class="btn btn-primary" style="width: 100%;">➕ Créer le compte</button>
+                    <div id="users-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
+                </div>
+
                 <div class="modal-pane" id="pane-knowledge" style="display: none;">
                     <h3>📚 Base de connaissances (RAG)</h3>
                     <p class="section-desc">Documents indexés dans la mémoire vectorielle, retrouvés automatiquement par les agents. Ajoute une URL ou du texte ; supprime ce qui n'est plus utile.</p>
@@ -952,8 +966,10 @@
             </div>
             
             <div style="display: flex; flex-direction: column; gap: 8px; text-align: left;">
-                <label for="login-password" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4);">Mot de passe</label>
-                <input type="password" id="login-password" placeholder="••••••••" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; outline: none; transition: all 0.2s;" onkeydown="if(event.key==='Enter') submitLogin()">
+                <label for="login-username" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4);">Utilisateur <span style="opacity:0.5;">(vide = admin)</span></label>
+                <input type="text" id="login-username" placeholder="nom d'utilisateur" autocomplete="username" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; outline: none; transition: all 0.2s;" onkeydown="if(event.key==='Enter') submitLogin()">
+                <label for="login-password" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4); margin-top: 4px;">Mot de passe</label>
+                <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; outline: none; transition: all 0.2s;" onkeydown="if(event.key==='Enter') submitLogin()">
             </div>
             
             <div id="login-error" style="display: none; color: #ff5555; font-size: 0.8rem; text-align: center; font-weight: 500;">❌ Mot de passe incorrect.</div>

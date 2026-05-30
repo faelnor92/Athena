@@ -36,6 +36,7 @@ from core.tracing import run_store
 from core.run_context import registry as run_registry, current_run_id
 from core import channels, approvals
 from core.routines import routine_store, start_scheduler as start_routine_scheduler
+from core.users import user_store
 from tools.memory_tools import core_mem
 
 app = FastAPI(title="Jarvis Multi-Agent Dashboard")
@@ -52,43 +53,111 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Gestion de la session d'authentification
-ACTIVE_SESSIONS = set()
+# Gestion des sessions d'authentification : token -> {username, role}.
+ACTIVE_SESSIONS = {}
+
+
+def _auth_active() -> bool:
+    """L'auth est active s'il y a un mot de passe admin OU des utilisateurs."""
+    return bool(os.getenv("ADMIN_PASSWORD", "").strip()) or user_store.count() > 0
+
 
 class LoginRequest(BaseModel):
     password: str
+    username: str = None
+
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
-    # Les webhooks entrants (/api/hooks/) sont exemptés de l'auth admin : ils sont
-    # appelés par des services externes (Home Assistant…) et protégés par un secret propre.
+    # Webhooks entrants exemptés (protégés par leur propre secret).
     is_hook = request.url.path.startswith("/api/hooks/")
-    # Si un mot de passe admin est configuré dans le .env, on protège tous les endpoints /api/ sauf /api/login
-    if admin_password and request.url.path.startswith("/api/") and request.url.path != "/api/login" and not is_hook:
+    if _auth_active() and request.url.path.startswith("/api/") and request.url.path != "/api/login" and not is_hook:
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             return JSONResponse(status_code=401, content={"detail": "Non autorisé. Jeton de session manquant."})
         token = auth_header.split(" ")[1]
         if token not in ACTIVE_SESSIONS:
             return JSONResponse(status_code=401, content={"detail": "Non autorisé. Session expirée ou invalide."})
-            
+        request.state.user = ACTIVE_SESSIONS[token]
     response = await call_next(request)
     return response
+
 
 @app.post("/api/login")
 async def login(req: LoginRequest):
     admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
-    if not admin_password:
-        return {"status": "success", "token": "no-auth-required"}
-        
-    # Comparaison à temps constant pour éviter les attaques temporelles.
-    if secrets.compare_digest(req.password, admin_password):
-        token = uuid.uuid4().hex
-        ACTIVE_SESSIONS.add(token)
-        return {"status": "success", "token": token}
-        
-    raise HTTPException(status_code=401, detail="Mot de passe incorrect")
+
+    # 1. Multi-utilisateur : si des comptes existent et un username est fourni.
+    if user_store.count() > 0 and req.username:
+        role = user_store.verify(req.username, req.password)
+        if role:
+            token = secrets.token_hex(24)
+            ACTIVE_SESSIONS[token] = {"username": req.username, "role": role}
+            return {"status": "success", "token": token, "username": req.username, "role": role}
+
+    # 2. Admin « bootstrap » via ADMIN_PASSWORD (toujours valable pour l'owner).
+    if admin_password and secrets.compare_digest(req.password, admin_password):
+        token = secrets.token_hex(24)
+        ACTIVE_SESSIONS[token] = {"username": req.username or "admin", "role": "admin"}
+        return {"status": "success", "token": token, "username": req.username or "admin", "role": "admin"}
+
+    # 3. Aucune auth configurée.
+    if not _auth_active():
+        return {"status": "success", "token": "no-auth-required", "username": "local", "role": "admin"}
+
+    raise HTTPException(status_code=401, detail="Identifiants incorrects")
+
+
+def _current_user(request: Request) -> dict:
+    return getattr(request.state, "user", None) or {"username": "local", "role": "admin"}
+
+
+def _require_admin(request: Request):
+    # Si l'auth n'est pas active (local de confiance) ou rôle admin → autorisé.
+    if not _auth_active():
+        return
+    user = getattr(request.state, "user", None)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Réservé à l'administrateur.")
+
+
+@app.get("/api/me")
+async def get_me(request: Request):
+    return _current_user(request)
+
+
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str
+    role: str = "user"
+
+
+@app.get("/api/users")
+async def list_users(request: Request):
+    _require_admin(request)
+    return {"users": user_store.list(), "auth_active": _auth_active()}
+
+
+@app.post("/api/users")
+async def create_user(request: Request, req: UserCreateRequest):
+    _require_admin(request)
+    if not user_store.create(req.username, req.password, req.role):
+        raise HTTPException(status_code=400, detail="username/password requis.")
+    return {"status": "success"}
+
+
+@app.delete("/api/users/{username}")
+async def delete_user(request: Request, username: str):
+    _require_admin(request)
+    # Empêcher de supprimer le dernier admin restant.
+    users = user_store.list()
+    admins = [u for u in users if u["role"] == "admin"]
+    target = next((u for u in users if u["username"] == username), None)
+    if target and target["role"] == "admin" and len(admins) <= 1:
+        raise HTTPException(status_code=400, detail="Impossible de supprimer le dernier administrateur.")
+    if not user_store.delete(username):
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+    return {"status": "success"}
 
 # Initialisation du Swarm
 swarm = Swarm("agents.yaml")
