@@ -613,6 +613,29 @@ async def chat_attach(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Enregistrement impossible : {e}")
     info = extract(dest, safe)
+
+    # Vision (opt-in) : si l'image n'a pas donné de texte, la faire décrire par un
+    # modèle multimodal. Repli sur la note si désactivé ou en erreur.
+    if info["kind"] == "image" and not (info["text"] or "").strip() \
+            and os.getenv("VISION_ENABLED", "false").lower() in ("true", "1", "yes"):
+        try:
+            import base64
+            mime = file.content_type or "image/png"
+            data_url = f"data:{mime};base64,{base64.b64encode(content).decode()}"
+            jarvis = swarm.agents.get("Jarvis")
+            vmodel = os.getenv("VISION_MODEL", "").strip() or (jarvis.model if jarvis else "gpt-4o")
+            vmsg = [{"role": "user", "content": [
+                {"type": "text", "text": "Décris cette image en détail et retranscris tout texte visible."},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]}]
+            resp = await asyncio.to_thread(swarm._complete, vmodel, vmsg, None, False)
+            desc = (resp.choices[0].message.content or "").strip()
+            if desc:
+                info["text"] = desc
+                info["note"] = "Analyse visuelle par le modèle."
+        except Exception as e:
+            info["note"] = (info.get("note", "") + f" (vision indisponible : {e})").strip()
+
     return {
         "filename": safe,
         "kind": info["kind"],
