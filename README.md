@@ -22,7 +22,8 @@ Basé sur [LiteLLM](https://github.com/BerriAI/litellm) (routage transparent ver
 
 * **Handoffs & sous-agents** : Jarvis route vers les spécialistes (transferts), les interroge via `query_agent`, ou lance un débat (`debate_between_agents`).
 * **Exécution parallèle** : plusieurs outils/sous-agents d'un même tour s'exécutent **concurremment** (ordre préservé, handoffs séquentiels) — plafond `SWARM_MAX_PARALLEL`.
-* **Garde-fous** : `max_turns`, budgets temps/tokens (`SWARM_MAX_SECONDS`/`SWARM_MAX_TOKENS`), retries LLM (`LLM_MAX_RETRIES`), validation/coercition des arguments d'outils selon le schéma JSON.
+* **Garde-fous** : `max_turns`, budgets temps/tokens, retries LLM, validation JSON-schema + coercition des arguments d'outils, **cache TTL** des outils idempotents, **auto-continuation** des réponses tronquées (`finish_reason=length`).
+* **Planification explicite** : Jarvis peut afficher un plan d'action suivi en direct (`make_plan` / `update_plan_step`) pour les tâches complexes.
 * **Human-in-the-loop** : les outils sensibles (shell, SSH, domotique, suppressions) exigent une confirmation, sauf canal de confiance.
 * **État isolé par run** (ContextVar + registry) → web + Telegram + sous-agents parallèles ne s'écrasent plus.
 * **Détection auto de l'OS** : Jarvis sait s'il tourne sur Linux/Windows/macOS (ou dans la sandbox Docker) et génère les bonnes commandes.
@@ -90,9 +91,9 @@ Code & commandes **isolés dans un conteneur Docker jetable** : réseau coupé, 
 
 Déclenchez automatiquement une tâche d'agent (briefing matinal, veille web, rappels). Le résultat est persisté et **notifié** sur vos messageries.
 
-* Déclencheurs : **quotidien** (HH:MM), **hebdomadaire** (jour + heure), **intervalle** (toutes les N min).
+* Déclencheurs : **quotidien** (HH:MM), **hebdomadaire** (jour + heure), **intervalle** (toutes les N min), ou **webhook entrant** (événement externe).
+* **Webhooks** : une routine « webhook » s'appelle via `POST /api/hooks/{id}?token=<secret>` (exempté de l'auth admin, protégé par un secret ; le payload est injecté dans le prompt). Idéal pour qu'un événement **Home Assistant** déclenche un raisonnement IA.
 * Gestion depuis l'UI : ⚙️ Réglages → **🗓️ Routines** (créer, activer/désactiver, exécuter maintenant, supprimer).
-* API : `GET/POST/DELETE /api/routines`, `POST /api/routines/{id}/run`.
 
 ## 📣 Notifications multi-canaux
 
@@ -125,7 +126,10 @@ Bouton ⚙️ → modale à onglets :
 * **💰 Tarifs LLM** — coût €/M tokens par modèle (alimente le cockpit).
 * **⚙️ Comportement & Sécurité** — sandbox, auto-amélioration, retries, parallélisme, budgets, auto-approbation des outils sensibles, HOST/PORT, dossier de travail, mémoire.
 * **🧩 Serveurs MCP** — éditeur + reconnexion à chaud.
-* **🗓️ Routines** — tâches planifiées.
+* **🗓️ Routines** — tâches planifiées + webhooks.
+* **📚 Connaissances** — base RAG : lister/supprimer les documents indexés, ingérer une URL ou du texte.
+
+**Pièces jointes** : le 📎 du chat injecte le contenu extrait d'un fichier (texte/code/PDF, OCR/**vision** pour les images) dans le message.
 
 > La sauvegarde met à jour le `.env` **à chaud en préservant les commentaires**.
 
