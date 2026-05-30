@@ -9,7 +9,7 @@ import asyncio
 import threading
 import contextvars
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -1351,6 +1351,29 @@ async def get_config_skills():
         return skills_list
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur de lecture des compétences : {str(e)}")
+
+
+@app.get("/api/backup")
+async def backup_download():
+    """Télécharge une archive ZIP de tout l'état (conversations, mémoire, runs…)."""
+    import datetime
+    from core.backup import make_backup
+    data = await asyncio.to_thread(make_backup)
+    fname = f"jarvis-backup-{datetime.date.today().isoformat()}.zip"
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@app.post("/api/backup/restore")
+async def backup_restore(file: UploadFile = File(...)):
+    """Restaure l'état depuis une archive ZIP (écrase l'état actuel)."""
+    from core.backup import restore_backup
+    data = await file.read()
+    try:
+        res = await asyncio.to_thread(restore_backup, data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Restauration impossible : {e}")
+    return {"status": "success", **res, "note": "Redémarre le serveur pour recharger entièrement la mémoire."}
 
 
 @app.get("/api/platform")

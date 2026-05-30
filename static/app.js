@@ -1793,6 +1793,44 @@ if (modalTabBehavior && paneBehavior) {
 const _btnSaveBehavior = document.getElementById("btn-save-behavior");
 if (_btnSaveBehavior) _btnSaveBehavior.addEventListener("click", saveConfigBehaviorPane);
 
+// Sauvegarde / restauration de l'état (.zip)
+const _btnBackupExport = document.getElementById("btn-backup-export");
+if (_btnBackupExport) _btnBackupExport.addEventListener("click", async () => {
+    const st = document.getElementById("backup-status");
+    if (st) st.textContent = "⏳ Génération de l'archive…";
+    try {
+        const r = await apiFetch("/api/backup");
+        if (!r.ok) { if (st) st.textContent = "❌ Erreur " + r.status; return; }
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `jarvis-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+        if (st) st.textContent = "✅ Archive téléchargée.";
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+});
+const _btnBackupImport = document.getElementById("btn-backup-import");
+const _backupFileInput = document.getElementById("backup-file-input");
+if (_btnBackupImport && _backupFileInput) {
+    _btnBackupImport.addEventListener("click", () => _backupFileInput.click());
+    _backupFileInput.addEventListener("change", async () => {
+        if (!_backupFileInput.files.length) return;
+        if (!confirm("Restaurer cette archive ? L'état actuel (conversations, mémoire…) sera ÉCRASÉ.")) { _backupFileInput.value = ""; return; }
+        const st = document.getElementById("backup-status");
+        if (st) st.textContent = "⏳ Restauration…";
+        const fd = new FormData();
+        fd.append("file", _backupFileInput.files[0]);
+        _backupFileInput.value = "";
+        try {
+            const r = await apiFetch("/api/backup/restore", { method: "POST", body: fd });
+            const d = await r.json().catch(() => ({}));
+            if (st) st.textContent = r.ok ? `✅ ${d.restored} fichiers restaurés. Redémarre le serveur.` : "❌ " + (d.detail || "Erreur");
+        } catch (e) { if (st) st.textContent = "❌ " + e; }
+    });
+}
+
 // -------------------------------------------------------------------------
 // ONGLET : SERVEURS MCP
 // -------------------------------------------------------------------------

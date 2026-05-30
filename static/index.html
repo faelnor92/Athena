@@ -771,6 +771,16 @@
                     <div id="behavior-fields" style="display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-height: 400px; overflow-y: auto; padding-right: 6px;"></div>
                     <button type="button" id="btn-save-behavior" class="btn btn-primary" style="width: 100%;">💾 Sauvegarder les réglages</button>
                     <div id="behavior-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 16px 0;">
+                    <h5 style="color: var(--accent-cyan); margin: 0 0 6px;">Sauvegarde & restauration</h5>
+                    <p class="section-desc" style="margin-bottom: 8px;">Exporte tout l'état (conversations, mémoire, runs, routines, compétences) en un .zip, ou restaure depuis une archive (écrase l'état actuel).</p>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" id="btn-backup-export" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">⬇️ Exporter (.zip)</button>
+                        <button type="button" id="btn-backup-import" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem;">📥 Restaurer…</button>
+                        <input type="file" id="backup-file-input" accept=".zip" style="display: none;">
+                    </div>
+                    <div id="backup-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
                 </div>
 
                 <div class="modal-pane" id="pane-mcp" style="display: none;">
