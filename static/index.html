@@ -526,6 +526,7 @@
                 <button class="modal-tab-btn" id="modal-tab-ssh">🖥️ Terminal & Sécurité</button>
                 <button class="modal-tab-btn" id="modal-tab-agenda">📅 Synchronisation Agenda</button>
                 <button class="modal-tab-btn" id="modal-tab-pricing">💰 Tarifs LLM</button>
+                <button class="modal-tab-btn" id="modal-tab-behavior">⚙️ Comportement & Sécurité</button>
             </div>
             
             <div class="modal-body">
@@ -768,6 +769,14 @@
                     </div>
 
                     <div id="pricing-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+                </div>
+
+                <div class="modal-pane" id="pane-behavior" style="display: none;">
+                    <h3>⚙️ Comportement & Sécurité</h3>
+                    <p class="section-desc">Réglages d'exécution de l'essaim, écrits à chaud dans <code>.env</code>. Les réglages réseau (<strong>HOST/PORT</strong>) nécessitent un redémarrage du serveur.</p>
+                    <div id="behavior-fields" style="display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-height: 400px; overflow-y: auto; padding-right: 6px;"></div>
+                    <button type="button" id="btn-save-behavior" class="btn btn-primary" style="width: 100%;">💾 Sauvegarder les réglages</button>
+                    <div id="behavior-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
                 </div>
             </div>
         </div>

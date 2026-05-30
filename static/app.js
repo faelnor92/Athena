@@ -215,6 +215,8 @@ const modalTabKeys = document.getElementById("modal-tab-keys");
 const modalTabSsh = document.getElementById("modal-tab-ssh");
 const modalTabAgenda = document.getElementById("modal-tab-agenda");
 const modalTabPricing = document.getElementById("modal-tab-pricing");
+const modalTabBehavior = document.getElementById("modal-tab-behavior");
+const paneBehavior = document.getElementById("pane-behavior");
 const paneAgents = document.getElementById("pane-agents");
 const paneKeys = document.getElementById("pane-keys");
 const paneSsh = document.getElementById("pane-ssh");
@@ -1527,8 +1529,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -1558,6 +1560,93 @@ if (modalTabPricing && panePricing) {
         loadPricingConfig();
     }));
 }
+
+// -------------------------------------------------------------------------
+// ONGLET : COMPORTEMENT & SÉCURITÉ (réglages data-driven, écrits dans .env)
+// -------------------------------------------------------------------------
+const BEHAVIOR_SCHEMA = [
+    { section: "Exécution & garde-fous", fields: [
+        { key: "SANDBOX_MODE", label: "Sandbox d'exécution de code/commandes", type: "select", options: [["docker", "Docker (isolé)"], ["off", "Local (NON isolé)"]], def: "docker" },
+        { key: "SELF_IMPROVE", label: "Auto-amélioration (retours d'expérience)", type: "toggle", def: "true" },
+        { key: "LLM_MAX_RETRIES", label: "Retries LLM sur erreur", type: "number", def: "2" },
+        { key: "SWARM_MAX_PARALLEL", label: "Agents/outils en parallèle (max)", type: "number", def: "4" },
+        { key: "SWARM_MAX_SECONDS", label: "Budget temps par requête (s, 0 = ∞)", type: "number", def: "0" },
+        { key: "SWARM_MAX_TOKENS", label: "Budget tokens par requête (0 = ∞)", type: "number", def: "0" },
+    ]},
+    { section: "Sécurité", fields: [
+        { key: "AUTO_APPROVE_SENSITIVE", label: "Auto-approuver les outils sensibles (global)", type: "toggle", def: "false" },
+        { key: "SENSITIVE_TOOLS", label: "Outils sensibles (CSV ; vide = défaut)", type: "text", def: "" },
+        { key: "ADMIN_PASSWORD", label: "Mot de passe admin (réseau)", type: "password", def: "" },
+        { key: "HOST", label: "Écoute : 127.0.0.1 (local) ou 0.0.0.0 (réseau)", type: "text", def: "0.0.0.0" },
+        { key: "PORT", label: "Port", type: "number", def: "8000" },
+        { key: "ACTIVE_WORKSPACE_DIR", label: "Dossier de travail (vide = workspace/)", type: "text", def: "" },
+    ]},
+    { section: "Mémoire", fields: [
+        { key: "MEMORY_MAX_MESSAGES", label: "Compaction au-delà de N messages (0 = off)", type: "number", def: "40" },
+        { key: "MEMORY_KEEP_RECENT", label: "Messages récents gardés mot pour mot", type: "number", def: "12" },
+    ]},
+];
+
+async function loadConfigBehaviorPane() {
+    const container = document.getElementById("behavior-fields");
+    if (!container) return;
+    let env = {};
+    try { const r = await apiFetch("/api/config/env"); if (r.ok) env = await r.json(); } catch (e) {}
+    container.innerHTML = "";
+    BEHAVIOR_SCHEMA.forEach(group => {
+        const h = document.createElement("h5");
+        h.textContent = group.section;
+        h.style.cssText = "margin: 10px 0 2px; color: var(--accent-cyan); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;";
+        container.appendChild(h);
+        group.fields.forEach(f => {
+            const has = env[f.key] !== undefined && env[f.key] !== "";
+            const cur = has ? env[f.key] : f.def;
+            const row = document.createElement("div");
+            row.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 12px;";
+            let input;
+            if (f.type === "toggle") {
+                const on = String(cur).toLowerCase() === "true" || cur === "1";
+                input = `<input type="checkbox" class="behavior-input" data-key="${f.key}" data-type="toggle" ${on ? "checked" : ""} style="width: 18px; height: 18px; cursor: pointer;">`;
+            } else if (f.type === "select") {
+                input = `<select class="behavior-input" data-key="${f.key}" data-type="select" style="max-width: 210px;">${f.options.map(([v, l]) => `<option value="${v}" ${String(cur) === v ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+            } else if (f.type === "password") {
+                const ph = (env[f.key] && String(env[f.key]).includes("...")) ? "Défini (masqué) — vide = inchangé" : "Aucun (auth désactivée)";
+                input = `<input type="password" class="behavior-input" data-key="${f.key}" data-type="password" placeholder="${ph}" style="max-width: 210px;">`;
+            } else {
+                input = `<input type="${f.type === "number" ? "number" : "text"}" class="behavior-input" data-key="${f.key}" data-type="${f.type}" value="${String(cur).replace(/"/g, "&quot;")}" style="max-width: 210px;">`;
+            }
+            row.innerHTML = `<label style="font-size: 0.8rem; flex: 1;">${f.label}</label>${input}`;
+            container.appendChild(row);
+        });
+    });
+}
+
+async function saveConfigBehaviorPane() {
+    const env = {};
+    document.querySelectorAll("#behavior-fields .behavior-input").forEach(el => {
+        const key = el.dataset.key, type = el.dataset.type;
+        if (type === "toggle") env[key] = el.checked ? "true" : "false";
+        else if (type === "password") { if (el.value) env[key] = el.value; }
+        else env[key] = el.value;
+    });
+    const status = document.getElementById("behavior-save-status");
+    try {
+        const r = await apiFetch("/api/config/env", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ env }) });
+        const d = await r.json().catch(() => ({}));
+        if (status) status.textContent = r.ok ? ("✅ " + (d.message || "Sauvegardé")) : ("❌ " + (d.detail || "Erreur"));
+    } catch (e) {
+        if (status) status.textContent = "❌ " + e;
+    }
+}
+
+if (modalTabBehavior && paneBehavior) {
+    modalTabBehavior.addEventListener("click", () => switchModalTab(modalTabBehavior, () => {
+        paneBehavior.style.display = "block";
+        loadConfigBehaviorPane();
+    }));
+}
+const _btnSaveBehavior = document.getElementById("btn-save-behavior");
+if (_btnSaveBehavior) _btnSaveBehavior.addEventListener("click", saveConfigBehaviorPane);
 
 // -------------------------------------------------------------------------
 // ONGLET 1 : GESTION DES AGENTS (LISTER / EDITER / SUPPRIMER)
@@ -3328,10 +3417,15 @@ async function loadCockpitData() {
                                         <span>🛠️</span>
                                         <strong style="color: var(--accent-cyan); font-family: monospace; font-size: 0.85rem;">${sk.name}()</strong>
                                     </div>
-                                    <span style="font-size: 0.65rem; background: rgba(0, 243, 255, 0.08); border: 1px solid rgba(0, 243, 255, 0.2); border-radius: 4px; padding: 1px 6px; color: var(--accent-cyan);">Active</span>
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span style="font-size: 0.65rem; background: rgba(0, 243, 255, 0.08); border: 1px solid rgba(0, 243, 255, 0.2); border-radius: 4px; padding: 1px 6px; color: var(--accent-cyan);">Active</span>
+                                        <button class="skill-delete-btn" title="Supprimer cette compétence" data-skill="${sk.name}" style="background: rgba(255,0,80,0.12); border: 1px solid rgba(255,0,80,0.4); color: #ff5b89; border-radius: 4px; padding: 1px 7px; cursor: pointer; font-size: 0.72rem; line-height: 1.4;">🗑️</button>
+                                    </div>
                                 </div>
                                 <span style="font-size: 0.72rem; opacity: 0.8; margin-top: 2px;">${sk.description}</span>
                             `;
+                            const delBtn = item.querySelector(".skill-delete-btn");
+                            if (delBtn) delBtn.addEventListener("click", () => deleteSkill(sk.name));
                             skillsList.appendChild(item);
                         });
                     }
@@ -3342,6 +3436,23 @@ async function loadCockpitData() {
         }
     } catch (err) {
         console.error("Erreur de télémétrie Cockpit :", err);
+    }
+}
+
+// Suppression d'une compétence (Skill) depuis l'UI
+async function deleteSkill(name) {
+    if (!confirm(`Supprimer définitivement la compétence « ${name} » ?`)) return;
+    try {
+        const res = await apiFetch(`/api/config/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            logToTerminal(`Compétence supprimée : ${name}`, "success");
+            if (typeof loadCockpitData === "function") loadCockpitData();
+        } else {
+            alert("Suppression impossible : " + (data.detail || res.status));
+        }
+    } catch (e) {
+        alert("Erreur réseau : " + e);
     }
 }
 
