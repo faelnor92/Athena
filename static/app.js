@@ -170,6 +170,7 @@ function getAgentEmoji(name) {
 let currentActiveAgent = "Jarvis";
 let agentsConfig = [];
 let activeAbortController = null;
+let activeRunId = null;
 
 // Éléments du DOM
 const chatForm = document.getElementById("chat-form");
@@ -1394,6 +1395,10 @@ chatForm.addEventListener("submit", async (e) => {
     
     // Si une génération est déjà en cours, cliquer sur le bouton agit comme un bouton "Stop" !
     if (activeAbortController) {
+        // Annulation côté serveur (le run s'arrête au prochain tour) + arrêt du flux.
+        if (activeRunId) {
+            apiFetch(`/api/runs/${activeRunId}/cancel`, { method: "POST" }).catch(() => {});
+        }
         activeAbortController.abort();
         logToTerminal("Génération interrompue par l'utilisateur.", "warning");
         return;
@@ -1425,45 +1430,54 @@ chatForm.addEventListener("submit", async (e) => {
     logToOrchestrator("Jarvis analyse votre demande et orchestre les agents spécialisés en arrière-plan...", "system");
     
     activeAbortController = new AbortController();
-    
-    // Polling en temps réel des étapes de l'essaim pour une map 100% vivante et interactive
-    let processedStepCount = 0;
-    let pollInterval = setInterval(async () => {
-        try {
-            const res = await apiFetch("/api/chat/status");
-            if (res.ok) {
-                const data = await res.json();
-                if (data.steps && data.steps.length > processedStepCount) {
-                    const newSteps = data.steps.slice(processedStepCount);
-                    processedStepCount = data.steps.length;
-                    // Jouer les étapes en temps réel
-                    playAgentSteps(newSteps);
-                }
-            }
-        } catch (e) {
-            console.warn("Erreur lors du polling du statut de l'essaim:", e);
-        }
-    }, 600);
-    
+    activeRunId = null;
+
     try {
-        const response = await apiFetch("/api/chat", {
+        // Streaming SSE : les étapes de l'essaim arrivent au fil de l'eau.
+        const response = await apiFetch("/api/chat/stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: text }),
             signal: activeAbortController.signal
         });
-        
-        clearInterval(pollInterval);
-        const data = await response.json();
-        
-        if (response.ok) {
-            // Jouer les dernières étapes non encore animées AVANT d'afficher la réponse
-            if (data.steps && data.steps.length > processedStepCount) {
-                const finalNewSteps = data.steps.slice(processedStepCount);
-                await playAgentSteps(finalNewSteps);
+
+        if (!response.ok || !response.body) {
+            const errData = await response.json().catch(() => ({}));
+            logToTerminal("Erreur API: " + (errData.detail || response.status), "error");
+        } else {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = "";
+            let finished = false;
+            while (!finished) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                let sep;
+                while ((sep = buf.indexOf("\n\n")) >= 0) {
+                    const block = buf.slice(0, sep);
+                    buf = buf.slice(sep + 2);
+                    let ev = null, dataStr = null;
+                    block.split("\n").forEach(line => {
+                        if (line.startsWith("event:")) ev = line.slice(6).trim();
+                        else if (line.startsWith("data:")) dataStr = line.slice(5).trim();
+                    });
+                    if (!dataStr) continue;
+                    let payload;
+                    try { payload = JSON.parse(dataStr); } catch (e) { continue; }
+                    if (ev === "run") {
+                        activeRunId = payload.run_id;
+                    } else if (ev === "step") {
+                        await playAgentSteps([payload]);
+                    } else if (ev === "error") {
+                        logToTerminal("Erreur essaim: " + (payload.detail || ""), "error");
+                    } else if (ev === "done") {
+                        finished = true;
+                    }
+                }
             }
-            // Petit délai pour laisser les dernières animations terminer visuellement
-            await new Promise(r => setTimeout(r, 400));
+            // Finalisation : recharge l'historique canonique + télémétrie.
+            await new Promise(r => setTimeout(r, 250));
             await reloadChatHistory(true);
             await loadConversations();
             await refreshMemory();
@@ -1471,19 +1485,16 @@ chatForm.addEventListener("submit", async (e) => {
                 loadCockpitData();
                 loadGalleryMedia();
             }
-        } else {
-            logToTerminal("Erreur API: " + data.detail, "error");
         }
     } catch (err) {
-        clearInterval(pollInterval);
         if (err.name === 'AbortError') {
             logToTerminal("Génération interrompue avec succès.", "info");
         } else {
             logToTerminal("Erreur de connexion: " + err, "error");
         }
     } finally {
-        clearInterval(pollInterval);
         activeAbortController = null;
+        activeRunId = null;
         chatInput.disabled = false;
         chatInput.placeholder = "Parle à l'essaim...";
         
