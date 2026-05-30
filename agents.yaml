@@ -90,6 +90,8 @@ agents:
   - query_agent
   - debate_between_agents
   - send_notification
+  - make_plan
+  - update_plan_step
   handoffs:
   - Codeur
   - Auteur

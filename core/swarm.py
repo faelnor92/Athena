@@ -30,6 +30,7 @@ import tools.meeting_summarizer
 import tools.conversation_tools
 import tools.mcp_manager
 import tools.notify_tools
+import tools.planning_tools
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -61,6 +62,8 @@ AVAILABLE_TOOLS = {
     "query_agent": tools.conversation_tools.query_agent,
     "debate_between_agents": tools.conversation_tools.debate_between_agents,
     "send_notification": tools.notify_tools.send_notification,
+    "make_plan": tools.planning_tools.make_plan,
+    "update_plan_step": tools.planning_tools.update_plan_step,
 }
 
 def load_dynamic_skills() -> dict:
@@ -712,7 +715,10 @@ class Swarm:
                 system_prompt += "\n6. GESTION DE LA MÉMOIRE & APPRENTISSAGE PROACTIF (TRÈS IMPORTANT) :\n"
                 system_prompt += "   - Si l'utilisateur te demande de retenir un fait, une préférence ou une information globale sur lui ou son environnement, appelle l'outil `memorize_fact` immédiatement.\n"
                 system_prompt += "   - SOIS PROACTIF : si tu détectes au fil des conversations une préférence utilisateur clé, un prénom, un choix technologique majeur, une configuration ou un élément durable de son projet, utilise automatiquement `memorize_fact` pour le mémoriser dans sa base de connaissances, sans attendre qu'il te le demande explicitement ! C'est ce qui fait que ta mémoire à long terme s'enrichit et vit d'elle-même.\n"
-                
+
+                system_prompt += "\n7. PLANIFICATION DES TÂCHES COMPLEXES :\n"
+                system_prompt += "   Pour une demande qui se décompose en PLUSIEURS étapes (ex: une mission multi-agents, un projet), appelle d'abord `make_plan` avec la liste des étapes (une par ligne) pour l'afficher à l'utilisateur, puis appelle `update_plan_step(step=N, status='done')` au fur et à mesure de l'avancement. Cela rend ton raisonnement transparent et suivi.\n"
+
             # Épuration préventive de l'historique des tours passés (évite les bugs d'IDs d'outils VLLM/Mistral)
             # On ne garde que les messages utilisateur et assistant contenant du texte pour l'historique passé,
             # mais on garde l'intégralité du tour actuel en cours pour préserver le flux de tool calling actif.

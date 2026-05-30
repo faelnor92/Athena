@@ -940,6 +940,51 @@ function animateHandoffMail(fromAgent, toAgent) {
 }
 
 // Jouer pas à pas la séquence d'événements de l'essaim
+// --- Plan d'action visible (planification explicite) ---
+let currentPlanEl = null;
+const _PLAN_ICONS = { pending: "⬜", in_progress: "🔄", done: "✅", failed: "❌" };
+
+function renderPlan(items) {
+    const container = document.getElementById("chat-messages");
+    if (!container) return;
+    const el = document.createElement("div");
+    el.className = "swarm-plan animate-fade-in";
+    el.style.cssText = "background:rgba(0,243,255,0.06);border:1px solid rgba(0,243,255,0.3);border-radius:10px;padding:10px 14px;margin:8px 0;";
+    const title = document.createElement("div");
+    title.style.cssText = "font-weight:700;color:var(--accent-cyan);font-size:0.8rem;margin-bottom:6px;";
+    title.textContent = "🗺️ Plan d'action";
+    el.appendChild(title);
+    (items || []).forEach((it, i) => {
+        const row = document.createElement("div");
+        row.className = "plan-item";
+        row.dataset.index = i;
+        row.style.cssText = "display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;padding:2px 0;";
+        const ic = document.createElement("span");
+        ic.className = "plan-icon";
+        ic.textContent = _PLAN_ICONS[it.status] || "⬜";
+        const tx = document.createElement("span");
+        tx.className = "plan-text";
+        tx.textContent = it.text;
+        row.append(ic, tx);
+        el.appendChild(row);
+    });
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+    currentPlanEl = el;
+}
+
+function updatePlanStep(index, status) {
+    if (!currentPlanEl) return;
+    const row = currentPlanEl.querySelector(`.plan-item[data-index="${index}"]`);
+    if (!row) return;
+    const ic = row.querySelector(".plan-icon");
+    if (ic) ic.textContent = _PLAN_ICONS[status] || "⬜";
+    if (status === "done") {
+        const tx = row.querySelector(".plan-text");
+        if (tx) tx.style.opacity = "0.6";
+    }
+}
+
 async function playAgentSteps(steps) {
     return new Promise(resolve => {
         let delay = 0;
@@ -1039,7 +1084,15 @@ async function playAgentSteps(steps) {
                         logToTerminal(l, streamType);
                     });
                 }
-                
+
+                else if (step.type === "plan") {
+                    renderPlan(step.items || []);
+                }
+
+                else if (step.type === "plan_update") {
+                    updatePlanStep(step.index, step.status);
+                }
+
                 else if (step.type === "message" || step.type === "terminal_message") {
                     if (step.type === "terminal_message") {
                         // Afficher le message directement dans la console interactive avec rendu Markdown HTML
@@ -1069,6 +1122,8 @@ async function playAgentSteps(steps) {
             else if (step.type === "tool_call") delay += 500;
             else if (step.type === "tool_output") delay += 200;
             else if (step.type === "message" || step.type === "terminal_message" || step.type === "terminal_output_direct") delay += 150;
+            else if (step.type === "plan") delay += 400;
+            else if (step.type === "plan_update") delay += 150;
         });
         
         if (steps.length === 0) resolve();
