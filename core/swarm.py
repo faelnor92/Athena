@@ -359,8 +359,104 @@ class Swarm:
             pass
         return response
 
-    def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True):
-        """Appel LLM via litellm avec routage clé officielle / endpoint custom."""
+    def _complete_streaming(self, completion_kwargs, on_delta):
+        """Appel LLM en streaming : diffuse les tokens via on_delta et reconstruit
+        un objet réponse compatible avec la boucle (content + tool_calls)."""
+        completion_kwargs["stream"] = True
+        content_parts = []
+        tool_acc = {}   # index -> {id, name, arguments}
+        finish_reason = None
+
+        stream_obj = completion(**completion_kwargs)
+        # Compat : si l'objet renvoyé est déjà une réponse complète (provider sans
+        # streaming, ou tests), on émet le contenu d'un bloc et on le renvoie tel quel.
+        _choices = getattr(stream_obj, "choices", None)
+        if _choices and getattr(_choices[0], "message", None) is not None:
+            msg = _choices[0].message
+            if getattr(msg, "content", None):
+                try:
+                    on_delta(msg.content)
+                except Exception:
+                    pass
+            return stream_obj
+
+        for chunk in stream_obj:
+            try:
+                choice = chunk.choices[0]
+            except (AttributeError, IndexError):
+                continue
+            finish_reason = getattr(choice, "finish_reason", None) or finish_reason
+            delta = getattr(choice, "delta", None)
+            if delta is None:
+                continue
+            piece = getattr(delta, "content", None)
+            if piece:
+                content_parts.append(piece)
+                try:
+                    on_delta(piece)
+                except Exception:
+                    pass
+            for tc in (getattr(delta, "tool_calls", None) or []):
+                idx = getattr(tc, "index", 0) or 0
+                acc = tool_acc.setdefault(idx, {"id": None, "name": "", "arguments": ""})
+                if getattr(tc, "id", None):
+                    acc["id"] = tc.id
+                fn = getattr(tc, "function", None)
+                if fn:
+                    if getattr(fn, "name", None):
+                        acc["name"] += fn.name
+                    if getattr(fn, "arguments", None):
+                        acc["arguments"] += fn.arguments
+
+        full = "".join(content_parts)
+
+        class _F:
+            def __init__(self, name, args):
+                self.name = name
+                self.arguments = args
+
+        class _TC:
+            def __init__(self, tid, name, args):
+                self.id = tid or f"call_{__import__('uuid').uuid4().hex[:8]}"
+                self.type = "function"
+                self.function = _F(name, args)
+
+        tool_calls = [_TC(a["id"], a["name"], a["arguments"]) for _i, a in sorted(tool_acc.items()) if a["name"]] or None
+
+        class _Msg:
+            def __init__(self):
+                self.content = full
+                self.tool_calls = tool_calls
+            def model_dump(self, exclude_none=True):
+                d = {"role": "assistant"}
+                if full:
+                    d["content"] = full
+                if tool_calls:
+                    d["tool_calls"] = [{"id": t.id, "type": "function",
+                                        "function": {"name": t.function.name, "arguments": t.function.arguments}}
+                                       for t in tool_calls]
+                return d
+
+        class _Usage:
+            prompt_tokens = 0
+            completion_tokens = 0
+
+        class _Choice:
+            def __init__(self):
+                self.message = _Msg()
+                self.finish_reason = finish_reason or "stop"
+
+        class _Resp:
+            def __init__(self):
+                self.choices = [_Choice()]
+                self.usage = _Usage()
+
+        return _Resp()
+
+    def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None):
+        """Appel LLM via litellm avec routage clé officielle / endpoint custom.
+        Si on_delta est fourni et STREAM_TOKENS actif, diffuse les tokens au fil
+        de l'eau (latence minimale) et reconstruit une réponse compatible."""
         completion_kwargs = {"model": model, "messages": messages, "tools": tools_schema}
         custom_base = os.environ.get("CUSTOM_LLM_API_BASE", "").strip()
         custom_key = os.environ.get("CUSTOM_LLM_API_KEY", "").strip()
@@ -387,11 +483,15 @@ class Swarm:
             local_model = model or "qwen3"
             completion_kwargs["model"] = local_model if "/" in local_model else f"openai/{local_model}"
 
+        stream = on_delta is not None and os.getenv("STREAM_TOKENS", "true").lower() in ("true", "1", "yes")
+
         # Garde-fou : retries avec backoff exponentiel sur erreur LLM transitoire.
         retries = int(os.getenv("LLM_MAX_RETRIES", "2"))
         last_err = None
         for attempt in range(retries + 1):
             try:
+                if stream:
+                    return self._complete_streaming(dict(completion_kwargs), on_delta)
                 response = completion(**completion_kwargs)
                 # Recolle automatiquement les réponses tronquées (finish_reason=length).
                 if allow_continuation:
@@ -746,9 +846,15 @@ class Swarm:
             # Injection du system prompt de l'agent actif
             current_messages = [{"role": "system", "content": system_prompt}] + clean_history
             
-            # Appel API via litellm (compatible OpenAI, Anthropic, Ollama...)
-            response = self._complete(current_agent.model, current_messages, tools_schema)
-            
+            # Appel API via litellm (compatible OpenAI, Anthropic, Ollama...).
+            # Streaming token-par-token (latence minimale, surtout vocal) : les
+            # deltas de texte sont publiés en live (event 'message_delta') sans
+            # être persistés ; le message final reste enregistré normalement.
+            def _emit_delta(chunk, _agent=current_agent.name):
+                run_context.publish_step({"type": "message_delta", "agent": _agent, "content": chunk})
+
+            response = self._complete(current_agent.model, current_messages, tools_schema, on_delta=_emit_delta)
+
             message = response.choices[0].message
             msg_dict = message.model_dump(exclude_none=True)
             msg_dict["name"] = current_agent.name

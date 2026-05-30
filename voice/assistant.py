@@ -7,6 +7,7 @@ Réutilise l'API HTTP du serveur : il bénéficie donc des sessions par canal, d
 permissions (canal 'voice' = auto-approuvé) et du streaming SSE déjà en place.
 """
 import json
+import re
 import threading
 import time
 
@@ -114,6 +115,30 @@ class VoiceAssistant:
         interrupted = threading.Event()
         monitor_stop = threading.Event()
         monitor = None
+
+        # Buffer pour la TTS phrase-par-phrase (latence minimale).
+        buffer = {"txt": ""}
+        spoke_stream = {"v": False}
+
+        def flush(force=False):
+            if interrupted.is_set():
+                buffer["txt"] = ""
+                return
+            if force:
+                seg = buffer["txt"].strip()
+                buffer["txt"] = ""
+                if seg:
+                    self.tts.speak(seg, stop_event=interrupted)
+                return
+            matches = list(re.finditer(r"[.!?…:]['\")\]]?\s|\n", buffer["txt"]))
+            if not matches:
+                return
+            cut = matches[-1].end()
+            seg = buffer["txt"][:cut].strip()
+            buffer["txt"] = buffer["txt"][cut:]
+            if seg:
+                self.tts.speak(seg, stop_event=interrupted)
+
         try:
             with requests.post(url, json=payload, headers=self._headers(), stream=True, timeout=180) as r:
                 for raw in r.iter_lines(decode_unicode=True):
@@ -131,22 +156,32 @@ class VoiceAssistant:
                             continue
                         if event == "run":
                             run_id = data.get("run_id")
-                            # Démarre l'écoute de barge-in (si wake word actif).
                             if self.wake.enabled:
                                 monitor = threading.Thread(
                                     target=self._barge_in_monitor,
                                     args=(interrupted, monitor_stop), daemon=True)
                                 monitor.start()
+                        elif event == "step" and data.get("type") == "message_delta":
+                            # Token-par-token : on parle dès qu'une phrase est complète.
+                            buffer["txt"] += data.get("content", "")
+                            spoke_stream["v"] = True
+                            flush()
                         elif event == "step" and data.get("type") == "message":
                             content = data.get("content", "")
-                            if content and not interrupted.is_set():
+                            if spoke_stream["v"]:
+                                flush(force=True)   # reste éventuel
+                            elif content and not interrupted.is_set():
                                 print(f"🤖 {content}")
                                 self.tts.speak(content, stop_event=interrupted)
+                        elif event == "done":
+                            flush(force=True)
                         elif event == "error":
                             print(f"⚠️  {data.get('detail', 'erreur inconnue')}")
                             self.tts.speak("Désolé, une erreur est survenue.")
         finally:
             monitor_stop.set()
+            if not interrupted.is_set():
+                flush(force=True)
         if interrupted.is_set():
             print("⏹️  Interrompu par l'utilisateur — annulation du run.")
             self._cancel_run(run_id)

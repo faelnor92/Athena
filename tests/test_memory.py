@@ -38,7 +38,7 @@ def test_compaction_historique_long():
 
     captured = {"main_len": None}
 
-    def fake_complete(self, model, messages, tools_schema=None):
+    def fake_complete(self, model, messages, tools_schema=None, allow_continuation=True, on_delta=None):
         sys0 = messages[0]["content"] if messages else ""
         if "Résume la conversation" in sys0:
             return _resp("RÉSUMÉ CONDENSÉ DES ÉCHANGES")

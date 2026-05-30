@@ -112,7 +112,36 @@ def test_auto_continuation():
     print("OK: auto-continuation recolle une réponse tronquée (finish_reason=length)")
 
 
+def test_streaming_tokens():
+    os.environ["STREAM_TOKENS"] = "true"
+
+    def fake(**kwargs):
+        assert kwargs.get("stream") is True, "streaming non activé"
+        def gen():
+            for piece, fr in [("Bonjour", None), (" le", None), (" monde.", "stop")]:
+                class _D:
+                    content = piece
+                    tool_calls = None
+                class _C:
+                    delta = _D()
+                    finish_reason = fr
+                class _K:
+                    choices = [_C()]
+                yield _K()
+        return gen()
+
+    swarm_mod.completion = fake
+    s = Swarm.__new__(Swarm)
+    deltas = []
+    resp = s._complete("gpt-4o", [{"role": "user", "content": "x"}], on_delta=lambda c: deltas.append(c))
+    assert "".join(deltas) == "Bonjour le monde.", deltas
+    assert resp.choices[0].message.content == "Bonjour le monde."
+    assert resp.choices[0].message.model_dump()["content"] == "Bonjour le monde."
+    print("OK: streaming token-par-token (deltas + message reconstruit)")
+
+
 if __name__ == "__main__":
     test_validation_schema_args()
     test_cache_outils()
     test_auto_continuation()
+    test_streaming_tokens()

@@ -27,7 +27,7 @@ def test_swarm_filtre_les_outils_par_canal():
 
     captured = {"tools": None}
 
-    def fake_complete(self, model, messages, tools_schema=None):
+    def fake_complete(self, model, messages, tools_schema=None, allow_continuation=True, on_delta=None):
         captured["tools"] = [t["function"]["name"] for t in (tools_schema or [])]
         class _M:
             content = "ok"
