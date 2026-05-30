@@ -35,6 +35,7 @@ from core.swarm import Swarm
 from core.tracing import run_store
 from core.run_context import registry as run_registry, current_run_id
 from core import channels, approvals
+from core.routines import routine_store, start_scheduler as start_routine_scheduler
 from tools.memory_tools import core_mem
 
 app = FastAPI(title="Jarvis Multi-Agent Dashboard")
@@ -2067,6 +2068,81 @@ def broadcast_notification(message: str, title: str = None):
 # Lancement du planificateur d'agenda en tâche de fond
 t_agenda = threading.Thread(target=agenda_scheduler, daemon=True)
 t_agenda.start()
+
+
+# =========================================================================
+# ROUTINES PROACTIVES / PLANIFIÉES (cron-agent)
+# =========================================================================
+def _run_routine(routine: dict):
+    """Exécute une routine : lance l'agent sur son prompt, persiste, notifie."""
+    prompt = (routine.get("prompt") or "").strip()
+    if not prompt:
+        return
+    starting = swarm.agents.get(routine.get("agent", "Jarvis")) or swarm.agents.get("Jarvis")
+    rid = run_store.new_run_id()
+    started = time.time()
+    token = current_run_id.set(rid)
+    run_registry.start(rid)
+    chan_token = channels.current_channel.set("routine")
+    appr_token = approvals.auto_approve_var.set(True)  # tâche planifiée = de confiance
+    try:
+        agent, _msgs, steps = swarm.run(starting, [{"role": "user", "content": prompt}])
+        steps = list(steps)
+        resp = next((s.get("content", "") for s in reversed(steps) if s.get("type") == "message"), "")
+        run_store.save(
+            run_id=rid, agent=agent.name, status="routine",
+            user_message=f"[Routine] {routine.get('name', '')}", final_response=resp,
+            duration_ms=int((time.time() - started) * 1000), steps=steps, created_at=started,
+        )
+        logger.info("routine '%s' exécutée (run %s)", routine.get("name"), rid)
+        if routine.get("notify", True) and resp:
+            broadcast_notification(resp, title=f"🗓️ {routine.get('name', 'Routine')}")
+    except Exception as e:
+        logger.exception("Erreur routine '%s'", routine.get("name"))
+    finally:
+        run_registry.finish(rid)
+        current_run_id.reset(token)
+        channels.current_channel.reset(chan_token)
+        approvals.auto_approve_var.reset(appr_token)
+
+
+class RoutineRequest(BaseModel):
+    id: str = None
+    name: str
+    prompt: str
+    agent: str = "Jarvis"
+    schedule: Dict[str, Any]
+    enabled: bool = True
+    notify: bool = True
+
+
+@app.get("/api/routines")
+async def list_routines():
+    return {"routines": routine_store.list()}
+
+
+@app.post("/api/routines")
+async def save_routine(req: RoutineRequest):
+    return {"status": "success", "routine": routine_store.upsert(req.dict())}
+
+
+@app.delete("/api/routines/{rid}")
+async def delete_routine(rid: str):
+    routine_store.delete(rid)
+    return {"status": "success"}
+
+
+@app.post("/api/routines/{rid}/run")
+async def run_routine_now(rid: str):
+    r = routine_store.get(rid)
+    if not r:
+        raise HTTPException(status_code=404, detail="Routine introuvable.")
+    await asyncio.to_thread(_run_routine, r)
+    return {"status": "success"}
+
+
+# Lancement du planificateur de routines en tâche de fond
+start_routine_scheduler(_run_routine)
 
 # Endpoint de transcription et diarisation de réunions audio
 @app.post("/api/meeting/transcribe")
