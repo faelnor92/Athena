@@ -22,6 +22,10 @@ conversations_*.json
 core_memory.json
 agenda.json
 lists.json
+# Compétences générées par les agents à l'exécution (état local, pas du code source).
+# Le dossier est conservé via .gitkeep ; forcez l'ajout d'une skill avec: git add -f skills/<x>.py
+skills/*.py
+!skills/.gitkeep
 
 # Tout le contenu du workspace est volatil / personnel,
 # SAUF la configuration de pricing qui est versionnée.
