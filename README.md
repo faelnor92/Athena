@@ -198,6 +198,13 @@ for t in tests/test_*.py; do python3 "$t"; done
 
 **Windows** : `.\install.ps1` *(raccourci Bureau, `run.bat`, scan Ollama).*
 
+**🐳 Docker Compose** *(auto-hébergement reproductible)* :
+```bash
+cp .env.example .env   # définir ADMIN_PASSWORD, clés LLM, et JARVIS_DATA=/chemin/absolu
+docker compose up -d --build
+```
+> Tout l'état persiste sous `JARVIS_DATA` (monté au même chemin hôte/conteneur pour que la sandbox fonctionne). Le socket Docker est monté pour exécuter la sandbox en conteneurs frères.
+
 Puis renseignez votre clé LLM dans `.env`, et lancez :
 * Web : `jarvis start` ou `python3 server.py` → 👉 **http://localhost:8000/**
 * CLI : `python3 main.py` · Vocal : `python3 voice_assistant.py`

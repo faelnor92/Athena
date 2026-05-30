@@ -5,8 +5,8 @@ import chromadb
 
 class CoreMemory:
     """Mémoire de type clé-valeur (JSON) pour stocker les faits et préférences globales."""
-    def __init__(self, filepath="core_memory.json"):
-        self.filepath = filepath
+    def __init__(self, filepath=None):
+        self.filepath = filepath or os.getenv("CORE_MEMORY_PATH", "core_memory.json")
         self.data = {}
         self.load()
 
@@ -50,7 +50,8 @@ class CoreMemory:
 
 class SemanticMemory:
     """Mémoire vectorielle (ChromaDB) pour archiver et faire des recherches sémantiques."""
-    def __init__(self, db_path=".chroma_db"):
+    def __init__(self, db_path=None):
+        db_path = db_path or os.getenv("CHROMA_DB_PATH", ".chroma_db")
         # Initialise le client ChromaDB persistant avec télémétrie désactivée
         self.client = chromadb.PersistentClient(
             path=db_path,
