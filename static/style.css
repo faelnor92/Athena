@@ -538,6 +538,32 @@ body {
     z-index: 15;
 }
 
+/* Surlignage FORT de l'agent actif : agrandissement + halo coloré pulsant */
+.agent-desk-iso.active .iso-sprite-container {
+    transform: scale(1.2);
+    filter: drop-shadow(0 0 16px var(--agent-color, #00f0ff)) brightness(1.15);
+}
+.agent-desk-iso.active .rts-selection-ring {
+    opacity: 1 !important;
+    border-style: solid;
+    border-width: 3px;
+    animation: ringPulse 1.4s infinite ease-in-out;
+}
+.agent-desk-iso.active .iso-name-badge {
+    box-shadow: 0 0 12px var(--agent-color, #00f0ff);
+    border-color: var(--agent-color, #00f0ff);
+}
+@keyframes ringPulse {
+    0%, 100% { transform: scale(1); opacity: 0.65; }
+    50%      { transform: scale(1.3); opacity: 1; }
+}
+
+/* Atténuer légèrement les agents inactifs pour faire ressortir l'actif */
+#office-floor .agent-desk-iso:not(.active) .iso-sprite-container {
+    filter: grayscale(0.3) brightness(0.82);
+    opacity: 0.9;
+}
+
 .sprite-svg {
     animation: spriteBob 1.6s infinite ease-in-out;
     transform-origin: bottom center;
@@ -569,11 +595,39 @@ body {
 /* Mail courier animation */
 .flying-mail {
     position: fixed;
-    font-size: 1.5rem;
+    font-size: 2.4rem;
     z-index: 10000;
     pointer-events: none;
-    transition: transform 1.2s cubic-bezier(0.25, 1, 0.5, 1), opacity 1.2s ease;
-    filter: drop-shadow(0 0 8px rgba(255,255,255,0.8));
+    transition: transform 1.4s cubic-bezier(0.45, 0, 0.55, 1), opacity 1.4s ease;
+    filter: drop-shadow(0 0 14px var(--mail-color, #00f0ff))
+            drop-shadow(0 0 6px #fff);
+}
+.flying-mail::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--mail-color, #00f0ff) 0%, transparent 70%);
+    opacity: 0.5;
+    z-index: -1;
+    animation: mailGlow 0.7s infinite alternate;
+}
+@keyframes mailGlow { from { opacity: 0.25; transform: scale(0.9); } to { opacity: 0.6; transform: scale(1.2); } }
+
+/* Petite étiquette « DÉLÉGATION » qui suit l'enveloppe */
+.flying-mail-label {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #fff;
+    background: var(--mail-color, #00f0ff);
+    padding: 2px 6px;
+    border-radius: 6px;
+    box-shadow: 0 0 10px var(--mail-color, #00f0ff);
+    transition: transform 1.4s cubic-bezier(0.45, 0, 0.55, 1), opacity 1.4s ease;
 }
 
 /* =========================================================================

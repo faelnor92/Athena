@@ -976,22 +976,39 @@ function animateHandoffMail(fromAgent, toAgent) {
     const fromRect = fromDesk.getBoundingClientRect();
     const toRect = toDesk.getBoundingClientRect();
     
+    const color = (typeof getAgentColor === "function") ? getAgentColor(fromAgent) : "#00f0ff";
+    const startX = fromRect.left + fromRect.width / 2;
+    const startY = fromRect.top + fromRect.height / 2;
+    const dx = (toRect.left + toRect.width / 2) - startX;
+    const dy = (toRect.top + toRect.height / 2) - startY;
+
     const mail = document.createElement("div");
     mail.className = "flying-mail";
-    mail.innerHTML = "📨";
-    mail.style.left = `${fromRect.left + fromRect.width/2}px`;
-    mail.style.top = `${fromRect.top + fromRect.height/2}px`;
-    
+    mail.innerHTML = "✉️";
+    mail.style.setProperty("--mail-color", color);
+    mail.style.left = `${startX}px`;
+    mail.style.top = `${startY}px`;
+
+    const label = document.createElement("div");
+    label.className = "flying-mail-label";
+    label.textContent = "DÉLÉGATION";
+    label.style.setProperty("--mail-color", color);
+    label.style.left = `${startX}px`;
+    label.style.top = `${startY + 20}px`;
+
     document.body.appendChild(mail);
-    
-    // Petit timer pour lancer la transition CSS sémantiquement
-    setTimeout(() => {
-        mail.style.transform = `translate(${toRect.left - fromRect.left}px, ${toRect.top - fromRect.top}px) scale(1.5)`;
+    document.body.appendChild(label);
+
+    // Lancer la transition CSS au frame suivant
+    requestAnimationFrame(() => {
+        mail.style.transform = `translate(${dx}px, ${dy}px) scale(1.4)`;
+        label.style.transform = `translate(${dx}px, ${dy}px)`;
         setTimeout(() => {
             mail.style.opacity = "0";
-            setTimeout(() => mail.remove(), 500);
-        }, 1000);
-    }, 50);
+            label.style.opacity = "0";
+            setTimeout(() => { mail.remove(); label.remove(); }, 500);
+        }, 1100);
+    });
 }
 
 // Jouer pas à pas la séquence d'événements de l'essaim
