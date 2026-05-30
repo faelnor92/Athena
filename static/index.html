@@ -529,6 +529,7 @@
                 <button class="modal-tab-btn" id="modal-tab-behavior">⚙️ Comportement & Sécurité</button>
                 <button class="modal-tab-btn" id="modal-tab-mcp">🧩 Serveurs MCP</button>
                 <button class="modal-tab-btn" id="modal-tab-routines">🗓️ Routines</button>
+                <button class="modal-tab-btn" id="modal-tab-knowledge">📚 Connaissances</button>
             </div>
             
             <div class="modal-body">
@@ -807,6 +808,20 @@
                     <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;"><input id="routine-notify" type="checkbox" checked style="width: 16px; height: 16px;"><label style="margin: 0;">Notifier le résultat</label></div>
                     <button type="button" id="btn-save-routine" class="btn btn-primary" style="width: 100%;">➕ Ajouter la routine</button>
                     <div id="routine-save-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
+                </div>
+
+                <div class="modal-pane" id="pane-knowledge" style="display: none;">
+                    <h3>📚 Base de connaissances (RAG)</h3>
+                    <p class="section-desc">Documents indexés dans la mémoire vectorielle, retrouvés automatiquement par les agents. Ajoute une URL ou du texte ; supprime ce qui n'est plus utile.</p>
+                    <div style="display: flex; gap: 6px; margin: 8px 0;">
+                        <input id="kb-url" type="text" placeholder="https://… (URL à indexer)" style="flex: 1;">
+                        <button type="button" id="btn-kb-url" class="btn btn-secondary" style="font-size: 0.8rem; white-space: nowrap;">+ URL</button>
+                    </div>
+                    <textarea id="kb-text" placeholder="Ou colle du texte / des notes à mémoriser…" style="width: 100%; min-height: 60px;"></textarea>
+                    <button type="button" id="btn-kb-text" class="btn btn-secondary" style="width: 100%; margin: 6px 0 12px; font-size: 0.8rem;">+ Indexer le texte</button>
+                    <div style="display: flex; justify-content: space-between; align-items: center;"><h5 style="color: var(--accent-cyan); margin: 0;">Documents indexés</h5><span id="kb-count" style="font-size: 0.75rem; opacity: 0.7;"></span></div>
+                    <div id="kb-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 280px; overflow-y: auto;"></div>
+                    <div id="kb-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
                 </div>
             </div>
         </div>

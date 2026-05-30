@@ -71,6 +71,40 @@ class SemanticMemory:
         )
         return doc_id
 
+    def list_documents(self, limit: int = 200) -> list:
+        """Liste les documents indexés : [{id, source, preview}]."""
+        try:
+            res = self.collection.get(limit=limit, include=["documents", "metadatas"])
+        except Exception:
+            return []
+        ids = res.get("ids", []) or []
+        docs = res.get("documents", []) or []
+        metas = res.get("metadatas", []) or []
+        out = []
+        for i, doc_id in enumerate(ids):
+            doc = docs[i] if i < len(docs) else ""
+            meta = metas[i] if i < len(metas) else {}
+            out.append({
+                "id": doc_id,
+                "source": (meta or {}).get("source", "inconnu"),
+                "preview": (doc or "")[:160],
+                "length": len(doc or ""),
+            })
+        return out
+
+    def count(self) -> int:
+        try:
+            return self.collection.count()
+        except Exception:
+            return 0
+
+    def delete(self, doc_id: str) -> bool:
+        try:
+            self.collection.delete(ids=[doc_id])
+            return True
+        except Exception:
+            return False
+
     def search(self, query: str, limit: int = 3) -> list:
         """Recherche les informations les plus proches sémantiquement."""
         results = self.collection.query(

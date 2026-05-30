@@ -223,6 +223,8 @@ const modalTabMcp = document.getElementById("modal-tab-mcp");
 const paneMcp = document.getElementById("pane-mcp");
 const modalTabRoutines = document.getElementById("modal-tab-routines");
 const paneRoutines = document.getElementById("pane-routines");
+const modalTabKnowledge = document.getElementById("modal-tab-knowledge");
+const paneKnowledge = document.getElementById("pane-knowledge");
 const paneAgents = document.getElementById("pane-agents");
 const paneKeys = document.getElementById("pane-keys");
 const paneSsh = document.getElementById("pane-ssh");
@@ -1654,8 +1656,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabKnowledge].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneKnowledge].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -1975,6 +1977,78 @@ const _routineSchedType = document.getElementById("routine-sched-type");
 if (_routineSchedType) _routineSchedType.addEventListener("change", _syncRoutineScheduleRows);
 const _btnSaveRoutine = document.getElementById("btn-save-routine");
 if (_btnSaveRoutine) _btnSaveRoutine.addEventListener("click", saveNewRoutineFromForm);
+
+// -------------------------------------------------------------------------
+// ONGLET : BASE DE CONNAISSANCES (RAG)
+// -------------------------------------------------------------------------
+async function loadKnowledgePane() {
+    const list = document.getElementById("kb-list");
+    const count = document.getElementById("kb-count");
+    if (!list) return;
+    list.innerHTML = "<div style='opacity:0.5;font-size:0.78rem;'>Chargement…</div>";
+    try {
+        const r = await apiFetch("/api/knowledge?limit=200");
+        const d = await r.json();
+        if (count) count.textContent = `${d.count} document(s)`;
+        const docs = d.documents || [];
+        if (docs.length === 0) { list.innerHTML = "<div style='opacity:0.5;font-size:0.78rem;text-align:center;padding:8px;'>Base vide.</div>"; return; }
+        list.innerHTML = "";
+        docs.forEach(doc => {
+            const row = document.createElement("div");
+            row.className = "service-item";
+            row.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:8px 12px;";
+            const info = document.createElement("div");
+            info.style.cssText = "min-width:0;flex:1;";
+            const src = document.createElement("div");
+            src.style.cssText = "color:var(--accent-cyan);font-size:0.74rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+            src.textContent = `${doc.source} · ${doc.length} car.`;
+            const prev = document.createElement("div");
+            prev.style.cssText = "font-size:0.72rem;opacity:0.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+            prev.textContent = doc.preview;
+            info.append(src, prev);
+            const del = document.createElement("button");
+            del.type = "button"; del.textContent = "🗑️";
+            del.style.cssText = "background:rgba(255,0,80,0.12);border:1px solid rgba(255,0,80,0.4);color:#ff5b89;border-radius:4px;padding:1px 7px;cursor:pointer;font-size:0.72rem;flex-shrink:0;";
+            del.addEventListener("click", async () => {
+                if (!confirm("Supprimer ce document de la base de connaissances ?")) return;
+                await apiFetch(`/api/knowledge/${doc.id}`, { method: "DELETE" });
+                loadKnowledgePane();
+            });
+            row.append(info, del);
+            list.appendChild(row);
+        });
+    } catch (e) {
+        list.innerHTML = `<div style="color:#ff5b89;font-size:0.78rem;">Erreur : ${e}</div>`;
+    }
+}
+
+async function ingestKnowledge(payload, label) {
+    const st = document.getElementById("kb-status");
+    if (st) st.textContent = `⏳ Indexation ${label}…`;
+    try {
+        const r = await apiFetch("/api/knowledge/ingest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) { if (st) st.textContent = `✅ Indexé (${d.chars || 0} car.).`; loadKnowledgePane(); }
+        else { if (st) st.textContent = "❌ " + (d.detail || "Erreur"); }
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+}
+
+if (modalTabKnowledge && paneKnowledge) {
+    modalTabKnowledge.addEventListener("click", () => switchModalTab(modalTabKnowledge, () => {
+        paneKnowledge.style.display = "block";
+        loadKnowledgePane();
+    }));
+}
+const _btnKbUrl = document.getElementById("btn-kb-url");
+if (_btnKbUrl) _btnKbUrl.addEventListener("click", () => {
+    const u = document.getElementById("kb-url");
+    if (u && u.value.trim()) { ingestKnowledge({ url: u.value.trim() }, "de l'URL"); u.value = ""; }
+});
+const _btnKbText = document.getElementById("btn-kb-text");
+if (_btnKbText) _btnKbText.addEventListener("click", () => {
+    const t = document.getElementById("kb-text");
+    if (t && t.value.trim()) { ingestKnowledge({ text: t.value.trim(), source: "manuel" }, "du texte"); t.value = ""; }
+});
 
 // -------------------------------------------------------------------------
 // ONGLET 1 : GESTION DES AGENTS (LISTER / EDITER / SUPPRIMER)
