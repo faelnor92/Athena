@@ -113,6 +113,22 @@ python3 voice_assistant.py               # assistant vocal (un autre)
 ```
 Configuration via les variables `VOICE_*` (voir `.env.example`).
 
+### 🛰️ Satellites ESP32-S3 (ESPHome) — directement sur Jarvis (sans HA)
+
+Jarvis peut jouer le rôle de backend vocal des satellites **ESPHome** via l'API
+native (`aioesphomeapi`) — HA est retiré de la boucle vocale (Jarvis appelle HA
+seulement via les outils domotiques). Latence minimale : un seul aller-retour,
+et **TTS phrase-par-phrase** en streaming.
+
+1. Flashe l'ESP32-S3 avec `docs/esphome-satellite.yaml` (déclenchement **au bouton**,
+   pour éviter le microWakeWord souvent capricieux ; wake word serveur possible ensuite).
+2. `pip install -r requirements-voice.txt` (faster-whisper, aioesphomeapi) + Piper.
+3. Copie `satellites.json.example` → `satellites.json` (IP + clé API de chaque ESP).
+4. Lance le serveur, puis : `python3 esphome_satellites.py`.
+
+> ⚠️ Ce backend ESPHome n'a pas pu être testé sans matériel : le séquencement des
+> events et le sample rate audio (`VOICE_OUT_SAMPLE_RATE`) sont à ajuster sur ton ESP.
+
 ---
 
 ## ⚙️ Réglages depuis l'UI

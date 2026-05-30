@@ -1,0 +1,68 @@
+# Exemple ESPHome pour un satellite vocal ESP32-S3 piloté DIRECTEMENT par Jarvis
+# (sans Home Assistant). À adapter aux broches de ta carte (micro I2S, HP).
+#
+# Idée : on évite le wake word embarqué (microWakeWord, souvent capricieux) en
+# déclenchant l'écoute par un BOUTON (push-to-talk). Jarvis se connecte à l'ESP
+# via l'API native et joue le rôle d'assistant.
+#
+# Après flash : récupère la clé 'api.encryption.key' et mets-la dans satellites.json,
+# puis lance :  python3 esphome_satellites.py
+
+esphome:
+  name: jarvis-satellite-salon
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+logger:
+api:
+  encryption:
+    key: "GENERE_UNE_CLE_BASE64_ET_RECOPIE_LA_DANS_satellites.json"
+ota:
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# --- Audio : micro I2S + haut-parleur I2S (adapter les broches) ---
+i2s_audio:
+  - id: i2s_in
+    i2s_lrclk_pin: GPIO2
+    i2s_bclk_pin: GPIO1
+  - id: i2s_out
+    i2s_lrclk_pin: GPIO6
+    i2s_bclk_pin: GPIO5
+
+microphone:
+  - platform: i2s_audio
+    id: mic
+    i2s_audio_id: i2s_in
+    i2s_din_pin: GPIO3
+    adc_type: external
+    pdm: false
+
+speaker:
+  - platform: i2s_audio
+    id: spk
+    i2s_audio_id: i2s_out
+    i2s_dout_pin: GPIO7
+    dac_type: external
+
+# --- Assistant vocal : PAS de wake word embarqué, déclenchement au bouton ---
+voice_assistant:
+  microphone: mic
+  speaker: spk
+  use_wake_word: false          # on évite microWakeWord (peu fiable chez toi)
+  # Jarvis (client API) reçoit l'audio et renvoie la TTS.
+
+binary_sensor:
+  - platform: gpio
+    pin: GPIO0                  # bouton "BOOT" ou un bouton dédié
+    name: "Parler"
+    on_press:
+      - voice_assistant.start
+    on_release:
+      - voice_assistant.stop
+
+# (Option : wake word côté serveur = streaming continu. Plus tard, si voulu.)

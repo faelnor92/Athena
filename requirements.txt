@@ -21,7 +21,7 @@ sse-starlette==2.1.3
 
 # --- Exécution distante SSH -------------------------------------------------
 paramiko==5.0.0
-cryptography==38.0.4
+cryptography>=38.0.4
 
 # --- Génération / traitement d'images --------------------------------------
 Pillow==9.4.0

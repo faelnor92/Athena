@@ -68,6 +68,58 @@ class TTS:
             if os.path.exists(wav_path):
                 os.remove(wav_path)
 
+    def synth_wav_bytes(self, text: str) -> bytes:
+        """Synthétise et renvoie les octets WAV (pour streaming vers un satellite)."""
+        text = (text or "").strip()
+        if not text:
+            return b""
+        if self.engine == "pyttsx3":
+            engine = self._ensure_pyttsx()
+            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
+            try:
+                engine.save_to_file(text, tmp)
+                engine.runAndWait()
+                with open(tmp, "rb") as f:
+                    return f.read()
+            finally:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+        wav_path = self._piper_to_wav(text)
+        try:
+            with open(wav_path, "rb") as f:
+                return f.read()
+        finally:
+            if os.path.exists(wav_path):
+                os.remove(wav_path)
+
+    @staticmethod
+    def wav_to_pcm16(wav_bytes: bytes, target_sr: int = 16000):
+        """Convertit des octets WAV en PCM 16-bit mono au sample rate cible.
+        Renvoie (pcm_bytes, sample_rate). Resample naïf si numpy dispo."""
+        import wave as _wave
+        import io as _io
+        with _wave.open(_io.BytesIO(wav_bytes), "rb") as wf:
+            sr = wf.getframerate()
+            ch = wf.getnchannels()
+            sw = wf.getsampwidth()
+            frames = wf.readframes(wf.getnframes())
+        try:
+            import numpy as np
+            dtype = {1: np.int8, 2: np.int16, 4: np.int32}.get(sw, np.int16)
+            data = np.frombuffer(frames, dtype=dtype).astype(np.float32)
+            if ch > 1:
+                data = data.reshape(-1, ch).mean(axis=1)
+            if sw != 2:
+                data = data / (2 ** (8 * sw - 1)) * 32767.0
+            if sr != target_sr and len(data) > 1:
+                n = int(len(data) * target_sr / sr)
+                xp = np.linspace(0, 1, len(data))
+                data = np.interp(np.linspace(0, 1, n), xp, data)
+                sr = target_sr
+            return np.clip(data, -32768, 32767).astype(np.int16).tobytes(), sr
+        except ImportError:
+            return frames, sr
+
     @staticmethod
     def _play_wav(path: str, stop_event=None):
         try:

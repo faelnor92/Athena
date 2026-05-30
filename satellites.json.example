@@ -1,0 +1,11 @@
+{
+  "_comment": "Copiez en satellites.json. Un objet par ESP32-S3 (ESPHome). 'encryption_key' = la clé 'api: encryption: key' de l'ESPHome (base64), sinon 'password' pour l'ancienne auth. Le wake word peut être un bouton sur l'ESP (push-to-talk) pour éviter le microWakeWord.",
+  "satellites": [
+    {
+      "name": "salon",
+      "host": "192.168.1.50",
+      "port": 6053,
+      "encryption_key": "BASE64_API_ENCRYPTION_KEY"
+    }
+  ]
+}
