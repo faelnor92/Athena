@@ -1,0 +1,13 @@
+# Dépendances OPTIONNELLES du pipeline vocal local (voir voice/).
+# Installation : pip install -r requirements-voice.txt
+
+faster-whisper>=1.0.0      # STT local (CTranslate2)
+sounddevice>=0.4.6         # capture/lecture audio (PortAudio)
+numpy>=1.24                # traitement audio
+openwakeword>=0.6.0        # mot d'activation local (optionnel)
+pyttsx3>=2.90              # TTS de repli (si Piper indisponible)
+
+# TTS Piper (recommandé) : binaire + modèle à installer séparément
+#   https://github.com/rhasspy/piper  (binaire `piper`)
+#   modèle voix .onnx -> VOICE_PIPER_MODEL=/chemin/fr_FR-...onnx
+# Wake word Porcupine (alternative) : pip install pvporcupine  (+ clé d'accès)
