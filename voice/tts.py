@@ -48,8 +48,10 @@ class TTS:
         return self._pyttsx
 
     # ------------------------------------------------------------------- API
-    def speak(self, text: str):
-        """Synthétise puis joue le texte (bloquant)."""
+    def speak(self, text: str, stop_event=None):
+        """Synthétise puis joue le texte. Si stop_event (threading.Event) est
+        fourni et déclenché pendant la lecture (Piper), celle-ci est coupée
+        (barge-in). pyttsx3 ne supporte pas l'interruption."""
         text = (text or "").strip()
         if not text:
             return
@@ -61,21 +63,33 @@ class TTS:
         # Piper -> wav -> lecture
         wav_path = self._piper_to_wav(text)
         try:
-            self._play_wav(wav_path)
+            self._play_wav(wav_path, stop_event)
         finally:
             if os.path.exists(wav_path):
                 os.remove(wav_path)
 
     @staticmethod
-    def _play_wav(path: str):
+    def _play_wav(path: str, stop_event=None):
         try:
             import sounddevice as sd
             import numpy as np
         except ImportError as e:
             raise TTSUnavailable("sounddevice/numpy requis pour la lecture audio.") from e
+        import time
         with wave.open(path, "rb") as wf:
             sr = wf.getframerate()
             frames = wf.readframes(wf.getnframes())
         data = np.frombuffer(frames, dtype=np.int16)
         sd.play(data, sr)
-        sd.wait()
+        if stop_event is None:
+            sd.wait()
+            return
+        # Lecture interruptible : on coupe dès que stop_event est déclenché.
+        while True:
+            stream = sd.get_stream()
+            if stream is None or not stream.active:
+                break
+            if stop_event.is_set():
+                sd.stop()
+                break
+            time.sleep(0.05)

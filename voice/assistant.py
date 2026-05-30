@@ -7,6 +7,7 @@ Réutilise l'API HTTP du serveur : il bénéficie donc des sessions par canal, d
 permissions (canal 'voice' = auto-approuvé) et du streaming SSE déjà en place.
 """
 import json
+import threading
 import time
 
 import requests
@@ -71,32 +72,80 @@ class VoiceAssistant:
                     break
         return np.concatenate(frames).astype("float32")
 
+    # ------------------------------------------------------------- barge-in
+    def _barge_in_monitor(self, interrupted: threading.Event, stop: threading.Event):
+        """Écoute le micro pendant que Jarvis parle ; déclenche `interrupted`
+        si le wake word est redétecté (l'utilisateur reprend la parole)."""
+        try:
+            import sounddevice as sd
+            sr = self.cfg["sample_rate"]
+            block = int(sr * self.cfg["block_ms"] / 1000)
+            with sd.InputStream(samplerate=sr, channels=1, dtype="int16", blocksize=block) as stream:
+                while not stop.is_set():
+                    data, _ = stream.read(block)
+                    try:
+                        if self.wake.detect(data[:, 0]):
+                            interrupted.set()
+                            return
+                    except Exception:
+                        return
+        except Exception:
+            return
+
+    def _cancel_run(self, run_id):
+        if not run_id:
+            return
+        try:
+            requests.post(f"{self.cfg['server_url']}/api/runs/{run_id}/cancel",
+                          headers=self._headers(), timeout=5)
+        except Exception:
+            pass
+
     # --------------------------------------------------------------- dialogue
     def stream_and_speak(self, text: str):
         url = f"{self.cfg['server_url']}/api/chat/stream"
         payload = {"message": text, "client_id": self.cfg["client_id"]}
         event = None
-        with requests.post(url, json=payload, headers=self._headers(), stream=True, timeout=180) as r:
-            for raw in r.iter_lines(decode_unicode=True):
-                if not raw:
-                    continue
-                line = raw.strip()
-                if line.startswith("event:"):
-                    event = line[6:].strip()
-                elif line.startswith("data:"):
-                    try:
-                        data = json.loads(line[5:].strip())
-                    except Exception:
+        run_id = None
+        interrupted = threading.Event()
+        monitor_stop = threading.Event()
+        monitor = None
+        try:
+            with requests.post(url, json=payload, headers=self._headers(), stream=True, timeout=180) as r:
+                for raw in r.iter_lines(decode_unicode=True):
+                    if interrupted.is_set():
+                        break
+                    if not raw:
                         continue
-                    if event == "step" and data.get("type") == "message":
-                        content = data.get("content", "")
-                        if content:
-                            print(f"🤖 {content}")
-                            self.tts.speak(content)
-                    elif event == "error":
-                        msg = data.get("detail", "erreur inconnue")
-                        print(f"⚠️  {msg}")
-                        self.tts.speak("Désolé, une erreur est survenue.")
+                    line = raw.strip()
+                    if line.startswith("event:"):
+                        event = line[6:].strip()
+                    elif line.startswith("data:"):
+                        try:
+                            data = json.loads(line[5:].strip())
+                        except Exception:
+                            continue
+                        if event == "run":
+                            run_id = data.get("run_id")
+                            # Démarre l'écoute de barge-in (si wake word actif).
+                            if self.wake.enabled:
+                                monitor = threading.Thread(
+                                    target=self._barge_in_monitor,
+                                    args=(interrupted, monitor_stop), daemon=True)
+                                monitor.start()
+                        elif event == "step" and data.get("type") == "message":
+                            content = data.get("content", "")
+                            if content and not interrupted.is_set():
+                                print(f"🤖 {content}")
+                                self.tts.speak(content, stop_event=interrupted)
+                        elif event == "error":
+                            print(f"⚠️  {data.get('detail', 'erreur inconnue')}")
+                            self.tts.speak("Désolé, une erreur est survenue.")
+        finally:
+            monitor_stop.set()
+        if interrupted.is_set():
+            print("⏹️  Interrompu par l'utilisateur — annulation du run.")
+            self._cancel_run(run_id)
 
     # ------------------------------------------------------------------- run
     def run(self):
