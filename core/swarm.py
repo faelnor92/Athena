@@ -13,6 +13,7 @@ from .agent import Agent, Result
 from . import approvals
 from . import run_context
 from . import channels
+from . import platform_info
 import tools.home_assistant
 import tools.memory_tools
 import tools.code_sandbox
@@ -563,6 +564,9 @@ class Swarm:
                 
             if local_instructions.strip():
                 system_prompt += "\n\n=== INSTRUCTIONS DE PROJET LOCALES ===\n" + local_instructions
+
+            # Détection automatique de l'OS / environnement d'exécution.
+            system_prompt += platform_info.execution_env_hint()
 
             # Règle d'or sur les mentions @agent
             system_prompt += "\n\n⚠️ INSTRUCTIONS SUR LES MENTIONS @AGENT :\n"

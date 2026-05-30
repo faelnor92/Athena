@@ -1260,6 +1260,15 @@ async def get_config_skills():
         raise HTTPException(status_code=500, detail=f"Erreur de lecture des compétences : {str(e)}")
 
 
+@app.get("/api/platform")
+async def get_platform():
+    """Détection automatique de l'OS hôte et de l'environnement d'exécution."""
+    from core.platform_info import get_platform_info, sandbox_active
+    info = get_platform_info()
+    info["sandbox_active"] = sandbox_active()
+    return info
+
+
 @app.delete("/api/config/skills/{skill_name}")
 async def delete_config_skill(skill_name: str):
     """Supprime une compétence permanente (fichier skills/<name>.py)."""
