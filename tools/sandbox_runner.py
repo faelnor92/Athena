@@ -51,10 +51,12 @@ def _workspace_dir() -> str:
 
 def _docker_run_args(name: str) -> List[str]:
     ws = _workspace_dir()
+    # Réseau coupé par défaut ; activable explicitement si du code doit sortir.
+    network = "bridge" if os.getenv("SANDBOX_ALLOW_NETWORK", "false").lower() in ("true", "1", "yes") else "none"
     args = [
         "docker", "run", "--rm", "-i",
         "--name", name,
-        "--network", "none",
+        "--network", network,
         "--memory", os.getenv("SANDBOX_MEM_LIMIT", "256m"),
         "--memory-swap", os.getenv("SANDBOX_MEM_LIMIT", "256m"),
         "--cpus", os.getenv("SANDBOX_CPUS", "1.0"),

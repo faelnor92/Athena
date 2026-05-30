@@ -1,5 +1,6 @@
 import requests
 import re
+import html as _html
 from urllib.parse import unquote
 
 def web_search(query: str) -> str:
@@ -22,48 +23,39 @@ def web_search(query: str) -> str:
             return f"Erreur : Impossible de contacter le moteur de recherche (Code {r.status_code})"
             
         html = r.text
-        
-        # Trouver tous les liens et résumés des résultats
+
+        def _clean_ddg_url(raw: str) -> str:
+            # DuckDuckGo enveloppe les liens : //duckduckgo.com/l/?uddg=<URL>&...
+            if "uddg=" in raw:
+                try:
+                    return unquote(raw.split("uddg=")[1].split("&")[0])
+                except Exception:
+                    return raw
+            return raw
+
+        # Robuste à l'ordre des attributs : on capture chaque <a ... class="result__a" ...>
         results = []
-        
-        # Regex pour capturer les blocs de résultats dans DuckDuckGo HTML
-        blocks = re.findall(r'<div class="result__body">.*?</div>\s*</div>', html, re.DOTALL)
-        
-        for block in blocks[:5]:
-            title_match = re.search(r'<a class="result__a"[^>]*>(.*?)</a>', block, re.DOTALL)
-            href_match = re.search(r'href="([^"]+)"', block)
-            snippet_match = re.search(r'<a class="result__snippet"[^>]*>(.*?)</a>', block, re.DOTALL)
-            
-            if title_match and href_match:
-                title = re.sub(r'<[^>]*>', '', title_match.group(1)).strip()
-                url_raw = href_match.group(1)
-                
-                # Nettoyer l'URL de redirection de DuckDuckGo
-                if "uddg=" in url_raw:
-                    try:
-                        url_part = url_raw.split("uddg=")[1].split("&")[0]
-                        url_clean = unquote(url_part)
-                    except Exception:
-                        url_clean = url_raw
-                else:
-                    url_clean = url_raw
-                
-                snippet = ""
-                if snippet_match:
-                    snippet = re.sub(r'<[^>]*>', '', snippet_match.group(1)).strip()
-                
-                results.append(f"🔹 **{title}**\n🔗 Lien: {url_clean}\n📝 Extrait: {snippet}\n")
-                
-        if not results:
-            # Fallback regex simple
-            links = re.findall(r'<a class="result__a" href="([^"]+)">(.*?)</a>', html)
-            for href, text in links[:5]:
-                title = re.sub(r'<[^>]*>', '', text).strip()
-                results.append(f"🔹 **{title}**\n🔗 Lien: {href}\n")
-                
+        snippets = re.findall(
+            r'<a\b[^>]*\bclass="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>',
+            html, re.DOTALL,
+        )
+        for i, m in enumerate(re.finditer(
+            r'<a\b([^>]*\bclass="[^"]*result__a[^"]*"[^>]*)>(.*?)</a>', html, re.DOTALL,
+        )):
+            if len(results) >= 5:
+                break
+            attrs, text = m.group(1), m.group(2)
+            href_m = re.search(r'href="([^"]+)"', attrs)
+            if not href_m:
+                continue
+            title = _html.unescape(re.sub(r"<[^>]*>", "", text)).strip()
+            url_clean = _clean_ddg_url(href_m.group(1))
+            snippet = _html.unescape(re.sub(r"<[^>]*>", "", snippets[i])).strip() if i < len(snippets) else ""
+            results.append(f"🔹 **{title}**\n🔗 Lien: {url_clean}\n📝 Extrait: {snippet}\n")
+
         if not results:
             return "Aucun résultat trouvé sur le Web."
-            
+
         return "\n".join(results)
     except Exception as e:
         return f"Erreur lors de la recherche Web : {str(e)}"
