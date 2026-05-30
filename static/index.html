@@ -527,6 +527,7 @@
                 <button class="modal-tab-btn" id="modal-tab-agenda">📅 Synchronisation Agenda</button>
                 <button class="modal-tab-btn" id="modal-tab-pricing">💰 Tarifs LLM</button>
                 <button class="modal-tab-btn" id="modal-tab-behavior">⚙️ Comportement & Sécurité</button>
+                <button class="modal-tab-btn" id="modal-tab-mcp">🧩 Serveurs MCP</button>
             </div>
             
             <div class="modal-body">
@@ -777,6 +778,16 @@
                     <div id="behavior-fields" style="display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-height: 400px; overflow-y: auto; padding-right: 6px;"></div>
                     <button type="button" id="btn-save-behavior" class="btn btn-primary" style="width: 100%;">💾 Sauvegarder les réglages</button>
                     <div id="behavior-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+                </div>
+
+                <div class="modal-pane" id="pane-mcp" style="display: none;">
+                    <h3>🧩 Serveurs MCP (Model Context Protocol)</h3>
+                    <p class="section-desc">Connecte des serveurs MCP (filesystem, GitHub, Postgres, HTTP/SSE…) : leurs outils deviennent disponibles pour Jarvis et le Codeur. Format compatible Claude Desktop — voir <code>mcp_servers.json.example</code>. Les serveurs « sensibles » (FS/shell) ne démarrent pas si aucun mot de passe admin n'est défini.</p>
+                    <div id="mcp-status" style="margin: 10px 0; font-size: 0.8rem;"></div>
+                    <label style="font-size: 0.8rem; display: block; margin-bottom: 4px;">Configuration (JSON)</label>
+                    <textarea id="mcp-config" spellcheck="false" style="width: 100%; min-height: 220px; font-family: monospace; font-size: 0.78rem; background: rgba(0,0,0,0.3); color: #cfe; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; box-sizing: border-box;"></textarea>
+                    <button type="button" id="btn-save-mcp" class="btn btn-primary" style="width: 100%; margin-top: 10px;">💾 Sauvegarder & reconnecter</button>
+                    <div id="mcp-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
                 </div>
             </div>
         </div>

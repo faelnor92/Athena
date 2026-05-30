@@ -1269,6 +1269,43 @@ async def get_platform():
     return info
 
 
+@app.get("/api/config/mcp")
+async def get_config_mcp():
+    """Configuration MCP (JSON brut) + état des serveurs/outils connectés."""
+    from tools.mcp_manager import mcp_manager
+    path = mcp_manager.config_path
+    raw = ""
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            raw = f.read()
+    return {"config": raw, "config_path": path, "status": mcp_manager.status()}
+
+
+class SaveMcpRequest(BaseModel):
+    config: str
+
+
+@app.post("/api/config/mcp")
+async def save_config_mcp(req: SaveMcpRequest):
+    """Écrit mcp_servers.json et reconnecte les serveurs MCP à chaud."""
+    from tools.mcp_manager import mcp_manager
+    try:
+        parsed = json.loads(req.config) if req.config.strip() else {}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"JSON invalide : {e}")
+    path = mcp_manager.config_path
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(parsed, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Écriture impossible : {e}")
+    try:
+        await asyncio.to_thread(mcp_manager.restart)
+    except Exception as e:
+        return {"status": "saved_with_error", "detail": str(e), "mcp": mcp_manager.status()}
+    return {"status": "success", "mcp": mcp_manager.status()}
+
+
 @app.delete("/api/config/skills/{skill_name}")
 async def delete_config_skill(skill_name: str):
     """Supprime une compétence permanente (fichier skills/<name>.py)."""

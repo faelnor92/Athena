@@ -218,6 +218,8 @@ const modalTabAgenda = document.getElementById("modal-tab-agenda");
 const modalTabPricing = document.getElementById("modal-tab-pricing");
 const modalTabBehavior = document.getElementById("modal-tab-behavior");
 const paneBehavior = document.getElementById("pane-behavior");
+const modalTabMcp = document.getElementById("modal-tab-mcp");
+const paneMcp = document.getElementById("pane-mcp");
 const paneAgents = document.getElementById("pane-agents");
 const paneKeys = document.getElementById("pane-keys");
 const paneSsh = document.getElementById("pane-ssh");
@@ -1540,8 +1542,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -1658,6 +1660,71 @@ if (modalTabBehavior && paneBehavior) {
 }
 const _btnSaveBehavior = document.getElementById("btn-save-behavior");
 if (_btnSaveBehavior) _btnSaveBehavior.addEventListener("click", saveConfigBehaviorPane);
+
+// -------------------------------------------------------------------------
+// ONGLET : SERVEURS MCP
+// -------------------------------------------------------------------------
+function renderMcpStatus(status) {
+    const el = document.getElementById("mcp-status");
+    if (!el || !status) return;
+    const servers = status.connected_servers || [];
+    if (servers.length === 0) {
+        el.innerHTML = `<span style="opacity:0.6;">Aucun serveur MCP connecté.</span>`;
+        return;
+    }
+    let html = `<strong style="color:var(--accent-cyan);">${servers.length} serveur(s) connecté(s)</strong> · ${status.tool_count} outil(s) :`;
+    const byServer = status.tools_by_server || {};
+    Object.keys(byServer).forEach(srv => {
+        html += `<div style="margin-top:6px;"><span style="color:#7CFC9A;">● ${srv}</span> — ${byServer[srv].map(t => `<code style="font-size:0.72rem;">${t.name}</code>`).join(", ")}</div>`;
+    });
+    el.innerHTML = html;
+}
+
+async function loadConfigMcpPane() {
+    const ta = document.getElementById("mcp-config");
+    try {
+        const r = await apiFetch("/api/config/mcp");
+        if (r.ok) {
+            const d = await r.json();
+            if (ta) ta.value = (d.config && d.config.trim()) ? d.config : JSON.stringify({ mcpServers: {} }, null, 2);
+            renderMcpStatus(d.status);
+        }
+    } catch (e) {
+        const st = document.getElementById("mcp-save-status");
+        if (st) st.textContent = "❌ " + e;
+    }
+}
+
+async function saveConfigMcpPane() {
+    const ta = document.getElementById("mcp-config");
+    const st = document.getElementById("mcp-save-status");
+    if (st) st.textContent = "⏳ Sauvegarde & reconnexion en cours…";
+    try {
+        const r = await apiFetch("/api/config/mcp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ config: ta ? ta.value : "" })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) {
+            if (st) st.textContent = "✅ Reconnecté.";
+            renderMcpStatus(d.mcp);
+        } else {
+            if (st) st.textContent = "❌ " + (d.detail || "Erreur");
+        }
+    } catch (e) {
+        if (st) st.textContent = "❌ " + e;
+    }
+}
+
+if (modalTabMcp && paneMcp) {
+    modalTabMcp.addEventListener("click", () => switchModalTab(modalTabMcp, () => {
+        paneMcp.style.display = "block";
+        loadConfigMcpPane();
+    }));
+}
+const _btnSaveMcp = document.getElementById("btn-save-mcp");
+if (_btnSaveMcp) _btnSaveMcp.addEventListener("click", saveConfigMcpPane);
 
 // -------------------------------------------------------------------------
 // ONGLET 1 : GESTION DES AGENTS (LISTER / EDITER / SUPPRIMER)

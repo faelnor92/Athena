@@ -222,6 +222,51 @@ class MCPManager:
     def tool_functions(self) -> Dict[str, Callable]:
         return dict(self._tool_functions)
 
+    def status(self) -> Dict[str, Any]:
+        """État courant pour l'UI : serveurs connectés et outils par serveur."""
+        tools_by_server: Dict[str, list] = {}
+        for tool_name, info in self._tools.items():
+            tools_by_server.setdefault(info["server"], []).append({
+                "name": tool_name,
+                "description": info.get("description", ""),
+            })
+        return {
+            "started": self._started,
+            "config_path": self.config_path,
+            "connected_servers": list(self._sessions.keys()),
+            "tools_by_server": tools_by_server,
+            "tool_count": len(self._tools),
+        }
+
+    def stop(self):
+        """Arrête proprement la boucle et les connexions MCP."""
+        if self.loop is None:
+            return
+        for ev in list(self._stop_events.values()):
+            try:
+                self.loop.call_soon_threadsafe(ev.set)
+            except Exception:
+                pass
+        try:
+            self.loop.call_soon_threadsafe(self.loop.stop)
+        except Exception:
+            pass
+        if self.thread:
+            self.thread.join(timeout=5)
+
+    def restart(self):
+        """Recharge la config et reconnecte tous les serveurs MCP à chaud."""
+        self.stop()
+        self._sessions = {}
+        self._stop_events = {}
+        self._tools = {}
+        self._tool_functions = {}
+        self.loop = None
+        self.thread = None
+        self._started = False
+        self.config_path = os.getenv("MCP_CONFIG_PATH", "mcp_servers.json")
+        self.start()
+
 
 # Singleton applicatif
 mcp_manager = MCPManager(os.getenv("MCP_CONFIG_PATH", "mcp_servers.json"))
