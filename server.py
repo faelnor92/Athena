@@ -61,8 +61,11 @@ class LoginRequest(BaseModel):
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+    # Les webhooks entrants (/api/hooks/) sont exemptés de l'auth admin : ils sont
+    # appelés par des services externes (Home Assistant…) et protégés par un secret propre.
+    is_hook = request.url.path.startswith("/api/hooks/")
     # Si un mot de passe admin est configuré dans le .env, on protège tous les endpoints /api/ sauf /api/login
-    if admin_password and request.url.path.startswith("/api/") and request.url.path != "/api/login":
+    if admin_password and request.url.path.startswith("/api/") and request.url.path != "/api/login" and not is_hook:
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             return JSONResponse(status_code=401, content={"detail": "Non autorisé. Jeton de session manquant."})
@@ -2140,6 +2143,7 @@ class RoutineRequest(BaseModel):
     schedule: Dict[str, Any]
     enabled: bool = True
     notify: bool = True
+    secret: str = None
 
 
 @app.get("/api/routines")
@@ -2165,6 +2169,41 @@ async def run_routine_now(rid: str):
         raise HTTPException(status_code=404, detail="Routine introuvable.")
     await asyncio.to_thread(_run_routine, r)
     return {"status": "success"}
+
+
+@app.api_route("/api/hooks/{rid}", methods=["GET", "POST"])
+async def trigger_hook(rid: str, request: Request, token: str = None):
+    """Webhook entrant (Home Assistant, capteurs, IFTTT…) : déclenche une routine
+    de type 'webhook'. Exempté de l'auth admin, protégé par un secret propre.
+    Le corps (JSON ou texte) est injecté dans le prompt comme données d'événement."""
+    r = routine_store.get(rid)
+    if not r or (r.get("schedule") or {}).get("type") != "webhook":
+        raise HTTPException(status_code=404, detail="Webhook introuvable.")
+    secret = r.get("secret", "") or ""
+    provided = token or request.headers.get("X-Hook-Secret", "")
+    if secret and not secrets.compare_digest(provided, secret):
+        raise HTTPException(status_code=403, detail="Secret de webhook invalide.")
+    if not r.get("enabled", True):
+        raise HTTPException(status_code=403, detail="Webhook désactivé.")
+
+    # Récupérer le payload (JSON de préférence, sinon texte brut).
+    payload = None
+    try:
+        payload = await request.json()
+    except Exception:
+        try:
+            raw = (await request.body()).decode("utf-8", "ignore").strip()
+            payload = raw or None
+        except Exception:
+            payload = None
+
+    routine = dict(r)
+    if payload:
+        data = json.dumps(payload, ensure_ascii=False) if isinstance(payload, (dict, list)) else str(payload)
+        routine["prompt"] = (r.get("prompt", "") + "\n\n[Données de l'événement reçu]\n" + data[:2000]).strip()
+
+    await asyncio.to_thread(_run_routine, routine)
+    return {"status": "triggered", "routine": r.get("name")}
 
 
 # Lancement du planificateur de routines en tâche de fond

@@ -1848,6 +1848,7 @@ function _routineScheduleLabel(s) {
     if (s.type === "interval") return `Toutes les ${s.minutes || 60} min`;
     if (s.type === "daily") return `Chaque jour à ${s.time || "08:00"}`;
     if (s.type === "weekly") return `Chaque ${_WEEKDAYS[s.weekday || 0]} à ${s.time || "08:00"}`;
+    if (s.type === "webhook") return "Webhook (événement externe)";
     return "";
 }
 
@@ -1904,6 +1905,28 @@ async function loadRoutinesPane() {
                 loadRoutinesPane();
             });
             list.appendChild(row);
+
+            // Webhook : afficher l'URL (avec secret) à copier dans Home Assistant/IFTTT.
+            if (rt.schedule && rt.schedule.type === "webhook" && rt.secret) {
+                const url = `${location.origin}/api/hooks/${rt.id}?token=${rt.secret}`;
+                const urlRow = document.createElement("div");
+                urlRow.style.cssText = "display:flex;align-items:center;gap:6px;margin:-2px 0 2px 12px;font-size:0.68rem;";
+                const code = document.createElement("code");
+                code.textContent = url;
+                code.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0.7;flex:1;";
+                const copyBtn = document.createElement("button");
+                copyBtn.type = "button";
+                copyBtn.textContent = "📋";
+                copyBtn.title = "Copier l'URL du webhook (POST)";
+                copyBtn.style.cssText = "background:none;border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:1px 6px;cursor:pointer;flex-shrink:0;";
+                copyBtn.addEventListener("click", () => {
+                    navigator.clipboard.writeText(url);
+                    copyBtn.textContent = "✓";
+                    setTimeout(() => { copyBtn.textContent = "📋"; }, 1500);
+                });
+                urlRow.append(code, copyBtn);
+                list.appendChild(urlRow);
+            }
         });
     } catch (e) {
         list.innerHTML = `<div style="color:#ff5b89;font-size:0.78rem;">Erreur : ${e}</div>`;

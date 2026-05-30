@@ -53,10 +53,16 @@ class RoutineStore:
             routine.setdefault("enabled", True)
             routine.setdefault("notify", True)
             routine.setdefault("agent", "Jarvis")
+            prev = self._data.get(rid, {})
             # Conserver last_run existant si non fourni.
             if "last_run" not in routine:
-                prev = self._data.get(rid, {})
                 routine["last_run"] = prev.get("last_run")
+            # Conserver le secret existant si l'appel n'en fournit pas.
+            if not routine.get("secret") and prev.get("secret"):
+                routine["secret"] = prev["secret"]
+            # Webhook entrant : générer un secret si toujours absent.
+            if (routine.get("schedule") or {}).get("type") == "webhook" and not routine.get("secret"):
+                routine["secret"] = uuid.uuid4().hex
             self._data[rid] = routine
             self._save()
             return routine
