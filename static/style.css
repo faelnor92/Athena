@@ -177,6 +177,57 @@ body {
     font-size: 1.35rem;
 }
 
+/* Menu "Plus" du dock (vues secondaires regroupées) */
+.dock-more-wrap {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+.dock-more-menu {
+    position: absolute;
+    left: calc(100% + 14px);
+    top: 0;
+    background: rgba(12, 18, 32, 0.97);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 6000;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(12px);
+}
+
+.dock-more-menu .dock-btn {
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 8px 16px 8px 10px;
+    white-space: nowrap;
+    transform: none !important;
+}
+
+.dock-more-menu .dock-btn .dock-tooltip {
+    position: static;
+    left: auto;
+    opacity: 1;
+    background: none;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+    transform: none;
+    font-size: 0.82rem;
+    color: inherit;
+    pointer-events: none;
+}
+
+.dock-more-menu .dock-btn.active::before { display: none; }
+
 /* Notification badges inside dock */
 .dock-badge {
     position: absolute;

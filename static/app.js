@@ -261,6 +261,23 @@ function selectActiveTab(tab, view, extraAction = null) {
     if (extraAction) extraAction();
 }
 
+// Menu "Plus" du dock : ouvre/ferme la liste des vues secondaires.
+const dockMoreBtn = document.getElementById("dock-more-btn");
+const dockMoreMenu = document.getElementById("dock-more-menu");
+if (dockMoreBtn && dockMoreMenu) {
+    dockMoreBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        dockMoreMenu.style.display = (dockMoreMenu.style.display === "none" || !dockMoreMenu.style.display) ? "flex" : "none";
+    });
+    dockMoreMenu.querySelectorAll(".dock-btn").forEach(b =>
+        b.addEventListener("click", () => { dockMoreMenu.style.display = "none"; }));
+    document.addEventListener("click", (e) => {
+        if (!dockMoreMenu.contains(e.target) && !dockMoreBtn.contains(e.target)) {
+            dockMoreMenu.style.display = "none";
+        }
+    });
+}
+
 if (tabOffice) {
     tabOffice.addEventListener("click", () => {
         selectActiveTab(tabOffice, viewOffice, () => {

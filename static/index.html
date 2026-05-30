@@ -19,57 +19,43 @@
             
             <div class="dock-icons">
                 <button class="dock-btn active" id="tab-office" title="Swarm Open Space (Bureau)">
-                    <span class="dock-icon">💬</span>
+                    <span class="dock-icon">🏠</span>
                     <span class="dock-tooltip">Open Space</span>
                 </button>
-                
-                <button class="dock-btn" id="tab-files" title="Explorateur de Fichiers">
-                    <span class="dock-icon">📁</span>
-                    <span class="dock-tooltip">Fichiers</span>
-                </button>
-                
-                <button class="dock-btn" id="tab-agenda" title="Listes de Tâches">
-                    <span class="dock-icon">📋</span>
-                    <span class="dock-tooltip">Tâches</span>
-                </button>
-                
-                <button class="dock-btn" id="tab-graph" title="Graphe Sémantique">
-                    <span class="dock-icon">🕸️</span>
-                    <span class="dock-tooltip">Réseau Graphe</span>
-                </button>
-                
-                <button class="dock-btn" id="tab-branches" title="Arbre de Conversation">
-                    <span class="dock-icon">🌿</span>
-                    <span class="dock-tooltip">Branches</span>
-                </button>
-                
-                <button class="dock-btn" id="tab-memory" title="Mémoire à Long Terme">
-                    <span class="dock-icon">🧠</span>
-                    <span class="dock-tooltip">Mémoire JSON</span>
-                </button>
-                
-                <button class="dock-btn" id="tab-meeting" title="🎙️ Compte-rendu de Réunion">
-                    <span class="dock-icon">🎙️</span>
-                    <span class="dock-tooltip">Réunions</span>
-                </button>
-
-                <button class="dock-btn" id="tab-console" title="Console Coder Terminal">
-                    <span class="dock-icon">💻</span>
-                    <span class="dock-tooltip">Console Bash</span>
-                </button>
-            </div>
-            
-            <div class="dock-separator"></div>
-            
-            <div class="dock-footer">
                 <button class="dock-btn" id="tab-cockpit" title="Tableau de bord (Cockpit)">
                     <span class="dock-icon">📊</span>
                     <span class="dock-tooltip">Cockpit</span>
                 </button>
-                <button class="dock-btn" id="tab-orchestrator" title="Logs Orchestrateur & Débats">
-                    <span class="dock-icon">⚡</span>
-                    <span class="dock-tooltip">Orchestrateur</span>
+                <button class="dock-btn" id="tab-files" title="Explorateur de Fichiers">
+                    <span class="dock-icon">📁</span>
+                    <span class="dock-tooltip">Fichiers</span>
                 </button>
+                <button class="dock-btn" id="tab-agenda" title="Tâches & Agenda">
+                    <span class="dock-icon">📋</span>
+                    <span class="dock-tooltip">Tâches</span>
+                </button>
+
+                <div class="dock-more-wrap">
+                <button class="dock-btn" id="dock-more-btn" title="Plus de vues">
+                    <span class="dock-icon">⋯</span>
+                    <span class="dock-tooltip">Plus</span>
+                </button>
+
+                <!-- Vues secondaires (menu déroulant) -->
+                <div id="dock-more-menu" class="dock-more-menu" style="display: none;">
+                    <button class="dock-btn" id="tab-graph"><span class="dock-icon">🕸️</span><span class="dock-tooltip">Graphe</span></button>
+                    <button class="dock-btn" id="tab-branches"><span class="dock-icon">🌿</span><span class="dock-tooltip">Branches</span></button>
+                    <button class="dock-btn" id="tab-memory"><span class="dock-icon">🧠</span><span class="dock-tooltip">Mémoire</span></button>
+                    <button class="dock-btn" id="tab-meeting"><span class="dock-icon">🎙️</span><span class="dock-tooltip">Réunions</span></button>
+                    <button class="dock-btn" id="tab-console"><span class="dock-icon">💻</span><span class="dock-tooltip">Console</span></button>
+                    <button class="dock-btn" id="tab-orchestrator"><span class="dock-icon">⚡</span><span class="dock-tooltip">Orchestrateur</span></button>
+                </div>
+                </div>
+            </div>
+
+            <div class="dock-separator"></div>
+
+            <div class="dock-footer">
                 <button id="btn-settings" class="dock-action-btn" title="Configuration de l'essaim">
                     <span>⚙️</span>
                 </button>
