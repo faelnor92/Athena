@@ -5,6 +5,7 @@ import importlib.util
 import glob
 import os
 import time
+import threading
 import contextvars
 import concurrent.futures
 from typing import Callable, Tuple, List
@@ -202,6 +203,39 @@ def _coerce_value(value, json_type):
         except Exception:
             return value
     return value
+
+
+# --- Garde-fous qualité : cache de résultats d'outils + validation JSON-schema ---
+_TOOL_CACHE = {}
+_TOOL_CACHE_LOCK = threading.Lock()
+
+
+def _cacheable_tools() -> set:
+    raw = os.getenv("CACHEABLE_TOOLS", "web_search,web_scrape,search_memory")
+    return {t.strip() for t in raw.split(",") if t.strip()}
+
+
+def _tool_cache_ttl() -> int:
+    try:
+        return int(os.getenv("TOOL_CACHE_TTL", "300") or 0)
+    except ValueError:
+        return 0
+
+
+def validate_args_schema(func: Callable, args: dict):
+    """Valide les arguments contre le schéma JSON de l'outil (outils MCP surtout).
+    Renvoie un message d'erreur clair si invalide, sinon None."""
+    schema = getattr(func, "_mcp_schema", None)
+    if not isinstance(schema, dict) or not schema:
+        return None
+    try:
+        import jsonschema
+        jsonschema.validate(args, schema)
+        return None
+    except ImportError:
+        return None
+    except Exception as e:
+        return f"Arguments invalides pour '{getattr(func, '__name__', '?')}' : {getattr(e, 'message', str(e))}"
 
 
 def coerce_arguments(func: Callable, args: dict) -> dict:
@@ -570,6 +604,12 @@ class Swarm:
             # Détection automatique de l'OS / environnement d'exécution.
             system_prompt += platform_info.execution_env_hint()
 
+            # Rappel de citation des sources si l'agent dispose d'outils web.
+            if any(getattr(f, "__name__", "") in ("web_search", "web_scrape") for f in effective_tools):
+                system_prompt += ("\n[CITATIONS] Lorsque tu utilises des informations trouvées via "
+                                  "web_search/web_scrape, cite explicitement les sources (URL) à la fin "
+                                  "de ta réponse, sous une rubrique « Sources ».\n")
+
             # Règle d'or sur les mentions @agent
             system_prompt += "\n\n⚠️ INSTRUCTIONS SUR LES MENTIONS @AGENT :\n"
             system_prompt += "L'utilisateur peut cibler un ou plusieurs agents dans son message en écrivant `@NomDeLAgent` ou `@NomAmical` (ex: `@Auteur` ou `@Emilie`, `@CommunityManager` ou `@Lucas` ou `@CM`, `@Traducteur` ou `@Sofia`, `@Codeur` ou `@Robert`, `@Correcteur` ou `@Marc`, `@Jarvis`).\n"
@@ -764,8 +804,8 @@ class Swarm:
                 
             tool_calls = getattr(message, "tool_calls", None) or []
 
-            # 1. Préparation : résolution + coercition + gate human-in-the-loop.
-            prepared = []  # (tool_call, func_name, args, func, blocked, call_args)
+            # 1. Préparation : résolution + coercition + validation + gate HITL.
+            prepared = []  # (tool_call, func_name, args, func, blocked, call_args, arg_error)
             for tool_call in tool_calls:
                 func_name = tool_call.function.name
                 try:
@@ -782,26 +822,46 @@ class Swarm:
                 func = next((f for f in effective_tools if f.__name__ == func_name), None)
                 blocked = False
                 call_args = args
+                arg_error = None
                 if func is not None:
                     # Validation/coercition des arguments selon le schéma de l'outil.
                     args = coerce_arguments(func, args)
-                    # Gate human-in-the-loop : outil sensible non confirmé et canal
-                    # non auto-approuvé → bloqué (on demande l'accord utilisateur).
-                    if approvals.is_sensitive(func) and not approvals.auto_approve_enabled() \
-                            and not args.get("user_confirmed"):
-                        blocked = True
-                    # Arguments réellement passés (on retire user_confirmed si la
-                    # fonction ne le déclare pas).
                     call_args = dict(args)
                     if "user_confirmed" in call_args and not approvals.accepts_kw(func, "user_confirmed"):
                         call_args.pop("user_confirmed")
-                prepared.append((tool_call, func_name, args, func, blocked, call_args))
+                    # Validation JSON-schema (outils MCP) : erreur claire au lieu d'un crash.
+                    arg_error = validate_args_schema(func, call_args)
+                    # Gate human-in-the-loop.
+                    if not arg_error and approvals.is_sensitive(func) and not approvals.auto_approve_enabled() \
+                            and not args.get("user_confirmed"):
+                        blocked = True
+                prepared.append((tool_call, func_name, args, func, blocked, call_args, arg_error))
 
             def _run_tool(fn, a):
+                # Cache TTL des outils idempotents (web_search, etc.).
+                name = getattr(fn, "__name__", "")
+                ttl = _tool_cache_ttl()
+                cache_key = None
+                if ttl > 0 and name in _cacheable_tools():
+                    try:
+                        cache_key = (name, json.dumps(a, sort_keys=True, default=str))
+                    except Exception:
+                        cache_key = None
+                    if cache_key is not None:
+                        with _TOOL_CACHE_LOCK:
+                            hit = _TOOL_CACHE.get(cache_key)
+                        if hit and (time.time() - hit[0]) < ttl:
+                            return hit[1]
                 try:
-                    return fn(**a)
+                    res = fn(**a)
                 except Exception as e:
                     return f"Erreur lors de l'exécution de l'outil : {str(e)}"
+                if cache_key is not None and isinstance(res, str):
+                    with _TOOL_CACHE_LOCK:
+                        _TOOL_CACHE[cache_key] = (time.time(), res)
+                        if len(_TOOL_CACHE) > 256:
+                            _TOOL_CACHE.pop(next(iter(_TOOL_CACHE)))
+                return res
 
             # 2. Exécution. Si l'agent a demandé PLUSIEURS outils, on les lance en
             #    PARALLÈLE (ex: plusieurs query_agent → sous-agents concurrents).
@@ -809,7 +869,7 @@ class Swarm:
             #    que les étapes des sous-agents remontent dans le même run.
             #    Les outils bloqués (approbation requise) ne sont PAS exécutés.
             results = [None] * len(prepared)
-            runnable = [i for i, (_tc, _fn, _a, fu, blk, _ca) in enumerate(prepared) if fu is not None and not blk]
+            runnable = [i for i, p in enumerate(prepared) if p[3] is not None and not p[4] and not p[6]]
             max_parallel = int(os.getenv("SWARM_MAX_PARALLEL", "4"))
 
             if len(runnable) > 1 and max_parallel > 1:
@@ -826,11 +886,17 @@ class Swarm:
 
             # 3. Traitement SÉQUENTIEL et ORDONNÉ des résultats (préserve la logique
             #    de l'essaim : handoffs/transferts gérés dans l'ordre).
-            for i, (tool_call, func_name, args, func, blocked, call_args) in enumerate(prepared):
+            for i, (tool_call, func_name, args, func, blocked, call_args, arg_error) in enumerate(prepared):
                 if func is None:
                     err_msg = f"Erreur: Outil {func_name} introuvable ou non autorisé."
                     messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": err_msg})
                     steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": err_msg})
+                    continue
+
+                if arg_error:
+                    # Validation JSON-schema échouée : on renvoie l'erreur au modèle (il se corrige).
+                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": arg_error})
+                    steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": arg_error})
                     continue
 
                 if blocked:
