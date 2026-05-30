@@ -475,6 +475,7 @@ def _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_ch
     )
     logger.info("run %s ok | agent=%s tokens=%s coût=%.4f", run_id, run_agent,
                 total_tokens_in_turn, total_cost_in_turn)
+    _check_budget()
     return final_response, run_agent
 
 
@@ -2130,6 +2131,38 @@ def agenda_scheduler():
             
         time.sleep(30)
 
+_budget_alert_date = None
+
+
+def _check_budget():
+    """Alerte (une fois par jour) si le coût cumulé du jour dépasse BUDGET_DAILY_LIMIT (€)."""
+    global _budget_alert_date
+    try:
+        limit = float(os.getenv("BUDGET_DAILY_LIMIT", "0") or 0)
+    except ValueError:
+        return
+    if limit <= 0:
+        return
+    import datetime
+    today = datetime.date.today().isoformat()
+    cost = run_store.cost_today()
+    if cost >= limit and _budget_alert_date != today:
+        _budget_alert_date = today
+        broadcast_notification(
+            f"⚠️ Budget quotidien dépassé : {cost:.2f} € / {limit:.2f} € (les requêtes continuent).",
+            title="Alerte budget Jarvis",
+        )
+
+
+@app.get("/api/budget")
+async def get_budget():
+    try:
+        limit = float(os.getenv("BUDGET_DAILY_LIMIT", "0") or 0)
+    except ValueError:
+        limit = 0.0
+    return {"today": run_store.cost_today(), "limit": limit}
+
+
 def broadcast_notification(message: str, title: str = None):
     """Diffuse le message sur la console et tous les canaux configurés
     (Discord, Slack, webhook, email, Telegram explicite) + les sessions
@@ -2188,6 +2221,7 @@ def _run_routine(routine: dict):
         logger.info("routine '%s' exécutée (run %s)", routine.get("name"), rid)
         if routine.get("notify", True) and resp:
             broadcast_notification(resp, title=f"🗓️ {routine.get('name', 'Routine')}")
+        _check_budget()
     except Exception as e:
         logger.exception("Erreur routine '%s'", routine.get("name"))
     finally:

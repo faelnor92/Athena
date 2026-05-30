@@ -1699,6 +1699,7 @@ const BEHAVIOR_SCHEMA = [
         { key: "SWARM_MAX_PARALLEL", label: "Agents/outils en parallèle (max)", type: "number", def: "4" },
         { key: "SWARM_MAX_SECONDS", label: "Budget temps par requête (s, 0 = ∞)", type: "number", def: "0" },
         { key: "SWARM_MAX_TOKENS", label: "Budget tokens par requête (0 = ∞)", type: "number", def: "0" },
+        { key: "BUDGET_DAILY_LIMIT", label: "Alerte si coût du jour dépasse (€, 0 = off)", type: "number", def: "0" },
     ]},
     { section: "Sécurité", fields: [
         { key: "AUTO_APPROVE_SENSITIVE", label: "Auto-approuver les outils sensibles (global)", type: "toggle", def: "false" },

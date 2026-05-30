@@ -103,6 +103,19 @@ class RunStore:
             data["steps"] = []
         return data
 
+    def cost_today(self) -> float:
+        """Somme des coûts des runs depuis minuit (pour les alertes de budget)."""
+        import datetime
+        start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        try:
+            with self._lock, self._connect() as conn:
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(total_cost), 0) FROM runs WHERE created_at >= ?", (start,)
+                ).fetchone()
+            return float(row[0] or 0)
+        except Exception:
+            return 0.0
+
     def list(self, limit: int = 50, status: Optional[str] = None) -> List[Dict[str, Any]]:
         query = "SELECT run_id, created_at, agent, status, user_message, duration_ms, total_tokens, total_cost, error FROM runs"
         params: list = []
