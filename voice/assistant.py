@@ -102,9 +102,13 @@ class VoiceAssistant:
             pass
 
     # --------------------------------------------------------------- dialogue
-    def stream_and_speak(self, text: str):
+    def stream_and_speak(self, text: str, speaker: str = None):
         url = f"{self.cfg['server_url']}/api/chat/stream"
-        payload = {"message": text, "client_id": self.cfg["client_id"]}
+        # Session par locuteur si identifié (mémoire/contexte par personne).
+        client_id = f"{self.cfg['client_id']}:{speaker}" if speaker else self.cfg["client_id"]
+        if speaker:
+            text = f"[Locuteur identifié : {speaker}]\n{text}"
+        payload = {"message": text, "client_id": client_id}
         event = None
         run_id = None
         interrupted = threading.Event()
@@ -160,8 +164,16 @@ class VoiceAssistant:
                 if not text.strip():
                     print("(rien compris)")
                     continue
-                print(f"🗣️  Vous : {text}")
-                self.stream_and_speak(text)
+                # Reconnaissance du locuteur (optionnelle).
+                speaker = None
+                try:
+                    from .speaker_id import identify
+                    speaker, _score = identify(audio, self.cfg["sample_rate"])
+                except Exception:
+                    speaker = None
+                who = speaker or "Vous"
+                print(f"🗣️  {who} : {text}")
+                self.stream_and_speak(text, speaker=speaker)
             except KeyboardInterrupt:
                 print("\n👋 Arrêt de l'assistant vocal.")
                 break

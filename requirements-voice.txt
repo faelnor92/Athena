@@ -11,3 +11,6 @@ pyttsx3>=2.90              # TTS de repli (si Piper indisponible)
 #   https://github.com/rhasspy/piper  (binaire `piper`)
 #   modèle voix .onnx -> VOICE_PIPER_MODEL=/chemin/fr_FR-...onnx
 # Wake word Porcupine (alternative) : pip install pvporcupine  (+ clé d'accès)
+
+# Reconnaissance du locuteur (optionnel, tire torch)
+resemblyzer>=0.1.1

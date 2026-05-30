@@ -58,3 +58,6 @@ __pycache__/
 
 # --- Artefacts de test ------------------------------------------------------
 test_video.mp4
+
+# Empreintes vocales enrôlées (données perso)
+voice/speakers/*.npy
