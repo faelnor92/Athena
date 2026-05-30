@@ -457,202 +457,122 @@ function getAgentPosition(agentName, index) {
 
 function getAgentSpriteSVG(typeOrName) {
     const key = (typeOrName || "").toLowerCase();
-    
-    // Scale standard de 80px de large par 90px de haut pour tous les avatars
-    const baseStyle = "width: 80px; height: 90px; filter: drop-shadow(0 4px 12px var(--agent-color, rgba(0,240,255,0.4))); transition: all 0.3s;";
-    
-    if (key === "robot_neon" || key === "jarvis") {
+
+    // Personnages flat-design cohérents (mêmes proportions, ombrage doux).
+    const baseStyle = "width: 84px; height: 96px; filter: drop-shadow(0 6px 9px rgba(0,0,0,0.45)); transition: all 0.3s;";
+
+    function character(o) {
+        const skin = o.skin || "#eab98f";
+        const skinShade = o.skinShade || "#d49e72";
+        const jacket = o.jacket || "#1f2937";
+        const jacketShade = o.jacketShade || "rgba(0,0,0,0.16)";
+        const pants = o.pants || "#334155";
+        const shoes = o.shoes || "#0b1220";
+        const accent = o.accent || "#00f0ff";
         return `
-        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
-            <!-- CHEVEUX & CASQUETTE CYBER -->
-            <path d="M9 8 C11 4, 21 4, 23 8 Z" fill="#00f0ff" />
-            <!-- TÊTE CHIBI (PEAU MÉLANGÉE CYBER) -->
-            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
-            <!-- YEUX & SOURIRE -->
-            <circle cx="14" cy="11" r="0.8" fill="#0b0f19" />
-            <circle cx="18" cy="11" r="0.8" fill="#0b0f19" />
-            <path d="M14.5 13.5 Q16 15 17.5 13.5" fill="none" stroke="#ff007f" stroke-width="0.8" stroke-linecap="round" />
-            <!-- LUNETTES HUD GLOWING -->
-            <rect x="11.5" y="10" width="9" height="1.8" fill="none" stroke="#00f0ff" stroke-width="0.8" rx="0.5" />
-            <!-- CORPS / MANTEAU DE CHEF -->
-            <rect x="9" y="18.5" width="14" height="11.5" fill="#0b0f19" stroke="#00f0ff" stroke-width="1.8" rx="1.5" />
-            <!-- MAINS -->
-            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
-            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
-            <!-- JAMBES (PANTALON BLEU) -->
-            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#1e3a8a" />
-            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#1e3a8a" />
-            <!-- CHAUSSURES -->
-            <rect x="11" y="35" width="4.7" height="1" fill="#00f0ff" />
-            <rect x="16.3" y="35" width="4.7" height="1" fill="#00f0ff" />
-            <!-- ACCESSOIRE FLOTTANT (TABLETTE DE SUPERVISION) -->
-            <rect x="25" y="21" width="5" height="7.5" fill="rgba(0,240,255,0.2)" stroke="#00f0ff" stroke-width="0.8" rx="0.5" />
-            <line x1="26" y1="23" x2="29" y2="23" stroke="#00f0ff" stroke-width="0.6" />
-            <line x1="26" y1="25" x2="28" y2="25" stroke="#00f0ff" stroke-width="0.6" />
-        </svg>
-        `;
-    } else if (key === "dev_purple" || key === "codeur" || key === "developer") {
-        return `
-        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
-            <!-- CAPUCHE CYBER SOMBRE -->
-            <path d="M7 14 Q16 2 25 14" fill="none" stroke="#a855f7" stroke-width="2.5" />
-            <!-- TÊTE CHIBI -->
-            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
-            <!-- VISIÈRE CYBER VERT FLUO -->
-            <rect x="11.5" y="10" width="9" height="2" fill="#022c22" stroke="#10b981" stroke-width="0.8" rx="0.5" />
-            <!-- SOURIRE -->
-            <path d="M14.5 14 Q16 15.2 17.5 14" fill="none" stroke="#ff007f" stroke-width="0.8" stroke-linecap="round" />
-            <!-- CORPS / HOODIE DE CODEUR -->
-            <rect x="9" y="18.5" width="14" height="11.5" fill="#1e1b4b" stroke="#a855f7" stroke-width="1.8" rx="1.5" />
-            <!-- MAINS -->
-            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
-            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
-            <!-- JAMBES (JEAN GRIS) -->
-            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#475569" />
-            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#475569" />
-            <!-- CHAUSSURES NÉON -->
-            <rect x="11" y="35" width="4.7" height="1" fill="#a855f7" />
-            <rect x="16.3" y="35" width="4.7" height="1" fill="#a855f7" />
-            <!-- CLAVIER FLOTTANT HOLOGRAPHIQUE -->
-            <line x1="9" y1="27" x2="23" y2="27" stroke="#10b981" stroke-width="1.5" stroke-dasharray="1.5,1.5" />
-        </svg>
-        `;
-    } else if (key === "writer_orange" || key === "redacteur" || key === "rédacteur" || key === "auteur") {
-        return `
-        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
-            <!-- BÉRET ROSE INCLINÉ (COMME L'IMAGE) -->
-            <path d="M8 8 C10 4, 22 4, 24 8 C24 8, 25 10.5, 21 10.5 C17 10.5, 11 10.5, 8 9 Z" fill="#ec4899" />
-            <rect x="15" y="4" width="2" height="2" fill="#ec4899" />
-            <!-- TÊTE CHIBI -->
-            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
-            <!-- YEUX & SOURIRE -->
-            <circle cx="14" cy="11.5" r="0.8" fill="#0b0f19" />
-            <circle cx="18" cy="11.5" r="0.8" fill="#0b0f19" />
-            <path d="M14.5 14 Q16 15.2 17.5 14" fill="none" stroke="#ec4899" stroke-width="0.8" stroke-linecap="round" />
-            <!-- CORPS / MANTEAU CRÉATIF BEIGE -->
-            <rect x="9" y="18.5" width="14" height="11.5" fill="#f5f5f4" stroke="#ec4899" stroke-width="1.8" rx="1.5" />
-            <!-- ÉCHARPE -->
-            <path d="M10.5 18.5 L21.5 18.5 L19 21.5 L13 21.5 Z" fill="#db2777" />
-            <!-- MAINS -->
-            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
-            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
-            <!-- JAMBES (PANTALON COMPATIBLE IMAGE) -->
-            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#4c1d95" />
-            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#4c1d95" />
-            <!-- CHAUSSURES -->
-            <rect x="11" y="35" width="4.7" height="1" fill="#1e1b4b" />
-            <rect x="16.3" y="35" width="4.7" height="1" fill="#1e1b4b" />
-            <!-- PETIT CHEVALET DE PEINTURE / ÉCRITURE À GAUCHE -->
-            <line x1="26" y1="20" x2="28" y2="34" stroke="#78350f" stroke-width="1" />
-            <line x1="30" y1="20" x2="31" y2="34" stroke="#78350f" stroke-width="1" />
-            <rect x="25" y="22" width="6" height="5" fill="#f8fafc" stroke="#ec4899" stroke-width="0.8" />
-            <circle cx="28" cy="24.5" r="1" fill="#ec4899" />
-        </svg>
-        `;
-    } else if (key === "translator" || key === "traducteur" || key === "linguiste" || key === "sofia") {
-        return `
-        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
-            <!-- CHEVEUX BLEUS ANIME -->
-            <path d="M8 12 Q16 4 24 12" fill="none" stroke="#3b82f6" stroke-width="2.5" />
-            <!-- CASQUE AUDIO BLEU CYBER -->
-            <rect x="8.5" y="10" width="2" height="5.5" fill="#3b82f6" rx="1" />
-            <rect x="21.5" y="10" width="2" height="5.5" fill="#3b82f6" rx="1" />
-            <!-- TÊTE CHIBI -->
-            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
-            <!-- YEUX & SOURIRE -->
-            <circle cx="14" cy="11.5" r="0.8" fill="#1e293b" />
-            <circle cx="18" cy="11.5" r="0.8" fill="#1e293b" />
-            <path d="M14.5 14 Q16 15.2 17.5 14" fill="none" stroke="#3b82f6" stroke-width="0.8" stroke-linecap="round" />
-            <!-- CORPS / VESTE BLEU AZUR -->
-            <rect x="9" y="18.5" width="14" height="11.5" fill="#f1f5f9" stroke="#3b82f6" stroke-width="1.8" rx="1.5" />
-            <!-- MAINS -->
-            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
-            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
-            <!-- JAMBES (PANTALON FONCÉ) -->
-            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#1e293b" />
-            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#1e293b" />
-            <!-- CHAUSSURES -->
-            <rect x="11" y="35" width="4.7" height="1" fill="#3b82f6" />
-            <rect x="16.3" y="35" width="4.7" height="1" fill="#3b82f6" />
-            <!-- GLOBE HOLOGRAPHIQUE TERRESTRE -->
-            <circle cx="28" cy="24" r="3.5" fill="none" stroke="#3b82f6" stroke-width="0.8" />
-            <circle cx="28" cy="24" r="1.5" fill="#3b82f6" opacity="0.6" />
-        </svg>
-        `;
-    } else if (key === "correcteur" || key === "critique" || key === "critic" || key === "manager_gold") {
-        return `
-        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
-            <!-- COURONNE D'ÉDITEUR DORÉE -->
-            <polygon points="10,8 13,3 16,6 19,3 22,8" fill="#eab308" stroke="#fbbf24" stroke-width="0.5" />
-            <!-- TÊTE CHIBI -->
-            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
-            <!-- LUNETTES DE LECTURE CHIC -->
-            <rect x="11.5" y="10" width="9" height="1.8" fill="none" stroke="#eab308" stroke-width="0.8" rx="0.5" />
-            <!-- SOURIRE -->
-            <path d="M14.5 14 Q16 15.2 17.5 14" fill="none" stroke="#eab308" stroke-width="0.8" stroke-linecap="round" />
-            <!-- CORPS / COSTUME SMOKING TWEED -->
-            <rect x="9" y="18.5" width="14" height="11.5" fill="#334155" stroke="#eab308" stroke-width="1.8" rx="1.5" />
-            <!-- COL BLANC & CRAVATE -->
-            <path d="M13.5 18.5 L18.5 18.5 L16 21 Z" fill="#ffffff" />
-            <path d="M15.5 19.5 L16.5 19.5 L16 23 Z" fill="#eab308" />
-            <!-- MAINS -->
-            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
-            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
-            <!-- JAMBES (PANTALON VERT CHIC) -->
-            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#064e3b" />
-            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#064e3b" />
-            <!-- CHAUSSURES -->
-            <rect x="11" y="35" width="4.7" height="1" fill="#eab308" />
-            <rect x="16.3" y="35" width="4.7" height="1" fill="#eab308" />
-            <!-- LOUPE D'ÉDITION HOLOGRAPHIQUE -->
-            <circle cx="28" cy="22" r="3" fill="none" stroke="#eab308" stroke-width="1.0" />
-            <line x1="30" y1="24" x2="33" y2="28" stroke="#eab308" stroke-width="1.5" />
-        </svg>
-        `;
-    } else if (key === "communitymanager" || key === "influenceur" || key === "artist_pink" || key === "artiste") {
-        return `
-        <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
-            <!-- CASQUE DJ ROSE CRÉATEUR -->
-            <rect x="8.5" y="10" width="2" height="5.5" fill="#ff007f" rx="1" />
-            <rect x="21.5" y="10" width="2" height="5.5" fill="#ff007f" rx="1" />
-            <path d="M8 11 Q16 4 24 11" fill="none" stroke="#ff007f" stroke-width="2.5" />
-            <!-- TÊTE CHIBI -->
-            <circle cx="16" cy="12" r="5.5" fill="#fed7aa" />
-            <!-- YEUX & SOURIRE -->
-            <circle cx="14" cy="11.5" r="0.8" fill="#1e1b4b" />
-            <circle cx="18" cy="11.5" r="0.8" fill="#1e1b4b" />
-            <path d="M14.5 14 Q16 15.2 17.5 14" fill="none" stroke="#ff007f" stroke-width="0.8" stroke-linecap="round" />
-            <!-- CORPS / HOODIE BRANCHÉ NOIR/ROSE -->
-            <rect x="9" y="18.5" width="14" height="11.5" fill="#111827" stroke="#ff007f" stroke-width="1.8" rx="1.5" />
-            <!-- LOGO COEUR POITRINE -->
-            <circle cx="16" cy="23" r="1.5" fill="#ff007f" />
-            <!-- MAINS -->
-            <circle cx="8" cy="24" r="1.5" fill="#fed7aa" />
-            <circle cx="24" cy="24" r="1.5" fill="#fed7aa" />
-            <!-- JAMBES (JEAN SLIM MAGENTA) -->
-            <rect x="11.5" y="30" width="4.2" height="5.5" fill="#db2777" />
-            <rect x="16.3" y="30" width="4.2" height="5.5" fill="#db2777" />
-            <!-- CHAUSSURES -->
-            <rect x="11" y="35" width="4.7" height="1" fill="#ff007f" />
-            <rect x="16.3" y="35" width="4.7" height="1" fill="#ff007f" />
-            <!-- COEURS ET LIKES EN LÉVITATION -->
-            <circle cx="28" cy="12" r="2" fill="#ff007f" />
-            <polygon points="26,13.5 28,13.5 28,12" fill="#ff007f" />
-        </svg>
-        `;
+        <svg class="sprite-svg" viewBox="0 0 64 88" style="${baseStyle}" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="32" cy="83" rx="15" ry="3" fill="rgba(0,0,0,0.28)"/>
+          <!-- jambes + chaussures -->
+          <rect x="25" y="60" width="6.6" height="18" rx="3.3" fill="${pants}"/>
+          <rect x="32.4" y="60" width="6.6" height="18" rx="3.3" fill="${pants}"/>
+          <rect x="23.5" y="75.5" width="9.5" height="4.8" rx="2.2" fill="${shoes}"/>
+          <rect x="31" y="75.5" width="9.5" height="4.8" rx="2.2" fill="${shoes}"/>
+          <!-- bras -->
+          <rect x="15.5" y="40" width="7" height="20" rx="3.5" fill="${jacket}"/>
+          <rect x="41.5" y="40" width="7" height="20" rx="3.5" fill="${jacket}"/>
+          <rect x="41.5" y="40" width="7" height="20" rx="3.5" fill="rgba(0,0,0,0.14)"/>
+          <!-- mains -->
+          <circle cx="19" cy="60" r="3.1" fill="${skin}"/>
+          <circle cx="45" cy="60" r="3.1" fill="${skin}"/>
+          <!-- torse / veste -->
+          <path d="M19 41 Q19 35.5 24.5 35 L39.5 35 Q45 35.5 45 41 L45 60 Q45 63 42 63 L22 63 Q19 63 19 60 Z" fill="${jacket}"/>
+          <path d="M32 35 L45 41 L45 60 Q45 63 42 63 L32 63 Z" fill="${jacketShade}"/>
+          ${o.collar || ""}
+          <line x1="32" y1="37" x2="32" y2="61.5" stroke="${accent}" stroke-width="1.1" opacity="0.8"/>
+          ${o.chest || ""}
+          <!-- cou + tête -->
+          <rect x="28.5" y="30" width="7" height="7" rx="2.2" fill="${skinShade}"/>
+          <rect x="20" y="11" width="24" height="23" rx="11" fill="${skin}"/>
+          <path d="M32 11 Q44 12 44 22 Q44 34 32 34 Z" fill="rgba(0,0,0,0.06)"/>
+          <circle cx="20" cy="23" r="2.2" fill="${skin}"/>
+          <circle cx="44" cy="23" r="2.2" fill="${skin}"/>
+          ${o.hair || ""}
+          <!-- yeux + sourcils + sourire -->
+          <ellipse cx="27.6" cy="22.4" rx="1.5" ry="2" fill="#243044"/>
+          <ellipse cx="36.4" cy="22.4" rx="1.5" ry="2" fill="#243044"/>
+          <circle cx="28.1" cy="21.7" r="0.5" fill="#fff"/>
+          <circle cx="36.9" cy="21.7" r="0.5" fill="#fff"/>
+          <path d="M25.4 18.6 Q27.6 17.6 29.6 18.7" stroke="${skinShade}" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+          <path d="M34.4 18.7 Q36.4 17.6 38.6 18.6" stroke="${skinShade}" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+          <path d="M28.5 27 Q32 30 35.5 27" stroke="#b3603f" stroke-width="1.1" fill="none" stroke-linecap="round"/>
+          ${o.face || ""}
+          ${o.accessory || ""}
+        </svg>`;
     }
     
-    // Fallback par défaut de haute qualité (Android métallique)
-    return `
-    <svg class="sprite-svg" viewBox="0 0 32 36" style="${baseStyle}">
-        <ellipse cx="16" cy="33" rx="8" ry="2" fill="none" stroke="#e2e8f0" stroke-width="0.8" stroke-dasharray="2,2" />
-        <rect x="9" y="9" width="14" height="12" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="3" />
-        <circle cx="13" cy="14" r="1.5" fill="#38bdf8" />
-        <circle cx="19" cy="14" r="1.5" fill="#38bdf8" />
-        <rect x="6" y="20" width="20" height="12" fill="#475569" stroke="#64748b" stroke-width="2" rx="4" />
-        <line x1="11" y1="26" x2="21" y2="26" stroke="#e2e8f0" stroke-width="1" />
-    </svg>
-    `;
+    if (key === "robot_neon" || key === "jarvis") {
+        return character({
+            skin: "#e7b489", skinShade: "#cf9669",
+            jacket: "#0c2a3a", pants: "#0f3a52", shoes: "#00f0ff", accent: "#00f0ff",
+            hair: `<path d="M19.5 17 Q20 9 32 9 Q44 9 44.5 17 Q42 12 36 11 Q32 10 28 11 Q22 12 19.5 17 Z" fill="#13303f"/>`,
+            face: `<rect x="24" y="20" width="16" height="4.6" rx="2.3" fill="rgba(0,240,255,0.12)" stroke="#00f0ff" stroke-width="1.1"/>`,
+            collar: `<path d="M27 35 L37 35 L32 41 Z" fill="#00f0ff" opacity="0.85"/>`,
+            chest: `<rect x="27.5" y="45" width="9" height="6" rx="1" fill="none" stroke="#00f0ff" stroke-width="0.8" opacity="0.7"/>`,
+            accessory: `<rect x="50" y="40" width="9" height="13" rx="1.5" fill="rgba(0,240,255,0.18)" stroke="#00f0ff" stroke-width="1"/><line x1="52" y1="44" x2="57" y2="44" stroke="#00f0ff" stroke-width="0.8"/><line x1="52" y1="47" x2="56" y2="47" stroke="#00f0ff" stroke-width="0.8"/>`
+        });
+    } else if (key === "dev_purple" || key === "codeur" || key === "developer") {
+        return character({
+            skin: "#d79e6e", skinShade: "#bd8456",
+            jacket: "#2e1065", pants: "#3b3650", shoes: "#a855f7", accent: "#10b981",
+            hair: `<path d="M18.5 21 Q18 8 32 7.5 Q46 8 45.5 21 Q43 13 36 11 Q32 10 28 11 Q21 13 18.5 21 Z" fill="#3b1d8a"/>`,
+            face: `<rect x="24" y="20" width="16" height="4.4" rx="2.2" fill="#022c22" stroke="#10b981" stroke-width="1"/>`,
+            collar: `<path d="M26 35 L38 35 L34 40 L30 40 Z" fill="#a855f7" opacity="0.8"/>`,
+            accessory: `<rect x="49" y="45" width="11" height="8" rx="1" fill="#0f172a" stroke="#10b981" stroke-width="0.9"/><rect x="48.5" y="52.5" width="12" height="2" rx="0.6" fill="#10b981" opacity="0.45"/><line x1="51" y1="48" x2="58" y2="48" stroke="#10b981" stroke-width="0.6" stroke-dasharray="1.2,1.2"/>`
+        });
+    } else if (key === "writer_orange" || key === "redacteur" || key === "rédacteur" || key === "auteur") {
+        return character({
+            skin: "#f1c9a5", skinShade: "#dcab82",
+            jacket: "#ece6dc", jacketShade: "rgba(0,0,0,0.10)", pants: "#4c1d95", shoes: "#1e1b4b", accent: "#ec4899",
+            hair: `<path d="M19 22 Q19 15 23 14 L41 14 Q45 15 45 22 Q43 17 39 16 L25 16 Q21 17 19 22 Z" fill="#6b3a1f"/><path d="M18.5 14 Q20 8 32 8 Q45 8 45.5 13 Q45.5 16 40 15 Q30 13.5 22 15 Q18.5 15.5 18.5 14 Z" fill="#ec4899"/><circle cx="34" cy="8" r="1.5" fill="#ec4899"/>`,
+            collar: `<path d="M25 35 L39 35 L36 40 L28 40 Z" fill="#db2777"/>`,
+            accessory: `<line x1="51.5" y1="44" x2="49.5" y2="58" stroke="#78350f" stroke-width="1.2"/><line x1="56.5" y1="44" x2="58.5" y2="58" stroke="#78350f" stroke-width="1.2"/><rect x="48.5" y="45" width="11" height="8.5" rx="0.6" fill="#f8fafc" stroke="#ec4899" stroke-width="0.9"/><path d="M51 51 L54 48 L57 51" stroke="#ec4899" stroke-width="0.8" fill="none"/>`
+        });
+    } else if (key === "translator" || key === "traducteur" || key === "linguiste" || key === "sofia") {
+        return character({
+            skin: "#ecc0a0", skinShade: "#d3a37f",
+            jacket: "#e8eef6", jacketShade: "rgba(0,0,0,0.10)", pants: "#1e293b", shoes: "#3b82f6", accent: "#3b82f6",
+            hair: `<path d="M18.5 24 Q18 8 32 7.5 Q46 8 45.5 24 Q44 14 38 12 Q32 9 26 12 Q20 14 18.5 24 Z" fill="#2563eb"/><path d="M18.5 22 L19.5 30 L22 30 L21.5 21 Z" fill="#1d4ed8"/><path d="M45.5 22 L44.5 30 L42 30 L42.5 21 Z" fill="#1d4ed8"/>`,
+            face: `<path d="M18.5 20 Q32 6 45.5 20" stroke="#1d4ed8" stroke-width="2" fill="none"/><rect x="16.8" y="19" width="3.2" height="7" rx="1.6" fill="#1d4ed8"/><rect x="44" y="19" width="3.2" height="7" rx="1.6" fill="#1d4ed8"/><path d="M20 25 Q24 29 28.5 28.5" stroke="#1d4ed8" stroke-width="0.9" fill="none"/><circle cx="29" cy="28.5" r="1.2" fill="#1d4ed8"/>`,
+            accessory: `<circle cx="54" cy="48" r="5.5" fill="rgba(59,130,246,0.12)" stroke="#3b82f6" stroke-width="1"/><ellipse cx="54" cy="48" rx="2.3" ry="5.5" fill="none" stroke="#3b82f6" stroke-width="0.6"/><line x1="48.5" y1="48" x2="59.5" y2="48" stroke="#3b82f6" stroke-width="0.6"/>`
+        });
+    } else if (key === "correcteur" || key === "critique" || key === "critic" || key === "manager_gold") {
+        return character({
+            skin: "#dcab82", skinShade: "#c4915f",
+            jacket: "#2a3344", pants: "#1f2937", shoes: "#eab308", accent: "#eab308",
+            hair: `<path d="M19 21 Q19 9 32 9 Q45 9 45 21 Q43 13 37 12 Q32 10 27 12 Q21 13 19 21 Z" fill="#2b2b33"/><path d="M24 9 L27 4 L32 7 L37 4 L40 9 Z" fill="#eab308" stroke="#fbbf24" stroke-width="0.5"/><circle cx="27" cy="4.2" r="0.9" fill="#fde68a"/><circle cx="32" cy="6.6" r="0.9" fill="#fde68a"/><circle cx="37" cy="4.2" r="0.9" fill="#fde68a"/>`,
+            face: `<rect x="24" y="20.5" width="6" height="4" rx="1" fill="none" stroke="#eab308" stroke-width="0.9"/><rect x="34" y="20.5" width="6" height="4" rx="1" fill="none" stroke="#eab308" stroke-width="0.9"/><line x1="30" y1="22.2" x2="34" y2="22.2" stroke="#eab308" stroke-width="0.9"/>`,
+            collar: `<path d="M27 35 L37 35 L32 40 Z" fill="#ffffff"/><path d="M30.8 36.5 L33.2 36.5 L32 45 Z" fill="#eab308"/>`,
+            accessory: `<circle cx="53" cy="46" r="4.5" fill="rgba(234,179,8,0.12)" stroke="#eab308" stroke-width="1.2"/><line x1="56.3" y1="49.3" x2="60" y2="54" stroke="#eab308" stroke-width="1.8" stroke-linecap="round"/>`
+        });
+    } else if (key === "communitymanager" || key === "influenceur" || key === "artist_pink" || key === "artiste") {
+        return character({
+            skin: "#e7b48d", skinShade: "#cd9568",
+            jacket: "#16161f", pants: "#be185d", shoes: "#ff007f", accent: "#ff007f",
+            hair: `<path d="M18.8 22 Q18 8 32 7.5 Q46 8 45.2 22 Q43 13 37 11.5 Q32 9 27 11.5 Q21 13 18.8 22 Z" fill="#1f1822"/>`,
+            face: `<path d="M18.5 20 Q32 6 45.5 20" stroke="#ff007f" stroke-width="2" fill="none"/><rect x="16.8" y="19" width="3.2" height="7" rx="1.6" fill="#ff007f"/><rect x="44" y="19" width="3.2" height="7" rx="1.6" fill="#ff007f"/>`,
+            collar: `<path d="M26 35 L38 35 L34 40 L30 40 Z" fill="#ff007f" opacity="0.85"/>`,
+            chest: `<path d="M32 49 C30 46.8 28.4 45.8 28.4 44.1 C28.4 43 29.2 42.2 30.2 42.2 C30.9 42.2 31.6 42.6 32 43.3 C32.4 42.6 33.1 42.2 33.8 42.2 C34.8 42.2 35.6 43 35.6 44.1 C35.6 45.8 34 46.8 32 49 Z" fill="#ff007f"/>`,
+            accessory: `<path d="M54 44.5 C53 43.4 52.2 42.9 52.2 42 C52.2 41.4 52.6 41 53.1 41 C53.5 41 53.8 41.2 54 41.6 C54.2 41.2 54.5 41 54.9 41 C55.4 41 55.8 41.4 55.8 42 C55.8 42.9 55 43.4 54 44.5 Z" fill="#ff007f"/><circle cx="57" cy="50" r="2.3" fill="none" stroke="#ff007f" stroke-width="0.9"/><path d="M55.7 50 L56.7 51.2 L58.4 49" stroke="#ff007f" stroke-width="0.9" fill="none" stroke-linecap="round"/>`
+        });
+    }
+
+    // Fallback par défaut : robot/IA épuré.
+    return character({
+        skin: "#cbd5e1", skinShade: "#94a3b8",
+        jacket: "#334155", pants: "#1e293b", shoes: "#38bdf8", accent: "#38bdf8",
+        hair: `<rect x="22" y="9" width="20" height="4" rx="2" fill="#38bdf8" opacity="0.7"/>`,
+        face: `<rect x="24" y="19.5" width="16" height="6" rx="3" fill="#0b1220" stroke="#38bdf8" stroke-width="0.9"/><circle cx="29" cy="22.5" r="1.3" fill="#38bdf8"/><circle cx="35" cy="22.5" r="1.3" fill="#38bdf8"/>`
+    });
 }
 
 // SIMULATION DE VIE ET DE MOUVEMENT DE L'ESSAIM
