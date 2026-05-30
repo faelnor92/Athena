@@ -1259,6 +1259,16 @@ async def get_config_skills():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur de lecture des compétences : {str(e)}")
 
+
+@app.delete("/api/config/skills/{skill_name}")
+async def delete_config_skill(skill_name: str):
+    """Supprime une compétence permanente (fichier skills/<name>.py)."""
+    from tools.skills_manager import delete_skill
+    result = delete_skill(skill_name)
+    if result.startswith("Erreur"):
+        raise HTTPException(status_code=400, detail=result)
+    return {"status": "success", "message": result}
+
 def parse_env() -> dict:
     env_vars = {}
     if os.path.exists(".env"):
@@ -1295,7 +1305,13 @@ async def get_config_env():
         "CUSTOM_IMAGE_API_BASE", "CUSTOM_IMAGE_API_KEY", 
         "VIDEO_GENERATOR_PROVIDER", "FAL_API_KEY", "REPLICATE_API_TOKEN",
         "CUSTOM_VIDEO_API_BASE", "CUSTOM_VIDEO_API_KEY", "ADMIN_PASSWORD",
-        "SSH_HOST", "SSH_PORT", "SSH_USERNAME", "SSH_PASSWORD", "SSH_KEY_PATH"
+        "SSH_HOST", "SSH_PORT", "SSH_USERNAME", "SSH_PASSWORD", "SSH_KEY_PATH",
+        # Comportement, sécurité & exécution
+        "HOST", "PORT", "ALLOWED_ORIGINS", "ACTIVE_WORKSPACE_DIR",
+        "SANDBOX_MODE", "SANDBOX_DOCKER_IMAGE",
+        "SELF_IMPROVE", "AUTO_APPROVE_SENSITIVE", "SENSITIVE_TOOLS",
+        "LLM_MAX_RETRIES", "SWARM_MAX_SECONDS", "SWARM_MAX_TOKENS", "SWARM_MAX_PARALLEL",
+        "MEMORY_MAX_MESSAGES", "MEMORY_KEEP_RECENT", "LOG_LEVEL",
     ]
     for k in typical_keys:
         if k not in masked_env:
@@ -1309,20 +1325,45 @@ class SaveEnvRequest(BaseModel):
 async def save_config_env(req: SaveEnvRequest):
     try:
         current_env = parse_env()
-        # Mettre à jour uniquement les clés modifiées (exclut les valeurs masquées)
+        # Ne retenir que les valeurs réellement modifiées (exclut les masquées).
+        updates = {}
         for k, v in req.env.items():
             if "..." in v or v == "***" or (not v and k in current_env and current_env[k]):
                 continue
-            current_env[k] = v
-            
-        # Écrire dans le fichier .env
+            updates[k] = v
+
+        # Mise à jour EN PLACE : on préserve les commentaires et l'ordre du .env.
+        lines = []
+        if os.path.exists(".env"):
+            with open(".env", "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+
+        seen = set()
+        out = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and "=" in stripped:
+                key = stripped.split("=", 1)[0].strip()
+                if key in updates:
+                    out.append(f'{key}="{updates[key]}"')
+                    os.environ[key] = updates[key]
+                    seen.add(key)
+                    continue
+            out.append(line)
+
+        new_keys = [k for k in updates if k not in seen]
+        if new_keys:
+            if out and out[-1].strip():
+                out.append("")
+            out.append("# --- Ajouté via le dashboard ---")
+            for k in new_keys:
+                out.append(f'{k}="{updates[k]}"')
+                os.environ[k] = updates[k]
+
         with open(".env", "w", encoding="utf-8") as f:
-            f.write("# Configuration de l'essaim Jarvis v2 (Générée via Dashboard)\n")
-            for k, v in current_env.items():
-                f.write(f'{k}="{v}"\n')
-                os.environ[k] = v
-                
-        return {"status": "success", "message": "Clés d'API et variables d'environnement sauvegardées à chaud !"}
+            f.write("\n".join(out) + "\n")
+
+        return {"status": "success", "message": "Réglages sauvegardés (.env mis à jour à chaud, commentaires préservés)."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur d'écriture dans le .env : {str(e)}")
 
