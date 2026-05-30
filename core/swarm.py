@@ -28,6 +28,7 @@ import tools.briefing_tools
 import tools.meeting_summarizer
 import tools.conversation_tools
 import tools.mcp_manager
+import tools.notify_tools
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -58,6 +59,7 @@ AVAILABLE_TOOLS = {
     "manage_conversations": tools.conversation_tools.manage_conversations,
     "query_agent": tools.conversation_tools.query_agent,
     "debate_between_agents": tools.conversation_tools.debate_between_agents,
+    "send_notification": tools.notify_tools.send_notification,
 }
 
 def load_dynamic_skills() -> dict:

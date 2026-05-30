@@ -89,6 +89,7 @@ agents:
   - manage_conversations
   - query_agent
   - debate_between_agents
+  - send_notification
   handoffs:
   - Codeur
   - Auteur

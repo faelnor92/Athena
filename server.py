@@ -2038,13 +2038,21 @@ def agenda_scheduler():
             
         time.sleep(30)
 
-def broadcast_notification(message: str):
-    """Diffuse le message sur la console et par Telegram."""
-    print(f"\033[93m📅 [Agenda Alerte]\033[0m {message}")
-    
-    # Envoyer par Telegram si configuré
-    env = parse_env()
-    token = env.get("TELEGRAM_BOT_TOKEN")
+def broadcast_notification(message: str, title: str = None):
+    """Diffuse le message sur la console et tous les canaux configurés
+    (Discord, Slack, webhook, email, Telegram explicite) + les sessions
+    Telegram actives en cours."""
+    print(f"\033[93m📣 [Notification]\033[0m {message}")
+
+    # Canaux configurés (env) via la couche multi-canaux.
+    try:
+        from core.notifications import notify
+        notify(message, title=title)
+    except Exception as e:
+        print(f"[Notification erreur] {e}")
+
+    # Sessions Telegram actives (utilisateurs ayant écrit au bot).
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if token:
         for chat_id in list(telegram_sessions.keys()):
             try:
