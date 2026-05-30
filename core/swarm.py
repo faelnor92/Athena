@@ -321,6 +321,58 @@ class Swarm:
                     time.sleep(wait)
         raise last_err
 
+    def _maybe_compact(self, model: str, history: list, steps: list) -> list:
+        """Compacte un historique trop long : résume les anciens messages en un
+        seul, garde les plus récents verbatim. N'agit que sur la vue LLM.
+        Activé par MEMORY_MAX_MESSAGES (0 = désactivé). Résultats mis en cache
+        pour ne pas re-résumer le même bloc à chaque tour."""
+        max_msgs = int(os.getenv("MEMORY_MAX_MESSAGES", "40") or 0)
+        if not max_msgs or len(history) <= max_msgs:
+            return history
+        keep = max(1, int(os.getenv("MEMORY_KEEP_RECENT", "12")))
+        head, tail = history[:-keep], history[-keep:]
+        if not head:
+            return history
+
+        cache = getattr(self, "_summary_cache", None)
+        if cache is None:
+            cache = self._summary_cache = {}
+
+        try:
+            key = json.dumps(head, ensure_ascii=False, sort_keys=True, default=str)
+        except Exception:
+            key = str(len(head))
+
+        summary = cache.get(key)
+        if summary is None:
+            transcript = "\n".join(
+                f"{m.get('role')}: {m.get('content', '')}" for m in head if m.get("content")
+            )[:8000]
+            try:
+                resp = self._complete(model, [
+                    {"role": "system", "content": (
+                        "Résume la conversation suivante en 10 lignes maximum, en français, "
+                        "en conservant les faits, décisions, préférences utilisateur et le "
+                        "contexte utiles à la poursuite. Style condensé, pas de bavardage."
+                    )},
+                    {"role": "user", "content": transcript},
+                ])
+                summary = (resp.choices[0].message.content or "").strip()
+            except Exception as e:
+                print(f"[\033[91mCompaction mémoire erreur\033[0m] {e}")
+                return history  # en cas d'échec, on garde l'historique complet
+            cache[key] = summary
+            if len(cache) > 64:
+                cache.pop(next(iter(cache)))
+            steps.append({"type": "memory_compaction", "summarized": len(head), "kept": len(tail)})
+            print(f"[\033[96mMÉMOIRE\033[0m] Historique compacté : {len(head)} messages résumés, {len(tail)} conservés.")
+
+        summary_msg = {
+            "role": "user",
+            "content": f"[RÉSUMÉ DE LA CONVERSATION PRÉCÉDENTE — {len(head)} messages condensés]\n{summary}",
+        }
+        return [summary_msg] + tail
+
     def _write_experience_report(self, agent: Agent, messages: list, steps: list):
         """Hook post-tâche (auto-amélioration) : génère un court compte-rendu
         structuré (ce qui a marché / échoué / à retenir) et l'archive en mémoire
@@ -591,6 +643,10 @@ class Swarm:
                                 clean_msg["name"] = msg["name"]
                             clean_history.append(clean_msg)
                             
+            # Mémoire avancée : compaction de l'historique long (résumé + éviction)
+            # — n'affecte QUE la vue envoyée au LLM, pas l'historique persistant.
+            clean_history = self._maybe_compact(current_agent.model, clean_history, steps)
+
             # Injection du system prompt de l'agent actif
             current_messages = [{"role": "system", "content": system_prompt}] + clean_history
             
