@@ -1673,7 +1673,7 @@ code[class*="language-"] {
 
 .modal-card {
     width: 100%;
-    max-width: 650px;
+    max-width: 840px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
@@ -1712,38 +1712,74 @@ code[class*="language-"] {
     color: #fff;
 }
 
+/* Disposition réglages : sidebar verticale groupée + contenu à droite */
+.modal-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
 .modal-tabs {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 200px;
+    padding: 10px 8px;
+    gap: 2px;
+    border-right: 1px solid var(--border-color);
+    overflow-y: auto;
+    background: rgba(0,0,0,0.15);
+}
+
+.modal-tab-group {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    opacity: 0.7;
+    padding: 10px 10px 4px;
+    font-weight: 700;
 }
 
 .modal-tab-btn {
     background: transparent;
     border: none;
-    border-bottom: 2px solid transparent;
-    padding: 12px 6px;
+    border-left: 3px solid transparent;
+    border-radius: 0 6px 6px 0;
+    padding: 9px 12px;
     color: var(--text-muted);
     font-weight: 600;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     cursor: pointer;
-    transition: all 0.3s ease;
-    text-align: center;
+    transition: all 0.2s ease;
+    text-align: left;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
+.modal-tab-btn:hover {
+    color: #fff;
+    background: rgba(255,255,255,0.04);
+}
+
 .modal-tab-btn.active {
     color: #fff;
-    border-bottom-color: var(--color-user);
-    background: rgba(255,255,255,0.02);
+    border-left-color: var(--color-user);
+    background: rgba(255,255,255,0.06);
 }
 
 .modal-body {
-    flex-grow: 1;
+    flex: 1;
+    min-width: 0;
     overflow-y: auto;
     padding: 20px;
+}
+
+@media (max-width: 640px) {
+    .modal-layout { flex-direction: column; }
+    .modal-tabs { width: auto; flex-direction: row; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--border-color); }
+    .modal-tab-group { width: 100%; padding: 6px 4px 2px; }
 }
 
 .config-form {

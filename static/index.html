@@ -520,18 +520,23 @@
                 <button class="btn-close" id="modal-close">×</button>
             </header>
             
+            <div class="modal-layout">
             <div class="modal-tabs">
-                <button class="modal-tab-btn active" id="modal-tab-agents">👤 Gestion des Agents</button>
-                <button class="modal-tab-btn" id="modal-tab-keys">🔑 Clés API & Connexions</button>
-                <button class="modal-tab-btn" id="modal-tab-ssh">🖥️ Terminal & Sécurité</button>
-                <button class="modal-tab-btn" id="modal-tab-agenda">📅 Synchronisation Agenda</button>
+                <div class="modal-tab-group">Agents</div>
+                <button class="modal-tab-btn active" id="modal-tab-agents">👤 Agents</button>
+                <div class="modal-tab-group">Connexions</div>
+                <button class="modal-tab-btn" id="modal-tab-keys">🔑 Clés API</button>
+                <button class="modal-tab-btn" id="modal-tab-ssh">🖥️ Terminal & SSH</button>
+                <button class="modal-tab-btn" id="modal-tab-agenda">📅 Agenda</button>
+                <div class="modal-tab-group">Système</div>
+                <button class="modal-tab-btn" id="modal-tab-behavior">⚙️ Comportement</button>
                 <button class="modal-tab-btn" id="modal-tab-pricing">💰 Tarifs LLM</button>
-                <button class="modal-tab-btn" id="modal-tab-behavior">⚙️ Comportement & Sécurité</button>
+                <div class="modal-tab-group">Extensions</div>
                 <button class="modal-tab-btn" id="modal-tab-mcp">🧩 Serveurs MCP</button>
                 <button class="modal-tab-btn" id="modal-tab-routines">🗓️ Routines</button>
                 <button class="modal-tab-btn" id="modal-tab-knowledge">📚 Connaissances</button>
             </div>
-            
+
             <div class="modal-body">
                 <!-- ONGLET 1 : GESTION DES AGENTS -->
                 <div class="modal-pane" id="pane-agents">
@@ -823,6 +828,7 @@
                     <div id="kb-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 280px; overflow-y: auto;"></div>
                     <div id="kb-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
                 </div>
+            </div>
             </div>
         </div>
     </div>
