@@ -6,6 +6,12 @@ def main():
     # Chargement des variables d'environnement (.env)
     load_dotenv()
 
+    # Confiner par défaut l'espace de travail au sous-dossier workspace/.
+    if not os.environ.get("ACTIVE_WORKSPACE_DIR", "").strip():
+        _ws = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workspace")
+        os.makedirs(_ws, exist_ok=True)
+        os.environ["ACTIVE_WORKSPACE_DIR"] = _ws
+
     from core.logging_config import setup_logging
     setup_logging()
 

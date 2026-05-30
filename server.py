@@ -19,6 +19,14 @@ from dotenv import load_dotenv
 # Chargement du .env
 load_dotenv()
 
+# Confiner par défaut l'espace de travail des agents (explorateur de fichiers,
+# sandbox, outils shell/code) au sous-dossier workspace/ — évite d'exposer le
+# code source et le .env de l'installation. Surchargeable via ACTIVE_WORKSPACE_DIR.
+if not os.environ.get("ACTIVE_WORKSPACE_DIR", "").strip():
+    _default_ws = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workspace")
+    os.makedirs(_default_ws, exist_ok=True)
+    os.environ["ACTIVE_WORKSPACE_DIR"] = _default_ws
+
 from core.logging_config import setup_logging, get_logger
 setup_logging()
 logger = get_logger("jarvis.server")
@@ -1133,8 +1141,10 @@ async def get_workspace_file(path: str):
             
         with open(clean_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
-            
+
         return {"path": path, "content": content}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1156,6 +1166,8 @@ async def download_workspace_file(path: str):
             media_type="application/octet-stream",
             filename=os.path.basename(clean_path)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
