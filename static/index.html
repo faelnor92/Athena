@@ -528,6 +528,7 @@
                 <button class="modal-tab-btn" id="modal-tab-pricing">💰 Tarifs LLM</button>
                 <button class="modal-tab-btn" id="modal-tab-behavior">⚙️ Comportement & Sécurité</button>
                 <button class="modal-tab-btn" id="modal-tab-mcp">🧩 Serveurs MCP</button>
+                <button class="modal-tab-btn" id="modal-tab-routines">🗓️ Routines</button>
             </div>
             
             <div class="modal-body">
@@ -788,6 +789,24 @@
                     <textarea id="mcp-config" spellcheck="false" style="width: 100%; min-height: 220px; font-family: monospace; font-size: 0.78rem; background: rgba(0,0,0,0.3); color: #cfe; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; box-sizing: border-box;"></textarea>
                     <button type="button" id="btn-save-mcp" class="btn btn-primary" style="width: 100%; margin-top: 10px;">💾 Sauvegarder & reconnecter</button>
                     <div id="mcp-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+                </div>
+
+                <div class="modal-pane" id="pane-routines" style="display: none;">
+                    <h3>🗓️ Routines planifiées</h3>
+                    <p class="section-desc">Déclenche automatiquement une tâche d'agent (briefing matinal, veille web, rappels). Le résultat est persisté et notifié sur tes messageries configurées.</p>
+                    <div id="routines-list" style="display: flex; flex-direction: column; gap: 8px; margin: 10px 0; max-height: 220px; overflow-y: auto;"></div>
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;">
+                    <h5 style="color: var(--accent-cyan); margin: 8px 0;">Nouvelle routine</h5>
+                    <div class="form-group"><label>Nom</label><input id="routine-name" type="text" placeholder="Briefing du matin"></div>
+                    <div class="form-group"><label>Tâche (prompt)</label><textarea id="routine-prompt" style="min-height: 60px;" placeholder="Fais-moi un résumé de mon agenda et des actus IA importantes."></textarea></div>
+                    <div class="form-group"><label>Agent de départ</label><select id="routine-agent"></select></div>
+                    <div class="form-group"><label>Déclencheur</label><select id="routine-sched-type"><option value="daily">Chaque jour</option><option value="weekly">Chaque semaine</option><option value="interval">Toutes les N minutes</option></select></div>
+                    <div class="form-group" id="routine-time-row"><label>Heure (HH:MM)</label><input id="routine-time" type="time" value="08:00"></div>
+                    <div class="form-group" id="routine-weekday-row" style="display: none;"><label>Jour</label><select id="routine-weekday"><option value="0">Lundi</option><option value="1">Mardi</option><option value="2">Mercredi</option><option value="3">Jeudi</option><option value="4">Vendredi</option><option value="5">Samedi</option><option value="6">Dimanche</option></select></div>
+                    <div class="form-group" id="routine-interval-row" style="display: none;"><label>Intervalle (minutes)</label><input id="routine-minutes" type="number" min="1" value="60"></div>
+                    <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;"><input id="routine-notify" type="checkbox" checked style="width: 16px; height: 16px;"><label style="margin: 0;">Notifier le résultat</label></div>
+                    <button type="button" id="btn-save-routine" class="btn btn-primary" style="width: 100%;">➕ Ajouter la routine</button>
+                    <div id="routine-save-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
                 </div>
             </div>
         </div>

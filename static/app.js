@@ -220,6 +220,8 @@ const modalTabBehavior = document.getElementById("modal-tab-behavior");
 const paneBehavior = document.getElementById("pane-behavior");
 const modalTabMcp = document.getElementById("modal-tab-mcp");
 const paneMcp = document.getElementById("pane-mcp");
+const modalTabRoutines = document.getElementById("modal-tab-routines");
+const paneRoutines = document.getElementById("pane-routines");
 const paneAgents = document.getElementById("pane-agents");
 const paneKeys = document.getElementById("pane-keys");
 const paneSsh = document.getElementById("pane-ssh");
@@ -1542,8 +1544,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -1725,6 +1727,121 @@ if (modalTabMcp && paneMcp) {
 }
 const _btnSaveMcp = document.getElementById("btn-save-mcp");
 if (_btnSaveMcp) _btnSaveMcp.addEventListener("click", saveConfigMcpPane);
+
+// -------------------------------------------------------------------------
+// ONGLET : ROUTINES PLANIFIÉES
+// -------------------------------------------------------------------------
+const _WEEKDAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+
+function _routineScheduleLabel(s) {
+    if (!s) return "";
+    if (s.type === "interval") return `Toutes les ${s.minutes || 60} min`;
+    if (s.type === "daily") return `Chaque jour à ${s.time || "08:00"}`;
+    if (s.type === "weekly") return `Chaque ${_WEEKDAYS[s.weekday || 0]} à ${s.time || "08:00"}`;
+    return "";
+}
+
+function _syncRoutineScheduleRows() {
+    const t = document.getElementById("routine-sched-type").value;
+    document.getElementById("routine-time-row").style.display = (t === "daily" || t === "weekly") ? "" : "none";
+    document.getElementById("routine-weekday-row").style.display = (t === "weekly") ? "" : "none";
+    document.getElementById("routine-interval-row").style.display = (t === "interval") ? "" : "none";
+}
+
+async function loadRoutinesPane() {
+    // Peupler le select d'agents
+    const agentSel = document.getElementById("routine-agent");
+    if (agentSel && Array.isArray(agentsConfig)) {
+        agentSel.innerHTML = agentsConfig.map(a => `<option value="${a.name}">${a.display_name || a.name}</option>`).join("");
+    }
+    _syncRoutineScheduleRows();
+
+    const list = document.getElementById("routines-list");
+    if (!list) return;
+    try {
+        const r = await apiFetch("/api/routines");
+        const data = await r.json();
+        const routines = data.routines || [];
+        if (routines.length === 0) {
+            list.innerHTML = `<div style="opacity:0.5;font-size:0.78rem;text-align:center;padding:8px;">Aucune routine. Créez-en une ci-dessous.</div>`;
+            return;
+        }
+        list.innerHTML = "";
+        routines.forEach(rt => {
+            const row = document.createElement("div");
+            row.className = "service-item";
+            row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;";
+            const last = rt.last_run ? new Date(rt.last_run).toLocaleString() : "jamais";
+            row.innerHTML = `
+                <div style="min-width:0;">
+                    <strong style="color:${rt.enabled ? 'var(--accent-cyan)' : '#888'};">${rt.name}</strong>
+                    <div style="font-size:0.7rem;opacity:0.7;">${_routineScheduleLabel(rt.schedule)} · ${rt.agent} · dernier: ${last}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                    <button data-act="toggle" title="${rt.enabled ? 'Désactiver' : 'Activer'}" style="background:none;border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:0.72rem;">${rt.enabled ? '⏸️' : '▶️'}</button>
+                    <button data-act="run" title="Exécuter maintenant" style="background:rgba(0,243,255,0.12);border:1px solid rgba(0,243,255,0.4);color:var(--accent-cyan);border-radius:4px;padding:2px 6px;cursor:pointer;font-size:0.72rem;">▶ Run</button>
+                    <button data-act="del" title="Supprimer" style="background:rgba(255,0,80,0.12);border:1px solid rgba(255,0,80,0.4);color:#ff5b89;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:0.72rem;">🗑️</button>
+                </div>`;
+            row.querySelector('[data-act="toggle"]').addEventListener("click", () => saveRoutine({ ...rt, enabled: !rt.enabled }));
+            row.querySelector('[data-act="run"]').addEventListener("click", async () => {
+                const st = document.getElementById("routine-save-status");
+                if (st) st.textContent = `⏳ Exécution de « ${rt.name} »…`;
+                try { await apiFetch(`/api/routines/${rt.id}/run`, { method: "POST" }); if (st) st.textContent = `✅ « ${rt.name} » exécutée.`; } catch (e) { if (st) st.textContent = "❌ " + e; }
+            });
+            row.querySelector('[data-act="del"]').addEventListener("click", async () => {
+                if (!confirm(`Supprimer la routine « ${rt.name} » ?`)) return;
+                await apiFetch(`/api/routines/${rt.id}`, { method: "DELETE" });
+                loadRoutinesPane();
+            });
+            list.appendChild(row);
+        });
+    } catch (e) {
+        list.innerHTML = `<div style="color:#ff5b89;font-size:0.78rem;">Erreur : ${e}</div>`;
+    }
+}
+
+async function saveRoutine(routine) {
+    const st = document.getElementById("routine-save-status");
+    try {
+        const r = await apiFetch("/api/routines", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(routine)
+        });
+        if (r.ok) { loadRoutinesPane(); if (st && !routine.id) st.textContent = "✅ Routine ajoutée."; }
+        else { const d = await r.json().catch(() => ({})); if (st) st.textContent = "❌ " + (d.detail || "Erreur"); }
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+}
+
+function saveNewRoutineFromForm() {
+    const type = document.getElementById("routine-sched-type").value;
+    const schedule = { type };
+    if (type === "interval") schedule.minutes = parseInt(document.getElementById("routine-minutes").value || "60", 10);
+    if (type === "daily" || type === "weekly") schedule.time = document.getElementById("routine-time").value || "08:00";
+    if (type === "weekly") schedule.weekday = parseInt(document.getElementById("routine-weekday").value || "0", 10);
+    const name = document.getElementById("routine-name").value.trim();
+    const prompt = document.getElementById("routine-prompt").value.trim();
+    if (!name || !prompt) { const st = document.getElementById("routine-save-status"); if (st) st.textContent = "❌ Nom et tâche requis."; return; }
+    saveRoutine({
+        name, prompt,
+        agent: document.getElementById("routine-agent").value || "Jarvis",
+        schedule,
+        notify: document.getElementById("routine-notify").checked
+    });
+    document.getElementById("routine-name").value = "";
+    document.getElementById("routine-prompt").value = "";
+}
+
+if (modalTabRoutines && paneRoutines) {
+    modalTabRoutines.addEventListener("click", () => switchModalTab(modalTabRoutines, () => {
+        paneRoutines.style.display = "block";
+        loadRoutinesPane();
+    }));
+}
+const _routineSchedType = document.getElementById("routine-sched-type");
+if (_routineSchedType) _routineSchedType.addEventListener("change", _syncRoutineScheduleRows);
+const _btnSaveRoutine = document.getElementById("btn-save-routine");
+if (_btnSaveRoutine) _btnSaveRoutine.addEventListener("click", saveNewRoutineFromForm);
 
 // -------------------------------------------------------------------------
 // ONGLET 1 : GESTION DES AGENTS (LISTER / EDITER / SUPPRIMER)
