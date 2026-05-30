@@ -81,6 +81,38 @@ def test_cache_outils():
     print("OK: cache d'outils — 2 appels identiques => 1 exécution réelle")
 
 
+def test_auto_continuation():
+    os.environ["LLM_MAX_CONTINUATIONS"] = "3"
+    state = {"i": 0}
+
+    def fake(**kwargs):
+        state["i"] += 1
+        content, fr = ("Début de la réponse", "length") if state["i"] == 1 else (" — et la suite.", "stop")
+
+        class _M:
+            def __init__(self):
+                self.content = content
+                self.tool_calls = None
+
+        class _Choice:
+            def __init__(self):
+                self.message = _M()
+                self.finish_reason = fr
+
+        class _R:
+            def __init__(self):
+                self.choices = [_Choice()]
+        return _R()
+
+    swarm_mod.completion = fake
+    s = Swarm.__new__(Swarm)
+    resp = s._complete("gpt-4o", [{"role": "user", "content": "écris long"}])
+    assert resp.choices[0].message.content == "Début de la réponse — et la suite.", resp.choices[0].message.content
+    assert resp.choices[0].finish_reason == "stop"
+    print("OK: auto-continuation recolle une réponse tronquée (finish_reason=length)")
+
+
 if __name__ == "__main__":
     test_validation_schema_args()
     test_cache_outils()
+    test_auto_continuation()

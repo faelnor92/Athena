@@ -316,7 +316,47 @@ class Swarm:
         handoff.__doc__ = f"Appelle cette fonction pour transférer la demande à l'agent {target_agent.name} si elle relève de ses compétences."
         return handoff
 
-    def _complete(self, model: str, messages: list, tools_schema=None):
+    def _maybe_continue(self, model: str, base_messages: list, response):
+        """Auto-continuation : si la réponse est tronquée (finish_reason='length',
+        sans tool_calls), redemande la suite et recolle, jusqu'à
+        LLM_MAX_CONTINUATIONS fois. Évite les réponses coupées."""
+        max_cont = int(os.getenv("LLM_MAX_CONTINUATIONS", "3") or 0)
+        if max_cont <= 0:
+            return response
+        try:
+            choice = response.choices[0]
+            msg = choice.message
+        except Exception:
+            return response
+        full = getattr(msg, "content", "") or ""
+        cont = 0
+        while (cont < max_cont and getattr(choice, "finish_reason", None) == "length"
+               and not getattr(msg, "tool_calls", None) and full):
+            cont += 1
+            follow = list(base_messages) + [
+                {"role": "assistant", "content": full},
+                {"role": "user", "content": "Continue ta réponse EXACTEMENT là où elle s'est arrêtée (elle a été tronquée). Ne répète rien, n'ajoute aucune introduction."},
+            ]
+            try:
+                nxt = self._complete(model, follow, tools_schema=None, allow_continuation=False)
+                nchoice = nxt.choices[0]
+                nmsg = nchoice.message
+            except Exception:
+                break
+            piece = getattr(nmsg, "content", "") or ""
+            if not piece:
+                break
+            full += piece
+            choice, msg = nchoice, nmsg
+            print(f"[\033[96mCONTINUATION\033[0m] réponse tronquée prolongée ({cont}/{max_cont}).")
+        try:
+            response.choices[0].message.content = full
+            response.choices[0].finish_reason = "stop"
+        except Exception:
+            pass
+        return response
+
+    def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True):
         """Appel LLM via litellm avec routage clé officielle / endpoint custom."""
         completion_kwargs = {"model": model, "messages": messages, "tools": tools_schema}
         custom_base = os.environ.get("CUSTOM_LLM_API_BASE", "").strip()
@@ -349,7 +389,11 @@ class Swarm:
         last_err = None
         for attempt in range(retries + 1):
             try:
-                return completion(**completion_kwargs)
+                response = completion(**completion_kwargs)
+                # Recolle automatiquement les réponses tronquées (finish_reason=length).
+                if allow_continuation:
+                    response = self._maybe_continue(model, messages, response)
+                return response
             except Exception as e:
                 last_err = e
                 if attempt < retries:
