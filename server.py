@@ -593,6 +593,32 @@ async def get_chat_status(run_id: str = None):
     # Avec run_id : statut/étapes de ce run précis (utile en concurrence).
     return run_registry.status(run_id)
 
+
+@app.post("/api/chat/attach")
+async def chat_attach(file: UploadFile = File(...)):
+    """Reçoit une pièce jointe, l'enregistre dans workspace/uploads/ et en extrait
+    le texte (texte/code/PDF, OCR image si dispo) à injecter dans le message."""
+    from tools.attachments import extract
+    base = os.path.join(get_workspace_dir(), "uploads")
+    os.makedirs(base, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.basename(file.filename or "fichier"))
+    dest = os.path.join(base, f"{uuid.uuid4().hex[:8]}_{safe}")
+    try:
+        content = await file.read()
+        with open(dest, "wb") as f:
+            f.write(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Enregistrement impossible : {e}")
+    info = extract(dest, safe)
+    return {
+        "filename": safe,
+        "kind": info["kind"],
+        "text": info["text"],
+        "truncated": info["truncated"],
+        "note": info["note"],
+        "path": os.path.relpath(dest, get_workspace_dir()),
+    }
+
 @app.get("/api/runs")
 async def list_runs(limit: int = 50, status: str = None):
     """Liste les derniers runs persistés (résumés) pour le cockpit / debug."""

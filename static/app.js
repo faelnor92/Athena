@@ -171,6 +171,7 @@ let currentActiveAgent = "Jarvis";
 let agentsConfig = [];
 let activeAbortController = null;
 let activeRunId = null;
+let pendingChatAttachment = null;  // pièce jointe à injecter dans le prochain message
 
 // Éléments du DOM
 const chatForm = document.getElementById("chat-form");
@@ -1393,6 +1394,50 @@ async function deleteMemoryFact(key) {
 }
 window.deleteMemoryFact = deleteMemoryFact;
 
+// =========================================================================
+// PIÈCES JOINTES DU CHAT (extraction de contenu injectée dans le message)
+// =========================================================================
+async function attachFileToMessage(file) {
+    if (!file) return;
+    try {
+        logToTerminal(`Téléversement de « ${file.name} »…`, "system");
+        const fd = new FormData();
+        fd.append("file", file);
+        const r = await apiFetch("/api/chat/attach", { method: "POST", body: fd });
+        if (!r.ok) {
+            const d = await r.json().catch(() => ({}));
+            logToTerminal("Pièce jointe refusée : " + (d.detail || r.status), "error");
+            return;
+        }
+        pendingChatAttachment = await r.json();
+        renderAttachmentChip();
+        logToTerminal(`📎 « ${pendingChatAttachment.filename} » jointe (${pendingChatAttachment.kind}${pendingChatAttachment.truncated ? ", tronquée" : ""}).`, "success");
+    } catch (e) {
+        logToTerminal("Erreur pièce jointe : " + e, "error");
+    }
+}
+
+function renderAttachmentChip() {
+    const pill = document.querySelector(".chat-input-pill");
+    let chip = document.getElementById("chat-attachment-chip");
+    if (!pendingChatAttachment) { if (chip) chip.remove(); return; }
+    if (!pill) return;
+    if (!chip) {
+        chip = document.createElement("div");
+        chip.id = "chat-attachment-chip";
+        chip.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:0.75rem;background:rgba(0,243,255,0.1);border:1px solid rgba(0,243,255,0.3);border-radius:8px;padding:4px 10px;color:var(--accent-cyan);";
+        pill.parentNode.insertBefore(chip, pill);
+    }
+    const a = pendingChatAttachment;
+    chip.innerHTML = `<span>📎 ${a.filename} <span style="opacity:0.6;">(${a.kind}${a.truncated ? ", tronqué" : ""})</span></span>`;
+    const x = document.createElement("button");
+    x.type = "button";
+    x.textContent = "✕";
+    x.style.cssText = "background:none;border:none;color:#ff5b89;cursor:pointer;font-size:0.85rem;";
+    x.addEventListener("click", () => { pendingChatAttachment = null; renderAttachmentChip(); });
+    chip.appendChild(x);
+}
+
 // Soumettre un message dans le chat
 chatForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1408,9 +1453,19 @@ chatForm.addEventListener("submit", async (e) => {
         return;
     }
     
-    const text = chatInput.value.trim();
-    if (!text) return;
-    
+    let text = chatInput.value.trim();
+    if (!text && !pendingChatAttachment) return;
+
+    // Injecter la pièce jointe (contenu extrait) dans le message envoyé à l'essaim.
+    if (pendingChatAttachment) {
+        const a = pendingChatAttachment;
+        const body = (a.text && a.text.trim()) ? a.text : (a.note || "(contenu non extrait)");
+        const trunc = a.truncated ? `\n[...contenu tronqué — fichier complet: ${a.path} (utilise ingest_file pour tout indexer)]` : "";
+        text = `[Pièce jointe « ${a.filename} » (${a.kind})]\n${body}${trunc}\n[fin de la pièce jointe]\n\n${text}`.trim();
+        pendingChatAttachment = null;
+        renderAttachmentChip();
+    }
+
     chatInput.disabled = true;
     chatInput.value = "";
     chatInput.placeholder = "Génération en cours... Clique sur ⏹️ pour arrêter";
@@ -2440,8 +2495,7 @@ function initSpeech() {
         
         chatFileInput.addEventListener("change", async () => {
             if (chatFileInput.files.length > 0) {
-                const file = chatFileInput.files[0];
-                await uploadAndIngestFromChat(file);
+                await attachFileToMessage(chatFileInput.files[0]);
                 chatFileInput.value = ""; // Réinitialiser le sélecteur
             }
         });
@@ -2461,7 +2515,7 @@ function initSpeech() {
             e.preventDefault();
             chatMessagesContainer.style.background = "";
             if (e.dataTransfer.files.length > 0) {
-                await uploadAndIngestFromChat(e.dataTransfer.files[0]);
+                await attachFileToMessage(e.dataTransfer.files[0]);
             }
         });
     }

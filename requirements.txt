@@ -26,6 +26,9 @@ cryptography==38.0.4
 # --- Génération / traitement d'images --------------------------------------
 Pillow==9.4.0
 
+# --- Pièces jointes du chat (extraction de texte PDF) ----------------------
+pypdf==6.12.2
+
 # --- Optionnel : transcription de réunions (lourd, tire PyTorch) ------------
 # Décommentez si vous utilisez transcribe_and_summarize_meeting :
 # openai-whisper==20250625
