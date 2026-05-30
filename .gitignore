@@ -8,6 +8,8 @@
 !.env.example
 # Config MCP : peut contenir des tokens (GitHub, etc.)
 mcp_servers.json
+# Politiques par canal locales (le modèle .example est versionné)
+channel_policies.json
 
 # --- Logs ------------------------------------------------------------------
 *.log

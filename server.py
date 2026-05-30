@@ -26,6 +26,7 @@ logger = get_logger("jarvis.server")
 from core.swarm import Swarm
 from core.tracing import run_store
 from core.run_context import registry as run_registry, current_run_id
+from core import channels, approvals
 from tools.memory_tools import core_mem
 
 app = FastAPI(title="Jarvis Multi-Agent Dashboard")
@@ -477,6 +478,8 @@ async def chat(req: ChatRequest):
     run_started = time.time()
     run_registry.start(run_id)
     token = current_run_id.set(run_id)
+    chan_token = channels.current_channel.set(req.client_id)
+    appr_token = approvals.auto_approve_var.set(channels.auto_approve_for(req.client_id))
     sess = sessions.get(req.client_id)
     try:
         if not sess.active_agent:
@@ -499,6 +502,8 @@ async def chat(req: ChatRequest):
     finally:
         run_registry.finish(run_id)
         current_run_id.reset(token)
+        channels.current_channel.reset(chan_token)
+        approvals.auto_approve_var.reset(appr_token)
 
 
 @app.post("/api/chat/stream")
@@ -515,13 +520,16 @@ async def chat_stream(req: ChatRequest):
 
     async def gen():
         token = current_run_id.set(run_id)
+        chan_token = channels.current_channel.set(req.client_id)
+        appr_token = approvals.auto_approve_var.set(channels.auto_approve_for(req.client_id))
         try:
             if not sess.active_agent:
                 yield _sse("error", {"detail": "Jarvis n'est pas initialisé."})
                 return
             chain, starting_agent, original_chain_len = _chat_prepare(sess, req, run_id)
 
-            # Exécuter swarm.run dans un thread en propageant le contexte (run_id).
+            # Exécuter swarm.run dans un thread en propageant le contexte
+            # (run_id + canal + auto_approve).
             ctx = contextvars.copy_context()
             holder = {}
 
@@ -565,6 +573,8 @@ async def chat_stream(req: ChatRequest):
         finally:
             run_registry.finish(run_id)
             current_run_id.reset(token)
+            channels.current_channel.reset(chan_token)
+            approvals.auto_approve_var.reset(appr_token)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
@@ -901,6 +911,8 @@ async def terminal_coder(req: TerminalRequest):
     run_id = run_store.new_run_id()
     run_registry.start(run_id)
     token = current_run_id.set(run_id)
+    chan_token = channels.current_channel.set("web")
+    appr_token = approvals.auto_approve_var.set(channels.auto_approve_for("web"))
     try:
         # Lancer l'exécution en ciblant directement l'Agent Codeur (dans un thread).
         next_agent, new_chain, steps = await asyncio.to_thread(swarm.run, coder_agent, chain)
@@ -923,6 +935,8 @@ async def terminal_coder(req: TerminalRequest):
     finally:
         run_registry.finish(run_id)
         current_run_id.reset(token)
+        channels.current_channel.reset(chan_token)
+        approvals.auto_approve_var.reset(appr_token)
 
 @app.get("/api/memory")
 async def get_memory():
@@ -1801,6 +1815,9 @@ def telegram_bot_worker():
                     tg_run_id = run_store.new_run_id()
                     run_registry.start(tg_run_id)
                     tg_token = current_run_id.set(tg_run_id)
+                    tg_chan = f"telegram:{chat_id}"
+                    tg_chan_token = channels.current_channel.set(tg_chan)
+                    tg_appr_token = approvals.auto_approve_var.set(channels.auto_approve_for(tg_chan))
                     try:
                         # On démarre avec l'agent actuellement actif pour un dialogue persistant
                         starting_agent = session_data["active_agent"] or swarm.agents.get("Jarvis")
@@ -1838,6 +1855,8 @@ def telegram_bot_worker():
                     finally:
                         run_registry.finish(tg_run_id)
                         current_run_id.reset(tg_token)
+                        channels.current_channel.reset(tg_chan_token)
+                        approvals.auto_approve_var.reset(tg_appr_token)
             elif r.status_code == 401:
                 print("🤖 [Telegram] Token invalide ou non autorisé.")
                 time.sleep(10)

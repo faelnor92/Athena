@@ -1,0 +1,8 @@
+{
+  "_comment": "Copiez en channel_policies.json pour surcharger les politiques par canal. auto_approve = auto-approuver les outils sensibles ; allow = '*' ou liste blanche ; deny = liste noire (prioritaire). Un canal 'telegram:123' hérite de la clé 'telegram'.",
+  "web": { "auto_approve": false, "allow": "*", "deny": [] },
+  "cli": { "auto_approve": true, "allow": "*", "deny": [] },
+  "voice": { "auto_approve": true, "allow": "*", "deny": [] },
+  "telegram": { "auto_approve": false, "allow": "*", "deny": ["execute_bash_command", "run_ssh_command"] },
+  "default": { "auto_approve": false, "allow": "*", "deny": ["execute_bash_command", "run_ssh_command"] }
+}

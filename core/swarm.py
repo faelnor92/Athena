@@ -12,6 +12,7 @@ from litellm import completion
 from .agent import Agent, Result
 from . import approvals
 from . import run_context
+from . import channels
 import tools.home_assistant
 import tools.memory_tools
 import tools.code_sandbox
@@ -448,6 +449,11 @@ class Swarm:
                     if tool_name not in existing:
                         effective_tools.append(func)
                         existing.add(tool_name)
+
+            # Permissions par canal : on retire les outils interdits pour ce canal.
+            chan = channels.current_channel.get()
+            if chan:
+                effective_tools = [f for f in effective_tools if channels.tool_allowed(chan, f.__name__)]
 
             # Enregistrer l'activation de l'agent
             steps.append({
