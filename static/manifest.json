@@ -1,0 +1,15 @@
+{
+  "name": "Jarvis v2 — Assistant Multi-Agent",
+  "short_name": "Jarvis",
+  "description": "Assistant IA multi-agent auto-hébergé.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0f1e",
+  "theme_color": "#0a0f1e",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
