@@ -1,63 +1,74 @@
-# 🎛️ Jarvis v2 - Dashboard Multi-Agent & Bureau Virtuel Immersif
+# 🎛️ Jarvis v2 — Assistant Multi-Agent Auto-hébergé & Bureau Virtuel Immersif
 
-Jarvis v2 est un écosystème d'orchestration multi-agent intelligent, doté d'une interface web cyberpunk-neon dépolie (glassmorphism) et d'un bureau virtuel en 3D isométrique ("Swarm Open Space").
+Jarvis v2 est un écosystème d'orchestration multi-agent auto-hébergé, doté d'une interface web cyberpunk-néon (glassmorphism) avec un bureau virtuel 3D isométrique (« Swarm Open Space »).
 
-Ce projet associe la puissance d'un moteur d'agents autonome multi-fournisseurs (OpenAI, Anthropic, Gemini, Ollama, endpoints locaux type vLLM/LM Studio, etc.) à une interface utilisateur haut de gamme, et il est accessible par **trois canaux** : interface **web**, **CLI**, **Telegram** et **assistant vocal local**.
-
----
-
-## 🌟 Fonctionnalités Majeures (Interface)
-
-### 1. 💬 Swarm Open Space (Bureau Virtuel 3D Isométrique)
-*   **Visualisation Temps Réel** : Tous les agents actifs de votre essaim disposent de leur propre bureau physique modélisé en perspective isométrique.
-*   **Sprites Cyber-Néon Haute Fidélité** : Des personnages vectoriels détaillés avec des attributs uniques (Jarvis le robot écran, Robert le développeur à lunettes matricielles, Émilie l'auteur avec son chevalet de peinture, Sofia la traductrice, Marc le correcteur, et Lucas le community manager).
-*   **Mouvements & Animations Réactives** : Les agents se déplacent de bureau en bureau pour interagir.
-*   **Animations de Délégation** : Lorsqu'un agent délègue son travail à un autre (ex: `Jarvis` ➔ `Codeur`), une enveloppe vole en temps réel entre leurs bureaux.
-
-### 2. 📊 Cockpit de Télémétrie Cyberpunk
-*   **Indicateurs Live** : Jetons consommés, estimation du coût en Euros, quota d'agents, compteurs d'états dynamiques.
-*   **Galerie Médias Premium** : Images et vidéos générées par les agents, avec téléchargement rapide.
-
-### 3. 📁 Explorateur de Fichiers & Coloration Syntaxique (PrismJS)
-### 4. 📋 Liste de Tâches & Agenda Connecté
-### 5. 🌿 Arbre de Conversations Branché (historique non-linéaire, multi-branching)
+Moteur d'agents multi-fournisseurs (OpenAI, Anthropic, Gemini, Ollama, endpoints locaux vLLM/LM Studio…), accessible par **4 canaux** : **web**, **CLI**, **Telegram** et **assistant vocal local**. Pensé pour un usage **maison** (domotique, routines, notifications) comme **dev** (sandbox de code, MCP, web).
 
 ---
 
-## 🧠 Moteur d'Orchestration (Core)
+## 🌟 Interface Web
 
-Moteur multi-agent basé sur [LiteLLM](https://github.com/BerriAI/litellm) (routage transparent vers n'importe quel LLM), avec :
+* **Swarm Open Space (3D isométrique)** : chaque agent a son bureau ; l'agent actif est **surligné** (halo coloré, agrandissement) et une **enveloppe « DÉLÉGATION »** vole d'un bureau à l'autre lors d'un transfert.
+* **Cockpit de télémétrie** : tokens, coût €, quota d'agents, **compétences (skills) créées** (avec suppression), galerie d'images/vidéos générées.
+* **Chat en streaming** : réponses et étapes de l'essaim affichées **au fil de l'eau** (SSE), bouton **Stop** qui annule le run côté serveur.
+* **Explorateur de fichiers** (coloration PrismJS), **agenda**, **listes**, **arbre de conversations** non-linéaire.
+* **Réglages no-code** (⚙️) — voir [Réglages depuis l'UI](#️-réglages-depuis-lui).
 
-*   **Handoffs & sous-agents** : `Jarvis` route vers les spécialistes (transferts) ou les interroge via `query_agent` / organise des débats (`debate_between_agents`).
-*   **Exécution parallèle** : plusieurs `query_agent` d'un même tour s'exécutent **concurremment** (ordre des résultats préservé, handoffs séquentiels). Plafond `SWARM_MAX_PARALLEL`.
-*   **Garde-fous** : limite de tours (`max_turns`), budgets temps/tokens par run (`SWARM_MAX_SECONDS`, `SWARM_MAX_TOKENS`), retries LLM (`LLM_MAX_RETRIES`), validation/coercition des arguments d'outils selon le schéma JSON.
-*   **Human-in-the-loop** : les outils sensibles (shell, SSH, domotique, suppressions) exigent une confirmation utilisateur, sauf sur un canal de confiance (cf. permissions par canal).
-*   **Outils via schémas typés** : `function_to_schema` déduit les types JSON des annotations Python.
+---
 
-## 🧩 Support MCP (Model Context Protocol)
+## 🧠 Moteur d'Orchestration
 
-Les agents peuvent utiliser n'importe quel serveur MCP (filesystem, GitHub, Postgres, HTTP/SSE…) sans recoder d'outils.
+Basé sur [LiteLLM](https://github.com/BerriAI/litellm) (routage transparent vers n'importe quel LLM) :
 
-1.  `pip install "mcp[cli]"` (déjà dans `requirements.txt`).
-2.  Copiez `mcp_servers.json.example` → `mcp_servers.json` (format compatible Claude Desktop).
-3.  Au démarrage, les serveurs sont connectés et leurs outils injectés dans l'essaim. Un serveur en panne est ignoré sans crasher l'agent. Les serveurs « sensibles » (filesystem/shell) ne démarrent pas si `ADMIN_PASSWORD` est vide.
+* **Handoffs & sous-agents** : Jarvis route vers les spécialistes (transferts), les interroge via `query_agent`, ou lance un débat (`debate_between_agents`).
+* **Exécution parallèle** : plusieurs outils/sous-agents d'un même tour s'exécutent **concurremment** (ordre préservé, handoffs séquentiels) — plafond `SWARM_MAX_PARALLEL`.
+* **Garde-fous** : `max_turns`, budgets temps/tokens (`SWARM_MAX_SECONDS`/`SWARM_MAX_TOKENS`), retries LLM (`LLM_MAX_RETRIES`), validation/coercition des arguments d'outils selon le schéma JSON.
+* **Human-in-the-loop** : les outils sensibles (shell, SSH, domotique, suppressions) exigent une confirmation, sauf canal de confiance.
+* **État isolé par run** (ContextVar + registry) → web + Telegram + sous-agents parallèles ne s'écrasent plus.
+* **Détection auto de l'OS** : Jarvis sait s'il tourne sur Linux/Windows/macOS (ou dans la sandbox Docker) et génère les bonnes commandes.
+
+---
+
+## 🧰 Capacités des agents (outils)
+
+* **Internet** : `web_search` (DuckDuckGo) + `web_scrape` — exécutés côté serveur, donc utilisables même par de petits modèles (via tool-calls).
+* **Code & commandes** : exécution **isolée en sandbox Docker** (cf. ci-dessous).
+* **Images / vidéos** : génération (pollinations, Stability, Fal, Replicate, endpoints custom).
+* **Domotique** : Home Assistant (`get_ha_state`, `call_ha_service`).
+* **Agenda & listes** : événements, tâches, synchro CalDAV / iCal / Google.
+* **Mémoire** : `memorize_fact`, `store_document`, `search_memory`, `ingest_file` (RAG).
+* **Notifications** : `send_notification` → Discord/Slack/email/Telegram/webhook.
+* **Compétences dynamiques (skills)** : les agents créent des outils Python persistants (`skills/*.py`), chargés à chaud et **gérables/supprimables depuis l'UI**.
+* **MCP** : n'importe quel serveur MCP ajoute ses outils (voir ci-dessous).
+
+## 🧩 Serveurs MCP (Model Context Protocol)
+
+Branchez n'importe quel serveur MCP (filesystem, GitHub, Postgres, HTTP/SSE…) — ses outils deviennent disponibles pour les agents, **sans recoder**.
+
+* Format compatible Claude Desktop (`mcp_servers.json`, cf. `.example`).
+* **Gestion depuis l'UI** : ⚙️ Réglages → **🧩 Serveurs MCP** (éditeur JSON, état des serveurs/outils connectés, **reconnexion à chaud**).
+* Robuste : un serveur en panne est ignoré sans crasher l'agent. Serveurs « sensibles » (FS/shell) non démarrés si aucun `ADMIN_PASSWORD`.
 
 ## 🛡️ Sandbox d'exécution
 
-L'exécution de code/commande est **isolée dans un conteneur Docker jetable** (réseau coupé, RAM/CPU/PID bornés, racine en lecture seule, sans privilèges, seul le workspace monté en écriture). Nécessite **Docker**. Repli local explicite via `SANDBOX_MODE=off` (non isolé — à vos risques).
+Code & commandes **isolés dans un conteneur Docker jetable** : réseau coupé, RAM/CPU/PID bornés, racine en lecture seule, sans privilèges, seul le workspace monté en écriture. Nécessite **Docker**.
+
+* `SANDBOX_MODE=off` : repli local non isolé (à vos risques).
+* `SANDBOX_ALLOW_NETWORK=true` : autorise le réseau **dans** la sandbox (pour du code qui doit sortir).
+* Par défaut, l'espace de travail des agents est confiné au sous-dossier **`workspace/`** (le code source et le `.env` ne sont pas exposés).
 
 ## 🧠 Mémoire
 
-*   **RAG** : mémoire vectorielle [ChromaDB](https://www.trychroma.com/) (recherche sémantique automatique en arrière-plan).
-*   **Mémoire « core »** : faits/préférences clé-valeur (`memorize_fact`).
-*   **Auto-amélioration** : après une tâche non triviale, un retour d'expérience est archivé et resservi via le RAG (`SELF_IMPROVE`).
-*   **Compaction de contexte** : au-delà de `MEMORY_MAX_MESSAGES`, l'historique ancien est résumé (vue LLM uniquement).
+* **RAG** vectoriel [ChromaDB](https://www.trychroma.com/) (recherche sémantique automatique).
+* **Mémoire « core »** clé-valeur (faits/préférences).
+* **Auto-amélioration** : après une tâche, un retour d'expérience est archivé et resservi (`SELF_IMPROVE`).
+* **Compaction de contexte** : au-delà de `MEMORY_MAX_MESSAGES`, l'historique ancien est résumé (vue LLM seulement).
 
 ## 🔭 Observabilité
 
-*   **Runs persistés** : chaque requête reçoit un `run_id` sauvegardé en **SQLite** (étapes, tokens, coût, durée, statut). Endpoints `GET /api/runs`, `GET /api/runs/{id}`.
-*   **Rejeu & éval** : `POST /api/runs/{id}/replay` et harnais `eval_runner.py` (cas dans `evals/cases.json`).
-*   **Logging structuré** : niveaux + rotation (`logs/jarvis.log`, `LOG_LEVEL`).
+* **Runs persistés** en **SQLite** (`run_id`, étapes, tokens, coût, durée, statut) — réussis **et** ratés.
+* **Rejeu & éval** : `POST /api/runs/{id}/replay`, CLI `eval_runner.py` (`evals/cases.json`).
+* **Logging structuré** : niveaux + rotation (`logs/jarvis.log`, `LOG_LEVEL`).
 
 ---
 
@@ -65,50 +76,105 @@ L'exécution de code/commande est **isolée dans un conteneur Docker jetable** (
 
 | Canal | Accès | Particularités |
 |-------|-------|----------------|
-| **Web** | `http://localhost:8000` | Cockpit complet, streaming, arbre de conversation |
+| **Web** | `http://localhost:8000` | Cockpit, streaming, arbre de conversation |
 | **CLI** | `python3 main.py` | Dialogue terminal, canal de confiance |
 | **Telegram** | `TELEGRAM_BOT_TOKEN` | Shell/SSH désactivés par défaut |
-| **Vocal** | `python3 voice_assistant.py` | STT/TTS local, wake word, canal de confiance |
+| **Vocal** | `python3 voice_assistant.py` | STT/TTS local, wake word, barge-in, canal de confiance |
 
-*   **Sessions par canal** : chaque canal a sa propre conversation isolée (`client_id`).
-*   **Permissions par canal** : politique `auto_approve` + listes allow/deny d'outils, configurables (`channel_policies.json`, cf. `channel_policies.example.json`).
-*   **Streaming SSE** : `POST /api/chat/stream` diffuse les étapes au fil de l'eau (events `run`/`step`/`done`/`error`) — idéal pour le vocal (TTS progressif) et l'UI.
-*   **Annulation** : `POST /api/runs/{id}/cancel` (barge-in / bouton stop).
+* **Sessions par canal** : chaque canal (`client_id`) a sa propre conversation isolée.
+* **Permissions par canal** : `auto_approve` + allow/deny d'outils (`channel_policies.json`, cf. `.example`).
+* **Streaming SSE** : `POST /api/chat/stream` (events `run`/`step`/`done`/`error`).
+* **Annulation** : `POST /api/runs/{id}/cancel`.
 
-### 🎙️ Assistant vocal local
+## 🗓️ Routines proactives / planifiées
 
-Pipeline 100 % local : `voice/` (STT [faster-whisper], TTS [Piper] avec repli pyttsx3, wake word [openWakeWord/Porcupine], VAD par énergie).
+Déclenchez automatiquement une tâche d'agent (briefing matinal, veille web, rappels). Le résultat est persisté et **notifié** sur vos messageries.
+
+* Déclencheurs : **quotidien** (HH:MM), **hebdomadaire** (jour + heure), **intervalle** (toutes les N min).
+* Gestion depuis l'UI : ⚙️ Réglages → **🗓️ Routines** (créer, activer/désactiver, exécuter maintenant, supprimer).
+* API : `GET/POST/DELETE /api/routines`, `POST /api/routines/{id}/run`.
+
+## 📣 Notifications multi-canaux
+
+Une couche unique diffuse vers tous les canaux configurés (via `.env`) :
+
+* **Discord** / **Slack** (webhooks), **webhook générique** (POST JSON), **Telegram** (chat_id), **email** (SMTP).
+* Utilisée par les routines, l'agenda, et l'outil agent `send_notification`.
+
+## 🎙️ Assistant vocal local
+
+Pipeline 100 % local : `voice/` — STT [faster-whisper], TTS [Piper] (repli pyttsx3), wake word [openWakeWord/Porcupine], VAD par énergie, **barge-in** (reprendre la parole interrompt Jarvis et annule le run).
 
 ```bash
 pip install -r requirements-voice.txt   # + binaire Piper et un modèle .onnx
-python3 server.py                        # serveur (dans un terminal)
-python3 voice_assistant.py               # assistant vocal (dans un autre)
+python3 server.py                        # serveur (un terminal)
+python3 voice_assistant.py               # assistant vocal (un autre)
 ```
-
 Configuration via les variables `VOICE_*` (voir `.env.example`).
+
+---
+
+## ⚙️ Réglages depuis l'UI
+
+Bouton ⚙️ → modale à onglets :
+
+* **👤 Agents** — créer/éditer/supprimer des agents.
+* **🔑 Clés API & Connexions** — clés LLM, image/vidéo, Home Assistant, messageries.
+* **🖥️ Terminal & Sécurité** — SSH, mot de passe admin.
+* **📅 Agenda** — CalDAV / iCal / Google.
+* **💰 Tarifs LLM** — coût €/M tokens par modèle (alimente le cockpit).
+* **⚙️ Comportement & Sécurité** — sandbox, auto-amélioration, retries, parallélisme, budgets, auto-approbation des outils sensibles, HOST/PORT, dossier de travail, mémoire.
+* **🧩 Serveurs MCP** — éditeur + reconnexion à chaud.
+* **🗓️ Routines** — tâches planifiées.
+
+> La sauvegarde met à jour le `.env` **à chaud en préservant les commentaires**.
+
+---
+
+## 🌍 Multi-plateforme
+
+Fonctionne sur **Linux**, **macOS** et **Windows** :
+
+* La sandbox Docker tourne sous Linux **quel que soit l'hôte** (commandes portables).
+* En repli local (sans Docker), le shell est choisi selon l'OS (PowerShell sur Windows, bash/zsh sinon).
+* `GET /api/platform` expose l'OS détecté.
+* Scripts d'install dédiés : `install.sh` (Linux/macOS), `install.ps1` (Windows).
 
 ---
 
 ## 🔐 Sécurité & Configuration
 
-*   **Copiez `.env.example` → `.env`** et renseignez vos clés. Le fichier `.env` est ignoré par git.
-*   **Exposition réseau** : si le serveur écoute sur `0.0.0.0` (défaut), `ADMIN_PASSWORD` devient **obligatoire** (le serveur refuse sinon de démarrer). Pour un usage local : `HOST=127.0.0.1`. En production, placez-le derrière un **reverse-proxy HTTPS**.
-*   **Secrets** : ne committez jamais `.env`, `mcp_servers.json`, `conversations*.json`, logs, `*.sqlite3` (déjà couverts par `.gitignore`).
-*   **SSH** : vérification des clés d'hôte connues (anti-MITM) ; commandes échappées (`shlex`).
+* **Copiez `.env.example` → `.env`** et renseignez vos valeurs (`.env` est git-ignoré).
+* **Exposition réseau** : sur `0.0.0.0` (défaut), `ADMIN_PASSWORD` devient **obligatoire** (sinon refus de démarrer). Usage local : `HOST=127.0.0.1`. Production : derrière un **reverse-proxy HTTPS**.
+* **Secrets jamais committés** : `.env`, `mcp_servers.json`, `channel_policies.json`, `conversations*.json`, logs, `*.sqlite3` (couverts par `.gitignore`).
+* **SSH** : vérification des clés d'hôte connues (anti-MITM) + échappement `shlex`.
+* **Workspace confiné** à `workspace/` par défaut (le `.env`/source ne sont pas lisibles via l'explorateur).
 
-Toutes les variables disponibles (LLM, sécurité, sandbox, garde-fous, mémoire, canaux, vocal…) sont documentées dans **`.env.example`**.
+Toutes les variables sont documentées dans **`.env.example`**.
 
 ---
 
-## 🛠️ Architecture & Technologies
+## 🧪 API (extrait)
 
-*   **Backend / API** : [FastAPI](https://fastapi.tiangolo.com/) & [Uvicorn](https://www.uvicorn.org/), exécution asynchrone (swarm dans des threads → concurrence).
-*   **Moteur d'Agents** : [LiteLLM](https://github.com/BerriAI/litellm) (multi-fournisseurs) + support MCP.
-*   **Mémoire vectorielle** : [ChromaDB](https://www.trychroma.com/).
-*   **Isolation** : Docker (sandbox de code/commande).
-*   **Vocal** : faster-whisper, Piper, openWakeWord, sounddevice.
+| Endpoint | Rôle |
+|---|---|
+| `POST /api/chat` · `POST /api/chat/stream` | Chat (bloquant / streaming SSE) |
+| `GET /api/chat/status` | Étapes live d'un run |
+| `GET /api/runs` · `GET /api/runs/{id}` | Observabilité |
+| `POST /api/runs/{id}/cancel` · `/replay` | Annuler / rejouer |
+| `GET/POST /api/config/mcp` | Config MCP + reconnexion |
+| `GET/POST/DELETE /api/routines` · `/{id}/run` | Routines |
+| `GET/POST /api/config/env` | Variables d'environnement |
+| `GET /api/config/skills` · `DELETE …/{name}` | Compétences |
+| `GET /api/platform` | OS détecté |
 
-### Dépendances
+---
+
+## 🛠️ Architecture & dépendances
+
+* **Backend / API** : [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) (swarm exécuté dans des threads → concurrence réelle).
+* **Agents** : [LiteLLM](https://github.com/BerriAI/litellm) + MCP.
+* **Mémoire** : [ChromaDB](https://www.trychroma.com/). **Isolation** : Docker. **Vocal** : faster-whisper, Piper, openWakeWord, sounddevice.
 
 ```bash
 pip install -r requirements.txt          # cœur applicatif (+ MCP)
@@ -116,55 +182,28 @@ pip install -r requirements-voice.txt    # optionnel : assistant vocal
 # Docker requis pour la sandbox d'exécution de code/commande.
 ```
 
+> Reprendre le dev sur un autre poste : voir **`SETUP.md`** (clone, deps, `.env`, état local non versionné).
+
 ### Tests
-
 ```bash
-python3 tests/test_swarm.py        # orchestration, max_turns, parallélisme, annulation
-python3 tests/test_guardrails.py   # retries, budgets, coercition
-python3 tests/test_approvals.py    # human-in-the-loop
-python3 tests/test_channels.py     # permissions par canal
-python3 tests/test_memory.py       # compaction de contexte
-python3 tests/test_eval.py         # éval / rejeu
-python3 tests/test_run_context.py  # isolation des runs concurrents
-python3 tests/test_voice_imports.py
+for t in tests/test_*.py; do python3 "$t"; done
+# swarm, garde-fous, approbations, canaux, mémoire, éval, run_context, voice imports
 ```
 
 ---
 
-## 🚀 Installation & Déploiement Multi-Plateforme
+## 🚀 Installation & démarrage
 
-Des scripts d'installation automatisés sont fournis.
+**Linux / macOS** : `chmod +x install.sh && ./install.sh` *(installe la commande `jarvis start|stop|status|logs`, lanceurs de bureau, service de fond, détecte Ollama).*
 
-### 🐧 Linux & 🍏 macOS
+**Windows** : `.\install.ps1` *(raccourci Bureau, `run.bat`, scan Ollama).*
 
-```bash
-chmod +x install.sh
-./install.sh
-```
-*Prépare l'environnement, déploie `.env`, installe la commande CLI `jarvis` (`start|stop|status|logs`), des lanceurs de bureau et un service d'arrière-plan. Détecte Ollama.*
-
-### 🪟 Windows (PowerShell)
-
-```powershell
-.\install.ps1
-```
-*Crée un raccourci Bureau, des scripts `run.bat` / `launch.vbs`, et scanne les modèles Ollama.*
-
-Renseignez ensuite votre clé API LLM dans le `.env` généré.
+Puis renseignez votre clé LLM dans `.env`, et lancez :
+* Web : `jarvis start` ou `python3 server.py` → 👉 **http://localhost:8000/**
+* CLI : `python3 main.py` · Vocal : `python3 voice_assistant.py`
 
 ---
 
-## 💻 Démarrage
+## 🏆 Quota d'agents
 
-*   **Linux/Mac (CLI)** : `jarvis start` *(arrêt : `jarvis stop`, logs : `jarvis logs`)* — ou directement `python3 server.py`.
-*   **Windows** : double-cliquez sur `run.bat` ou le raccourci **Jarvis**.
-*   **CLI interactif** : `python3 main.py`
-*   **Vocal** : `python3 voice_assistant.py`
-
-Interface web : 👉 **[http://localhost:8000/](http://localhost:8000/)**
-
----
-
-## 🏆 Quota d'Agents
-
-La valeur `8` dans le cockpit est une recommandation **ergonomique** du frontend (lisibilité de l'Open Space). Le backend n'impose **aucune limite** : configurez autant d'agents que voulu dans `agents.yaml`.
+Le `8` du cockpit est une recommandation **ergonomique** (lisibilité de l'Open Space). Le backend n'impose **aucune limite** : configurez autant d'agents que voulu dans `agents.yaml`.
