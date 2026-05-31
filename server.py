@@ -2384,7 +2384,7 @@ def agenda_scheduler():
     import time
     import json
     from datetime import datetime
-    from tools.agenda_tools import AGENDA_FILE, ensure_agenda_file, sync_all_external_calendars
+    from tools.agenda_tools import AGENDA_FILE, ensure_agenda_file, sync_all_external_calendars, load_agenda
     
     print("📅 [Agenda] Planificateur d'arrière-plan démarré.")
     last_sync = 0
@@ -2401,14 +2401,11 @@ def agenda_scheduler():
                 except Exception as sync_err:
                     print(f"📅 [Agenda Sync Erreur d'arrière-plan] {sync_err}")
 
-            ensure_agenda_file()
-            if os.path.exists(AGENDA_FILE):
-                with open(AGENDA_FILE, "r", encoding="utf-8") as f:
-                    events = json.load(f)
-                    
+            events = load_agenda()
+            if events:
                 now = datetime.now()
                 updated = False
-                
+
                 for e in events:
                     try:
                         event_dt = datetime.strptime(e["datetime"], "%Y-%m-%d %H:%M")

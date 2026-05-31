@@ -8,10 +8,34 @@ import tools.agenda_sync as agenda_sync
 AGENDA_FILE = "workspace/agenda.json"
 
 def ensure_agenda_file():
+    """Garantit un agenda.json VALIDE : crée le fichier s'il manque, et le répare
+    s'il est vide ou corrompu (cas fréquent quand aucun agenda n'est encore utilisé)."""
     os.makedirs("workspace", exist_ok=True)
-    if not os.path.exists(AGENDA_FILE):
+    needs_init = True
+    if os.path.exists(AGENDA_FILE):
+        try:
+            with open(AGENDA_FILE, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+            if content:
+                json.loads(content)  # vérifie la validité
+                needs_init = False
+        except Exception:
+            needs_init = True  # vide ou JSON invalide → on réinitialise
+    if needs_init:
         with open(AGENDA_FILE, "w", encoding="utf-8") as f:
             json.dump([], f)
+
+
+def load_agenda() -> list:
+    """Charge la liste d'événements de façon robuste (jamais d'exception sur vide/corrompu)."""
+    ensure_agenda_file()
+    try:
+        with open(AGENDA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
 
 def sync_all_external_calendars() -> int:
     """
@@ -20,12 +44,16 @@ def sync_all_external_calendars() -> int:
     Returns:
         int: Nombre d'événements externes importés avec succès.
     """
-    ensure_agenda_file()
-    
-    # 1. Charger les événements existants
-    with open(AGENDA_FILE, "r", encoding="utf-8") as f:
-        events = json.load(f)
-        
+    # 1. Charger les événements existants (robuste : vide/corrompu → [])
+    events = load_agenda()
+
+    # S'il n'y a AUCUNE source externe configurée, rien à synchroniser (no-op silencieux).
+    has_external = bool(os.getenv("EXTERNAL_ICAL_URL")) or \
+        (os.path.exists(agenda_sync.GOOGLE_KEY_PATH) and os.getenv("GOOGLE_CALENDAR_ID")) or \
+        (os.getenv("CALDAV_URL") and os.getenv("CALDAV_USERNAME") and os.getenv("CALDAV_PASSWORD"))
+    if not has_external:
+        return 0
+
     # Filtrer pour ne garder QUE les événements créés localement (source = 'local' ou absente)
     local_events = [e for e in events if e.get("source", "local") == "local"]
     
@@ -58,8 +86,8 @@ def sync_all_external_calendars() -> int:
         
     # 5. Fusionner et enregistrer
     merged = local_events + external_events
-    # Trier par date chronologique
-    merged.sort(key=lambda x: x["datetime"])
+    # Trier par date chronologique (robuste si une clé manque)
+    merged.sort(key=lambda x: x.get("datetime", ""))
     
     with open(AGENDA_FILE, "w", encoding="utf-8") as f:
         json.dump(merged, f, indent=4, ensure_ascii=False)
