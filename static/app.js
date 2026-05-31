@@ -240,6 +240,8 @@ const paneAgenda = document.getElementById("pane-agenda");
 const panePricing = document.getElementById("pane-pricing");
 const modalTabSatellites = document.getElementById("modal-tab-satellites");
 const paneSatellites = document.getElementById("pane-satellites");
+const modalTabDoctor = document.getElementById("modal-tab-doctor");
+const paneDoctor = document.getElementById("pane-doctor");
 
 // Gestion de la Modale Interne Agent Form
 const agentFormModal = document.getElementById("agent-form-modal");
@@ -1617,9 +1619,55 @@ function renderAttachmentChip() {
 }
 
 // Soumettre un message dans le chat
+// Annuler le dernier échange / Réessayer la dernière question.
+const _btnChatUndo = document.getElementById("btn-chat-undo");
+if (_btnChatUndo) _btnChatUndo.addEventListener("click", async () => {
+    if (activeAbortController) return;
+    try {
+        const r = await apiFetch("/api/chat/undo", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ client_id: chatClientId })
+        });
+        const d = await r.json();
+        if (d.removed_user == null) { logToTerminal("Rien à annuler.", "warning"); return; }
+        // Retire les dernières bulles affichées (réponse(s) + question).
+        const kids = chatMessages.children;
+        for (let i = kids.length - 1; i >= 0; i--) {
+            const el = kids[i];
+            const isUser = el.classList && el.classList.contains("user-msg");
+            el.remove();
+            if (isUser) break;  // on s'arrête après avoir retiré la question
+        }
+        logToTerminal("Dernier échange annulé.", "system");
+    } catch (e) { logToTerminal("Annulation : " + e, "error"); }
+});
+
+const _btnChatRetry = document.getElementById("btn-chat-retry");
+if (_btnChatRetry) _btnChatRetry.addEventListener("click", async () => {
+    if (activeAbortController) return;
+    try {
+        const r = await apiFetch("/api/chat/retry", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ client_id: chatClientId })
+        });
+        const d = await r.json();
+        if (!d.user) { logToTerminal("Rien à réessayer.", "warning"); return; }
+        // Retire les dernières bulles (réponse + question) puis rejoue la question.
+        const kids = chatMessages.children;
+        for (let i = kids.length - 1; i >= 0; i--) {
+            const el = kids[i];
+            const isUser = el.classList && el.classList.contains("user-msg");
+            el.remove();
+            if (isUser) break;
+        }
+        chatInput.value = d.user;
+        chatForm.dispatchEvent(new Event("submit"));
+    } catch (e) { logToTerminal("Réessai : " + e, "error"); }
+});
+
 chatForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    
+
     // Si une génération est déjà en cours, cliquer sur le bouton agit comme un bouton "Stop" !
     if (activeAbortController) {
         // Annulation côté serveur (le run s'arrête au prochain tour) + arrêt du flux.
@@ -1777,8 +1825,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabKnowledge, modalTabUsers, modalTabSatellites].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneKnowledge, paneUsers, paneSatellites].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneKnowledge, paneUsers, paneSatellites, paneDoctor].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -2296,6 +2344,62 @@ if (_btnSatYamlDl) _btnSatYamlDl.addEventListener("click", () => {
     a.click();
     URL.revokeObjectURL(a.href);
 });
+
+// -------------------------------------------------------------------------
+// ONGLET : DIAGNOSTIC (doctor) + RECHERCHE DE SESSIONS
+// -------------------------------------------------------------------------
+async function runDoctor() {
+    const box = document.getElementById("doctor-results");
+    if (!box) return;
+    box.innerHTML = `<div style="opacity:0.6;">⏳ Diagnostic en cours…</div>`;
+    try {
+        const r = await apiFetch("/api/doctor");
+        const d = await r.json();
+        box.innerHTML = `<div style="margin-bottom:6px;font-weight:600;">${d.ok}/${d.total} vérifications OK</div>` +
+            d.checks.map(c => `
+                <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.25);border-radius:6px;font-size:0.8rem;">
+                    <span>${c.ok ? "✅" : "❌"}</span>
+                    <strong style="min-width:200px;">${c.name}</strong>
+                    <span style="opacity:0.65;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.detail || ""}</span>
+                </div>`).join("");
+    } catch (e) {
+        box.innerHTML = `<div style="color:#ff5b89;">Erreur : ${e}</div>`;
+    }
+}
+
+async function runSessionSearch() {
+    const q = (document.getElementById("session-search-input") || {}).value || "";
+    const box = document.getElementById("session-search-results");
+    if (!box) return;
+    if (!q.trim()) { box.innerHTML = ""; return; }
+    box.innerHTML = `<div style="opacity:0.6;">⏳ Recherche…</div>`;
+    try {
+        const r = await apiFetch(`/api/sessions/search?q=${encodeURIComponent(q)}&client_id=${encodeURIComponent(chatClientId)}`);
+        const d = await r.json();
+        if (!d.results.length) { box.innerHTML = `<div style="opacity:0.5;">Aucun résultat pour « ${q} ».</div>`; return; }
+        box.innerHTML = `<div style="opacity:0.6;font-size:0.76rem;">${d.count} résultat(s)</div>` +
+            d.results.map(res => `
+                <div style="padding:6px 10px;background:rgba(0,0,0,0.25);border-radius:6px;font-size:0.78rem;">
+                    <div style="opacity:0.6;font-size:0.7rem;">${res.conversation} · ${res.role}</div>
+                    <div>${(res.snippet || "").replace(/</g, "&lt;")}</div>
+                </div>`).join("");
+    } catch (e) {
+        box.innerHTML = `<div style="color:#ff5b89;">Erreur : ${e}</div>`;
+    }
+}
+
+if (modalTabDoctor && paneDoctor) {
+    modalTabDoctor.addEventListener("click", () => switchModalTab(modalTabDoctor, () => {
+        paneDoctor.style.display = "block";
+        runDoctor();
+    }));
+}
+const _btnDoctorRun = document.getElementById("btn-doctor-run");
+if (_btnDoctorRun) _btnDoctorRun.addEventListener("click", runDoctor);
+const _btnSessionSearch = document.getElementById("btn-session-search");
+if (_btnSessionSearch) _btnSessionSearch.addEventListener("click", runSessionSearch);
+const _sessionSearchInput = document.getElementById("session-search-input");
+if (_sessionSearchInput) _sessionSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runSessionSearch(); });
 
 const _btnSatConnect = document.getElementById("btn-sat-connect");
 if (_btnSatConnect) _btnSatConnect.addEventListener("click", async () => {

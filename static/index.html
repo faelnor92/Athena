@@ -490,6 +490,8 @@
                     <button type="button" id="btn-chat-attach" class="chat-mic-btn" style="font-size: 1rem; padding: 0 4px;" title="Joindre un fichier au message (l'agent en lit le contenu)">📎</button>
                     <input type="file" id="chat-file-input" style="display: none;" accept=".txt,.md,.markdown,.py,.js,.ts,.json,.html,.css,.csv,.tsv,.log,.yaml,.yml,.xml,.ini,.sh,.sql,.pdf,.png,.jpg,.jpeg,.gif,.webp">
                     <button type="button" id="btn-mic" class="chat-mic-btn" title="Parler à l'essaim (Speech-to-Text)">🎤</button>
+                    <button type="button" id="btn-chat-undo" class="chat-mic-btn" style="font-size: 1rem; padding: 0 4px;" title="Annuler le dernier échange">↩️</button>
+                    <button type="button" id="btn-chat-retry" class="chat-mic-btn" style="font-size: 1rem; padding: 0 4px;" title="Réessayer la dernière question">🔁</button>
                     <input type="text" id="chat-input" placeholder="Parle à l'essaim..." autocomplete="off">
                     <button type="submit" class="chat-send-btn">
                         <svg class="send-icon-svg" viewBox="0 0 24 24">
@@ -526,6 +528,7 @@
                 <button class="modal-tab-btn" id="modal-tab-behavior">⚙️ Comportement</button>
                 <button class="modal-tab-btn" id="modal-tab-pricing">💰 Tarifs LLM</button>
                 <button class="modal-tab-btn" id="modal-tab-users">👥 Utilisateurs</button>
+                <button class="modal-tab-btn" id="modal-tab-doctor">🩺 Diagnostic</button>
                 <div class="modal-tab-group">Extensions</div>
                 <button class="modal-tab-btn" id="modal-tab-mcp">🧩 Serveurs MCP</button>
                 <button class="modal-tab-btn" id="modal-tab-routines">🗓️ Routines</button>
@@ -790,6 +793,21 @@
                         <input type="file" id="backup-file-input" accept=".zip" style="display: none;">
                     </div>
                     <div id="backup-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
+                </div>
+
+                <div class="modal-pane" id="pane-doctor" style="display: none;">
+                    <h3>🩺 Diagnostic du système</h3>
+                    <p class="section-desc">Vérifie la configuration, les dépendances et les services. Équivalent d'un « hermes doctor ».</p>
+                    <button type="button" id="btn-doctor-run" class="btn btn-primary" style="margin-bottom: 10px;">▶ Lancer le diagnostic</button>
+                    <div id="doctor-results" style="display: flex; flex-direction: column; gap: 4px;"></div>
+
+                    <h3 style="margin-top: 20px;">🔎 Recherche dans les sessions</h3>
+                    <p class="section-desc">Retrouve un message dans toutes tes conversations enregistrées (rappel inter-sessions).</p>
+                    <div style="display: flex; gap: 6px;">
+                        <input type="text" id="session-search-input" placeholder="mot-clé…" style="flex: 1;">
+                        <button type="button" id="btn-session-search" class="btn">Chercher</button>
+                    </div>
+                    <div id="session-search-results" style="margin-top: 10px; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto;"></div>
                 </div>
 
                 <div class="modal-pane" id="pane-mcp" style="display: none;">
