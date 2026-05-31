@@ -521,6 +521,7 @@
                 <button class="modal-tab-btn" id="modal-tab-keys">🔑 Clés API</button>
                 <button class="modal-tab-btn" id="modal-tab-ssh">🖥️ Terminal & SSH</button>
                 <button class="modal-tab-btn" id="modal-tab-agenda">📅 Agenda</button>
+                <button class="modal-tab-btn" id="modal-tab-satellites">🛰️ Satellites vocaux</button>
                 <div class="modal-tab-group">Système</div>
                 <button class="modal-tab-btn" id="modal-tab-behavior">⚙️ Comportement</button>
                 <button class="modal-tab-btn" id="modal-tab-pricing">💰 Tarifs LLM</button>
@@ -799,6 +800,116 @@
                     <textarea id="mcp-config" spellcheck="false" style="width: 100%; min-height: 220px; font-family: monospace; font-size: 0.78rem; background: rgba(0,0,0,0.3); color: #cfe; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; box-sizing: border-box;"></textarea>
                     <button type="button" id="btn-save-mcp" class="btn btn-primary" style="width: 100%; margin-top: 10px;">💾 Sauvegarder & reconnecter</button>
                     <div id="mcp-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+                </div>
+
+                <!-- ONGLET : SATELLITES VOCAUX ESP32-S3 (ESPHome direct) -->
+                <div class="modal-pane" id="pane-satellites" style="display: none;">
+                    <h3>🛰️ Satellites vocaux ESP32-S3</h3>
+                    <p class="section-desc">Connecte des enceintes ESP32-S3 sous <strong>ESPHome</strong> directement à Jarvis (sans Home Assistant) pour une latence minimale. Jarvis reçoit l'audio, transcrit, répond et renvoie la voix au satellite.</p>
+
+                    <details style="margin: 6px 0 12px; font-size: 0.8rem; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px;">
+                        <summary style="cursor: pointer; color: var(--accent-cyan);">Comment connecter un ESP (et obtenir la clé) ?</summary>
+                        <ol style="margin: 8px 0 0; padding-left: 18px; line-height: 1.5;">
+                            <li>Clique <strong>« Générer une clé »</strong> ci-dessous et copie-la.</li>
+                            <li>Dans le YAML ESPHome de l'ESP, mets-la sous <code>api: → encryption: → key:</code> (voir <code>docs/esphome-satellite.yaml</code>), puis flashe l'ESP.</li>
+                            <li>Renseigne ici le <strong>nom</strong>, l'<strong>IP</strong> de l'ESP et <strong>la même clé</strong>, puis « Ajouter ».</li>
+                            <li>Jarvis se connecte automatiquement. Appuie sur le bouton de l'ESP (push-to-talk) pour parler.</li>
+                        </ol>
+                        <p style="margin: 8px 0 0; opacity: 0.7;">Nécessite les dépendances vocales : <code>pip install -r requirements-voice.txt</code> (+ Piper).</p>
+                    </details>
+
+                    <div id="satellites-status" style="margin: 8px 0; font-size: 0.8rem;"></div>
+                    <div id="satellites-list" style="display: flex; flex-direction: column; gap: 8px; margin: 10px 0; max-height: 200px; overflow-y: auto;"></div>
+
+                    <h5 style="color: var(--accent-cyan); margin: 8px 0;">Ajouter / modifier un satellite</h5>
+                    <div class="form-group"><label>Nom</label><input id="sat-name" type="text" placeholder="salon"></div>
+                    <div class="form-group"><label>Adresse IP / hôte</label><input id="sat-host" type="text" placeholder="192.168.1.50"></div>
+                    <div class="form-group"><label>Port</label><input id="sat-port" type="number" value="6053"></div>
+                    <div class="form-group">
+                        <label>Clé de chiffrement (api.encryption.key)</label>
+                        <div style="display: flex; gap: 6px;">
+                            <input id="sat-key" type="text" placeholder="clé base64 ESPHome" style="flex: 1;">
+                            <button type="button" id="btn-sat-genkey" class="btn" title="Générer une clé à recopier dans le YAML de l'ESP">🎲 Générer</button>
+                        </div>
+                        <small style="opacity: 0.6;">Laisse vide en modification pour conserver la clé existante.</small>
+                    </div>
+                    <button type="button" id="btn-sat-add" class="btn btn-primary" style="width: 100%; margin-top: 8px;">＋ Ajouter / Mettre à jour</button>
+
+                    <!-- Activation (comment réveiller le satellite) -->
+                    <h5 style="color: var(--accent-cyan); margin: 14px 0 4px;">Activation (firmware)</h5>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <select id="sat-activation-mode" style="flex: 1.4; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 6px; color: #fff; padding: 8px;"></select>
+                        <select id="sat-wakeword" style="flex: 1; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 6px; color: #fff; padding: 8px;"></select>
+                        <input id="sat-button-pin" type="text" value="GPIO0" placeholder="GPIO bouton" style="width: 110px; display: none;">
+                    </div>
+                    <p class="section-desc" style="font-size: 0.72rem; margin-top: 4px;">Wake word embarqué = mains-libres (idéal plafond/miroir, nécessite un ESP32-S3 avec PSRAM).</p>
+
+                    <!-- Composition du firmware : capteurs présents sur l'ESP -->
+                    <h5 style="color: var(--accent-cyan); margin: 14px 0 4px;">Capteurs / sorties sur cet ESP (firmware)</h5>
+                    <p class="section-desc" style="font-size: 0.74rem;">Choisis dans la liste ce qui est câblé sur l'ESP pour ne pas le perdre au flash. Ces entités restent visibles par <strong>HA et Jarvis</strong> en parallèle.</p>
+                    <div id="sat-sensors-list" style="display: flex; flex-direction: column; gap: 6px; margin: 6px 0;"></div>
+                    <button type="button" id="btn-sat-sensor-add" class="btn" style="width: 100%; margin-top: 4px;">＋ Ajouter un capteur</button>
+
+                    <!-- Bus I2C (affiché seulement si un capteur I2C est choisi) -->
+                    <div id="sat-i2c-row" class="form-group" style="display: none; margin-top: 8px;">
+                        <label>Bus I²C (broches SDA / SCL) — pour les capteurs I²C</label>
+                        <div style="display: flex; gap: 6px;">
+                            <input id="sat-i2c-sda" type="text" value="GPIO8" placeholder="SDA" style="flex: 1;">
+                            <input id="sat-i2c-scl" type="text" value="GPIO9" placeholder="SCL" style="flex: 1;">
+                        </div>
+                    </div>
+
+                    <details style="margin-top: 10px;">
+                        <summary style="cursor: pointer; font-size: 0.8rem; color: var(--accent-cyan);">🎙️ Audio (micro &amp; haut-parleur) — broches & types</summary>
+                        <div style="margin-top: 8px;">
+                            <div class="form-group"><label>Carte ESP32</label><input id="sat-board" type="text" value="esp32-s3-devkitc-1"></div>
+                            <div class="form-group">
+                                <label>Type de micro</label>
+                                <select id="sat-mic-type" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border-color);border-radius:6px;color:#fff;padding:8px;"></select>
+                            </div>
+                            <div style="display:flex; gap:6px;">
+                                <div class="form-group" style="flex:1;"><label>Micro WS/LRCLK</label><input id="sat-mic-ws" type="text" value="GPIO2"></div>
+                                <div class="form-group" style="flex:1;" id="sat-mic-bclk-grp"><label>Micro BCLK</label><input id="sat-mic-bclk" type="text" value="GPIO1"></div>
+                                <div class="form-group" style="flex:1;"><label>Micro DIN</label><input id="sat-mic-din" type="text" value="GPIO3"></div>
+                            </div>
+                            <div class="form-group">
+                                <label>Type de sortie (haut-parleur)</label>
+                                <select id="sat-spk-type" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border-color);border-radius:6px;color:#fff;padding:8px;"></select>
+                            </div>
+                            <div style="display:flex; gap:6px;" id="sat-spk-pins">
+                                <div class="form-group" style="flex:1;"><label>HP WS/LRCLK</label><input id="sat-spk-ws" type="text" value="GPIO6"></div>
+                                <div class="form-group" style="flex:1;"><label>HP BCLK</label><input id="sat-spk-bclk" type="text" value="GPIO5"></div>
+                                <div class="form-group" style="flex:1;"><label>HP DOUT</label><input id="sat-spk-dout" type="text" value="GPIO7"></div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details style="margin-top: 10px;">
+                        <summary style="cursor: pointer; font-size: 0.78rem; opacity: 0.8;">Avancé : coller du YAML personnalisé</summary>
+                        <div class="form-group" style="margin-top: 6px;">
+                            <textarea id="sat-custom-yaml" spellcheck="false" style="width: 100%; min-height: 80px; font-family: monospace; font-size: 0.72rem; background: rgba(0,0,0,0.3); color: #cfe; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 8px; box-sizing: border-box;" placeholder="# pour un capteur non listé&#10;sensor:&#10;  - platform: ..."></textarea>
+                        </div>
+                    </details>
+
+                    <button type="button" id="btn-sat-yaml" class="btn" style="width: 100%; margin-top: 6px;">📄 Générer le firmware (YAML ESPHome)</button>
+                    <button type="button" id="btn-sat-connect" class="btn" style="width: 100%; margin-top: 6px;">🔌 Reconnecter tous les satellites</button>
+                    <div id="sat-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+
+                    <!-- Résultat : YAML généré prêt à compiler/flasher -->
+                    <div id="sat-yaml-result" style="display: none; margin-top: 12px;">
+                        <h5 style="color: var(--accent-cyan); margin: 8px 0;">Firmware ESPHome pour ce satellite</h5>
+                        <p class="section-desc" style="font-size: 0.76rem;">La config est <strong>custom</strong> (micro/HP I2S + voice_assistant) : elle doit être compilée une fois. Le plus simple — branche l'ESP en USB et lance la commande ci-dessous (OTA WiFi ensuite).</p>
+                        <div style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 10px; margin: 6px 0;">
+                            <code id="sat-yaml-cmd" style="flex: 1; font-size: 0.74rem; overflow-x: auto; white-space: nowrap;">pip install esphome &amp;&amp; esphome run fichier.yaml</code>
+                            <button type="button" id="btn-sat-cmd-copy" class="btn" style="flex-shrink: 0; padding: 2px 8px;">📋</button>
+                        </div>
+                        <textarea id="sat-yaml-text" spellcheck="false" readonly style="width: 100%; min-height: 200px; font-family: monospace; font-size: 0.72rem; background: rgba(0,0,0,0.3); color: #cfe; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; box-sizing: border-box;"></textarea>
+                        <div style="display: flex; gap: 6px; margin-top: 8px;">
+                            <button type="button" id="btn-sat-yaml-copy" class="btn" style="flex: 1;">📋 Copier le YAML</button>
+                            <button type="button" id="btn-sat-yaml-dl" class="btn btn-primary" style="flex: 1;">⬇️ Télécharger .yaml</button>
+                            <a id="link-esphome-web" href="https://web.esphome.io" target="_blank" rel="noopener" class="btn" style="flex: 1; text-align: center; text-decoration: none;">🌐 Flasheur web</a>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="modal-pane" id="pane-routines" style="display: none;">

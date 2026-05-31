@@ -238,6 +238,8 @@ const paneKeys = document.getElementById("pane-keys");
 const paneSsh = document.getElementById("pane-ssh");
 const paneAgenda = document.getElementById("pane-agenda");
 const panePricing = document.getElementById("pane-pricing");
+const modalTabSatellites = document.getElementById("modal-tab-satellites");
+const paneSatellites = document.getElementById("pane-satellites");
 
 // Gestion de la Modale Interne Agent Form
 const agentFormModal = document.getElementById("agent-form-modal");
@@ -1756,8 +1758,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabKnowledge, modalTabUsers].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneKnowledge, paneUsers].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabKnowledge, modalTabUsers, modalTabSatellites].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneKnowledge, paneUsers, paneSatellites].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -1978,6 +1980,310 @@ if (modalTabMcp && paneMcp) {
 }
 const _btnSaveMcp = document.getElementById("btn-save-mcp");
 if (_btnSaveMcp) _btnSaveMcp.addEventListener("click", saveConfigMcpPane);
+
+// -------------------------------------------------------------------------
+// ONGLET : SATELLITES VOCAUX ESP32-S3 (ESPHome direct)
+// -------------------------------------------------------------------------
+function renderSatellitesStatus(status) {
+    const el = document.getElementById("satellites-status");
+    if (!el || !status) return;
+    if (status.deps_ok === false) {
+        const msg = (status.errors && (status.errors._deps || status.errors._init)) || "Dépendances vocales manquantes.";
+        el.innerHTML = `<span style="color:#ff5b89;">⚠️ ${msg}</span>`;
+        return;
+    }
+    const connected = status.connected || [];
+    const errs = Object.entries(status.errors || {}).filter(([k]) => !k.startsWith("_"));
+    let html = "";
+    if (connected.length) {
+        html += `<span style="color:var(--accent-cyan);">🟢 Connecté(s) : ${connected.join(", ")}</span>`;
+    } else if (status.configured > 0) {
+        html += `<span style="opacity:0.7;">⚪ Aucun satellite connecté pour l'instant.</span>`;
+    } else {
+        html += `<span style="opacity:0.5;">Aucun satellite configuré.</span>`;
+    }
+    if (errs.length) {
+        html += errs.map(([n, e]) => `<div style="color:#ff5b89;font-size:0.72rem;">❌ ${n} : ${e}</div>`).join("");
+    }
+    el.innerHTML = html;
+}
+
+async function loadSatellitesPane() {
+    const list = document.getElementById("satellites-list");
+    if (!list) return;
+    try {
+        const r = await apiFetch("/api/config/satellites");
+        const d = await r.json();
+        renderSatellitesStatus(d.status);
+        const sats = d.satellites || [];
+        if (sats.length === 0) {
+            list.innerHTML = `<div style="opacity:0.5;font-size:0.78rem;text-align:center;padding:8px;">Aucun satellite. Ajoutez-en un ci-dessous.</div>`;
+            return;
+        }
+        const connected = (d.status && d.status.connected) || [];
+        list.innerHTML = "";
+        sats.forEach(s => {
+            const isOn = connected.includes(s.name);
+            const row = document.createElement("div");
+            row.className = "service-item";
+            row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;";
+            row.innerHTML = `
+                <div style="min-width:0;">
+                    <strong style="color:${isOn ? 'var(--accent-cyan)' : '#888'};">${isOn ? '🟢' : '⚪'} ${s.name}</strong>
+                    <div style="font-size:0.7rem;opacity:0.7;">${s.host}:${s.port} · ${s.key_set ? '🔑 clé enregistrée' : '⚠️ pas de clé'}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                    <button data-act="edit" title="Charger dans le formulaire" style="background:none;border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:0.72rem;">✏️</button>
+                    <button data-act="del" title="Supprimer" style="background:rgba(255,0,80,0.12);border:1px solid rgba(255,0,80,0.4);color:#ff5b89;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:0.72rem;">🗑️</button>
+                </div>`;
+            row.querySelector('[data-act="edit"]').addEventListener("click", () => {
+                document.getElementById("sat-name").value = s.name;
+                document.getElementById("sat-host").value = s.host;
+                document.getElementById("sat-port").value = s.port;
+                document.getElementById("sat-key").value = "";
+            });
+            row.querySelector('[data-act="del"]').addEventListener("click", async () => {
+                if (!confirm(`Supprimer le satellite « ${s.name} » ?`)) return;
+                await apiFetch(`/api/config/satellites/${encodeURIComponent(s.name)}`, { method: "DELETE" });
+                loadSatellitesPane();
+            });
+            list.appendChild(row);
+        });
+    } catch (e) {
+        list.innerHTML = `<div style="color:#ff5b89;font-size:0.78rem;">Erreur : ${e}</div>`;
+    }
+}
+
+async function saveSatelliteFromForm() {
+    const st = document.getElementById("sat-save-status");
+    const name = document.getElementById("sat-name").value.trim();
+    const host = document.getElementById("sat-host").value.trim();
+    if (!name || !host) { if (st) st.textContent = "❌ Nom et adresse IP requis."; return; }
+    if (st) st.textContent = "⏳ Enregistrement & connexion…";
+    try {
+        const r = await apiFetch("/api/config/satellites", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name, host,
+                port: parseInt(document.getElementById("sat-port").value || "6053", 10),
+                encryption_key: document.getElementById("sat-key").value.trim()
+            })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) {
+            if (st) st.textContent = "✅ Enregistré.";
+            renderSatellitesStatus(d.satellites);
+            document.getElementById("sat-key").value = "";
+            loadSatellitesPane();
+        } else {
+            if (st) st.textContent = "❌ " + (d.detail || "Erreur");
+        }
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+}
+
+if (modalTabSatellites && paneSatellites) {
+    modalTabSatellites.addEventListener("click", () => switchModalTab(modalTabSatellites, () => {
+        paneSatellites.style.display = "block";
+        _ensureSatCatalog();
+        loadSatellitesPane();
+    }));
+}
+const _btnSatAdd = document.getElementById("btn-sat-add");
+if (_btnSatAdd) _btnSatAdd.addEventListener("click", saveSatelliteFromForm);
+
+const _btnSatGenkey = document.getElementById("btn-sat-genkey");
+if (_btnSatGenkey) _btnSatGenkey.addEventListener("click", async () => {
+    const st = document.getElementById("sat-save-status");
+    try {
+        const r = await apiFetch("/api/config/satellites/genkey", { method: "POST" });
+        const d = await r.json();
+        document.getElementById("sat-key").value = d.key || "";
+        if (navigator.clipboard) navigator.clipboard.writeText(d.key || "");
+        if (st) st.textContent = "🔑 Clé générée et copiée — colle-la dans le YAML de l'ESP (api.encryption.key).";
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+});
+
+// Catalogue de capteurs + types audio ESPHome (chargé depuis le backend, source unique).
+let _satCatalog = [];
+let _satCatalogById = {};
+async function _ensureSatCatalog() {
+    if (_satCatalog.length) return;
+    try {
+        const r = await apiFetch("/api/config/satellites/sensor-catalog");
+        const d = await r.json();
+        _satCatalog = d.catalog || [];
+        _satCatalogById = {};
+        _satCatalog.forEach(c => { _satCatalogById[c.id] = c; });
+        // Peupler les selects de type audio (micro / sortie) une fois.
+        const micSel = document.getElementById("sat-mic-type");
+        const spkSel = document.getElementById("sat-spk-type");
+        if (micSel && !micSel.options.length) {
+            micSel.innerHTML = (d.mic_types || []).map(t => `<option value="${t.id}">${t.label}</option>`).join("");
+            micSel.addEventListener("change", _syncSatAudioRows);
+        }
+        if (spkSel && !spkSel.options.length) {
+            spkSel.innerHTML = (d.speaker_types || []).map(t => `<option value="${t.id}">${t.label}</option>`).join("");
+            spkSel.addEventListener("change", _syncSatAudioRows);
+        }
+        // Activation : mode (wakeword/bouton) + wake words.
+        const actSel = document.getElementById("sat-activation-mode");
+        const wwSel = document.getElementById("sat-wakeword");
+        if (actSel && !actSel.options.length) {
+            actSel.innerHTML = (d.activation_modes || []).map(t => `<option value="${t.id}">${t.label}</option>`).join("");
+            actSel.addEventListener("change", _syncSatActivation);
+        }
+        if (wwSel && !wwSel.options.length) {
+            wwSel.innerHTML = (d.wake_words || []).map(t => `<option value="${t.id}">${t.label}</option>`).join("");
+        }
+        _syncSatActivation();
+        _syncSatAudioRows();
+    } catch (e) { /* silencieux : l'UI affichera une liste vide */ }
+}
+function _syncSatActivation() {
+    const mode = (document.getElementById("sat-activation-mode") || {}).value || "wakeword";
+    const ww = document.getElementById("sat-wakeword");
+    const pin = document.getElementById("sat-button-pin");
+    if (ww) ww.style.display = (mode === "wakeword") ? "" : "none";
+    if (pin) pin.style.display = (mode === "button") ? "" : "none";
+}
+function _collectSatActivation() {
+    return {
+        mode: (document.getElementById("sat-activation-mode") || {}).value || "wakeword",
+        wake_word: (document.getElementById("sat-wakeword") || {}).value || "hey_jarvis",
+        button_pin: (document.getElementById("sat-button-pin") || {}).value || "GPIO0",
+    };
+}
+function _syncSatAudioRows() {
+    // PDM : pas de BCLK micro. Sortie analogique (DAC interne) : pas de broches I2S HP.
+    const mic = (document.getElementById("sat-mic-type") || {}).value;
+    const spk = (document.getElementById("sat-spk-type") || {}).value;
+    const micBclk = document.getElementById("sat-mic-bclk-grp");
+    if (micBclk) micBclk.style.display = (mic === "pdm") ? "none" : "";
+    const spkPins = document.getElementById("sat-spk-pins");
+    if (spkPins) spkPins.style.display = (spk === "analog") ? "none" : "flex";
+}
+function _collectSatAudio() {
+    const g = id => (document.getElementById(id) || {}).value || "";
+    return {
+        board: g("sat-board"),
+        mic_type: g("sat-mic-type"), mic_ws: g("sat-mic-ws"), mic_bclk: g("sat-mic-bclk"), mic_din: g("sat-mic-din"),
+        spk_type: g("sat-spk-type"), spk_ws: g("sat-spk-ws"), spk_bclk: g("sat-spk-bclk"), spk_dout: g("sat-spk-dout"),
+    };
+}
+function _satCatalogOptionsHtml() {
+    // Regroupe par 'group' en <optgroup>.
+    const groups = {};
+    _satCatalog.forEach(c => { (groups[c.group] = groups[c.group] || []).push(c); });
+    return Object.entries(groups).map(([g, items]) =>
+        `<optgroup label="${g}">` + items.map(c => `<option value="${c.id}">${c.label}</option>`).join("") + `</optgroup>`
+    ).join("");
+}
+function _syncSatI2cRow() {
+    const row = document.getElementById("sat-i2c-row");
+    if (!row) return;
+    const anyI2c = Array.from(document.querySelectorAll("#sat-sensors-list .sat-sensor-type"))
+        .some(sel => (_satCatalogById[sel.value] || {}).bus === "i2c");
+    row.style.display = anyI2c ? "block" : "none";
+}
+function _addSatSensorRow(preset) {
+    const list = document.getElementById("sat-sensors-list");
+    if (!list) return;
+    const row = document.createElement("div");
+    row.className = "sat-sensor-row";
+    row.style.cssText = "display:flex;gap:6px;align-items:center;";
+    row.innerHTML = `
+        <select class="sat-sensor-type" style="flex:1.6;background:rgba(0,0,0,0.4);border:1px solid var(--border-color);border-radius:6px;color:#fff;padding:6px;">${_satCatalogOptionsHtml()}</select>
+        <input class="sat-sensor-name" type="text" placeholder="pièce/nom" style="flex:1;" />
+        <input class="sat-sensor-pin" type="text" placeholder="GPIO" style="width:72px;" />
+        <button type="button" class="btn" title="Retirer" style="flex-shrink:0;padding:2px 8px;">🗑️</button>`;
+    const typeSel = row.querySelector(".sat-sensor-type");
+    const pinInput = row.querySelector(".sat-sensor-pin");
+    const syncRow = () => {
+        const c = _satCatalogById[typeSel.value] || {};
+        if (c.bus === "i2c") {
+            pinInput.style.display = "none";          // I2C = bus partagé, pas de broche par capteur
+        } else {
+            pinInput.style.display = "";
+            if (!pinInput.value) pinInput.value = c.default_pin || "";
+        }
+        _syncSatI2cRow();
+    };
+    typeSel.addEventListener("change", () => { pinInput.value = ""; syncRow(); });
+    if (preset) typeSel.value = preset;
+    syncRow();
+    row.querySelector("button").addEventListener("click", () => { row.remove(); _syncSatI2cRow(); });
+    list.appendChild(row);
+}
+function _collectSatModules() {
+    return Array.from(document.querySelectorAll("#sat-sensors-list .sat-sensor-row")).map(row => ({
+        type: row.querySelector(".sat-sensor-type").value,
+        name: row.querySelector(".sat-sensor-name").value.trim(),
+        pin: row.querySelector(".sat-sensor-pin").value.trim(),
+    }));
+}
+const _btnSatSensorAdd = document.getElementById("btn-sat-sensor-add");
+if (_btnSatSensorAdd) _btnSatSensorAdd.addEventListener("click", async () => { await _ensureSatCatalog(); _addSatSensorRow(); });
+
+let _lastSatYaml = { text: "", filename: "satellite.yaml" };
+const _btnSatYaml = document.getElementById("btn-sat-yaml");
+if (_btnSatYaml) _btnSatYaml.addEventListener("click", async () => {
+    const st = document.getElementById("sat-save-status");
+    const name = document.getElementById("sat-name").value.trim() || "salon";
+    try {
+        const r = await apiFetch("/api/config/satellites/yaml", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name,
+                encryption_key: document.getElementById("sat-key").value.trim(),
+                modules: _collectSatModules(),
+                i2c_sda: (document.getElementById("sat-i2c-sda") || {}).value || "GPIO8",
+                i2c_scl: (document.getElementById("sat-i2c-scl") || {}).value || "GPIO9",
+                audio: _collectSatAudio(),
+                activation: _collectSatActivation(),
+                custom_yaml: (document.getElementById("sat-custom-yaml") || {}).value || ""
+            })
+        });
+        const d = await r.json();
+        _lastSatYaml = { text: d.yaml || "", filename: d.filename || "satellite.yaml" };
+        document.getElementById("sat-yaml-text").value = _lastSatYaml.text;
+        document.getElementById("sat-yaml-cmd").textContent = `pip install esphome && esphome run ${_lastSatYaml.filename}`;
+        document.getElementById("sat-yaml-result").style.display = "block";
+        if (st) st.textContent = "📄 Firmware généré ci-dessous.";
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+});
+
+function _copyToClipboard(text, btn) {
+    if (navigator.clipboard) navigator.clipboard.writeText(text);
+    if (btn) { const o = btn.textContent; btn.textContent = "✓"; setTimeout(() => { btn.textContent = o; }, 1500); }
+}
+const _btnSatYamlCopy = document.getElementById("btn-sat-yaml-copy");
+if (_btnSatYamlCopy) _btnSatYamlCopy.addEventListener("click", () => _copyToClipboard(_lastSatYaml.text, _btnSatYamlCopy));
+const _btnSatCmdCopy = document.getElementById("btn-sat-cmd-copy");
+if (_btnSatCmdCopy) _btnSatCmdCopy.addEventListener("click", () => _copyToClipboard(document.getElementById("sat-yaml-cmd").textContent, _btnSatCmdCopy));
+const _btnSatYamlDl = document.getElementById("btn-sat-yaml-dl");
+if (_btnSatYamlDl) _btnSatYamlDl.addEventListener("click", () => {
+    const blob = new Blob([_lastSatYaml.text], { type: "text/yaml" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = _lastSatYaml.filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+});
+
+const _btnSatConnect = document.getElementById("btn-sat-connect");
+if (_btnSatConnect) _btnSatConnect.addEventListener("click", async () => {
+    const st = document.getElementById("sat-save-status");
+    if (st) st.textContent = "⏳ Reconnexion…";
+    try {
+        const r = await apiFetch("/api/config/satellites/connect", { method: "POST" });
+        const d = await r.json().catch(() => ({}));
+        renderSatellitesStatus(d.satellites);
+        if (st) st.textContent = "✅ Reconnexion lancée.";
+        loadSatellitesPane();
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+});
 
 // -------------------------------------------------------------------------
 // ONGLET : ROUTINES PLANIFIÉES

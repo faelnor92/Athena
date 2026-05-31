@@ -1491,6 +1491,113 @@ async def save_config_mcp(req: SaveMcpRequest):
     return {"status": "success", "mcp": mcp_manager.status()}
 
 
+# --- Satellites vocaux ESP32-S3 (ESPHome, sans Home Assistant) ---------------
+class SaveSatelliteRequest(BaseModel):
+    name: str
+    host: str = ""
+    port: int = 6053
+    encryption_key: str = ""
+    password: str = ""
+
+
+@app.get("/api/config/satellites")
+async def get_config_satellites():
+    """Liste les satellites configurés (clé masquée) + état de connexion live."""
+    from voice import esphome_satellites as es
+    sats = es._load_satellites()
+    safe = [{
+        "name": s.get("name"),
+        "host": s.get("host", ""),
+        "port": int(s.get("port", 6053)),
+        "key_set": bool(s.get("encryption_key") or s.get("password")),
+    } for s in sats]
+    return {"satellites": safe, "status": es.manager.status()}
+
+
+@app.post("/api/config/satellites/genkey")
+async def gen_satellite_key():
+    """Génère une clé d'API ESPHome (base64) à recopier dans le YAML de l'ESP."""
+    from voice import esphome_satellites as es
+    return {"key": es.generate_encryption_key()}
+
+
+@app.post("/api/config/satellites")
+async def save_config_satellite(req: SaveSatelliteRequest):
+    """Ajoute/met à jour un satellite puis reconnecte le listener."""
+    from voice import esphome_satellites as es
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail="Le nom du satellite est requis.")
+    if not req.host.strip():
+        raise HTTPException(status_code=400, detail="L'adresse (IP/host) du satellite est requise.")
+    try:
+        es.upsert_satellite(req.dict())
+        await asyncio.to_thread(es.manager.restart)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "success", "satellites": es.manager.status()}
+
+
+@app.delete("/api/config/satellites/{name}")
+async def delete_config_satellite(name: str):
+    """Supprime un satellite puis reconnecte le listener."""
+    from voice import esphome_satellites as es
+    es.delete_satellite(name)
+    await asyncio.to_thread(es.manager.restart)
+    return {"status": "success", "satellites": es.manager.status()}
+
+
+@app.get("/api/config/satellites/sensor-catalog")
+async def get_sensor_catalog():
+    """Catalogue capteurs + types audio (micro/sortie) proposés dans l'UI (source unique)."""
+    from voice import esphome_satellites as es
+    return {
+        "catalog": es.SENSOR_CATALOG,
+        "mic_types": es.MIC_TYPES,
+        "speaker_types": es.SPEAKER_TYPES,
+        "audio_defaults": es.DEFAULT_AUDIO,
+        "activation_modes": es.ACTIVATION_MODES,
+        "wake_words": es.WAKE_WORDS,
+    }
+
+
+class SatelliteYamlRequest(BaseModel):
+    name: str
+    encryption_key: str = ""
+    modules: List[Dict[str, Any]] = []
+    i2c_sda: str = "GPIO8"
+    i2c_scl: str = "GPIO9"
+    audio: Dict[str, Any] = {}
+    activation: Dict[str, Any] = {}
+    custom_yaml: str = ""
+
+
+@app.post("/api/config/satellites/yaml")
+async def gen_satellite_yaml(req: SatelliteYamlRequest):
+    """Génère le YAML ESPHome prêt à compiler (voix Jarvis + capteurs + audio + YAML custom)."""
+    from voice import esphome_satellites as es
+    name = (req.name or "").strip() or "salon"
+    key = (req.encryption_key or "").strip()
+    # Si la clé n'est pas fournie mais que le satellite existe déjà, réutiliser la sienne.
+    if not key:
+        existing = next((s for s in es._load_satellites() if s.get("name") == name), None)
+        if existing:
+            key = (existing.get("encryption_key") or "").strip()
+    yaml_text = es.generate_yaml(
+        name, key, modules=req.modules,
+        i2c_sda=req.i2c_sda, i2c_scl=req.i2c_scl, audio=req.audio,
+        activation=req.activation, custom_yaml=req.custom_yaml,
+    )
+    return {"yaml": yaml_text, "filename": f"jarvis-satellite-{es._slug(name)}.yaml"}
+
+
+@app.post("/api/config/satellites/connect")
+async def connect_satellites():
+    """(Re)connecte tous les satellites configurés."""
+    from voice import esphome_satellites as es
+    await asyncio.to_thread(es.manager.restart)
+    return {"status": "success", "satellites": es.manager.status()}
+
+
 @app.delete("/api/config/skills/{skill_name}")
 async def delete_config_skill(skill_name: str):
     """Supprime une compétence permanente (fichier skills/<name>.py)."""
@@ -2284,6 +2391,17 @@ def broadcast_notification(message: str, title: str = None):
 # Lancement du planificateur d'agenda en tâche de fond
 t_agenda = threading.Thread(target=agenda_scheduler, daemon=True)
 t_agenda.start()
+
+# Démarrage du listener satellites ESP32-S3 (ESPHome) si au moins un est configuré.
+# Tolérant : si aioesphomeapi/whisper/Piper manquent, l'erreur est juste remontée
+# dans l'UI (status), le serveur n'est pas impacté.
+try:
+    from voice.esphome_satellites import manager as satellite_manager, _load_satellites
+    if _load_satellites():
+        satellite_manager.start()
+        print("🛰️  [Satellites] Listener démarré.")
+except Exception as e:
+    print(f"🛰️  [Satellites] non démarré : {e}")
 
 
 # =========================================================================

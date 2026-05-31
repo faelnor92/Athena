@@ -5,8 +5,12 @@
 # déclenchant l'écoute par un BOUTON (push-to-talk). Jarvis se connecte à l'ESP
 # via l'API native et joue le rôle d'assistant.
 #
-# Après flash : récupère la clé 'api.encryption.key' et mets-la dans satellites.json,
-# puis lance :  python3 esphome_satellites.py
+# Le plus simple : Réglages ⚙️ → onglet « 🛰️ Satellites vocaux » dans l'UI Jarvis.
+#   1) clique « Générer une clé » et recopie-la ci-dessous (api.encryption.key) ;
+#   2) flashe l'ESP ;
+#   3) renseigne nom + IP + la même clé dans l'UI → Jarvis se connecte tout seul
+#      (le listener tourne dans le serveur, plus besoin de script séparé).
+# (Alternative manuelle : clé dans satellites.json puis `python3 esphome_satellites.py`.)
 
 esphome:
   name: jarvis-satellite-salon
