@@ -1498,6 +1498,8 @@ class SaveSatelliteRequest(BaseModel):
     port: int = 6053
     encryption_key: str = ""
     password: str = ""
+    wake_mode: str = "embedded"
+    wake_word: str = "hey_jarvis"
 
 
 @app.get("/api/config/satellites")
@@ -1510,6 +1512,8 @@ async def get_config_satellites():
         "host": s.get("host", ""),
         "port": int(s.get("port", 6053)),
         "key_set": bool(s.get("encryption_key") or s.get("password")),
+        "wake_mode": s.get("wake_mode", "embedded"),
+        "wake_word": s.get("wake_word", "hey_jarvis"),
     } for s in sats]
     return {"satellites": safe, "status": es.manager.status()}
 

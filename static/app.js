@@ -2041,6 +2041,11 @@ async function loadSatellitesPane() {
                 document.getElementById("sat-host").value = s.host;
                 document.getElementById("sat-port").value = s.port;
                 document.getElementById("sat-key").value = "";
+                const am = document.getElementById("sat-activation-mode");
+                const ww = document.getElementById("sat-wakeword");
+                if (am && s.wake_mode) am.value = s.wake_mode;
+                if (ww && s.wake_word) ww.value = s.wake_word;
+                _syncSatActivation();
             });
             row.querySelector('[data-act="del"]').addEventListener("click", async () => {
                 if (!confirm(`Supprimer le satellite « ${s.name} » ?`)) return;
@@ -2067,7 +2072,9 @@ async function saveSatelliteFromForm() {
             body: JSON.stringify({
                 name, host,
                 port: parseInt(document.getElementById("sat-port").value || "6053", 10),
-                encryption_key: document.getElementById("sat-key").value.trim()
+                encryption_key: document.getElementById("sat-key").value.trim(),
+                wake_mode: (document.getElementById("sat-activation-mode") || {}).value || "embedded",
+                wake_word: (document.getElementById("sat-wakeword") || {}).value || "hey_jarvis"
             })
         });
         const d = await r.json().catch(() => ({}));
@@ -2141,17 +2148,16 @@ async function _ensureSatCatalog() {
     } catch (e) { /* silencieux : l'UI affichera une liste vide */ }
 }
 function _syncSatActivation() {
-    const mode = (document.getElementById("sat-activation-mode") || {}).value || "wakeword";
+    // Le wake word embarqué (microWakeWord) propose un modèle ; en mode serveur,
+    // openWakeWord utilise le modèle configuré côté Jarvis — on garde le choix visible.
+    const mode = (document.getElementById("sat-activation-mode") || {}).value || "embedded";
     const ww = document.getElementById("sat-wakeword");
-    const pin = document.getElementById("sat-button-pin");
-    if (ww) ww.style.display = (mode === "wakeword") ? "" : "none";
-    if (pin) pin.style.display = (mode === "button") ? "" : "none";
+    if (ww) ww.style.display = (mode === "embedded") ? "" : "none";
 }
 function _collectSatActivation() {
     return {
-        mode: (document.getElementById("sat-activation-mode") || {}).value || "wakeword",
+        mode: (document.getElementById("sat-activation-mode") || {}).value || "embedded",
         wake_word: (document.getElementById("sat-wakeword") || {}).value || "hey_jarvis",
-        button_pin: (document.getElementById("sat-button-pin") || {}).value || "GPIO0",
     };
 }
 function _syncSatAudioRows() {

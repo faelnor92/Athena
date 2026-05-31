@@ -71,6 +71,10 @@ def upsert_satellite(cfg: dict) -> list:
     pwd = (cfg.get("password") or "").strip() or (existing.get("password") if existing else "")
     if pwd:
         entry["password"] = pwd
+    # Mode de réveil : 'embedded' (microWakeWord sur l'ESP) ou 'server' (openWakeWord
+    # dans Jarvis). En mode serveur, le manager fait tourner la détection.
+    entry["wake_mode"] = (cfg.get("wake_mode") or (existing.get("wake_mode") if existing else "") or "embedded")
+    entry["wake_word"] = (cfg.get("wake_word") or (existing.get("wake_word") if existing else "") or "hey_jarvis")
     if existing:
         sats = [entry if s.get("name") == name else s for s in sats]
     else:
@@ -249,11 +253,12 @@ SPEAKER_TYPES = [
     {"id": "analog", "label": "Analogique — DAC interne (ESP32 classique, pas S3)"},
 ]
 
-# Modes d'activation (comment réveiller le satellite) + wake words embarqués dispo.
+# Modes de réveil (tous mains-libres). Plus de push-to-talk.
 ACTIVATION_MODES = [
-    {"id": "wakeword", "label": "🎤 Wake word embarqué (mains-libres, ESP32-S3)"},
-    {"id": "button", "label": "🔘 Bouton (push-to-talk)"},
+    {"id": "embedded", "label": "🎤 Embarqué (microWakeWord, sur l'ESP32-S3)"},
+    {"id": "server", "label": "🛰️ Serveur (openWakeWord, dans Jarvis)"},
 ]
+# Wake words embarqués (modèles microWakeWord intégrés à ESPHome).
 WAKE_WORDS = [
     {"id": "hey_jarvis", "label": "Hey Jarvis"},
     {"id": "okay_nabu", "label": "Okay Nabu"},
@@ -301,23 +306,17 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     choisis dans le catalogue (+ YAML perso optionnel). Injecte automatiquement le
     bus I2C / one_wire si des capteurs en ont besoin. Broches à adapter à la carte.
 
-    activation = {mode: 'wakeword'|'button', wake_word: 'hey_jarvis', button_pin: 'GPIO0'}.
+    activation = {mode: 'embedded'|'server', wake_word: 'hey_jarvis'}. Tous mains-libres.
     """
     node = f"jarvis-satellite-{_slug(name)}"
     key = (encryption_key or "").strip() or generate_encryption_key()
     modules = modules or []
 
-    act = {"mode": "wakeword", "wake_word": "hey_jarvis", "button_pin": "GPIO0"}
+    act = {"mode": "embedded", "wake_word": "hey_jarvis"}
     act.update({k: v for k, v in (activation or {}).items() if v})
     mode = act["mode"]
 
     sections = {"sensor": [], "binary_sensor": [], "switch": []}
-    if mode == "button":
-        sections["binary_sensor"].append(
-            f"  - platform: gpio\n    pin: {act['button_pin']}          # bouton (push-to-talk)\n"
-            "    name: \"Parler\"\n    on_press:\n      - voice_assistant.start\n"
-            "    on_release:\n      - voice_assistant.stop"
-        )
     needs_i2c = False
     onewire_pin = None
     for m in modules:
@@ -351,23 +350,31 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     board = a["board"]
     audio_block = _audio_block(a)
 
-    # Bloc d'activation : wake word embarqué (mains-libres) ou bouton.
-    if mode == "wakeword":
+    # Bloc d'activation (mains-libres) : wake word embarqué (microWakeWord, sur l'ESP)
+    # ou serveur (openWakeWord, dans Jarvis ; l'ESP streame en continu).
+    esphome_extra = ""
+    if mode == "server":
+        # L'ESP streame en continu vers Jarvis dès que l'API (Jarvis) est connectée ;
+        # c'est Jarvis qui détecte le wake word (openWakeWord) puis traite la commande.
+        esphome_extra = (
+            "\n  on_boot:\n    - wait_until:\n        condition:\n          api.connected:\n"
+            "    - voice_assistant.start_continuous:\n"
+        )
+        voice_block = (
+            "# --- Wake word SERVEUR : Jarvis (openWakeWord) écoute le flux continu ---\n"
+            "voice_assistant:\n  microphone: mic\n  speaker: spk\n  use_wake_word: false\n"
+        )
+    else:
         ww = act.get("wake_word") or "hey_jarvis"
         voice_block = (
             "# --- PSRAM requise pour le wake word embarqué (adapte au besoin) ---\n"
             "psram:\n\n"
-            "# --- Wake word embarqué (mains-libres) : tourne sur l'ESP32-S3 ---\n"
+            "# --- Wake word EMBARQUÉ (microWakeWord) : tourne sur l'ESP32-S3 ---\n"
             "micro_wake_word:\n"
             f"  models:\n    - model: {ww}\n"
             "  on_wake_word_detected:\n    - voice_assistant.start\n\n"
             "# --- Assistant vocal géré par Jarvis ---\n"
             "voice_assistant:\n  microphone: mic\n  speaker: spk\n"
-        )
-    else:
-        voice_block = (
-            "# --- Assistant vocal : push-to-talk (bouton), géré par Jarvis ---\n"
-            "voice_assistant:\n  microphone: mic\n  speaker: spk\n  use_wake_word: false\n"
         )
 
     return f"""# Satellite ESP32-S3 piloté DIRECTEMENT par Jarvis (voix), capteurs visibles aussi par HA.
@@ -379,7 +386,7 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
 # Les capteurs restent diffusés à TOUS les clients API (HA ET Jarvis en parallèle).
 
 esphome:
-  name: {node}
+  name: {node}{esphome_extra}
 
 esp32:
   board: {board}
@@ -411,6 +418,10 @@ class Satellite:
         self.client = None
         self._buf = bytearray()
         self._in_sr = 16000
+        # Mode de réveil : 'server' => Jarvis détecte le wake word (openWakeWord) ;
+        # 'embedded' => l'ESP a déjà déclenché (microWakeWord), on traite directement.
+        self.wake_mode = cfg.get("wake_mode", "embedded")
+        self._wake = None
 
     async def connect(self):
         from aioesphomeapi import APIClient
@@ -459,10 +470,36 @@ class Satellite:
         except Exception:
             pass
 
+    def _detect_wake(self, pcm_in: bytes) -> bool:
+        """Mode serveur : passe le segment audio dans openWakeWord. True si le wake
+        word y est détecté. En cas d'erreur/lib absente, on ne bloque pas (fallback)."""
+        try:
+            import numpy as np
+            if self._wake is None:
+                from .wakeword import WakeWord
+                self._wake = WakeWord(
+                    self.vc.get("wake_engine", "openwakeword"),
+                    self.vc.get("wake_word", "hey jarvis"),
+                    self.vc.get("porcupine_key", ""), 16000,
+                )
+            samples = np.frombuffer(pcm_in, dtype=np.int16)
+            for i in range(0, max(0, len(samples) - 1280), 1280):
+                if self._wake.detect(samples[i:i + 1280]):
+                    return True
+            return False
+        except Exception as e:
+            print(f"[Satellite {self.name}] wake word serveur indisponible ({e}) — segment traité par défaut.")
+            return True
+
     def _pipeline(self, pcm_in: bytes):
         """STT -> essaim (streaming) -> TTS phrase par phrase -> audio vers le satellite."""
         import numpy as np
         loop = asyncio.get_event_loop() if False else None  # exécuté hors-loop (to_thread)
+
+        # 0. Mode serveur : ne traiter que si le wake word est détecté dans le segment.
+        if self.wake_mode == "server" and not self._detect_wake(pcm_in):
+            self._send_event_threadsafe("VOICE_ASSISTANT_RUN_END")
+            return
 
         # 1. STT
         samples = np.frombuffer(pcm_in, dtype=np.int16).astype("float32") / 32768.0

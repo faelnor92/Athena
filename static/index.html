@@ -835,14 +835,13 @@
                     </div>
                     <button type="button" id="btn-sat-add" class="btn btn-primary" style="width: 100%; margin-top: 8px;">＋ Ajouter / Mettre à jour</button>
 
-                    <!-- Activation (comment réveiller le satellite) -->
-                    <h5 style="color: var(--accent-cyan); margin: 14px 0 4px;">Activation (firmware)</h5>
+                    <!-- Réveil (wake word, mains-libres) — propriété du satellite + firmware -->
+                    <h5 style="color: var(--accent-cyan); margin: 14px 0 4px;">Réveil — wake word (mains-libres)</h5>
                     <div style="display: flex; gap: 6px; align-items: center;">
                         <select id="sat-activation-mode" style="flex: 1.4; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 6px; color: #fff; padding: 8px;"></select>
                         <select id="sat-wakeword" style="flex: 1; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 6px; color: #fff; padding: 8px;"></select>
-                        <input id="sat-button-pin" type="text" value="GPIO0" placeholder="GPIO bouton" style="width: 110px; display: none;">
                     </div>
-                    <p class="section-desc" style="font-size: 0.72rem; margin-top: 4px;">Wake word embarqué = mains-libres (idéal plafond/miroir, nécessite un ESP32-S3 avec PSRAM).</p>
+                    <p class="section-desc" style="font-size: 0.72rem; margin-top: 4px;"><strong>Embarqué</strong> : microWakeWord tourne sur l'ESP (latence mini, PSRAM requise). <strong>Serveur</strong> : l'ESP streame en continu, Jarvis détecte via openWakeWord (utile si microWakeWord déçoit). Aucun bouton.</p>
 
                     <!-- Composition du firmware : capteurs présents sur l'ESP -->
                     <h5 style="color: var(--accent-cyan); margin: 14px 0 4px;">Capteurs / sorties sur cet ESP (firmware)</h5>
