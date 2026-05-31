@@ -3,6 +3,12 @@ let sessionToken = localStorage.getItem("jarvis_session_token") || "";
 let chatClientId = localStorage.getItem("jarvis_client_id") || "web";
 
 // Wrapper de fetch sécurisé avec injecteur de jeton d'autorisation Bearer
+function setServerReachable(ok) {
+    const banner = document.getElementById("server-down-banner");
+    if (banner) banner.style.display = ok ? "none" : "block";
+    if (document.body) document.body.style.paddingTop = ok ? "" : "38px";
+}
+
 async function apiFetch(url, options = {}) {
     if (!options.headers) {
         options.headers = {};
@@ -10,7 +16,15 @@ async function apiFetch(url, options = {}) {
     if (sessionToken) {
         options.headers["Authorization"] = `Bearer ${sessionToken}`;
     }
-    const response = await fetch(url, options);
+    let response;
+    try {
+        response = await fetch(url, options);
+    } catch (e) {
+        // Échec réseau = serveur backend injoignable (éteint, crashé, port fermé).
+        setServerReachable(false);
+        throw e;
+    }
+    setServerReachable(true);
     if (response.status === 401) {
         localStorage.removeItem("jarvis_session_token");
         sessionToken = "";
@@ -18,6 +32,18 @@ async function apiFetch(url, options = {}) {
     }
     return response;
 }
+
+// Sonde de disponibilité : ping léger pour afficher/masquer le bandeau même au repos.
+async function _pingServer() {
+    try {
+        await fetch("/api/platform", { method: "GET", cache: "no-store" });
+        setServerReachable(true);
+    } catch (e) {
+        setServerReachable(false);
+    }
+}
+setInterval(_pingServer, 15000);
+window.addEventListener("DOMContentLoaded", _pingServer);
 
 function showLoginOverlay() {
     const overlay = document.getElementById("login-overlay");
