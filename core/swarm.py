@@ -31,6 +31,7 @@ import tools.conversation_tools
 import tools.mcp_manager
 import tools.notify_tools
 import tools.planning_tools
+import tools.agent_tools
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -64,6 +65,7 @@ AVAILABLE_TOOLS = {
     "send_notification": tools.notify_tools.send_notification,
     "make_plan": tools.planning_tools.make_plan,
     "update_plan_step": tools.planning_tools.update_plan_step,
+    "create_agent": tools.agent_tools.create_agent,
 }
 
 def load_dynamic_skills() -> dict:
@@ -271,7 +273,12 @@ class Swarm:
     def load_agents(self, path: str):
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
-            
+
+        # Reset : repartir d'une table vierge pour que les agents SUPPRIMÉS de
+        # agents.yaml disparaissent réellement lors d'un hot-reload (sinon ils
+        # survivaient en mémoire jusqu'au redémarrage du serveur).
+        self.agents = {}
+
         # Première passe : créer les agents sans les fonctions de transfert (handoffs)
         for agent_data in data.get("agents", []):
             agent = Agent(

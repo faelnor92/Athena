@@ -378,7 +378,15 @@ async function reloadSwarmConfig() {
         
         rebuildGraphView();
         rebuildOfficeFloor();
-        
+
+        // Si la modale de réglages est ouverte, rafraîchir aussi la liste d'agents
+        // (sinon elle reste figée sur l'ancien effectif jusqu'à réouverture).
+        const settingsModalEl = document.getElementById("settings-modal");
+        if (settingsModalEl && settingsModalEl.style.display === "flex" &&
+            typeof loadConfigAgentsPane === "function") {
+            loadConfigAgentsPane();
+        }
+
         // Charger également l'historique arborescent et la mémoire
         reloadChatHistory();
         refreshMemory();
@@ -598,6 +606,65 @@ function getAgentSpriteSVG(typeOrName) {
             collar: `<path d="M26 35 L38 35 L34 40 L30 40 Z" fill="#ff007f" opacity="0.85"/>`,
             chest: `<path d="M32 49 C30 46.8 28.4 45.8 28.4 44.1 C28.4 43 29.2 42.2 30.2 42.2 C30.9 42.2 31.6 42.6 32 43.3 C32.4 42.6 33.1 42.2 33.8 42.2 C34.8 42.2 35.6 43 35.6 44.1 C35.6 45.8 34 46.8 32 49 Z" fill="#ff007f"/>`,
             accessory: `<path d="M54 44.5 C53 43.4 52.2 42.9 52.2 42 C52.2 41.4 52.6 41 53.1 41 C53.5 41 53.8 41.2 54 41.6 C54.2 41.2 54.5 41 54.9 41 C55.4 41 55.8 41.4 55.8 42 C55.8 42.9 55 43.4 54 44.5 Z" fill="#ff007f"/><circle cx="57" cy="50" r="2.3" fill="none" stroke="#ff007f" stroke-width="0.9"/><path d="M55.7 50 L56.7 51.2 L58.4 49" stroke="#ff007f" stroke-width="0.9" fill="none" stroke-linecap="round"/>`
+        });
+    } else if (key === "support_green" || key === "support" || key === "helpdesk") {
+        return character({
+            skin: "#e7b489", skinShade: "#cd9568",
+            jacket: "#064e3b", jacketShade: "rgba(0,0,0,0.18)", pants: "#1f2937", shoes: "#22c55e", accent: "#22c55e",
+            hair: `<path d="M19 21 Q19 9 32 9 Q45 9 45 21 Q43 13 37 11.5 Q32 9.5 27 11.5 Q21 13 19 21 Z" fill="#4b3a26"/>`,
+            collar: `<path d="M27 35 L37 35 L32 40 Z" fill="#22c55e" opacity="0.85"/>`,
+            accessory: `<path d="M18 22 Q18 8 32 8 Q46 8 46 22" stroke="#22c55e" stroke-width="1.7" fill="none"/><rect x="15.6" y="20" width="4.4" height="6.4" rx="2.2" fill="#16a34a"/><rect x="44" y="20" width="4.4" height="6.4" rx="2.2" fill="#16a34a"/><path d="M17.8 26 Q16 31 24 31" stroke="#22c55e" stroke-width="1.2" fill="none"/><circle cx="24.5" cy="31" r="1.4" fill="#22c55e"/>`
+        });
+    } else if (key === "scientist_blue" || key === "scientifique" || key === "data" || key === "chercheur") {
+        return character({
+            skin: "#ecc0a0", skinShade: "#d3a37f",
+            jacket: "#eef3f8", jacketShade: "rgba(0,0,0,0.09)", pants: "#1e293b", shoes: "#0ea5e9", accent: "#0ea5e9",
+            hair: `<path d="M18.8 22 Q18 8 32 7.5 Q46 8 45.2 22 Q43 13 37 11 Q32 9 27 11 Q21 13 18.8 22 Z" fill="#3b2f2a"/>`,
+            face: `<circle cx="27.6" cy="22.2" r="3" fill="rgba(14,165,233,0.10)" stroke="#0ea5e9" stroke-width="0.9"/><circle cx="36.4" cy="22.2" r="3" fill="rgba(14,165,233,0.10)" stroke="#0ea5e9" stroke-width="0.9"/><line x1="30.6" y1="22.2" x2="33.4" y2="22.2" stroke="#0ea5e9" stroke-width="0.9"/>`,
+            collar: `<path d="M26 35 L38 35 L34 41 L30 41 Z" fill="#cbd5e1"/><path d="M30.8 36 L33.2 36 L32 44 Z" fill="#0ea5e9"/>`,
+            accessory: `<path d="M52 44 L52 47 L49 54 Q49 56 51 56 L57 56 Q59 56 59 54 L56 47 L56 44 Z" fill="rgba(14,165,233,0.22)" stroke="#0ea5e9" stroke-width="1"/><path d="M50.2 51.5 L57.8 51.5 L56 47 L52 47 Z" fill="#0ea5e9" opacity="0.55"/><circle cx="53" cy="49.5" r="0.7" fill="#bae6fd"/><circle cx="55.4" cy="50.6" r="0.5" fill="#bae6fd"/><rect x="51.6" y="42.6" width="4.8" height="1.8" rx="0.7" fill="#94a3b8"/>`
+        });
+    } else if (key === "agent_dark" || key === "agent_secret" || key === "securite" || key === "sécurité" || key === "security") {
+        return character({
+            skin: "#d79e6e", skinShade: "#bd8456",
+            jacket: "#0b0f17", jacketShade: "rgba(0,0,0,0.22)", pants: "#0b0f17", shoes: "#1f2937", accent: "#94a3b8",
+            hair: `<path d="M19 20 Q19 9 32 9 Q45 9 45 20 Q43 13 37 11.5 Q32 9.5 27 11.5 Q21 13 19 20 Z" fill="#15161c"/>`,
+            face: `<path d="M22 20.5 L31 20.5 Q32 20.5 32 21.5 L32 22 Q32 24.8 30 24.8 L25 24.8 Q22.6 24.8 22 22.6 Z" fill="#0b1220" stroke="#334155" stroke-width="0.5"/><path d="M42 20.5 L33 20.5 Q32 20.5 32 21.5 L32 22 Q32 24.8 34 24.8 L39 24.8 Q41.4 24.8 42 22.6 Z" fill="#0b1220" stroke="#334155" stroke-width="0.5"/><line x1="24" y1="21.6" x2="27" y2="21.6" stroke="#475569" stroke-width="0.6" opacity="0.7"/>`,
+            collar: `<path d="M27 35 L37 35 L32 41 Z" fill="#ffffff"/><path d="M30.7 36 L33.3 36 L32.6 45 L31.4 45 Z" fill="#b91c1c"/>`,
+            accessory: `<path d="M44 23 Q48.5 24 47.2 30.5" stroke="#cbd5e1" stroke-width="1" fill="none"/><circle cx="44.4" cy="22.6" r="1.5" fill="#cbd5e1"/>`
+        });
+    } else if (key === "wizard_purple" || key === "mage" || key === "mystique" || key === "wizard") {
+        return character({
+            skin: "#ecc0a0", skinShade: "#d3a37f",
+            jacket: "#4c1d95", jacketShade: "rgba(0,0,0,0.20)", pants: "#2e1065", shoes: "#7c3aed", accent: "#c4b5fd",
+            hair: `<path d="M32 1 L20.5 16 L43.5 16 Z" fill="#5b21b6" stroke="#7c3aed" stroke-width="0.6"/><path d="M32 1 L43.5 16 L37 16 Z" fill="rgba(0,0,0,0.18)"/><ellipse cx="32" cy="16" rx="14.5" ry="3" fill="#5b21b6"/><path d="M31 3 L33.6 0.5 L31.5 5 Z" fill="#fbbf24"/><circle cx="27.5" cy="9" r="0.8" fill="#fde68a"/><circle cx="36" cy="7" r="0.8" fill="#fde68a"/>`,
+            face: `<path d="M24.5 26 Q25.5 37 32 39 Q38.5 37 39.5 26 Q36 30.5 32 30.5 Q28 30.5 24.5 26 Z" fill="#eef2f7"/><path d="M27.5 25.5 Q32 28.5 36.5 25.5" stroke="#dfe5ec" stroke-width="1.4" fill="none" stroke-linecap="round"/>`,
+            accessory: `<line x1="55" y1="34" x2="52.6" y2="60" stroke="#78350f" stroke-width="1.7" stroke-linecap="round"/><circle cx="55.6" cy="32.5" r="3.6" fill="rgba(196,181,253,0.32)" stroke="#c4b5fd" stroke-width="1"/><circle cx="55.6" cy="32.5" r="1.2" fill="#ede9fe"/><path d="M50 38 L51 36 L51.6 38 L53.6 38.6 L51.6 39.2 L51 41 L50.4 39.2 L48.4 38.6 Z" fill="#c4b5fd" opacity="0.8"/>`
+        });
+    } else if (key === "cyber_neko" || key === "neko" || key === "chat" || key === "cat") {
+        return character({
+            skin: "#ecc0a0", skinShade: "#d3a37f",
+            jacket: "#1f1530", jacketShade: "rgba(0,0,0,0.22)", pants: "#3b2f52", shoes: "#22d3ee", accent: "#22d3ee",
+            hair: `<path d="M19 22 Q18 9 32 8 Q46 9 45 22 Q43 13 37 11 Q32 9 27 11 Q21 13 19 22 Z" fill="#2a2140"/><path d="M21.5 12 L19 3.5 L27.5 9 Z" fill="#2a2140" stroke="#22d3ee" stroke-width="0.6"/><path d="M22.5 11 L21 6 L25.5 9 Z" fill="#f472b6"/><path d="M42.5 12 L45 3.5 L36.5 9 Z" fill="#2a2140" stroke="#22d3ee" stroke-width="0.6"/><path d="M41.5 11 L43 6 L38.5 9 Z" fill="#f472b6"/>`,
+            face: `<path d="M30.4 25.6 L33.6 25.6 L32 27.8 Z" fill="#f472b6"/><line x1="19.5" y1="24.6" x2="27" y2="25.8" stroke="#cbd5e1" stroke-width="0.5"/><line x1="19.5" y1="27" x2="27" y2="27.4" stroke="#cbd5e1" stroke-width="0.5"/><line x1="44.5" y1="24.6" x2="37" y2="25.8" stroke="#cbd5e1" stroke-width="0.5"/><line x1="44.5" y1="27" x2="37" y2="27.4" stroke="#cbd5e1" stroke-width="0.5"/>`,
+            accessory: `<path d="M45 59 Q57 57 57 47 Q57 41 52.5 41.5" stroke="#2a2140" stroke-width="3.6" fill="none" stroke-linecap="round"/><path d="M45 59 Q57 57 57 47 Q57 41 52.5 41.5" stroke="#22d3ee" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.55"/>`
+        });
+    } else if (key === "astronaut_white" || key === "astronaute" || key === "spationaute" || key === "explorateur") {
+        return character({
+            skin: "#e7b489", skinShade: "#cd9568",
+            jacket: "#e8edf3", jacketShade: "rgba(0,0,0,0.08)", pants: "#cbd5e1", shoes: "#94a3b8", accent: "#f97316",
+            hair: ``,
+            chest: `<rect x="26.5" y="43.5" width="11" height="7.5" rx="1.5" fill="#0b1220" stroke="#f97316" stroke-width="0.8"/><circle cx="29" cy="46" r="0.9" fill="#22c55e"/><circle cx="32" cy="46" r="0.9" fill="#f97316"/><circle cx="35" cy="46" r="0.9" fill="#ef4444"/><rect x="28" y="48.6" width="8" height="1.4" rx="0.7" fill="#38bdf8" opacity="0.6"/>`,
+            collar: `<path d="M26 35 L38 35 L38 38 L26 38 Z" fill="#f97316" opacity="0.85"/>`,
+            accessory: `<rect x="16.5" y="8.5" width="31" height="28" rx="14" fill="rgba(148,163,184,0.16)" stroke="#cbd5e1" stroke-width="1.5"/><path d="M21 14 Q26 11 31 11.5" stroke="#ffffff" stroke-width="1.4" fill="none" opacity="0.7" stroke-linecap="round"/><rect x="44.5" y="18" width="3.5" height="9" rx="1.6" fill="#94a3b8"/><rect x="16" y="18" width="3.5" height="9" rx="1.6" fill="#94a3b8"/>`
+        });
+    } else if (key === "cyber_ninja" || key === "ninja" || key === "infiltration") {
+        return character({
+            skin: "#d79e6e", skinShade: "#bd8456",
+            jacket: "#111827", jacketShade: "rgba(0,0,0,0.26)", pants: "#0b0f17", shoes: "#ef4444", accent: "#ef4444",
+            hair: `<path d="M17 27 Q15 8 32 7 Q49 8 47 27 Q47 16 40 12 Q32 8 24 12 Q17 16 17 27 Z" fill="#0b0f17"/>`,
+            face: `<path d="M19.5 24 L44.5 24 L43.5 31 Q32 37.5 20.5 31 Z" fill="#111827"/><rect x="22.5" y="20" width="19" height="3.4" rx="1.7" fill="rgba(239,68,68,0.14)" stroke="#ef4444" stroke-width="0.7"/><rect x="17" y="16.5" width="30" height="3.4" rx="1" fill="#0b0f17"/>`,
+            accessory: `<line x1="48" y1="58" x2="58.5" y2="29" stroke="#cbd5e1" stroke-width="1.6" stroke-linecap="round"/><line x1="45.5" y1="62" x2="50.5" y2="48" stroke="#1f2937" stroke-width="2.4" stroke-linecap="round"/><line x1="47.6" y1="51.5" x2="53.6" y2="53.6" stroke="#ef4444" stroke-width="1"/>`
         });
     }
 
@@ -1072,10 +1139,18 @@ async function playAgentSteps(steps) {
                         logToOrchestrator(`[Coopération] ${targetAgent} a renvoyé ses résultats avec succès !`, "success");
                     }
                     
+                    // Jarvis vient de créer/mettre à jour un agent → rafraîchir l'effectif
+                    // (openspace, graphe et liste des réglages lisent le cache agentsConfig).
+                    if (prevStep && prevStep.tool === "create_agent" &&
+                        typeof step.output === "string" && step.output.startsWith("Agent")) {
+                        logToOrchestrator("Nouvel agent intégré à l'essaim — rafraîchissement de l'effectif…", "success");
+                        if (typeof reloadSwarmConfig === "function") reloadSwarmConfig();
+                    }
+
                     const bubble = document.getElementById(`bubble-${step.agent}`);
                     if (bubble) bubble.textContent = "Interprète le résultat... 📊";
                 }
-                
+
                 else if (step.type === "handoff") {
                     logToOrchestrator(`Passage de relais : ${step.from} ➔ ${step.to}`, "transition");
                     if (typeof pushNotification === "function") {
