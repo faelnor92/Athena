@@ -658,6 +658,59 @@ class Swarm:
         except Exception as e:
             print(f"[\033[91mAuto-amélioration erreur\033[0m] {e}")
 
+    def _improve_skills(self, agent: Agent, failures: list, steps: list):
+        """Amélioration des compétences PENDANT l'usage : si une compétence dynamique a
+        échoué, on tente de la RÉPARER automatiquement (LLM) puis on revalide la sûreté.
+        N'agit que sur les compétences PURES (les skills complexes de l'utilisateur ne
+        sont jamais réécrites automatiquement). Gate SELF_IMPROVE_SKILLS."""
+        if os.getenv("SELF_IMPROVE_SKILLS", "true").lower() not in ("true", "1", "yes"):
+            return
+        if not failures:
+            return
+        import tools.skills_manager as sm
+        seen = set()
+        for f in failures:
+            name = f.get("name")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            path = os.path.join("skills", f"{name}.py")
+            if not os.path.exists(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    current = fh.read()
+                # On ne répare automatiquement que les compétences pures (sûres).
+                ok, _ = sm.validate_pure_skill(current, name)
+                if not ok:
+                    continue
+                fixed = (self._complete(agent.model, [
+                    {"role": "system", "content": (
+                        "Tu es un module de RÉPARATION DE COMPÉTENCE. Corrige la fonction Python "
+                        "ci-dessous qui a levé une erreur. Garde EXACTEMENT le même nom et la même "
+                        "vocation, reste une fonction PURE (aucune I/O, imports sûrs uniquement). "
+                        "Réponds STRICTEMENT par le code Python complet de la fonction corrigée, sans "
+                        "texte ni balises markdown.")},
+                    {"role": "user", "content": (
+                        f"FONCTION ({name}) :\n{current}\n\nERREUR : {f.get('error')}\n"
+                        f"ARGS AYANT ÉCHOUÉ : {f.get('args')}")},
+                ], tools_schema=None).choices[0].message.content or "").strip()
+                # Nettoyage d'éventuelles balises ```python.
+                if fixed.startswith("```"):
+                    fixed = fixed.strip("`")
+                    fixed = fixed[len("python"):].strip() if fixed.lower().startswith("python") else fixed.strip()
+                if not fixed or fixed.strip() == current.strip():
+                    continue
+                ok2, reason = sm.validate_pure_skill(fixed, name)
+                if not ok2:
+                    print(f"[\033[93mRÉPARATION refusée\033[0m] '{name}' : {reason}")
+                    continue
+                sm.save_new_skill(name, fixed, f"(réparée auto) {name}")
+                steps.append({"type": "skill_improved", "agent": agent.name, "name": name})
+                print(f"[\033[96mAUTO-COMPÉTENCE\033[0m] Compétence '{name}' réparée automatiquement.")
+            except Exception as e:
+                print(f"[\033[91mRéparation skill erreur\033[0m] {e}")
+
     def _auto_critic(self, agent: Agent, messages: list, steps: list):
         """Passe critique avant livraison (qualité) : un relecteur vérifie la réponse
         finale ; si un problème concret est trouvé, l'agent en produit UNE version
@@ -793,6 +846,7 @@ class Swarm:
         turn = 0
         started_at = time.time()
         tokens_used = 0
+        skill_failures = []  # échecs de compétences dynamiques → réparées en fin de run
 
         while True:
             # Annulation (barge-in vocal / bouton stop) : vérifiée à chaque tour.
@@ -1184,6 +1238,13 @@ class Swarm:
                 try:
                     res = fn(**a)
                 except Exception as e:
+                    # Si c'est une compétence dynamique (skills/<nom>.py), on note l'échec
+                    # pour tenter une réparation automatique en fin de run.
+                    try:
+                        if os.path.exists(os.path.join("skills", f"{name}.py")):
+                            skill_failures.append({"name": name, "error": str(e), "args": a})
+                    except Exception:
+                        pass
                     return f"Erreur lors de l'exécution de l'outil : {str(e)}"
                 if cache_key is not None and isinstance(res, str):
                     with _TOOL_CACHE_LOCK:
@@ -1266,6 +1327,7 @@ class Swarm:
                 })
 
         # Hook post-tâche d'auto-amélioration (best-effort, ne bloque jamais le retour).
+        self._improve_skills(current_agent, skill_failures, steps)
         self._auto_critic(current_agent, messages, steps)
         self._write_experience_report(starting_agent, messages, steps)
         self._induce_skill(starting_agent, messages, steps)

@@ -1208,6 +1208,10 @@ async function playAgentSteps(steps) {
                     logToOrchestrator(`🔎 Relecture critique : réponse révisée (${(step.issues || "").split("\n")[0]})`, "system");
                 }
 
+                else if (step.type === "skill_improved") {
+                    logToOrchestrator(`🔧 Compétence « ${step.name} » réparée automatiquement.`, "success");
+                }
+
                 else if (step.type === "message" || step.type === "terminal_message") {
                     if (step.type === "terminal_message") {
                         // Afficher le message directement dans la console interactive avec rendu Markdown HTML
