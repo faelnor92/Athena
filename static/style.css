@@ -75,7 +75,9 @@ body {
 /* APP STRUCTURE: THREE COLUMNS DOCK GRID */
 .app-container {
     display: grid;
-    grid-template-columns: 76px 1fr 6px 380px;
+    /* minmax(0,…) : les colonnes peuvent rétrécir → le chat reste visible quand on
+       réduit la fenêtre, au lieu de pousser le bouton Envoyer hors écran. */
+    grid-template-columns: 76px minmax(0, 1fr) 6px minmax(300px, 380px);
     width: 100vw;
     height: 100vh;
     overflow: hidden;
@@ -1592,9 +1594,16 @@ code[class*="language-"] {
     padding: 4px 8px;
     align-items: center;
     flex-shrink: 0;
+    box-sizing: border-box;
+    max-width: 100%;
+    overflow: hidden;            /* rien ne déborde hors de la pilule */
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     transition: border-color 0.25s;
 }
+
+/* La rangée de saisie ne doit jamais pousser le bouton Envoyer hors écran. */
+#chat-form { min-width: 0; }
+.chat-mic-btn, .chat-send-btn { flex-shrink: 0; }
 
 .chat-input-pill:focus-within {
     border-color: rgba(0, 240, 255, 0.4);
@@ -1616,7 +1625,8 @@ code[class*="language-"] {
 }
 
 #chat-input {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;                /* CLÉ : autorise le champ à rétrécir → boutons toujours visibles */
     background: transparent;
     border: none;
     outline: none;
@@ -2094,7 +2104,7 @@ code[class*="language-"] {
 /* =========================================================================
    MEDIA QUERY : TABLETTES & MOBILE (Ecrans <= 1024px)
    ========================================================================= */
-@media (max-width: 1024px) {
+@media (max-width: 768px) {
     .app-container {
         grid-template-columns: 76px 1fr !important;
         grid-template-rows: 100% !important;
