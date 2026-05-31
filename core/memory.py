@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import uuid
 import chromadb
 
@@ -66,10 +67,30 @@ class SemanticMemory:
         doc_id = str(uuid.uuid4())
         self.collection.add(
             documents=[content],
-            metadatas=[{"source": source}],
+            metadatas=[{"source": source, "ts": time.time()}],
             ids=[doc_id]
         )
         return doc_id
+
+    def prune_source(self, source: str, keep: int = 50) -> int:
+        """Consolidation anti-bloat : ne conserve que les `keep` documents les plus
+        récents d'une source donnée (ex: 'retour_experience'). Renvoie le nb supprimé."""
+        try:
+            res = self.collection.get(where={"source": source}, include=["metadatas"])
+        except Exception:
+            return 0
+        ids = res.get("ids", []) or []
+        metas = res.get("metadatas", []) or []
+        if len(ids) <= keep:
+            return 0
+        items = sorted(zip(ids, metas), key=lambda x: (x[1] or {}).get("ts", 0))
+        to_del = [i for i, _ in items[:len(ids) - keep]]
+        if to_del:
+            try:
+                self.collection.delete(ids=to_del)
+            except Exception:
+                return 0
+        return len(to_del)
 
     def list_documents(self, limit: int = 200) -> list:
         """Liste les documents indexés : [{id, source, preview}]."""

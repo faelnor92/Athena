@@ -483,6 +483,23 @@ class Swarm:
                 out.append(m)
         return out
 
+    def _route_model(self, default_model: str, messages: list) -> str:
+        """Routage par difficulté : pour une requête manifestement triviale, utilise
+        un modèle rapide (FAST_MODEL) ; sinon garde le modèle fort. Désactivé tant que
+        FAST_MODEL n'est pas défini. Heuristique CONSERVATRICE (en cas de doute → fort)."""
+        fast = os.getenv("FAST_MODEL", "").strip()
+        if not fast:
+            return default_model
+        user_msgs = [m for m in messages if m.get("role") == "user"]
+        if not user_msgs:
+            return default_model
+        text = str(user_msgs[-1].get("content", "") or "").lower()
+        hard_kw = ("```", "code", "python", "script", "debug", "débug", "erreur",
+                   "analyse", "compare", "explique", "traduis", "rédige", "écris",
+                   "calcule", "pourquoi", "démontre", "résous", "résume", "corrige")
+        is_hard = len(text) > 280 or any(k in text for k in hard_kw)
+        return default_model if is_hard else fast
+
     def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None):
         """Appel LLM via litellm avec routage clé officielle / endpoint custom.
         Si on_delta est fourni et STREAM_TOKENS actif, diffuse les tokens au fil
@@ -628,10 +645,58 @@ class Swarm:
                 return
             import tools.memory_tools
             tools.memory_tools.store_document(report, source="retour_experience")
+            # Consolidation : borne le nombre de retours d'expérience (anti-bloat RAG).
+            try:
+                keep = int(os.getenv("EXPERIENCE_MAX", "50") or 50)
+                pruned = tools.memory_tools.semantic_mem.prune_source("retour_experience", keep)
+                if pruned:
+                    print(f"[AUTO-AMÉLIORATION] {pruned} ancien(s) retour(s) élagué(s) (cap {keep}).")
+            except Exception:
+                pass
             steps.append({"type": "self_improve", "agent": agent.name, "content": report})
             print(f"[\033[96mAUTO-AMÉLIORATION\033[0m] Retour d'expérience archivé.")
         except Exception as e:
             print(f"[\033[91mAuto-amélioration erreur\033[0m] {e}")
+
+    def _auto_critic(self, agent: Agent, messages: list, steps: list):
+        """Passe critique avant livraison (qualité) : un relecteur vérifie la réponse
+        finale ; si un problème concret est trouvé, l'agent en produit UNE version
+        corrigée. Désactivé par défaut (AUTO_CRITIC=true pour activer ; coût = 1-2
+        appels LLM supplémentaires en fin de tâche)."""
+        if os.getenv("AUTO_CRITIC", "false").lower() not in ("true", "1", "yes"):
+            return
+        final = next((m for m in reversed(messages)
+                      if m.get("role") == "assistant" and m.get("content")), None)
+        if not final or len(str(final.get("content", ""))) < 40:
+            return
+        user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+        if not user:
+            return
+        try:
+            verdict = (self._complete(agent.model, [
+                {"role": "system", "content": (
+                    "Tu es un relecteur critique. Vérifie si la RÉPONSE traite correctement et "
+                    "complètement la DEMANDE, sans erreur factuelle, incohérence ni partie manquante. "
+                    "Réponds STRICTEMENT 'OK' si elle est correcte et complète. Sinon, liste en 1 à 3 "
+                    "puces les problèmes concrets.")},
+                {"role": "user", "content": f"DEMANDE:\n{user}\n\nRÉPONSE:\n{final.get('content','')}"},
+            ], tools_schema=None).choices[0].message.content or "").strip()
+            if not verdict or verdict.upper().startswith("OK"):
+                return
+            revised = (self._complete(agent.model, [
+                {"role": "system", "content": (
+                    "Corrige et complète ta réponse précédente en tenant compte des remarques du "
+                    "relecteur. Renvoie UNIQUEMENT la réponse corrigée, complète et autoportante.")},
+                {"role": "user", "content": f"DEMANDE:\n{user}\n\nTA RÉPONSE:\n{final.get('content','')}\n\nREMARQUES:\n{verdict}"},
+            ], tools_schema=None).choices[0].message.content or "").strip()
+            if not revised or revised.strip() == str(final.get("content", "")).strip():
+                return
+            messages.append({"role": "assistant", "name": agent.name, "content": revised})
+            steps.append({"type": "critic", "agent": agent.name, "issues": verdict})
+            steps.append({"type": "message", "agent": agent.name, "content": revised})
+            print(f"[\033[96mAUTO-CRITIQUE\033[0m] Réponse révisée après vérification.")
+        except Exception as e:
+            print(f"[\033[91mAuto-critique erreur\033[0m] {e}")
 
     def _induce_skill(self, agent: Agent, messages: list, steps: list):
         """Acquisition de compétences (façon Voyager) : si une FONCTION PYTHON PURE et
@@ -960,7 +1025,8 @@ class Swarm:
             def _emit_delta(chunk, _agent=current_agent.name):
                 run_context.publish_step({"type": "message_delta", "agent": _agent, "content": chunk})
 
-            response = self._complete(current_agent.model, current_messages, tools_schema, on_delta=_emit_delta)
+            effective_model = self._route_model(current_agent.model, current_messages)
+            response = self._complete(effective_model, current_messages, tools_schema, on_delta=_emit_delta)
 
             message = response.choices[0].message
             msg_dict = message.model_dump(exclude_none=True)
@@ -1200,6 +1266,7 @@ class Swarm:
                 })
 
         # Hook post-tâche d'auto-amélioration (best-effort, ne bloque jamais le retour).
+        self._auto_critic(current_agent, messages, steps)
         self._write_experience_report(starting_agent, messages, steps)
         self._induce_skill(starting_agent, messages, steps)
 
