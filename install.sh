@@ -98,6 +98,14 @@ else
 fi
 
 # -------------------------------------------------------------------------
+# ÉTAPE 4b : Assistant interactif (composants optionnels + configuration .env)
+# -------------------------------------------------------------------------
+echo ""
+echo -e "${YELLOW}🔄 Étape 4b : Choix des composants optionnels & configuration...${NC}"
+# Le venv est déjà activé : python3 = python du venv → les paquets optionnels y vont.
+python3 "$SCRIPT_DIR/setup_wizard.py"
+
+# -------------------------------------------------------------------------
 # ÉTAPE 5 : Génération du CLI Exécutable Global ("jarvis")
 # -------------------------------------------------------------------------
 echo ""

@@ -99,6 +99,14 @@ if (-not (Test-Path $EnvFile)) {
 }
 
 # -------------------------------------------------------------------------
+# ÉTAPE 4b : Assistant interactif (composants optionnels + configuration .env)
+# -------------------------------------------------------------------------
+Write-Host ""
+Write-Host "🔄 Étape 4b : Choix des composants optionnels & configuration..." -ForegroundColor $Yellow
+# Le python du venv installe les paquets optionnels dans le venv.
+& $PythonExe (Join-Path $ScriptDir "setup_wizard.py")
+
+# -------------------------------------------------------------------------
 # ÉTAPE 5 : Génération des scripts de lancement rapide Windows
 # -------------------------------------------------------------------------
 Write-Host ""
