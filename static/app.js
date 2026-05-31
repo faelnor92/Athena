@@ -242,6 +242,8 @@ const modalTabSatellites = document.getElementById("modal-tab-satellites");
 const paneSatellites = document.getElementById("pane-satellites");
 const modalTabDoctor = document.getElementById("modal-tab-doctor");
 const paneDoctor = document.getElementById("pane-doctor");
+const modalTabMessaging = document.getElementById("modal-tab-messaging");
+const paneMessaging = document.getElementById("pane-messaging");
 
 // Gestion de la Modale Interne Agent Form
 const agentFormModal = document.getElementById("agent-form-modal");
@@ -1825,8 +1827,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneKnowledge, paneUsers, paneSatellites, paneDoctor].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor, modalTabMessaging].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneKnowledge, paneUsers, paneSatellites, paneDoctor, paneMessaging].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -2394,6 +2396,88 @@ if (modalTabDoctor && paneDoctor) {
         runDoctor();
     }));
 }
+
+// -------------------------------------------------------------------------
+// ONGLET : MESSAGERIES & NOTIFICATIONS
+// -------------------------------------------------------------------------
+const _MSG_FIELDS = {
+    "msg-discord": "DISCORD_WEBHOOK_URL", "msg-slack": "SLACK_WEBHOOK_URL",
+    "msg-webhook": "NOTIFY_WEBHOOK_URL", "msg-tg-token": "TELEGRAM_BOT_TOKEN",
+    "msg-tg-chat": "TELEGRAM_CHAT_ID", "msg-smtp-host": "SMTP_HOST",
+    "msg-smtp-port": "SMTP_PORT", "msg-smtp-user": "SMTP_USER",
+    "msg-smtp-pass": "SMTP_PASSWORD", "msg-smtp-from": "SMTP_FROM",
+    "msg-email-to": "NOTIFY_EMAIL_TO",
+};
+async function loadMessagingPane() {
+    try {
+        const r = await apiFetch("/api/config/env");
+        const env = await r.json();
+        for (const [id, key] of Object.entries(_MSG_FIELDS)) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            const v = env[key] || "";
+            // Les secrets reviennent masqués (xxxx...yyyy) : on laisse le champ vide + placeholder.
+            el.value = (el.type === "password" || v.includes("...")) ? "" : v;
+        }
+        const ssl = document.getElementById("msg-smtp-ssl");
+        if (ssl) ssl.checked = (env["SMTP_SSL"] || "").toLowerCase() === "true";
+    } catch (e) { /* ignore */ }
+    refreshMessagingStatus();
+}
+async function refreshMessagingStatus() {
+    const box = document.getElementById("messaging-status");
+    if (!box) return;
+    try {
+        const r = await apiFetch("/api/notify/channels");
+        const d = await r.json();
+        box.innerHTML = d.configured && d.configured.length
+            ? `<span style="color:var(--accent-cyan);">🟢 Canaux actifs : ${d.configured.join(", ")}</span>`
+            : `<span style="opacity:0.6;">⚪ Aucun canal configuré pour l'instant.</span>`;
+    } catch (e) { /* ignore */ }
+}
+async function saveMessagingPane() {
+    const st = document.getElementById("msg-save-status");
+    const env = {};
+    for (const [id, key] of Object.entries(_MSG_FIELDS)) {
+        const el = document.getElementById(id);
+        if (el && el.value.trim()) env[key] = el.value.trim();
+    }
+    const ssl = document.getElementById("msg-smtp-ssl");
+    if (ssl) env["SMTP_SSL"] = ssl.checked ? "true" : "false";
+    if (st) st.textContent = "⏳ Enregistrement…";
+    try {
+        await apiFetch("/api/config/env", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ env })
+        });
+        if (st) st.textContent = "✅ Messageries enregistrées (redémarre le serveur si une variable n'est pas prise en compte).";
+        refreshMessagingStatus();
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+}
+if (modalTabMessaging && paneMessaging) {
+    modalTabMessaging.addEventListener("click", () => switchModalTab(modalTabMessaging, () => {
+        paneMessaging.style.display = "block";
+        loadMessagingPane();
+    }));
+}
+const _btnMsgSave = document.getElementById("btn-msg-save");
+if (_btnMsgSave) _btnMsgSave.addEventListener("click", saveMessagingPane);
+const _btnMsgTest = document.getElementById("btn-msg-test");
+if (_btnMsgTest) _btnMsgTest.addEventListener("click", async () => {
+    const st = document.getElementById("msg-save-status");
+    const channel = (document.getElementById("msg-test-channel") || {}).value || "";
+    if (st) st.textContent = "📤 Envoi du test…";
+    try {
+        const r = await apiFetch("/api/notify/test", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channel })
+        });
+        const d = await r.json();
+        if (st) st.textContent = d.sent && d.sent.length
+            ? `✅ Test envoyé sur : ${d.sent.join(", ")}.`
+            : "⚠️ Aucun envoi (canal non configuré ?). Pense à enregistrer puis redémarrer le serveur.";
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+});
 const _btnDoctorRun = document.getElementById("btn-doctor-run");
 if (_btnDoctorRun) _btnDoctorRun.addEventListener("click", runDoctor);
 const _btnSessionSearch = document.getElementById("btn-session-search");

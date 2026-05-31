@@ -1741,6 +1741,26 @@ def parse_env() -> dict:
                     env_vars[k.strip()] = v
     return env_vars
 
+class NotifyTestRequest(BaseModel):
+    channel: str = ""
+
+
+@app.post("/api/notify/test")
+async def notify_test(req: NotifyTestRequest):
+    """Envoie un message de test sur les messageries (ou un canal précis)."""
+    from core.notifications import notify, configured_channels
+    ch = (req.channel or "").strip().lower() or None
+    sent = notify("✅ Test de notification depuis Jarvis.", title="Jarvis — test", channel=ch)
+    return {"sent": sent, "configured": configured_channels()}
+
+
+@app.get("/api/notify/channels")
+async def notify_channels():
+    """Liste les canaux de messagerie actuellement configurés."""
+    from core.notifications import configured_channels
+    return {"configured": configured_channels()}
+
+
 @app.get("/api/config/env")
 async def get_config_env():
     raw_env = parse_env()
@@ -1772,6 +1792,10 @@ async def get_config_env():
         "SELF_IMPROVE", "AUTO_APPROVE_SENSITIVE", "SENSITIVE_TOOLS",
         "LLM_MAX_RETRIES", "SWARM_MAX_SECONDS", "SWARM_MAX_TOKENS", "SWARM_MAX_PARALLEL",
         "MEMORY_MAX_MESSAGES", "MEMORY_KEEP_RECENT", "LOG_LEVEL",
+        # Messageries & notifications (canaux de livraison des résultats/alertes)
+        "DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL", "NOTIFY_WEBHOOK_URL",
+        "TELEGRAM_CHAT_ID", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
+        "SMTP_FROM", "SMTP_SSL", "NOTIFY_EMAIL_TO",
     ]
     for k in typical_keys:
         if k not in masked_env:

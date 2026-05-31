@@ -59,13 +59,19 @@ def _send_email(host, to_list, subject, body):
         server.quit()
 
 
-def notify(message: str, title: str = None) -> list:
-    """Diffuse `message` sur tous les canaux configurés. Renvoie les canaux ayant réussi."""
+def notify(message: str, title: str = None, channel: str = None) -> list:
+    """Diffuse `message` sur les canaux configurés. Si `channel` est précisé
+    (discord|slack|webhook|telegram|email), n'envoie QUE sur celui-ci.
+    Renvoie la liste des canaux ayant réussi."""
     sent = []
     plain = f"{title}\n{message}" if title else message
+    want = (channel or "").strip().lower() or None
+
+    def _wanted(c):
+        return want is None or want == c
 
     url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
-    if url:
+    if url and _wanted("discord"):
         try:
             content = (f"**{title}**\n{message}" if title else message)[:1900]
             requests.post(url, json={"content": content}, timeout=8)
@@ -74,7 +80,7 @@ def notify(message: str, title: str = None) -> list:
             print(f"[notif discord] {e}")
 
     url = os.getenv("SLACK_WEBHOOK_URL", "").strip()
-    if url:
+    if url and _wanted("slack"):
         try:
             requests.post(url, json={"text": plain}, timeout=8)
             sent.append("slack")
@@ -82,7 +88,7 @@ def notify(message: str, title: str = None) -> list:
             print(f"[notif slack] {e}")
 
     url = os.getenv("NOTIFY_WEBHOOK_URL", "").strip()
-    if url:
+    if url and _wanted("webhook"):
         try:
             requests.post(url, json={"title": title or "Jarvis", "message": message}, timeout=8)
             sent.append("webhook")
@@ -91,7 +97,7 @@ def notify(message: str, title: str = None) -> list:
 
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_ids = _csv("TELEGRAM_CHAT_ID")
-    if token and chat_ids:
+    if token and chat_ids and _wanted("telegram"):
         ok = False
         for cid in chat_ids:
             try:
@@ -105,7 +111,7 @@ def notify(message: str, title: str = None) -> list:
 
     host = os.getenv("SMTP_HOST", "").strip()
     to_list = _csv("NOTIFY_EMAIL_TO")
-    if host and to_list:
+    if host and to_list and _wanted("email"):
         try:
             _send_email(host, to_list, title or "Notification Jarvis", message)
             sent.append("email")

@@ -523,6 +523,7 @@
                 <button class="modal-tab-btn" id="modal-tab-keys">🔑 Clés API</button>
                 <button class="modal-tab-btn" id="modal-tab-ssh">🖥️ Terminal & SSH</button>
                 <button class="modal-tab-btn" id="modal-tab-agenda">📅 Agenda</button>
+                <button class="modal-tab-btn" id="modal-tab-messaging">📨 Messageries</button>
                 <button class="modal-tab-btn" id="modal-tab-satellites">🛰️ Satellites vocaux</button>
                 <div class="modal-tab-group">Système</div>
                 <button class="modal-tab-btn" id="modal-tab-behavior">⚙️ Comportement</button>
@@ -818,6 +819,47 @@
                     <textarea id="mcp-config" spellcheck="false" style="width: 100%; min-height: 220px; font-family: monospace; font-size: 0.78rem; background: rgba(0,0,0,0.3); color: #cfe; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; box-sizing: border-box;"></textarea>
                     <button type="button" id="btn-save-mcp" class="btn btn-primary" style="width: 100%; margin-top: 10px;">💾 Sauvegarder & reconnecter</button>
                     <div id="mcp-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+                </div>
+
+                <!-- ONGLET : MESSAGERIES & NOTIFICATIONS (canaux de livraison) -->
+                <div class="modal-pane" id="pane-messaging" style="display: none;">
+                    <h3>📨 Messageries & notifications</h3>
+                    <p class="section-desc">Canaux par lesquels Jarvis peut t'envoyer un résultat ou une alerte (ex: « envoie-moi ça par mail »). Séparés des clés API des modèles LLM.</p>
+                    <div id="messaging-status" style="margin: 8px 0; font-size: 0.8rem;"></div>
+
+                    <h5 style="color: var(--accent-cyan); margin: 12px 0 4px;">💬 Discord / Slack / Webhook</h5>
+                    <div class="form-group"><label>Discord — URL de webhook</label><input type="text" id="msg-discord" placeholder="https://discord.com/api/webhooks/..."></div>
+                    <div class="form-group"><label>Slack — URL de webhook</label><input type="text" id="msg-slack" placeholder="https://hooks.slack.com/services/..."></div>
+                    <div class="form-group"><label>Webhook générique (POST JSON)</label><input type="text" id="msg-webhook" placeholder="https://..."></div>
+
+                    <h5 style="color: var(--accent-cyan); margin: 12px 0 4px;">✈️ Telegram</h5>
+                    <div class="form-group"><label>Bot token (TELEGRAM_BOT_TOKEN)</label><input type="password" id="msg-tg-token" placeholder="Laisser vide si inchangé"></div>
+                    <div class="form-group"><label>Chat ID(s) — séparés par des virgules</label><input type="text" id="msg-tg-chat" placeholder="123456789,987654321"></div>
+
+                    <h5 style="color: var(--accent-cyan); margin: 12px 0 4px;">📧 Email (SMTP)</h5>
+                    <div style="display:flex; gap:6px;">
+                        <div class="form-group" style="flex:2;"><label>Serveur SMTP</label><input type="text" id="msg-smtp-host" placeholder="smtp.gmail.com"></div>
+                        <div class="form-group" style="flex:1;"><label>Port</label><input type="text" id="msg-smtp-port" placeholder="587"></div>
+                        <div class="form-group" style="flex:0.7; flex-direction:row; align-items:center; gap:6px; margin-top:22px;"><input type="checkbox" id="msg-smtp-ssl" style="width:16px;height:16px;"><label style="margin:0;">SSL</label></div>
+                    </div>
+                    <div class="form-group"><label>Utilisateur SMTP</label><input type="text" id="msg-smtp-user" placeholder="moi@gmail.com"></div>
+                    <div class="form-group"><label>Mot de passe SMTP</label><input type="password" id="msg-smtp-pass" placeholder="Laisser vide si inchangé"></div>
+                    <div class="form-group"><label>Expéditeur (From)</label><input type="text" id="msg-smtp-from" placeholder="jarvis@maison.local"></div>
+                    <div class="form-group"><label>Destinataire(s) — séparés par des virgules</label><input type="text" id="msg-email-to" placeholder="moi@gmail.com"></div>
+
+                    <button type="button" id="btn-msg-save" class="btn btn-primary" style="width:100%; margin-top:10px;">💾 Enregistrer les messageries</button>
+                    <div style="display:flex; gap:6px; margin-top:8px; align-items:center;">
+                        <select id="msg-test-channel" style="flex:1; background:rgba(0,0,0,0.4); border:1px solid var(--border-color); border-radius:6px; color:#fff; padding:8px;">
+                            <option value="">Tous les canaux</option>
+                            <option value="email">Email</option>
+                            <option value="discord">Discord</option>
+                            <option value="slack">Slack</option>
+                            <option value="telegram">Telegram</option>
+                            <option value="webhook">Webhook</option>
+                        </select>
+                        <button type="button" id="btn-msg-test" class="btn">📤 Tester l'envoi</button>
+                    </div>
+                    <div id="msg-save-status" style="text-align:center; margin-top:10px; font-size:0.8rem; opacity:0.7;"></div>
                 </div>
 
                 <!-- ONGLET : SATELLITES VOCAUX ESP32-S3 (ESPHome direct) -->
