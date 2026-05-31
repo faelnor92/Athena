@@ -1,8 +1,8 @@
-# 🎛️ Jarvis v2 — Assistant Multi-Agent Auto-hébergé & Bureau Virtuel Immersif
+# 🎛️ Jarvis — Assistant Multi-Agent Auto-hébergé
 
-Jarvis v2 est un écosystème d'orchestration multi-agent auto-hébergé, doté d'une interface web cyberpunk-néon (glassmorphism) avec un bureau virtuel 3D isométrique (« Swarm Open Space »).
+Orchestrateur multi-agent auto-hébergé, accessible par **4 canaux** : **web** (bureau virtuel des agents), **CLI**, **Telegram** et **assistant vocal local**.
 
-Moteur d'agents multi-fournisseurs (OpenAI, Anthropic, Gemini, Ollama, endpoints locaux vLLM/LM Studio…), accessible par **4 canaux** : **web**, **CLI**, **Telegram** et **assistant vocal local**. Pensé pour un usage **maison** (domotique, routines, notifications) comme **dev** (sandbox de code, MCP, web).
+Moteur multi-fournisseurs (OpenAI, Anthropic, Gemini, Ollama, endpoints locaux vLLM/LM Studio…). Pensé pour la **maison** (domotique, routines, notifications) comme pour le **dev** (sandbox de code, MCP, recherche web). Le nom affiché est personnalisable via `APP_NAME`.
 
 ---
 
@@ -216,9 +216,11 @@ for t in tests/test_*.py; do python3 "$t"; done
 
 ## 🚀 Installation & démarrage
 
-**Linux / macOS** : `chmod +x install.sh && ./install.sh` *(installe la commande `jarvis start|stop|status|logs`, lanceurs de bureau, service de fond, détecte Ollama).*
+L'installeur demande quels **composants optionnels** installer (vocal, transcription…) et configure l'essentiel du `.env` (fournisseur LLM, mot de passe admin).
 
-**Windows** : `.\install.ps1` *(raccourci Bureau, `run.bat`, scan Ollama).*
+**Linux / macOS** : `chmod +x install.sh && ./install.sh` *(crée la commande `jarvis start|stop|status|logs`, un raccourci bureau, détecte Ollama).*
+
+**Windows** : `.\install.ps1` *(crée `run.bat`, la commande `jarvis.bat start|stop|cli` et un raccourci Bureau).*
 
 **🐳 Docker Compose** *(auto-hébergement reproductible)* :
 ```bash
@@ -227,9 +229,9 @@ docker compose up -d --build
 ```
 > Tout l'état persiste sous `JARVIS_DATA` (monté au même chemin hôte/conteneur pour que la sandbox fonctionne). Le socket Docker est monté pour exécuter la sandbox en conteneurs frères.
 
-Puis renseignez votre clé LLM dans `.env`, et lancez :
-* Web : `jarvis start` ou `python3 server.py` → 👉 **http://localhost:8000/**
-* CLI : `python3 main.py` · Vocal : `python3 voice_assistant.py`
+Démarrage (la commande ouvre aussi l'UI dans le navigateur) :
+* **Web** : `jarvis start` (Linux/macOS) · `jarvis.bat start` ou `run.bat` (Windows) · ou `python server.py` → 👉 **http://localhost:8000/**
+* **CLI** : `python main.py` (commandes `/help`, `/doctor`, `/agents`…) · **Vocal** : `python voice_assistant.py`
 
 ---
 

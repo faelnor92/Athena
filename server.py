@@ -1517,6 +1517,7 @@ async def get_platform():
     from core.platform_info import get_platform_info, sandbox_active
     info = get_platform_info()
     info["sandbox_active"] = sandbox_active()
+    info["app_name"] = os.getenv("APP_NAME", "Jarvis").strip() or "Jarvis"
     return info
 
 

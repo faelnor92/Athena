@@ -33,6 +33,23 @@ async function apiFetch(url, options = {}) {
     return response;
 }
 
+// Branding : nom d'appli configurable via APP_NAME (.env) — appliqué titre + logo.
+async function applyBranding() {
+    try {
+        const r = await fetch("/api/platform", { cache: "no-store" });
+        setServerReachable(true);
+        const d = await r.json();
+        const name = (d && d.app_name) ? d.app_name : "Jarvis";
+        document.title = `${name} — Assistant Multi-Agent`;
+        const logo = document.querySelector(".logo-title");
+        if (logo) logo.textContent = name.toUpperCase();
+        const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+        if (appleTitle) appleTitle.setAttribute("content", name);
+    } catch (e) {
+        setServerReachable(false);
+    }
+}
+
 // Sonde de disponibilité : ping léger pour afficher/masquer le bandeau même au repos.
 async function _pingServer() {
     try {
@@ -43,7 +60,7 @@ async function _pingServer() {
     }
 }
 setInterval(_pingServer, 15000);
-window.addEventListener("DOMContentLoaded", _pingServer);
+window.addEventListener("DOMContentLoaded", applyBranding);
 
 function showLoginOverlay() {
     const overlay = document.getElementById("login-overlay");

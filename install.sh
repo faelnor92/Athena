@@ -132,6 +132,8 @@ case "\$1" in
         echo \$PID > server.pid
         echo -e "\033[0;32m✔ Jarvis démarré en tâche de fond ! (PID: \$PID)\033[0m"
         echo -e "\033[0;35m👉 Console d'administration disponible sur : http://localhost:8000/\033[0m"
+        # Ouvre l'UI dans le navigateur (best-effort, après un court délai de démarrage).
+        ( sleep 2; (command -v xdg-open >/dev/null && xdg-open http://localhost:8000/ >/dev/null 2>&1) || (command -v open >/dev/null && open http://localhost:8000/ >/dev/null 2>&1) ) &
         ;;
     stop)
         if [ -f server.pid ]; then

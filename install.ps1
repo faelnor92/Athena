@@ -127,6 +127,28 @@ pause
 Set-Content -Path $RunBatPath -Value $BatContent
 Write-Host "✔ Script de lancement rapide run.bat généré !" -ForegroundColor $Green
 
+# Commande de contrôle 'jarvis.bat' (parité avec 'jarvis start' sous Linux/macOS)
+$JarvisBatPath = Join-Path $ScriptDir "jarvis.bat"
+$JarvisBat = @"
+@echo off
+cd /d "%~dp0"
+if "%1"=="start" (
+    echo Demarrage de Jarvis... ^| http://localhost:8000/
+    start "" http://localhost:8000/
+    start "" /min .venv\Scripts\python.exe server.py
+    goto :eof
+)
+if "%1"=="stop" (
+    taskkill /F /IM python.exe /FI "WINDOWTITLE eq *server.py*" 2>nul
+    echo Jarvis arrete.
+    goto :eof
+)
+if "%1"=="cli" ( .venv\Scripts\python.exe main.py & goto :eof )
+echo Usage: jarvis {start^|stop^|cli}
+"@
+Set-Content -Path $JarvisBatPath -Value $JarvisBat
+Write-Host "✔ Commande 'jarvis.bat' créée (jarvis start / stop / cli)." -ForegroundColor $Green
+
 # Création du lanceur silencieux en VBS (évite de garder une invite CMD ouverte !)
 $LaunchVbsPath = Join-Path $ScriptDir "launch.vbs"
 $VbsContent = @"
