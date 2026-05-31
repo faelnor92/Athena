@@ -1197,6 +1197,13 @@ async function playAgentSteps(steps) {
                     updatePlanStep(step.index, step.status);
                 }
 
+                else if (step.type === "skill_learned") {
+                    logToOrchestrator(`🧠 Nouvelle compétence acquise : « ${step.name} » — ${step.description || ""}`, "success");
+                    if (typeof pushNotification === "function") {
+                        pushNotification("Compétence acquise", `${step.agent} a appris « ${step.name} »`, "success");
+                    }
+                }
+
                 else if (step.type === "message" || step.type === "terminal_message") {
                     if (step.type === "terminal_message") {
                         // Afficher le message directement dans la console interactive avec rendu Markdown HTML

@@ -460,6 +460,29 @@ class Swarm:
 
         return _Resp()
 
+    def _apply_prompt_cache(self, messages: list, model: str) -> list:
+        """Prompt caching : marque le gros message système comme point de cache pour
+        les modèles Anthropic (préfixe stable réutilisé → latence et coût réduits).
+        PROMPT_CACHE = auto (défaut, Anthropic seulement) | on (forcé) | off.
+        N'est JAMAIS appliqué sur l'endpoint custom (qwen3 = prefix caching serveur)."""
+        mode = os.getenv("PROMPT_CACHE", "auto").lower()
+        if mode == "off":
+            return messages
+        is_anthropic = "claude" in (model or "").lower() or "anthropic" in (model or "").lower()
+        if mode != "on" and not is_anthropic:
+            return messages
+        out, cached = [], False
+        for m in messages:
+            if (not cached and m.get("role") == "system"
+                    and isinstance(m.get("content"), str) and len(m["content"]) > 1000):
+                out.append({"role": "system", "content": [
+                    {"type": "text", "text": m["content"], "cache_control": {"type": "ephemeral"}}
+                ]})
+                cached = True
+            else:
+                out.append(m)
+        return out
+
     def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None):
         """Appel LLM via litellm avec routage clé officielle / endpoint custom.
         Si on_delta est fourni et STREAM_TOKENS actif, diffuse les tokens au fil
@@ -489,6 +512,9 @@ class Swarm:
             completion_kwargs["api_key"] = custom_key or "placeholder-key"
             local_model = model or "qwen3"
             completion_kwargs["model"] = local_model if "/" in local_model else f"openai/{local_model}"
+        else:
+            # Prompt caching (Anthropic) hors endpoint custom uniquement — sûr pour qwen3.
+            completion_kwargs["messages"] = self._apply_prompt_cache(messages, model)
 
         stream = on_delta is not None and os.getenv("STREAM_TOKENS", "true").lower() in ("true", "1", "yes")
 
@@ -606,6 +632,80 @@ class Swarm:
             print(f"[\033[96mAUTO-AMÉLIORATION\033[0m] Retour d'expérience archivé.")
         except Exception as e:
             print(f"[\033[91mAuto-amélioration erreur\033[0m] {e}")
+
+    def _induce_skill(self, agent: Agent, messages: list, steps: list):
+        """Acquisition de compétences (façon Voyager) : si une FONCTION PYTHON PURE et
+        réutilisable aurait aidé sur cette tâche, on la fait générer puis on l'enregistre
+        comme skill permanente (après validation de sûreté). Désactivable via
+        SELF_IMPROVE_SKILLS=false."""
+        if os.getenv("SELF_IMPROVE", "true").lower() not in ("true", "1", "yes"):
+            return
+        if os.getenv("SELF_IMPROVE_SKILLS", "true").lower() not in ("true", "1", "yes"):
+            return
+        # Seulement pour des tâches non triviales (outils/handoffs).
+        if not any(s.get("type") in ("tool_call", "handoff") for s in steps):
+            return
+        try:
+            import json as _json
+            import re as _re
+            import tools.skills_manager as sm
+            existing = set(load_dynamic_skills().keys()) | set(AVAILABLE_TOOLS.keys())
+
+            lines = []
+            for m in messages[-12:]:
+                role = m.get("role")
+                if role == "user":
+                    lines.append(f"UTILISATEUR: {m.get('content','')}")
+                elif role == "assistant" and m.get("content"):
+                    lines.append(f"{m.get('name','assistant')}: {m.get('content','')}")
+                elif role == "tool":
+                    lines.append(f"OUTIL[{m.get('name','?')}]: {str(m.get('content',''))[:300]}")
+            transcript = "\n".join(lines)[:6000]
+
+            sys_prompt = (
+                "Tu es un module d'ACQUISITION DE COMPÉTENCES. À partir de l'échange, juge si une "
+                "FONCTION PYTHON PURE, générique et RÉUTILISABLE aurait évité du travail manuel et "
+                "servirait à de futures tâches similaires (ex: calcul, formatage, conversion, parsing).\n"
+                "CONTRAINTES STRICTES : fonction pure (déterministe), AUCUNE entrée/sortie, AUCUN accès "
+                "réseau/fichier/système ; imports autorisés uniquement parmi math, datetime, json, re, "
+                "statistics, itertools, collections, functools, typing, decimal, random, string, "
+                "fractions, calendar. Le code doit définir 'def <nom>(...)' avec une docstring.\n"
+                "Réponds STRICTEMENT en JSON : "
+                '{"skill": true, "name": "<snake_case>", "description": "<courte>", "code": "<python>"} '
+                'OU {"skill": false} si aucune compétence générique pertinente. '
+                "Ne crée PAS de compétence trop spécifique ou triviale."
+            )
+            resp = self._complete(agent.model, [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": transcript},
+            ], tools_schema=None)
+            content = (resp.choices[0].message.content or "").strip()
+            # Extraction robuste du JSON.
+            start, end = content.find("{"), content.rfind("}")
+            if start < 0 or end <= start:
+                return
+            data = _json.loads(content[start:end + 1])
+            if not data.get("skill"):
+                return
+            name = (data.get("name") or "").strip()
+            code = data.get("code") or ""
+            desc = (data.get("description") or "").strip() or name
+            if not _re.match(r"^[a-z0-9_]+$", name):
+                return
+            if name in existing:
+                print(f"[AUTO-COMPÉTENCE] '{name}' existe déjà — ignorée.")
+                return
+            ok, reason = sm.validate_pure_skill(code, name)
+            if not ok:
+                print(f"[\033[93mAUTO-COMPÉTENCE refusée\033[0m] '{name}' : {reason}")
+                return
+            result = sm.save_new_skill(name, code, desc)
+            if result.startswith("Succès"):
+                steps.append({"type": "skill_learned", "agent": agent.name,
+                              "name": name, "description": desc})
+                print(f"[\033[96mAUTO-COMPÉTENCE\033[0m] Nouvelle compétence acquise : '{name}'.")
+        except Exception as e:
+            print(f"[\033[91mAuto-compétence erreur\033[0m] {e}")
 
     def run(self, starting_agent: Agent, messages: list, max_turns: int = 10,
             max_seconds: float = None, max_tokens: int = None) -> Tuple[Agent, list, list]:
@@ -1101,5 +1201,6 @@ class Swarm:
 
         # Hook post-tâche d'auto-amélioration (best-effort, ne bloque jamais le retour).
         self._write_experience_report(starting_agent, messages, steps)
+        self._induce_skill(starting_agent, messages, steps)
 
         return current_agent, messages, steps
