@@ -273,6 +273,16 @@ class Swarm:
         self.load_agents(agents_yaml_path)
         
     def load_agents(self, path: str):
+        # Bootstrap : à la première installation, agents.yaml n'existe pas encore.
+        # On démarre alors avec le SEUL orchestrateur (agents.default.yaml) ; l'utilisateur
+        # ajoute ses propres agents ensuite (UI ou outil create_agent). agents.example.yaml
+        # contient une équipe complète d'exemple à charger si on veut.
+        if not os.path.exists(path):
+            import shutil
+            default = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "agents.default.yaml")
+            if os.path.exists(default):
+                shutil.copy(default, path)
+                print(f"[Essaim] Première exécution : {path} initialisé avec l'orchestrateur seul (agents.default.yaml).")
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 

@@ -166,6 +166,22 @@ def step_env_essentials():
             say("✔ Mot de passe admin défini.", "green")
 
 
+def step_starting_team():
+    """Par défaut, l'app démarre avec l'orchestrateur SEUL ; l'utilisateur ajoute ses
+    agents ensuite (UI / création par Jarvis). Option : démarrer avec l'équipe d'exemple."""
+    if os.path.exists("agents.yaml"):
+        return  # config déjà présente : on n'y touche pas
+    say("\n— Agents au démarrage —", "bold")
+    say("Par défaut, l'application démarre avec l'orchestrateur SEUL ; tu ajoutes tes")
+    say("propres agents ensuite (bouton « Créer un agent » ou en le demandant à Jarvis).")
+    if os.path.exists("agents.example.yaml") and ask_yes_no(
+            "Préférer démarrer avec une ÉQUIPE d'exemple (Codeur, Auteur, Traducteur…) ?", default=False):
+        shutil.copy("agents.example.yaml", "agents.yaml")
+        say("✔ Équipe d'exemple installée (modifiable dans Réglages → Agents).", "green")
+    else:
+        say("→ Démarrage avec l'orchestrateur seul.", "green")
+
+
 def main():
     say(f"\n{C['bold']}🔧 Assistant de configuration Jarvis{C['nc']}")
     if AUTO:
@@ -174,6 +190,7 @@ def main():
         say("(mode non interactif : install minimale, .env inchangé)", "yellow")
     try:
         step_optional_components()
+        step_starting_team()
         step_env_essentials()
     except KeyboardInterrupt:
         say("\nConfiguration interrompue — tu pourras relancer `python setup_wizard.py`.", "yellow")

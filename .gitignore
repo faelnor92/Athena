@@ -66,3 +66,6 @@ voice/speakers/*.npy
 
 # Profil utilisateur évolutif (données perso runtime)
 user_profile.md
+
+# Config d'agents LOCALE (le dépôt livre agents.default.yaml + agents.example.yaml)
+agents.yaml
