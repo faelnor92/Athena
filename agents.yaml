@@ -114,6 +114,7 @@ agents:
   - make_plan
   - update_plan_step
   - create_agent
+  - run_tool_script
   handoffs:
   - Codeur
   - Auteur

@@ -32,6 +32,7 @@ import tools.mcp_manager
 import tools.notify_tools
 import tools.planning_tools
 import tools.agent_tools
+import tools.tool_script
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -66,6 +67,7 @@ AVAILABLE_TOOLS = {
     "make_plan": tools.planning_tools.make_plan,
     "update_plan_step": tools.planning_tools.update_plan_step,
     "create_agent": tools.agent_tools.create_agent,
+    "run_tool_script": tools.tool_script.run_tool_script,
 }
 
 def load_dynamic_skills() -> dict:

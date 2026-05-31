@@ -1,0 +1,141 @@
+"""Orchestration par script : l'agent écrit UN script Python qui appelle plusieurs
+outils programmatiquement (boucles, conditions) → un pipeline multi-étapes s'exécute
+en UN SEUL tour, sans gonfler le contexte (équivalent de l'orchestration RPC d'Hermes).
+
+Sécurité : le script est validé par AST (aucun import dangereux, pas d'eval/exec/open,
+pas d'accès dunder, pas de boucle while), exécuté avec des builtins RESTREINTS et un
+sous-ensemble d'outils SÛRS exposés, avec timeout. Désactivable via TOOL_SCRIPTS=false.
+"""
+import ast
+import io
+import os
+import threading
+import contextlib
+import importlib
+
+# Outils sûrs exposés au script (lecture/recherche/mémoire/calcul). On EXCLUT shell,
+# exécution de code brute, SSH, génération lourde, etc.
+SCRIPT_SAFE_TOOLS = {
+    "web_search", "web_scrape", "search_memory", "memorize_fact", "store_document",
+    "get_list_items", "add_list_item", "toggle_list_item",
+    "list_calendar_events", "add_calendar_event", "get_ha_state", "get_daily_briefing",
+}
+
+_SAFE_IMPORTS = {"math", "json", "re", "datetime", "statistics", "itertools",
+                 "collections", "functools", "decimal", "string", "fractions"}
+
+_FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__", "open", "globals",
+                    "locals", "vars", "getattr", "setattr", "delattr", "input"}
+
+_SAFE_BUILTINS = {
+    k: __builtins__[k] if isinstance(__builtins__, dict) else getattr(__builtins__, k)
+    for k in ("len", "range", "enumerate", "zip", "sorted", "sum", "min", "max",
+              "abs", "round", "all", "any", "map", "filter", "list", "dict", "set",
+              "tuple", "str", "int", "float", "bool", "isinstance", "reversed",
+              "repr", "format", "print", "sorted", "type", "frozenset", "divmod", "pow")
+}
+
+
+def _safe_import(name, *args, **kwargs):
+    """Import restreint à la liste blanche (utilisé comme __import__ du script)."""
+    if name.split(".")[0] not in _SAFE_IMPORTS:
+        raise ImportError(f"import non autorisé : {name}")
+    return importlib.import_module(name)
+
+
+_SAFE_BUILTINS["__import__"] = _safe_import
+
+
+def validate_tool_script(code: str):
+    """Valide la sûreté d'un script d'orchestration. Renvoie (True, "") ou (False, raison)."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return False, f"syntaxe invalide : {e}"
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name.split(".")[0] not in _SAFE_IMPORTS:
+                    return False, f"import non autorisé : {a.name}"
+        elif isinstance(node, ast.ImportFrom):
+            if (node.module or "").split(".")[0] not in _SAFE_IMPORTS:
+                return False, f"import non autorisé : from {node.module}"
+        elif isinstance(node, ast.While):
+            return False, "boucle 'while' interdite (risque de boucle infinie) ; utilise 'for'"
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _FORBIDDEN_CALLS:
+            return False, f"appel interdit : {node.func.id}()"
+        elif isinstance(node, ast.Attribute) and node.attr.startswith("__"):
+            return False, f"accès interdit à un attribut dunder : .{node.attr}"
+        elif isinstance(node, ast.Name) and node.id.startswith("__"):
+            return False, f"identifiant interdit : {node.id}"
+    return True, ""
+
+
+def _build_namespace():
+    """Construit l'espace de noms exposé au script : outils sûrs + compétences + modules sûrs."""
+    import importlib
+    ns = {}
+    try:
+        from core.swarm import AVAILABLE_TOOLS, load_dynamic_skills
+        for name, fn in AVAILABLE_TOOLS.items():
+            if name in SCRIPT_SAFE_TOOLS:
+                ns[name] = fn
+        # Les compétences dynamiques (dont auto-induites) sont exposées.
+        for name, fn in load_dynamic_skills().items():
+            ns[name] = fn
+    except Exception:
+        pass
+    for mod in ("math", "json", "re", "datetime", "statistics"):
+        try:
+            ns[mod] = importlib.import_module(mod)
+        except Exception:
+            pass
+    return ns
+
+
+def run_tool_script(code: str) -> str:
+    """
+    Exécute un script Python d'orchestration qui peut appeler plusieurs outils en une
+    seule fois (idéal pour enchaîner/agréger des résultats sans multiplier les tours).
+    Outils disponibles dans le script : web_search, web_scrape, search_memory,
+    store_document, memorize_fact, get_list_items, list_calendar_events, get_ha_state,
+    get_daily_briefing, ainsi que toutes les compétences. Modules : math, json, re,
+    datetime, statistics. Affecte le résultat final à une variable 'result' OU utilise print().
+    Restrictions de sûreté : pas d'import système, pas de fichiers/réseau direct, pas de while.
+    code: Le script Python à exécuter.
+    """
+    if os.getenv("TOOL_SCRIPTS", "true").lower() not in ("true", "1", "yes"):
+        return "Erreur : l'orchestration par script est désactivée (TOOL_SCRIPTS=false)."
+    ok, reason = validate_tool_script(code)
+    if not ok:
+        return f"Script refusé (sûreté) : {reason}"
+
+    ns = _build_namespace()
+    ns["__builtins__"] = _SAFE_BUILTINS
+    out = io.StringIO()
+    result_holder = {"err": None}
+    timeout = float(os.getenv("TOOL_SCRIPT_TIMEOUT", "30") or 30)
+
+    def _run():
+        try:
+            with contextlib.redirect_stdout(out):
+                exec(code, ns)
+        except Exception as e:
+            result_holder["err"] = e
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        return f"Erreur : script interrompu (dépassement du délai de {timeout:.0f}s)."
+    if result_holder["err"] is not None:
+        return f"Erreur d'exécution du script : {result_holder['err']}"
+
+    printed = out.getvalue().strip()
+    result = ns.get("result")
+    parts = []
+    if printed:
+        parts.append(printed)
+    if result is not None:
+        parts.append(f"result = {result}")
+    return "\n".join(parts) if parts else "Script exécuté (aucune sortie ; définis 'result' ou utilise print())."
