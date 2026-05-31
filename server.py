@@ -1550,6 +1550,25 @@ async def delete_config_satellite(name: str):
     return {"status": "success", "satellites": es.manager.status()}
 
 
+@app.get("/api/user-profile")
+async def get_user_profile():
+    """Profil utilisateur évolutif (texte curé réinjecté dans le prompt)."""
+    from core.user_profile import user_profile
+    return {"profile": user_profile.get()}
+
+
+class UserProfileRequest(BaseModel):
+    profile: str = ""
+
+
+@app.post("/api/user-profile")
+async def set_user_profile(req: UserProfileRequest):
+    """Édition manuelle du profil utilisateur."""
+    from core.user_profile import user_profile
+    user_profile.set(req.profile or "")
+    return {"status": "success", "profile": user_profile.get()}
+
+
 @app.get("/api/config/satellites/sensor-catalog")
 async def get_sensor_catalog():
     """Catalogue capteurs + types audio (micro/sortie) proposés dans l'UI (source unique)."""

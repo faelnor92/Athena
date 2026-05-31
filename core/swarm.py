@@ -658,6 +658,31 @@ class Swarm:
         except Exception as e:
             print(f"[\033[91mAuto-amélioration erreur\033[0m] {e}")
 
+    def _update_user_profile(self, agent: Agent, messages: list, steps: list):
+        """Met à jour le profil utilisateur évolutif à partir du dernier échange
+        (personnalisation durable, façon Hermes/Honcho). Gate USER_MODELING."""
+        if os.getenv("USER_MODELING", "true").lower() not in ("true", "1", "yes"):
+            return
+        try:
+            from .user_profile import user_profile
+            lines = []
+            for m in messages[-10:]:
+                role = m.get("role")
+                if role == "user":
+                    lines.append(f"UTILISATEUR: {m.get('content','')}")
+                elif role == "assistant" and m.get("content"):
+                    lines.append(f"ASSISTANT: {m.get('content','')}")
+            transcript = "\n".join(lines)[:5000]
+            # On ne profile pas les échanges triviaux (évite un appel LLM inutile).
+            last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+            if not transcript.strip() or len(str(last_user)) < 60:
+                return
+            if user_profile.update_from_exchange(transcript, self._complete, agent.model):
+                steps.append({"type": "profile_updated", "agent": agent.name})
+                print(f"[\033[96mPROFIL\033[0m] Profil utilisateur mis à jour.")
+        except Exception as e:
+            print(f"[\033[91mProfil utilisateur erreur\033[0m] {e}")
+
     def _improve_skills(self, agent: Agent, failures: list, steps: list):
         """Amélioration des compétences PENDANT l'usage : si une compétence dynamique a
         échoué, on tente de la RÉPARER automatiquement (LLM) puis on revalide la sûreté.
@@ -935,7 +960,13 @@ class Swarm:
                 
             if current_agent.name == "Jarvis":
                 system_prompt += tools.memory_tools.core_mem.get_as_prompt()
-            
+                # Profil utilisateur évolutif (personnalisation durable).
+                try:
+                    from .user_profile import user_profile
+                    system_prompt += user_profile.as_prompt()
+                except Exception:
+                    pass
+
             # Chargement en cascade des fichiers de prompt locaux (custom Jarvis Swarm)
             local_instructions = ""
             current_dir = os.getcwd()
@@ -1331,5 +1362,6 @@ class Swarm:
         self._auto_critic(current_agent, messages, steps)
         self._write_experience_report(starting_agent, messages, steps)
         self._induce_skill(starting_agent, messages, steps)
+        self._update_user_profile(current_agent, messages, steps)
 
         return current_agent, messages, steps
