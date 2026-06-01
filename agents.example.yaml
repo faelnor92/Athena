@@ -3,7 +3,7 @@ agents:
   display_name: Jarvis
   welcome_message: Bonjour, je suis Jarvis. Comment puis-je vous aider aujourd'hui
     ?
-  avatar_type: robot_neon
+  avatar_type: athena
   model: qwen3
   system_prompt: 'Tu es l''assistant principal et l''orchestrateur de cet essaim.
     Tu comprends la demande de l''utilisateur et y réponds avec soin.

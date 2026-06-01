@@ -715,6 +715,24 @@ function getAgentSpriteSVG(typeOrName) {
             face: `<path d="M19.5 24 L44.5 24 L43.5 31 Q32 37.5 20.5 31 Z" fill="#111827"/><rect x="22.5" y="20" width="19" height="3.4" rx="1.7" fill="rgba(239,68,68,0.14)" stroke="#ef4444" stroke-width="0.7"/><rect x="17" y="16.5" width="30" height="3.4" rx="1" fill="#0b0f17"/>`,
             accessory: `<line x1="48" y1="58" x2="58.5" y2="29" stroke="#cbd5e1" stroke-width="1.6" stroke-linecap="round"/><line x1="45.5" y1="62" x2="50.5" y2="48" stroke="#1f2937" stroke-width="2.4" stroke-linecap="round"/><line x1="47.6" y1="51.5" x2="53.6" y2="53.6" stroke="#ef4444" stroke-width="1"/>`
         });
+    } else if (key === "athena" || key === "athéna") {
+        // Déesse Athéna revisitée : casque doré à crête, lance et bouclier (palette du logo).
+        return character({
+            skin: "#f1cba1", skinShade: "#d9ab78",
+            jacket: "#173b63", jacketShade: "rgba(0,0,0,0.20)", pants: "#0f2742", shoes: "#d4af37", accent: "#d4af37",
+            hair: `<path d="M18.5 23 Q18 12 32 11 Q46 12 45.5 23 Q44 15 40 19 L40 30 Q36 25 32 25 Q28 25 24 30 L24 19 Q20 15 18.5 23 Z" fill="#6b4f2a"/>`
+                + `<path d="M19.3 14.5 Q20 9.5 32 9.5 Q44 9.5 44.7 14.5 Q44.7 17 41 16 Q32 13.5 23 16 Q19.3 17 19.3 14.5 Z" fill="#d4af37" stroke="#b8860b" stroke-width="0.6"/>`
+                + `<rect x="19.5" y="13.5" width="25" height="2.6" rx="1.3" fill="#b8860b" opacity="0.55"/>`
+                + `<path d="M27.5 10 Q32 -1.5 36.5 10 Z" fill="#1f6f8b"/><path d="M29.5 10 Q32 1 34.5 10 Z" fill="#7fd3ff"/>`,
+            face: `<path d="M25.4 18.4 Q27.6 17.4 29.6 18.6" stroke="#caa46a" stroke-width="0.8" fill="none" stroke-linecap="round"/>`
+                + `<path d="M34.4 18.6 Q36.4 17.4 38.6 18.4" stroke="#caa46a" stroke-width="0.8" fill="none" stroke-linecap="round"/>`,
+            collar: `<path d="M26 35 L38 35 L34 41 L30 41 Z" fill="#d4af37" opacity="0.9"/>`,
+            chest: `<circle cx="32" cy="46" r="3.2" fill="none" stroke="#7fd3ff" stroke-width="1"/><circle cx="32" cy="46" r="1" fill="#d4af37"/>`,
+            accessory: `<line x1="51" y1="33" x2="49" y2="62" stroke="#d4af37" stroke-width="1.9" stroke-linecap="round"/>`
+                + `<path d="M47.6 30 L51.4 31.2 L49 35.5 Z" fill="#f0d860"/>`
+                + `<path d="M13.5 41 Q8.5 43.5 8.5 49 Q8.5 54.5 13.5 56.5 Q18.5 54.5 18.5 49 Q18.5 43.5 13.5 41 Z" fill="#173b63" stroke="#7fd3ff" stroke-width="1"/>`
+                + `<path d="M13.5 44.5 V53 M10.5 49 H16.5" stroke="#7fd3ff" stroke-width="0.9" stroke-linecap="round"/>`
+        });
     }
 
     // Fallback par défaut : robot/IA épuré.
@@ -1694,10 +1712,11 @@ if (_btnChatRetry) _btnChatRetry.addEventListener("click", async () => {
         });
         const d = await r.json();
         if (!d.user) { logToTerminal("Rien à réessayer.", "warning"); return; }
-        // Redessin propre (l'arbre est recalé côté serveur), puis on rejoue la question.
-        await reloadChatHistory(true);
+        // L'arbre est déjà recalé côté serveur : on rejoue la question. C'est le flux
+        // de submit qui redessine le chat à la fin (pas besoin de reload ici).
         chatInput.value = d.user;
-        chatForm.dispatchEvent(new Event("submit"));
+        if (typeof chatForm.requestSubmit === "function") chatForm.requestSubmit();
+        else chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
     } catch (e) { logToTerminal("Réessai : " + e, "error"); }
 });
 
