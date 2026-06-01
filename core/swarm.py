@@ -533,22 +533,33 @@ class Swarm:
         last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
         if not str(last_user).strip():
             return True
+        names = [n for n in self.agents if n != orch]
         try:
             model = os.getenv("FAST_MODEL", "").strip() or agent.model
+            sys_p = (
+                "Tu es un AIGUILLEUR. Voici les agents spécialisés disponibles :\n" + "\n".join(specialists) +
+                "\n\nQuestion : la demande de l'utilisateur est-elle une TÂCHE À CONFIER à l'un de ces "
+                "spécialistes ? Réponds par le NOM EXACT de l'agent, ou « AUCUN ».\n"
+                "Réponds AUCUN pour : une présentation/identité (« qui es-tu »), une salutation, une "
+                "question générale, l'heure/la date, du bavardage, ou tout ce qui ne correspond pas "
+                "précisément au métier d'un agent ci-dessus.\n"
+                "Exemples : « qui es-tu ? » → AUCUN | « bonjour » → AUCUN | « quelle heure est-il ? » → "
+                "AUCUN | « raconte une blague » → AUCUN | une demande relevant clairement d'un des "
+                "métiers listés → le nom de cet agent.\n"
+                "Ne réponds QUE par un nom de la liste ou AUCUN, rien d'autre."
+            )
             resp = self._complete(model, [
-                {"role": "system", "content": (
-                    "Tu es un routeur. Voici des agents spécialisés :\n" + "\n".join(specialists) +
-                    "\n\nLa demande de l'utilisateur relève-t-elle CLAIREMENT du métier de l'UN de ces "
-                    "agents (une tâche à lui confier) ? Réponds UNIQUEMENT par le NOM exact de l'agent. "
-                    "Si la demande est générale, conversationnelle, une présentation, ou ne correspond à "
-                    "aucun de ces métiers, réponds exactement : AUCUN.")},
+                {"role": "system", "content": sys_p},
                 {"role": "user", "content": str(last_user)[:1500]},
-            ], tools_schema=None, allow_continuation=False)
+            ], tools_schema=None, allow_continuation=False, allow_fallback=False)
             ans = (resp.choices[0].message.content or "").strip()
-            # Délègue seulement si la réponse nomme un agent existant (≠ AUCUN).
-            if "aucun" in ans.lower():
+            # Parsing STRICT, biaisé vers « ne pas déléguer » : on délègue uniquement si la
+            # réponse correspond exactement (token) à un nom d'agent. Toute ambiguïté → False.
+            import re as _re
+            token = _re.sub(r"[^a-z0-9_]", "", (ans.split() or [""])[0].lower())
+            if token == "aucun" or not token:
                 return False
-            return any(name.lower() in ans.lower() for name in self.agents if name != orch)
+            return any(token == n.lower() for n in names)
         except Exception as e:
             print(f"[Routeur délégation] indisponible ({e}) — délégation laissée au modèle.")
             return True
