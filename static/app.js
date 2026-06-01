@@ -1128,7 +1128,7 @@ function updatePlanStep(index, status) {
     }
 }
 
-async function playAgentSteps(steps) {
+async function playAgentSteps(steps, immediate = false) {
     return new Promise(resolve => {
         let delay = 0;
         
@@ -1282,18 +1282,21 @@ async function playAgentSteps(steps) {
                 }
                 
                 if (idx === steps.length - 1) {
-                    setTimeout(resolve, 300);
+                    setTimeout(resolve, immediate ? 0 : 300);
                 }
             }, delay);
-            
-            // Timing dégressif pour l'animation séquentielle cinéma
-            if (step.type === "handoff") delay += 800;
-            else if (step.type === "activation") delay += 300;
-            else if (step.type === "tool_call") delay += 500;
-            else if (step.type === "tool_output") delay += 200;
-            else if (step.type === "message" || step.type === "terminal_message" || step.type === "terminal_output_direct") delay += 150;
-            else if (step.type === "plan") delay += 400;
-            else if (step.type === "plan_update") delay += 150;
+
+            // Timing dégressif pour l'animation séquentielle cinéma (désactivé en mode
+            // immédiat : streaming SSE, où chaque étape arrive déjà au fil de l'eau).
+            if (!immediate) {
+                if (step.type === "handoff") delay += 800;
+                else if (step.type === "activation") delay += 300;
+                else if (step.type === "tool_call") delay += 500;
+                else if (step.type === "tool_output") delay += 200;
+                else if (step.type === "message" || step.type === "terminal_message" || step.type === "terminal_output_direct") delay += 150;
+                else if (step.type === "plan") delay += 400;
+                else if (step.type === "plan_update") delay += 150;
+            }
         });
         
         if (steps.length === 0) resolve();
@@ -1675,14 +1678,8 @@ if (_btnChatUndo) _btnChatUndo.addEventListener("click", async () => {
         });
         const d = await r.json();
         if (d.removed_user == null) { logToTerminal("Rien à annuler.", "warning"); return; }
-        // Retire les dernières bulles affichées (réponse(s) + question).
-        const kids = chatMessages.children;
-        for (let i = kids.length - 1; i >= 0; i--) {
-            const el = kids[i];
-            const isUser = el.classList && el.classList.contains("user-msg");
-            el.remove();
-            if (isUser) break;  // on s'arrête après avoir retiré la question
-        }
+        // Redessin propre depuis l'arbre (re)calé côté serveur.
+        await reloadChatHistory(true);
         logToTerminal("Dernier échange annulé.", "system");
     } catch (e) { logToTerminal("Annulation : " + e, "error"); }
 });
@@ -1697,14 +1694,8 @@ if (_btnChatRetry) _btnChatRetry.addEventListener("click", async () => {
         });
         const d = await r.json();
         if (!d.user) { logToTerminal("Rien à réessayer.", "warning"); return; }
-        // Retire les dernières bulles (réponse + question) puis rejoue la question.
-        const kids = chatMessages.children;
-        for (let i = kids.length - 1; i >= 0; i--) {
-            const el = kids[i];
-            const isUser = el.classList && el.classList.contains("user-msg");
-            el.remove();
-            if (isUser) break;
-        }
+        // Redessin propre (l'arbre est recalé côté serveur), puis on rejoue la question.
+        await reloadChatHistory(true);
         chatInput.value = d.user;
         chatForm.dispatchEvent(new Event("submit"));
     } catch (e) { logToTerminal("Réessai : " + e, "error"); }
@@ -1798,7 +1789,7 @@ chatForm.addEventListener("submit", async (e) => {
                     if (ev === "run") {
                         activeRunId = payload.run_id;
                     } else if (ev === "step") {
-                        await playAgentSteps([payload]);
+                        await playAgentSteps([payload], true);   // immédiat : pas de délai cinéma en streaming
                     } else if (ev === "error") {
                         logToTerminal("Erreur essaim: " + (payload.detail || ""), "error");
                     } else if (ev === "done") {
@@ -2815,19 +2806,26 @@ if (_btnAddUser) _btnAddUser.addEventListener("click", async () => {
 // -------------------------------------------------------------------------
 function loadConfigAgentsPane() {
     agentsList.innerHTML = "";
+    // Déterminer l'orchestrateur (protégé) : flag orchestrator, sinon "Jarvis", sinon 1er.
+    let orchName = (agentsConfig.find(a => a.orchestrator === true) || {}).name;
+    if (!orchName) orchName = agentsConfig.some(a => a.name === "Jarvis") ? "Jarvis" : (agentsConfig[0] || {}).name;
     agentsConfig.forEach(agent => {
         const card = document.createElement("div");
         card.className = "agent-item-card";
         const displayName = agent.display_name || agent.name;
         const subtitle = agent.display_name && agent.display_name !== agent.name ? `${agent.name} • ${agent.model}` : agent.model;
+        const isOrch = agent.name === orchName;
+        const delBtn = isOrch
+            ? `<span title="L'orchestrateur ne peut pas être supprimé" style="padding:6px 10px;font-size:0.7rem;opacity:0.6;">🛡️ orchestrateur</span>`
+            : `<button class="btn btn-secondary btn-del-agent" data-name="${agent.name}" style="padding: 6px 12px; margin: 0; border-color: rgba(239, 68, 68, 0.4); color: #f87171;">Supprimer</button>`;
         card.innerHTML = `
             <div class="agent-meta-info">
-                <h4>${getAgentEmoji(agent.avatar_type || agent.name)} ${displayName}</h4>
+                <h4>${getAgentEmoji(agent.avatar_type || agent.name)} ${displayName}${isOrch ? ' ⭐' : ''}</h4>
                 <span>Modèle : ${subtitle}</span>
             </div>
             <div class="agent-actions">
                 <button class="btn btn-secondary btn-edit-agent" data-name="${agent.name}" style="padding: 6px 12px; margin: 0;">Modifier</button>
-                <button class="btn btn-secondary btn-del-agent" data-name="${agent.name}" style="padding: 6px 12px; margin: 0; border-color: rgba(239, 68, 68, 0.4); color: #f87171;">Supprimer</button>
+                ${delBtn}
             </div>
         `;
         agentsList.appendChild(card);

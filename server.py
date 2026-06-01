@@ -697,6 +697,10 @@ async def chat_undo(req: ClientReq):
     if msgs and msgs[-1].get("role") == "user":
         removed_user = msgs.pop().get("content")
     sess.messages = msgs  # déclenche la sauvegarde
+    # IMPORTANT : recaler le pointeur d'arbre, sinon il pointe vers un nœud supprimé
+    # et le chat se redessine VIDE.
+    ids = [m.get("id") for m in msgs if m.get("id")]
+    sess.active_node_id = ids[-1] if ids else None
     return {"status": "success", "removed_user": removed_user, "remaining": len(msgs)}
 
 
@@ -712,6 +716,8 @@ async def chat_retry(req: ClientReq):
     if msgs and msgs[-1].get("role") == "user":
         last_user = msgs.pop().get("content")
     sess.messages = msgs
+    ids = [m.get("id") for m in msgs if m.get("id")]
+    sess.active_node_id = ids[-1] if ids else None
     return {"status": "success", "user": last_user}
 
 
@@ -1471,6 +1477,18 @@ class SaveAgentsRequest(BaseModel):
 @app.post("/api/config/agents")
 async def save_config_agents(req: SaveAgentsRequest):
     try:
+        # Garde-fou : l'orchestrateur ne doit jamais être supprimé (sinon plus de
+        # routage/délégation). On autorise son RENOMMAGE (via orchestrator: true).
+        agents = req.agents or []
+        if not agents:
+            raise HTTPException(status_code=400, detail="Au moins un agent (l'orchestrateur) est requis.")
+        orch = _orch_name()
+        names = {a.get("name") for a in agents}
+        has_orch = any(a.get("orchestrator") is True for a in agents) or (orch in names)
+        if not has_orch:
+            raise HTTPException(status_code=400, detail=(
+                f"Impossible de supprimer l'orchestrateur « {orch} ». "
+                "Pour le renommer, change son nom en gardant « orchestrator: true »."))
         # Enregistrer dans agents.yaml
         with open("agents.yaml", "w", encoding="utf-8") as f:
             yaml.safe_dump({"agents": req.agents}, f, allow_unicode=True, sort_keys=False)
@@ -1483,6 +1501,8 @@ async def save_config_agents(req: SaveAgentsRequest):
             session.active_agent = _orch_agent() or list(swarm.agents.values())[0]
             
         return {"status": "success", "message": "Configuration des agents sauvegardée et rechargée avec succès !"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur de sauvegarde de agents.yaml : {str(e)}")
 
