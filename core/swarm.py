@@ -511,6 +511,48 @@ class Swarm:
                 out.append(m)
         return out
 
+    def _delegation_relevant(self, agent: Agent, messages: list) -> bool:
+        """Mini-routeur : la dernière demande relève-t-elle CLAIREMENT d'un agent spécialisé
+        présent ? Indépendant de la langue (le LLM comprend) et des agents (liste dynamique).
+        Renvoie True si on doit laisser l'orchestrateur déléguer, False s'il doit répondre
+        lui-même. Désactivable via DELEGATION_ROUTER=false (on laisse alors déléguer)."""
+        if os.getenv("DELEGATION_ROUTER", "true").lower() not in ("true", "1", "yes"):
+            return True
+        orch = getattr(self, "orchestrator_name", "Jarvis")
+        specialists = []
+        for name, a in self.agents.items():
+            if name == orch:
+                continue
+            desc = ""
+            if a.system_prompt:
+                sents = [s.strip() for s in a.system_prompt.replace("\n", " ").split(".") if s.strip()]
+                desc = ". ".join(sents[:1])
+            specialists.append(f"- {name} : {desc}")
+        if not specialists:
+            return True
+        last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+        if not str(last_user).strip():
+            return True
+        try:
+            model = os.getenv("FAST_MODEL", "").strip() or agent.model
+            resp = self._complete(model, [
+                {"role": "system", "content": (
+                    "Tu es un routeur. Voici des agents spécialisés :\n" + "\n".join(specialists) +
+                    "\n\nLa demande de l'utilisateur relève-t-elle CLAIREMENT du métier de l'UN de ces "
+                    "agents (une tâche à lui confier) ? Réponds UNIQUEMENT par le NOM exact de l'agent. "
+                    "Si la demande est générale, conversationnelle, une présentation, ou ne correspond à "
+                    "aucun de ces métiers, réponds exactement : AUCUN.")},
+                {"role": "user", "content": str(last_user)[:1500]},
+            ], tools_schema=None, allow_continuation=False)
+            ans = (resp.choices[0].message.content or "").strip()
+            # Délègue seulement si la réponse nomme un agent existant (≠ AUCUN).
+            if "aucun" in ans.lower():
+                return False
+            return any(name.lower() in ans.lower() for name in self.agents if name != orch)
+        except Exception as e:
+            print(f"[Routeur délégation] indisponible ({e}) — délégation laissée au modèle.")
+            return True
+
     def _route_model(self, default_model: str, messages: list) -> str:
         """Routage par difficulté : pour une requête manifestement triviale, utilise
         un modèle rapide (FAST_MODEL) ; sinon garde le modèle fort. Désactivé tant que
@@ -913,6 +955,8 @@ class Swarm:
         started_at = time.time()
         tokens_used = 0
         skill_failures = []  # échecs de compétences dynamiques → réparées en fin de run
+        _route_done = False   # routeur de délégation : décidé une seule fois par run
+        _route_allow = True   # autoriser la délégation par l'orchestrateur ?
 
         while True:
             # Annulation (barge-in vocal / bouton stop) : vérifiée à chaque tour.
@@ -986,22 +1030,16 @@ class Swarm:
             # Garde-fou anti sur-délégation : pour une question triviale/générale adressée
             # à l'orchestrateur, on RETIRE les outils de délégation pour ce tour → il répond
             # lui-même (qwen3 a tendance à transférer à tort sinon).
-            if current_agent.name == getattr(self, "orchestrator_name", "Jarvis"):
-                last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
-                lu = str(last_user).lower().strip()
-                # Garde-fou INDÉPENDANT DES AGENTS : on ne bloque la délégation que pour les
-                # messages purement conversationnels/méta (identité, heure, politesse) qui ne
-                # relèvent JAMAIS d'un spécialiste — quels que soient les agents présents.
-                # Pour tout le reste, la délégation reste possible et c'est la liste DYNAMIQUE
-                # des agents (injectée plus haut, nouveaux agents inclus) qui guide le routage.
-                _trivial_pat = ("qui es", "qui est tu", "tu es qui", "ton nom", "présente-toi",
-                                "presente-toi", "tu t'appelle", "bonjour", "salut", "coucou", "hello",
-                                "hey ", "merci", "ça va", "ca va", "comment vas", "quelle heure",
-                                "quel heure", "l'heure", "quel jour", "quelle date", "date du jour",
-                                "que sais-tu faire", "que peux-tu faire", "tes capacités",
-                                "tu fais quoi", "à quoi tu sers")
-                is_trivial = any(p in lu for p in _trivial_pat)
-                if is_trivial:
+            # Routeur de délégation (indépendant de la langue ET des agents) : un mini-appel
+            # LLM décide UNE fois par run si la demande relève d'un spécialiste présent. Sinon,
+            # on retire les outils de délégation → l'orchestrateur répond lui-même (qwen3 a
+            # tendance à sur-déléguer). Le LLM comprend toutes les langues et utilise la liste
+            # DYNAMIQUE des agents, donc tout nouvel agent est pris en compte automatiquement.
+            if current_agent.name == getattr(self, "orchestrator_name", "Jarvis") and len(self.agents) > 1:
+                if not _route_done:
+                    _route_done = True
+                    _route_allow = self._delegation_relevant(current_agent, messages)
+                if not _route_allow:
                     effective_tools = [f for f in effective_tools
                                        if not f.__name__.startswith("transfer_to_")
                                        and f.__name__ not in ("query_agent", "debate_between_agents")]
