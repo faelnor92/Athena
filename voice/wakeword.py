@@ -11,6 +11,31 @@ class WakeWordUnavailable(RuntimeError):
     pass
 
 
+def _norm(s: str) -> str:
+    """Minuscule + sans accents + sans ponctuation (pour comparer des transcriptions)."""
+    import unicodedata
+    import re
+    s = unicodedata.normalize("NFKD", str(s).lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9 ]+", " ", s)
+
+
+def phrase_in_text(text: str, phrase: str) -> bool:
+    """Vrai si le mot d'activation apparaît dans la transcription (tolérant aux
+    accents/variantes phonétiques courantes, ex. « athena »/« athéna »/« atena »)."""
+    t = _norm(text)
+    p = _norm(phrase).strip()
+    if not p:
+        return False
+    if p in t:
+        return True
+    # Petites variantes phonétiques pour les noms courants.
+    variants = {p}
+    if "athena" in p:
+        variants |= {"atena", "atena", "atenna", "athina", "atina", "hathena"}
+    return any(v in t for v in variants)
+
+
 class WakeWord:
     def __init__(self, engine="openwakeword", wake_word="hey jarvis",
                  porcupine_key="", sample_rate=16000):

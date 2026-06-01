@@ -471,17 +471,23 @@ class Satellite:
             pass
 
     def _detect_wake(self, pcm_in: bytes) -> bool:
-        """Mode serveur : passe le segment audio dans openWakeWord. True si le wake
-        word y est détecté. En cas d'erreur/lib absente, on ne bloque pas (fallback)."""
+        """Mode serveur : détecte le wake word dans le segment audio. Moteur 'stt'
+        (recommandé pour un mot custom comme « Athena ») = transcription + recherche du
+        mot ; sinon openWakeWord. En cas d'erreur/lib absente, on ne bloque pas."""
         try:
             import numpy as np
+            engine = self.vc.get("wake_engine", "openwakeword")
+            phrase = self.vc.get("wake_word", "hey jarvis")
+            # STT : on transcrit le segment et on cherche le mot d'activation.
+            if engine == "stt":
+                from .wakeword import phrase_in_text
+                samples = np.frombuffer(pcm_in, dtype=np.int16).astype("float32") / 32768.0
+                text = self.stt.transcribe(samples)
+                return phrase_in_text(text, phrase)
+            # openWakeWord (modèles intégrés).
             if self._wake is None:
                 from .wakeword import WakeWord
-                self._wake = WakeWord(
-                    self.vc.get("wake_engine", "openwakeword"),
-                    self.vc.get("wake_word", "hey jarvis"),
-                    self.vc.get("porcupine_key", ""), 16000,
-                )
+                self._wake = WakeWord(engine, phrase, self.vc.get("porcupine_key", ""), 16000)
             samples = np.frombuffer(pcm_in, dtype=np.int16)
             for i in range(0, max(0, len(samples) - 1280), 1280):
                 if self._wake.detect(samples[i:i + 1280]):

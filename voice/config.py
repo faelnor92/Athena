@@ -27,7 +27,8 @@ def voice_config() -> dict:
         "piper_model": os.getenv("VOICE_PIPER_MODEL", ""),   # chemin .onnx
         "piper_bin": os.getenv("VOICE_PIPER_BIN", "piper"),
 
-        # Wake word : "openwakeword", "porcupine", ou "none" (push-to-talk Entrée)
+        # Wake word : "stt" (mot custom ex. Athena, par transcription), "openwakeword",
+        # "porcupine", ou "none" (push-to-talk Entrée)
         "wake_engine": os.getenv("VOICE_WAKE_ENGINE", "openwakeword"),
         "wake_word": os.getenv("VOICE_WAKE_WORD", "hey jarvis"),
         "porcupine_key": os.getenv("VOICE_PORCUPINE_KEY", ""),

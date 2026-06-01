@@ -39,6 +39,10 @@ class VoiceAssistant:
         if not self.wake.enabled:
             input("⏎  [Entrée] pour parler... ")
             return
+        # Mode STT : wake word custom (ex. « Athena ») détecté par transcription d'une
+        # fenêtre glissante — aucun modèle à entraîner, marche pour n'importe quel mot.
+        if self.cfg["wake_engine"] == "stt":
+            return self._wait_for_wake_stt()
         import sounddevice as sd
         sr = self.cfg["sample_rate"]
         block = int(sr * self.cfg["block_ms"] / 1000)
@@ -47,6 +51,40 @@ class VoiceAssistant:
             while True:
                 data, _ = stream.read(block)
                 if self.wake.detect(data[:, 0]):
+                    return
+
+    def _wait_for_wake_stt(self):
+        """Wake word par STT : transcrit une fenêtre glissante (~1.5 s) toutes les ~0.6 s
+        (uniquement quand il y a du son) et déclenche si le mot d'activation y apparaît."""
+        import sounddevice as sd
+        import numpy as np
+        from .wakeword import phrase_in_text
+        sr = self.cfg["sample_rate"]
+        block = int(sr * self.cfg["block_ms"] / 1000)
+        win_blocks = max(1, int(1500 / self.cfg["block_ms"]))
+        phrase = self.cfg["wake_word"]
+        print(f"🎙️  En écoute du mot d'activation « {phrase} » (STT)...")
+        win, last_check = [], 0.0
+        with sd.InputStream(samplerate=sr, channels=1, dtype="float32", blocksize=block) as stream:
+            while True:
+                data, _ = stream.read(block)
+                win.append(data[:, 0].copy())
+                if len(win) > win_blocks:
+                    win.pop(0)
+                now = time.time()
+                if now - last_check < 0.6:
+                    continue
+                last_check = now
+                samples = np.concatenate(win)
+                rms = float(np.sqrt(np.mean(samples ** 2)) + 1e-9)
+                if rms < self.cfg["silence_rms"]:
+                    continue  # silence → on ne transcrit pas (économie CPU)
+                try:
+                    text = self.stt.transcribe(samples)
+                except Exception:
+                    continue
+                if phrase_in_text(text, phrase):
+                    win.clear()
                     return
 
     def record_utterance(self):
