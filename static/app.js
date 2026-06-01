@@ -3225,7 +3225,13 @@ agentConfigForm.addEventListener("submit", async (e) => {
     });
     
     const updatedAgent = { name, display_name, welcome_message, avatar_type, model, system_prompt, tools, handoffs };
-    
+    // Préserver le flag orchestrateur lors d'une édition : sinon renommer l'orchestrateur
+    // (ex: Jarvis → Athena) le ferait passer pour une suppression et serait refusé.
+    if (origName) {
+        const orig = agentsConfig.find(a => a.name === origName);
+        if (orig && orig.orchestrator) updatedAgent.orchestrator = true;
+    }
+
     let newAgents = [];
     if (origName) {
         // Edition : on remplace

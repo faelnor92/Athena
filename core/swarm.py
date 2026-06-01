@@ -1066,38 +1066,30 @@ class Swarm:
             # répondre directement, pas refuser le travail).
             _orch = getattr(self, "orchestrator_name", "Jarvis")
             if current_agent.name == _orch and len(self.agents) > 1:
-                system_prompt += "\n\n⚠️ CONSIGNES DE ROUTAGE DE L'ESSAIM (INTERDICTION ABSOLUE D'AGIR TOI-MÊME) :\n"
-                system_prompt += f"Tu es {current_agent.name}, le SUPERVISEUR et l'ORCHESTRATEUR principal de l'essaim. Tu n'es PAS un agent de production.\n"
-                system_prompt += "1. Tu as l'INTERDICTION STRICTE de réaliser le travail spécialisé des autres agents (comme coder, rédiger, traduire, relire, etc.) de manière directe. Tu ne dois générer AUCUNE réponse de production toi-même.\n"
-                system_prompt += "2. GESTION DES REQUÊTES MULTI-AGENTS (TRÈS IMPORTANT) :\n"
-                system_prompt += "   Si la demande de l'utilisateur comporte MULTIPLES tâches spécialisées différentes (ex: critique + code + traduction + post) :\n"
-                system_prompt += "   - Tu as l'INTERDICTION ABSOLUE d'utiliser les fonctions `transfer_to_...` pour ces cas, car cela annulerait et perdrait le travail des autres agents.\n"
-                system_prompt += "   - Tu DOIS obligatoirement et exclusivement utiliser l'outil `query_agent` pour CHAQUE tâche individuelle (ex: query_agent(agent_name='Codeur', prompt='...'), query_agent(agent_name='Traducteur', prompt='...'), etc.) afin d'interroger tous les spécialistes nécessaires.\n"
-                system_prompt += "   - Une fois que tu as obtenu tous les résultats d'outils, tu rédiges une magnifique synthèse globale structurée présentant le résultat final de chaque tâche.\n"
-                system_prompt += "3. GESTION DES REQUÊTES UNIQUES (UN SEUL DOMAINE) :\n"
-                system_prompt += "   S'il n'y a qu'une seule tâche spécialisée unique (ou si le contexte concerne un seul agent), n'utilise pas `query_agent`. À la place, appelle immédiatement la fonction de transfert `transfer_to_...` appropriée pour passer la main de manière fluide :\n\n"
-                
+                system_prompt += "\n\n⚙️ ROUTAGE DE L'ESSAIM (délègue si pertinent, sinon réponds toi-même) :\n"
+                system_prompt += f"Tu es {current_agent.name}, l'orchestrateur. Voici les agents spécialisés DISPONIBLES et leur domaine. "
+                system_prompt += "Examine la demande : si elle relève CLAIREMENT du domaine d'un de ces agents, délègue-lui ; "
+                system_prompt += "SINON, réponds toi-même directement et utilement (n'invente pas d'agent inexistant).\n\n"
+
                 for other_name, other_agent in self.agents.items():
                     if other_name == _orch:
                         continue
-                    # Extraire une description concise du rôle de l'agent à partir des deux premières phrases de son prompt
+                    # Description concise du rôle, extraite des 2 premières phrases du prompt de l'agent.
                     agent_desc = ""
                     if other_agent.system_prompt:
                         sentences = [s.strip() for s in other_agent.system_prompt.replace("\n", " ").split(".") if s.strip()]
                         agent_desc = ". ".join(sentences[:2]) + "."
-                    
-                    system_prompt += f"   - Pour tout ce qui relève du domaine de **{other_agent.display_name or other_name}** (Rôle: {agent_desc}) : appelle obligatoirement la fonction de tool call `transfer_to_{other_name}`.\n"
+                    system_prompt += f"   - **{other_agent.display_name or other_name}** — {agent_desc} → délègue via `transfer_to_{other_name}` (ou `query_agent('{other_name}', …)`).\n"
+
+                system_prompt += "\nMULTI-TÂCHES : si la demande couvre PLUSIEURS domaines à la fois, utilise `query_agent` pour CHAQUE spécialiste concerné, puis fais une synthèse — n'utilise pas `transfer_to_` dans ce cas (cela perdrait les autres résultats).\n"
+                system_prompt += "SUIVI : si l'utilisateur demande une modification d'un livrable produit récemment par un spécialiste, re-transfère à ce spécialiste.\n"
+                system_prompt += "LIVRAISON : quand un spécialiste te renvoie son travail, recopie-le INTÉGRALEMENT dans ta réponse.\n"
                 
                 system_prompt += "\n3.1 GESTION DES DÉBATS & TABLES RONDES (TRÈS IMPORTANT) :\n"
                 system_prompt += "   Si l'utilisateur te demande d'organiser un débat, une confrontation, une table ronde ou une discussion/collaboration entre plusieurs agents (ex: 'organise un débat entre toi, le codeur et l'auteur', 'faites une confrontation sur PostgreSQL vs MongoDB') :\n"
                 system_prompt += "   - Tu DOIS obligatoirement appeler l'outil `debate_between_agents` immédiatement.\n"
-                system_prompt += "   - Ne rédige pas de préambule inutile ou de réponse textuelle intermédiaire dans ton propre message. Appelle directement l'outil avec les bons paramètres (`agents`, `subject`, `turns`).\n"
-                
-                system_prompt += "\n4. N'essaie JAMAIS de simuler, d'écrire ou de modifier la réponse dans ton propre message. Tu as l'obligation d'effectuer uniquement le transfert d'agent via le tool call, d'interroger les agents via `query_agent` si la demande est multiple, ou de lancer un débat via `debate_between_agents`. C'est critique pour le bon fonctionnement et la dynamique de l'essaim !\n"
-                
-                system_prompt += "\n5. CONTEXTE ET SUIVI DE DISCUSSION (TRÈS IMPORTANT) :\n"
-                system_prompt += "   Si l'utilisateur pose une question de suivi ou demande une modification ('rajoute ça', 'regarde cette ligne', 'traduis le', 'corrige') sur une tâche ou un texte qui a été produit récemment par un spécialiste (ex: le Codeur ou l'Auteur), tu ne dois pas essayer d'y répondre toi-même ni d'appeler `query_agent`. Tu DOIS immédiatement transférer la main à ce spécialiste en appelant son tool de transfert (ex: `transfer_to_Codeur` ou `transfer_to_Auteur`). Sois extrêmement réactif aux intentions de l'utilisateur.\n"
-                
+                system_prompt += "   - Appelle directement l'outil avec les bons paramètres (`agents`, `subject`, `turns`), sans préambule.\n"
+
                 system_prompt += "\n6. GESTION DE LA MÉMOIRE & APPRENTISSAGE PROACTIF (TRÈS IMPORTANT) :\n"
                 system_prompt += "   - Si l'utilisateur te demande de retenir un fait, une préférence ou une information globale sur lui ou son environnement, appelle l'outil `memorize_fact` immédiatement.\n"
                 system_prompt += "   - SOIS PROACTIF : si tu détectes au fil des conversations une préférence utilisateur clé, un prénom, un choix technologique majeur, une configuration ou un élément durable de son projet, utilise automatiquement `memorize_fact` pour le mémoriser dans sa base de connaissances, sans attendre qu'il te le demande explicitement ! C'est ce qui fait que ta mémoire à long terme s'enrichit et vit d'elle-même.\n"
