@@ -883,7 +883,23 @@
                 <!-- ONGLET : SATELLITES VOCAUX ESP32-S3 (ESPHome direct) -->
                 <div class="modal-pane" id="pane-satellites" style="display: none;">
                     <h3>🛰️ Satellites vocaux ESP32-S3</h3>
-                    <p class="section-desc">Connecte des enceintes ESP32-S3 sous <strong>ESPHome</strong> directement à Jarvis (sans Home Assistant) pour une latence minimale. Jarvis reçoit l'audio, transcrit, répond et renvoie la voix au satellite.</p>
+                    <p class="section-desc">Connecte des enceintes ESP32-S3 sous <strong>ESPHome</strong> directement à Jarvis (sans Home Assistant) pour une latence minimale. Jarvis reçoit l'audio, transcrit, répond et renvoie la voix au satellite concerné.</p>
+
+                    <h5 style="color: var(--accent-cyan); margin: 6px 0 4px;">🎙️ Mot d'activation vocal</h5>
+                    <p class="section-desc" style="font-size:0.74rem;">Le mot qui réveille l'assistant (vocal local + satellites en mode serveur). « stt » accepte n'importe quel mot, sans entraînement.</p>
+                    <div style="display:flex; gap:6px; align-items:flex-end;">
+                        <div class="form-group" style="flex:1;">
+                            <label>Moteur</label>
+                            <select id="wake-engine" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border-color);border-radius:6px;color:#fff;padding:8px;">
+                                <option value="stt">STT (mot personnalisé)</option>
+                                <option value="openwakeword">openWakeWord (modèles intégrés)</option>
+                                <option value="none">Aucun (push-to-talk)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1.4;"><label>Mot d'activation</label><input type="text" id="wake-word" placeholder="Athena"></div>
+                        <button type="button" id="btn-wake-save" class="btn btn-primary" style="margin-bottom:14px;">💾</button>
+                    </div>
+                    <div id="wake-save-status" style="font-size:0.76rem;opacity:0.75;margin-bottom:6px;"></div>
 
                     <details style="margin: 6px 0 12px; font-size: 0.8rem; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px;">
                         <summary style="cursor: pointer; color: var(--accent-cyan);">Comment connecter un ESP (et obtenir la clé) ?</summary>

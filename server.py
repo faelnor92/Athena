@@ -1671,6 +1671,41 @@ async def set_user_profile(req: UserProfileRequest):
     return {"status": "success", "profile": user_profile.get()}
 
 
+class VoiceWakeRequest(BaseModel):
+    engine: str = "stt"
+    word: str = "Athena"
+
+
+@app.get("/api/config/voice-wake")
+async def get_voice_wake():
+    """Mot d'activation vocal courant (moteur + mot)."""
+    return {"engine": os.getenv("VOICE_WAKE_ENGINE", "stt"),
+            "word": os.getenv("VOICE_WAKE_WORD", "Athena")}
+
+
+@app.post("/api/config/voice-wake")
+async def set_voice_wake(req: VoiceWakeRequest):
+    """Change le mot d'activation vocal : persiste dans .env, applique À CHAUD
+    (os.environ) et reconnecte les satellites pour qu'ils l'utilisent."""
+    engine = (req.engine or "stt").strip() or "stt"
+    word = (req.word or "Athena").strip() or "Athena"
+    try:
+        from setup_wizard import set_env_var
+        set_env_var("VOICE_WAKE_ENGINE", engine)
+        set_env_var("VOICE_WAKE_WORD", word)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Écriture .env impossible : {e}")
+    os.environ["VOICE_WAKE_ENGINE"] = engine
+    os.environ["VOICE_WAKE_WORD"] = word
+    try:
+        from voice.esphome_satellites import manager as sat_mgr, _load_satellites
+        if _load_satellites():
+            await asyncio.to_thread(sat_mgr.restart)
+    except Exception:
+        pass
+    return {"status": "success", "engine": engine, "word": word}
+
+
 @app.get("/api/config/satellites/sensor-catalog")
 async def get_sensor_catalog():
     """Catalogue capteurs + types audio (micro/sortie) proposés dans l'UI (source unique)."""

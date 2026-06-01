@@ -2238,11 +2238,38 @@ async function saveSatelliteFromForm() {
     } catch (e) { if (st) st.textContent = "❌ " + e; }
 }
 
+async function loadWakeWord() {
+    try {
+        const r = await apiFetch("/api/config/voice-wake");
+        const d = await r.json();
+        const eng = document.getElementById("wake-engine");
+        const w = document.getElementById("wake-word");
+        if (eng) eng.value = d.engine || "stt";
+        if (w) w.value = d.word || "Athena";
+    } catch (e) { /* ignore */ }
+}
+const _btnWakeSave = document.getElementById("btn-wake-save");
+if (_btnWakeSave) _btnWakeSave.addEventListener("click", async () => {
+    const st = document.getElementById("wake-save-status");
+    const engine = (document.getElementById("wake-engine") || {}).value || "stt";
+    const word = (document.getElementById("wake-word") || {}).value || "Athena";
+    if (st) st.textContent = "⏳ Enregistrement & application…";
+    try {
+        const r = await apiFetch("/api/config/voice-wake", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ engine, word })
+        });
+        const d = await r.json();
+        if (st) st.textContent = `✅ Mot d'activation « ${d.word} » (${d.engine}) appliqué. (L'assistant vocal LOCAL nécessite un relancement de son process.)`;
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+});
+
 if (modalTabSatellites && paneSatellites) {
     modalTabSatellites.addEventListener("click", () => switchModalTab(modalTabSatellites, () => {
         paneSatellites.style.display = "block";
         _ensureSatCatalog();
         loadSatellitesPane();
+        loadWakeWord();
     }));
 }
 const _btnSatAdd = document.getElementById("btn-sat-add");
