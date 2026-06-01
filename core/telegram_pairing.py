@@ -1,0 +1,128 @@
+"""DM pairing Telegram : seuls les contacts APPROUVÉS peuvent dialoguer avec le bot.
+
+Un inconnu reçoit un code de pairage ; l'administrateur l'approuve (commande
+`/approve <code>` depuis un chat autorisé, ou via l'UI Réglages → Messageries).
+Les chats listés dans TELEGRAM_CHAT_ID sont autorisés d'office. Désactivable via
+TELEGRAM_REQUIRE_PAIRING=false. Au tout premier contact (aucun chat configuré ni
+approuvé), ce contact est auto-approuvé (amorçage du propriétaire).
+"""
+import json
+import os
+import secrets
+import threading
+
+_PATH = os.getenv("TELEGRAM_PAIRING_PATH", "telegram_paired.json")
+_lock = threading.Lock()
+
+
+def _load() -> dict:
+    try:
+        with open(_PATH, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        d.setdefault("approved", [])
+        d.setdefault("pending", {})
+        return d
+    except Exception:
+        return {"approved": [], "pending": {}}
+
+
+def _save(d: dict):
+    try:
+        with open(_PATH, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[Pairing] écriture impossible : {e}")
+
+
+def _configured() -> set:
+    return {x.strip() for x in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if x.strip()}
+
+
+def required() -> bool:
+    return os.getenv("TELEGRAM_REQUIRE_PAIRING", "true").lower() in ("true", "1", "yes")
+
+
+def is_allowed(chat_id) -> bool:
+    cid = str(chat_id)
+    if cid in _configured():
+        return True
+    with _lock:
+        return cid in _load().get("approved", [])
+
+
+def allowed_chats() -> list:
+    """Chats autorisés (configurés + approuvés) — destinataires des notifications d'accès."""
+    with _lock:
+        return sorted(_configured() | set(_load().get("approved", [])))
+
+
+def maybe_bootstrap(chat_id) -> bool:
+    """Auto-approuve le 1er contact si aucun chat n'est configuré NI approuvé."""
+    cid = str(chat_id)
+    with _lock:
+        d = _load()
+        if not _configured() and not d.get("approved"):
+            d["approved"].append(cid)
+            _save(d)
+            return True
+    return False
+
+
+def request_pairing(chat_id) -> str:
+    """Crée (ou retrouve) un code de pairage pour ce chat inconnu."""
+    cid = str(chat_id)
+    with _lock:
+        d = _load()
+        for code, c in d["pending"].items():
+            if c == cid:
+                return code
+        code = secrets.token_hex(3).upper()  # 6 caractères
+        d["pending"][code] = cid
+        _save(d)
+        return code
+
+
+def approve_code(code: str):
+    """Approuve la demande correspondant au code. Renvoie le chat_id approuvé ou None."""
+    code = (code or "").strip().upper()
+    with _lock:
+        d = _load()
+        cid = d["pending"].pop(code, None)
+        if cid and cid not in d["approved"]:
+            d["approved"].append(cid)
+        if cid:
+            _save(d)
+        return cid
+
+
+def approve_chat(chat_id) -> bool:
+    cid = str(chat_id)
+    with _lock:
+        d = _load()
+        d["pending"] = {k: v for k, v in d["pending"].items() if v != cid}
+        if cid not in d["approved"]:
+            d["approved"].append(cid)
+        _save(d)
+        return True
+
+
+def revoke_chat(chat_id) -> bool:
+    cid = str(chat_id)
+    with _lock:
+        d = _load()
+        before = len(d["approved"])
+        d["approved"] = [c for c in d["approved"] if c != cid]
+        _save(d)
+        return len(d["approved"]) < before
+
+
+def pending() -> dict:
+    with _lock:
+        return dict(_load().get("pending", {}))
+
+
+def status() -> dict:
+    with _lock:
+        d = _load()
+    return {"required": required(), "configured": sorted(_configured()),
+            "approved": d.get("approved", []), "pending": d.get("pending", {})}

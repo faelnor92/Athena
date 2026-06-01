@@ -69,3 +69,6 @@ user_profile.md
 
 # Config d'agents LOCALE (le dépôt livre agents.default.yaml + agents.example.yaml)
 agents.yaml
+
+# Pairage Telegram (contacts approuvés — donnée locale)
+telegram_paired.json

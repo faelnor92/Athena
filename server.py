@@ -1764,6 +1764,36 @@ async def notify_channels():
     return {"configured": configured_channels()}
 
 
+@app.get("/api/telegram/pairing")
+async def telegram_pairing_status():
+    """État du DM pairing Telegram (demandes en attente, contacts approuvés)."""
+    from core import telegram_pairing
+    return telegram_pairing.status()
+
+
+class PairingActionRequest(BaseModel):
+    code: str = ""
+    chat_id: str = ""
+
+
+@app.post("/api/telegram/pairing/approve")
+async def telegram_pairing_approve(req: PairingActionRequest):
+    from core import telegram_pairing
+    cid = None
+    if req.code:
+        cid = telegram_pairing.approve_code(req.code)
+    elif req.chat_id:
+        telegram_pairing.approve_chat(req.chat_id); cid = req.chat_id
+    return {"status": "success" if cid else "not_found", "chat_id": cid, "pairing": telegram_pairing.status()}
+
+
+@app.post("/api/telegram/pairing/revoke")
+async def telegram_pairing_revoke(req: PairingActionRequest):
+    from core import telegram_pairing
+    ok = telegram_pairing.revoke_chat(req.chat_id) if req.chat_id else False
+    return {"status": "success" if ok else "not_found", "pairing": telegram_pairing.status()}
+
+
 @app.get("/api/config/env")
 async def get_config_env():
     raw_env = parse_env()
@@ -2305,9 +2335,41 @@ def telegram_bot_worker():
                         
                     chat_id = message["chat"]["id"]
                     text = message["text"]
-                    
+
                     print(f"🤖 [Telegram] Message reçu de {chat_id}: {text}")
-                    
+
+                    # --- DM pairing : seuls les contacts approuvés peuvent dialoguer ---
+                    from core import telegram_pairing as _pair
+
+                    def _tg_send(cid, msg):
+                        try:
+                            requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                                          json={"chat_id": cid, "text": msg}, timeout=8)
+                        except Exception:
+                            pass
+
+                    if _pair.required() and not _pair.is_allowed(chat_id):
+                        # Commande d'approbation depuis ce chat (cas rare) ignorée s'il n'est pas autorisé.
+                        if not _pair.maybe_bootstrap(chat_id):
+                            code = _pair.request_pairing(chat_id)
+                            _tg_send(chat_id, f"🔒 Accès non autorisé. Code de pairage : {code}\n"
+                                              "Demande à l'administrateur de l'approuver "
+                                              "(Réglages → Messageries, ou « /approve " + code + " » depuis un compte autorisé).")
+                            for owner in _pair.allowed_chats():
+                                _tg_send(owner, f"🔔 Demande d'accès Telegram de {chat_id}. Pour approuver : /approve {code}")
+                            print(f"🤖 [Telegram] Accès refusé pour {chat_id} (pairing requis, code {code}).")
+                            continue
+                        else:
+                            _tg_send(chat_id, "✅ Bienvenue — ce compte est désormais l'administrateur de Jarvis.")
+
+                    # Commande d'approbation par l'administrateur : /approve <code>
+                    if text.strip().lower().startswith("/approve ") and _pair.is_allowed(chat_id):
+                        cid = _pair.approve_code(text.strip().split(None, 1)[1])
+                        _tg_send(chat_id, f"✅ Contact {cid} approuvé." if cid else "Code de pairage inconnu.")
+                        if cid:
+                            _tg_send(cid, "✅ Ton accès à Jarvis a été approuvé. Tu peux maintenant discuter.")
+                        continue
+
                     # Initialiser la session si elle n'existe pas
                     if chat_id not in telegram_sessions:
                         default_agent = _orch_agent() or list(swarm.agents.values())[0]

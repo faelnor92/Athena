@@ -55,6 +55,7 @@ agents:
   - update_plan_step
   - create_agent
   - run_tool_script
+  - render_page
   handoffs:
   - Codeur
   - Auteur
@@ -87,6 +88,7 @@ agents:
   - delete_skill
   - web_search
   - web_scrape
+  - render_page
   handoffs:
   - Jarvis
   - Auteur

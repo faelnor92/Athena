@@ -2504,6 +2504,43 @@ async function loadMessagingPane() {
     } catch (e) { /* ignore */ }
     refreshMessagingStatus();
 }
+async function loadPairing() {
+    const box = document.getElementById("pairing-list");
+    if (!box) return;
+    try {
+        const r = await apiFetch("/api/telegram/pairing");
+        const d = await r.json();
+        let html = "";
+        const pending = Object.entries(d.pending || {});
+        if (!d.required) html += `<div style="opacity:0.6;font-size:0.72rem;">Appairage désactivé.</div>`;
+        if (pending.length) {
+            html += pending.map(([code, cid]) => `
+                <div style="display:flex;align-items:center;gap:6px;font-size:0.76rem;background:rgba(255,180,0,0.1);padding:5px 8px;border-radius:6px;">
+                    <span>⏳ ${cid} (code <code>${code}</code>)</span>
+                    <button data-approve="${code}" class="btn" style="padding:1px 8px;margin-left:auto;">Approuver</button>
+                </div>`).join("");
+        } else if (d.required) {
+            html += `<div style="opacity:0.55;font-size:0.72rem;">Aucune demande en attente.</div>`;
+        }
+        const approved = d.approved || [];
+        if (approved.length) {
+            html += `<div style="font-size:0.72rem;opacity:0.75;margin-top:4px;">Approuvés : ` +
+                approved.map(c => `<span style="background:rgba(0,243,255,0.12);padding:1px 6px;border-radius:4px;margin:1px;">${c} <span data-revoke="${c}" style="cursor:pointer;color:#ff5b89;">✕</span></span>`).join("") + `</div>`;
+        }
+        box.innerHTML = html;
+        box.querySelectorAll("[data-approve]").forEach(b => b.addEventListener("click", async () => {
+            await apiFetch("/api/telegram/pairing/approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: b.getAttribute("data-approve") }) });
+            loadPairing();
+        }));
+        box.querySelectorAll("[data-revoke]").forEach(b => b.addEventListener("click", async () => {
+            await apiFetch("/api/telegram/pairing/revoke", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: b.getAttribute("data-revoke") }) });
+            loadPairing();
+        }));
+    } catch (e) { box.innerHTML = `<div style="color:#ff5b89;font-size:0.72rem;">${e}</div>`; }
+}
+const _btnPairingRefresh = document.getElementById("btn-pairing-refresh");
+if (_btnPairingRefresh) _btnPairingRefresh.addEventListener("click", loadPairing);
+
 async function refreshMessagingStatus() {
     const box = document.getElementById("messaging-status");
     if (!box) return;
@@ -2538,6 +2575,7 @@ if (modalTabMessaging && paneMessaging) {
     modalTabMessaging.addEventListener("click", () => switchModalTab(modalTabMessaging, () => {
         paneMessaging.style.display = "block";
         loadMessagingPane();
+        loadPairing();
     }));
 }
 const _btnMsgSave = document.getElementById("btn-msg-save");

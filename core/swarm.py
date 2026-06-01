@@ -33,6 +33,7 @@ import tools.notify_tools
 import tools.planning_tools
 import tools.agent_tools
 import tools.tool_script
+import tools.browser_tools
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -68,6 +69,7 @@ AVAILABLE_TOOLS = {
     "update_plan_step": tools.planning_tools.update_plan_step,
     "create_agent": tools.agent_tools.create_agent,
     "run_tool_script": tools.tool_script.run_tool_script,
+    "render_page": tools.browser_tools.render_page,
 }
 
 def load_dynamic_skills() -> dict:
@@ -526,10 +528,11 @@ class Swarm:
         is_hard = len(text) > 280 or any(k in text for k in hard_kw)
         return default_model if is_hard else fast
 
-    def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None):
+    def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None, allow_fallback: bool = True):
         """Appel LLM via litellm avec routage clé officielle / endpoint custom.
         Si on_delta est fourni et STREAM_TOKENS actif, diffuse les tokens au fil
-        de l'eau (latence minimale) et reconstruit une réponse compatible."""
+        de l'eau (latence minimale) et reconstruit une réponse compatible.
+        En cas d'échec du modèle (après retries), bascule sur FALLBACK_MODELS."""
         completion_kwargs = {"model": model, "messages": messages, "tools": tools_schema}
         custom_base = os.environ.get("CUSTOM_LLM_API_BASE", "").strip()
         custom_key = os.environ.get("CUSTOM_LLM_API_KEY", "").strip()
@@ -579,6 +582,18 @@ class Swarm:
                     wait = min(2 ** attempt, 8)
                     print(f"[\033[93mLLM retry\033[0m] tentative {attempt + 1}/{retries} échouée ({e}); nouvelle tentative dans {wait}s")
                     time.sleep(wait)
+
+        # Failover : le modèle principal a échoué → on tente les modèles de secours.
+        if allow_fallback:
+            fallbacks = [m.strip() for m in os.getenv("FALLBACK_MODELS", "").split(",")
+                         if m.strip() and m.strip() != model]
+            for fb in fallbacks:
+                try:
+                    print(f"[\033[96mLLM failover\033[0m] '{model}' indisponible → bascule sur '{fb}'.")
+                    return self._complete(fb, messages, tools_schema, allow_continuation,
+                                          on_delta, allow_fallback=False)
+                except Exception as e:
+                    last_err = e
         raise last_err
 
     def _maybe_compact(self, model: str, history: list, steps: list) -> list:

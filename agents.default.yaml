@@ -57,4 +57,5 @@ agents:
   - run_tool_script
   - save_new_skill
   - delete_skill
+  - render_page
   handoffs: []
