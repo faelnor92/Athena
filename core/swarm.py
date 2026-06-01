@@ -989,12 +989,25 @@ class Swarm:
             if current_agent.name == getattr(self, "orchestrator_name", "Jarvis"):
                 last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
                 lu = str(last_user).lower().strip()
-                _trivial_pat = ("qui es-tu", "qui es tu", "qui est tu", "tu es qui", "ton nom",
-                                "présente", "presente", "bonjour", "salut", "coucou", "hello", "hey",
-                                "merci", "ça va", "ca va", "comment vas", "quelle heure", "quel jour",
-                                "quelle date", "c'est quoi", "que sais-tu faire", "que peux-tu",
-                                "tes capacités", "aide", "help")
-                is_trivial = any(p in lu for p in _trivial_pat)
+                # Mots-clés signalant une VRAIE tâche métier (sinon l'orchestrateur répond lui-même).
+                _specialist_kw = (
+                    "tradui", "localis", "en anglais", "en espagnol", "en allemand", "en italien",
+                    "écris", "ecris", "rédige", "redige", "roman", "récit", "recit", "poème", "poeme",
+                    "chapitre", "nouvelle", "histoire", "lore", "scène", "scene",
+                    "code", "coder", "débug", "debug", "python", "script", "programme", "fonction",
+                    "compile", "bug", "refactor",
+                    "audit", "sécurit", "securit", "vulnérab", "vulnerab", "faille", "cve",
+                    "post ", "réseau", "reseau", "communau", "instagram", "twitter", "facebook",
+                    "tiktok", "linkedin", "hashtag", "campagne",
+                    "réunion", "reunion", "transcri", "compte-rendu", "compte rendu",
+                    "relis", "relir", "corrige", "critique", "grammaire", "orthographe",
+                )
+                _trivial_pat = ("qui es", "qui est tu", "tu es qui", "ton nom", "présente", "presente",
+                                "bonjour", "salut", "coucou", "hello", "hey", "merci", "ça va", "ca va",
+                                "comment vas", "heure", "quel jour", "quelle date", "date du jour",
+                                "que sais-tu", "que peux-tu", "tes capacités", "aide", "help")
+                is_specialist = any(k in lu for k in _specialist_kw)
+                is_trivial = (not is_specialist) and (any(p in lu for p in _trivial_pat) or len(lu) < 60)
                 if is_trivial:
                     effective_tools = [f for f in effective_tools
                                        if not f.__name__.startswith("transfer_to_")
