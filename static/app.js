@@ -413,6 +413,18 @@ if (tabMeeting) {
 // =========================================================================
 // RECONSTRUCTION DYNAMIQUE DU RESEAU & DES BUREAUX
 // =========================================================================
+// Orchestrateur courant (renommable) : flag orchestrator, sinon "Jarvis", sinon 1er agent.
+function orchestratorAgent() {
+    if (!Array.isArray(agentsConfig) || !agentsConfig.length) return null;
+    return agentsConfig.find(a => a.orchestrator === true)
+        || agentsConfig.find(a => a.name === "Jarvis")
+        || agentsConfig[0];
+}
+function orchestratorName() {
+    const a = orchestratorAgent();
+    return (a && (a.display_name || a.name)) || "l'assistant";
+}
+
 async function reloadSwarmConfig() {
     try {
         const response = await apiFetch("/api/config/agents");
@@ -1444,10 +1456,10 @@ async function reloadChatHistory(redrawChat = true) {
             chatMessages.innerHTML = "";
             
             if (activeChain.length === 0) {
-                const jarvisAgent = agentsConfig.find(a => a.name === "Jarvis");
-                const intro = (jarvisAgent && jarvisAgent.welcome_message) 
-                    ? jarvisAgent.welcome_message 
-                    : "Bonjour, je suis Jarvis. Comment puis-je vous aider aujourd'hui ?";
+                const orch = orchestratorAgent();
+                const intro = (orch && orch.welcome_message)
+                    ? orch.welcome_message
+                    : `Bonjour, je suis ${orchestratorName()}. Comment puis-je vous aider aujourd'hui ?`;
                 chatMessages.innerHTML = `
                     <div class="message system-msg glass animate-fade-in">
                         <div class="message-content">
@@ -1475,7 +1487,7 @@ async function reloadChatHistory(redrawChat = true) {
                             appendUserMessage(msg.content, msg.id);
                         }
                     } else if (msg.role === "assistant") {
-                        const agentName = msg.name || "Jarvis";
+                        const agentName = msg.name || orchestratorName();
                         appendAgentMessage(agentName, msg.content, msg.id);
                     }
                 });
@@ -1544,7 +1556,7 @@ function rebuildBranchesTreeView() {
         nodeDiv.className = "tree-node";
         
         const isUser = msg.role === "user";
-        const roleLabel = isUser ? "Vous" : (msg.name || "Jarvis");
+        const roleLabel = isUser ? "Vous" : (msg.name || orchestratorName());
         const roleClass = isUser ? "tree-role-user" : "tree-role-agent";
         const isActive = msg.id === activeNodeId;
         const activeClass = isActive ? "active" : "";
@@ -1767,7 +1779,7 @@ chatForm.addEventListener("submit", async (e) => {
     if (jarvisBubble) {
         jarvisBubble.textContent = "Analyse de la demande et coordination de l'essaim... 🧠⚙️";
     }
-    logToOrchestrator("Jarvis analyse votre demande et orchestre les agents spécialisés en arrière-plan...", "system");
+    logToOrchestrator(orchestratorName() + " analyse votre demande et orchestre les agents spécialisés en arrière-plan...", "system");
     
     activeAbortController = new AbortController();
     activeRunId = null;
@@ -3366,7 +3378,7 @@ function initSpeech() {
             btnMic.style.color = "#ef4444";
             btnMic.style.transform = "scale(1.3)";
             btnMic.title = "En écoute... Cliquez pour arrêter";
-            chatInput.placeholder = "Jarvis t'écoute... Parle maintenant 🎙️";
+            chatInput.placeholder = orchestratorName() + " t'écoute... Parle maintenant 🎙️";
         };
         
         recognition.onend = () => {
@@ -3375,7 +3387,7 @@ function initSpeech() {
             btnMic.style.color = "var(--text-color)";
             btnMic.style.transform = "none";
             btnMic.title = "Parler à l'essaim (Speech-to-Text)";
-            chatInput.placeholder = "Discutez avec Jarvis ou demandez-lui d'activer une équipe...";
+            chatInput.placeholder = "Discutez avec " + orchestratorName() + " ou demandez-lui d'activer une équipe...";
         };
         
         recognition.onresult = (event) => {
