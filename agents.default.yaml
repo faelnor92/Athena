@@ -1,5 +1,6 @@
 agents:
 - name: Jarvis
+  orchestrator: true   # agent superviseur (renommable : change name + display_name)
   display_name: Jarvis
   welcome_message: Bonjour, je suis Jarvis. Comment puis-je vous aider aujourd'hui ?
   avatar_type: robot_neon

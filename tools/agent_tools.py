@@ -53,20 +53,21 @@ def create_agent(name: str, system_prompt: str, model: str = "", tools: str = ""
     if swarm is None:
         return "Erreur : moteur d'essaim non initialisé."
 
+    orch_name = getattr(swarm, "orchestrator_name", None) or "Jarvis"
     name = (name or "").strip()
     if not name:
         return "Erreur : le nom de l'agent est requis."
-    if name.lower() == "jarvis":
-        return "Erreur : 'Jarvis' est l'orchestrateur et ne peut pas être créé ou écrasé."
+    if name.lower() == orch_name.lower():
+        return f"Erreur : '{orch_name}' est l'orchestrateur et ne peut pas être créé ou écrasé."
     if not re.fullmatch(r"[A-Za-z0-9_\-]{2,40}", name):
         return ("Erreur : nom invalide. Utilise 2 à 40 caractères parmi lettres, "
                 "chiffres, '_' et '-' (sans espaces ni accents).")
     if not (system_prompt or "").strip():
         return "Erreur : system_prompt est requis pour définir le rôle de l'agent."
 
-    # Modèle : par défaut, on reprend celui de Jarvis pour rester cohérent.
+    # Modèle : par défaut, on reprend celui de l'orchestrateur pour rester cohérent.
     if not (model or "").strip():
-        jarvis = swarm.agents.get("Jarvis")
+        jarvis = swarm.agents.get(orch_name)
         model = getattr(jarvis, "model", None) or "gpt-4o"
 
     # Outils : whitelist stricte.

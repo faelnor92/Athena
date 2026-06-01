@@ -162,6 +162,20 @@ async def delete_user(request: Request, username: str):
 # Initialisation du Swarm
 swarm = Swarm("agents.yaml")
 
+
+def _orch_name() -> str:
+    """Nom de l'orchestrateur (renommable via agents.yaml ; défaut 'Jarvis')."""
+    return getattr(swarm, "orchestrator_name", None) or "Jarvis"
+
+
+def _orch_agent():
+    """Renvoie l'agent orchestrateur, avec repli sur le 1er agent disponible."""
+    a = swarm.agents.get(_orch_name())
+    if a is None and swarm.agents:
+        a = next(iter(swarm.agents.values()))
+    return a
+
+
 # Démarrage des serveurs MCP configurés (no-op si mcp_servers.json absent).
 try:
     from tools.mcp_manager import mcp_manager
@@ -287,7 +301,7 @@ class ChatSession:
     @property
     def active_agent(self):
         agent_name = self.manager.get_active().get("active_agent", "Jarvis")
-        return swarm.agents.get(agent_name) or swarm.agents.get("Jarvis")
+        return swarm.agents.get(agent_name) or _orch_agent()
         
     @active_agent.setter
     def active_agent(self, agent_obj):
@@ -443,7 +457,7 @@ class ChatResponse(BaseModel):
 
 def _resolve_starting_agent(sess, req):
     """Agent de départ : actif de session, ou ciblé par une mention @agent."""
-    starting_agent = sess.active_agent or swarm.agents.get("Jarvis")
+    starting_agent = sess.active_agent or _orch_agent()
     last_user_content = req.message.strip().lower()
     if not last_user_content:
         return starting_agent
@@ -471,7 +485,7 @@ def _resolve_starting_agent(sess, req):
     if mentioned_agent:
         return mentioned_agent
     if any(last_user_content.startswith(x) for x in ["bonjour jarvis", "jarvis,", "dis jarvis", "hey jarvis", "salut jarvis"]):
-        return swarm.agents.get("Jarvis")
+        return _orch_agent()
     return starting_agent
 
 
@@ -502,7 +516,7 @@ def _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_ch
     """Persiste les nouveaux nœuds, calcule la télémétrie et sauvegarde le run.
     Renvoie (final_response, run_agent)."""
     global TELEMETRY
-    sess.active_agent = swarm.agents.get("Jarvis")
+    sess.active_agent = _orch_agent()
     prev_id = sess.active_node_id
     for msg in new_chain[original_chain_len:]:
         new_id = uuid.uuid4().hex
@@ -758,7 +772,7 @@ async def chat_attach(file: UploadFile = File(...)):
             import base64
             mime = file.content_type or "image/png"
             data_url = f"data:{mime};base64,{base64.b64encode(content).decode()}"
-            jarvis = swarm.agents.get("Jarvis")
+            jarvis = _orch_agent()
             vmodel = os.getenv("VISION_MODEL", "").strip() or (jarvis.model if jarvis else "gpt-4o")
             vmsg = [{"role": "user", "content": [
                 {"type": "text", "text": "Décris cette image en détail et retranscris tout texte visible."},
@@ -881,7 +895,7 @@ async def fork_chat(req: ForkRequest):
         curr_id = node.get("parent_id")
         
     # Mettre à jour l'agent actif de la session
-    session.active_agent = swarm.agents.get(active_agent_name, swarm.agents.get("Jarvis"))
+    session.active_agent = swarm.agents.get(active_agent_name, _orch_agent())
     
     return {
         "status": "success",
@@ -1113,7 +1127,7 @@ async def terminal_coder(req: TerminalRequest):
     try:
         # Lancer l'exécution en ciblant directement l'Agent Codeur (dans un thread).
         next_agent, new_chain, steps = await asyncio.to_thread(swarm.run, coder_agent, chain)
-        session.active_agent = swarm.agents.get("Jarvis")
+        session.active_agent = _orch_agent()
 
         # Transformer les types "message" en "terminal_message" pour éviter de polluer le chat principal
         for step in steps:
@@ -1465,7 +1479,7 @@ async def save_config_agents(req: SaveAgentsRequest):
         
         # Mettre à jour l'agent actif s'il a été supprimé ou renommé
         if session.active_agent.name not in swarm.agents:
-            session.active_agent = swarm.agents.get("Jarvis") or list(swarm.agents.values())[0]
+            session.active_agent = _orch_agent() or list(swarm.agents.values())[0]
             
         return {"status": "success", "message": "Configuration des agents sauvegardée et rechargée avec succès !"}
     except Exception as e:
@@ -2275,7 +2289,7 @@ def telegram_bot_worker():
                     
                     # Initialiser la session si elle n'existe pas
                     if chat_id not in telegram_sessions:
-                        default_agent = swarm.agents.get("Jarvis") or list(swarm.agents.values())[0]
+                        default_agent = _orch_agent() or list(swarm.agents.values())[0]
                         telegram_sessions[chat_id] = {
                             "messages": [{"role": "system", "content": "Tu es Jarvis, le superviseur de l'essaim multi-agent."}],
                             "active_agent": default_agent
@@ -2285,7 +2299,7 @@ def telegram_bot_worker():
                     
                     # Gérer /reset
                     if text.strip() == "/reset":
-                        default_agent = swarm.agents.get("Jarvis") or list(swarm.agents.values())[0]
+                        default_agent = _orch_agent() or list(swarm.agents.values())[0]
                         telegram_sessions[chat_id] = {
                             "messages": [{"role": "system", "content": "Tu es Jarvis, le superviseur de l'essaim multi-agent."}],
                             "active_agent": default_agent
@@ -2325,9 +2339,9 @@ def telegram_bot_worker():
                     tg_appr_token = approvals.auto_approve_var.set(channels.auto_approve_for(tg_chan))
                     try:
                         # On démarre avec l'agent actuellement actif pour un dialogue persistant
-                        starting_agent = session_data["active_agent"] or swarm.agents.get("Jarvis")
+                        starting_agent = session_data["active_agent"] or _orch_agent()
                         next_agent, new_messages, steps = swarm.run(starting_agent, session_data["messages"])
-                        session_data["active_agent"] = swarm.agents.get("Jarvis")
+                        session_data["active_agent"] = _orch_agent()
                         session_data["messages"] = new_messages
                         
                         # Formater la trace d'exécution pour Telegram
@@ -2523,7 +2537,7 @@ def _run_routine(routine: dict):
     prompt = (routine.get("prompt") or "").strip()
     if not prompt:
         return
-    starting = swarm.agents.get(routine.get("agent", "Jarvis")) or swarm.agents.get("Jarvis")
+    starting = swarm.agents.get(routine.get("agent", "Jarvis")) or _orch_agent()
     rid = run_store.new_run_id()
     started = time.time()
     token = current_run_id.set(rid)

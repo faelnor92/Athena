@@ -122,6 +122,7 @@ agents:
   - CommunityManager
   - Correcteur
   - Secretaire
+  orchestrator: true
 - name: Codeur
   display_name: Robert Développeur
   welcome_message: Bonjour ! C'est Robert, votre Développeur. Que programmons-nous

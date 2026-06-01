@@ -307,18 +307,32 @@ class Swarm:
                     agent.tools.append(AVAILABLE_TOOLS[tool_name])
             
             self.agents[agent.name] = agent
-            
+
+        # Détermination de l'ORCHESTRATEUR (renommable) : agent marqué
+        # `orchestrator: true`, sinon "Jarvis" s'il existe (compat.), sinon le 1er agent.
+        self.orchestrator_name = None
+        for agent_data in data.get("agents", []):
+            if agent_data.get("orchestrator") is True:
+                self.orchestrator_name = agent_data["name"]
+                break
+        if not self.orchestrator_name:
+            if "Jarvis" in self.agents:
+                self.orchestrator_name = "Jarvis"
+            elif self.agents:
+                self.orchestrator_name = next(iter(self.agents))
+        orch = self.orchestrator_name
+
         # Seconde passe : injecter les fonctions de transfert dynamiquement
         for agent_data in data.get("agents", []):
             agent = self.agents[agent_data["name"]]
-            
-            # Jarvis a automatiquement des transferts vers TOUS les autres agents de l'essaim !
+
+            # L'orchestrateur a automatiquement des transferts vers TOUS les autres agents !
             targets = list(agent_data.get("handoffs", []))
-            if agent.name == "Jarvis":
-                targets = [name for name in self.agents.keys() if name != "Jarvis"]
+            if agent.name == orch:
+                targets = [name for name in self.agents.keys() if name != orch]
             else:
-                if "Jarvis" not in targets and "Jarvis" in self.agents:
-                    targets.append("Jarvis")
+                if orch and orch not in targets and orch in self.agents:
+                    targets.append(orch)
                 
             for target_name in targets:
                 if target_name in self.agents:
@@ -936,7 +950,7 @@ class Swarm:
             # 1. Outils effectifs du tour, calculés LOCALEMENT (on ne mute pas
             #    l'objet Agent partagé : indispensable pour la concurrence).
             effective_tools = list(current_agent.tools)
-            if current_agent.name in ["Jarvis", "Codeur"]:
+            if current_agent.name in (getattr(self, "orchestrator_name", "Jarvis"), "Codeur"):
                 existing = {f.__name__ for f in effective_tools}
                 # Compétences dynamiques (auto-amélioration) rechargées à chaque tour.
                 for skill_name, func in load_dynamic_skills().items():
@@ -966,11 +980,11 @@ class Swarm:
             system_prompt = current_agent.system_prompt
             # Ne forcer la présentation que si aucun message de cet agent n'est déjà présent dans l'historique
             has_agent_spoken = any(msg.get("role") == "assistant" and msg.get("name") == current_agent.name for msg in messages)
-            if getattr(current_agent, "welcome_message", None) and not has_agent_spoken and current_agent.name != "Jarvis":
+            if getattr(current_agent, "welcome_message", None) and not has_agent_spoken and current_agent.name != getattr(self, "orchestrator_name", "Jarvis"):
                 system_prompt += f"\n\n⚠️ INSTRUCTION DE PRÉSENTATION OBLIGATOIRE :\n"
                 system_prompt += f"Tu DOIS commencer ta toute première réponse par la phrase d'introduction suivante exactement : \"{current_agent.welcome_message}\". Ne change pas un seul mot de cette phrase de présentation, commence directement par elle, puis poursuis naturellement pour répondre à l'utilisateur.\n"
                 
-            if current_agent.name == "Jarvis":
+            if current_agent.name == getattr(self, "orchestrator_name", "Jarvis"):
                 system_prompt += tools.memory_tools.core_mem.get_as_prompt()
                 # Profil utilisateur évolutif (personnalisation durable).
                 try:
@@ -1047,10 +1061,13 @@ class Swarm:
                 except Exception as e:
                     print(f"[\033[91mRAG Erreur\033[0m] {e}")
             
-            # Renforcer les consignes de transfert pour le superviseur principal (Jarvis)
-            if current_agent.name == "Jarvis":
+            # Renforcer les consignes de transfert pour le superviseur — UNIQUEMENT s'il
+            # existe d'autres agents à qui déléguer (sinon l'orchestrateur seul doit
+            # répondre directement, pas refuser le travail).
+            _orch = getattr(self, "orchestrator_name", "Jarvis")
+            if current_agent.name == _orch and len(self.agents) > 1:
                 system_prompt += "\n\n⚠️ CONSIGNES DE ROUTAGE DE L'ESSAIM (INTERDICTION ABSOLUE D'AGIR TOI-MÊME) :\n"
-                system_prompt += "Tu es Jarvis, le SUPERVISEUR et l'ORCHESTRATEUR principal de l'essaim. Tu n'es PAS un agent de production.\n"
+                system_prompt += f"Tu es {current_agent.name}, le SUPERVISEUR et l'ORCHESTRATEUR principal de l'essaim. Tu n'es PAS un agent de production.\n"
                 system_prompt += "1. Tu as l'INTERDICTION STRICTE de réaliser le travail spécialisé des autres agents (comme coder, rédiger, traduire, relire, etc.) de manière directe. Tu ne dois générer AUCUNE réponse de production toi-même.\n"
                 system_prompt += "2. GESTION DES REQUÊTES MULTI-AGENTS (TRÈS IMPORTANT) :\n"
                 system_prompt += "   Si la demande de l'utilisateur comporte MULTIPLES tâches spécialisées différentes (ex: critique + code + traduction + post) :\n"
@@ -1061,7 +1078,7 @@ class Swarm:
                 system_prompt += "   S'il n'y a qu'une seule tâche spécialisée unique (ou si le contexte concerne un seul agent), n'utilise pas `query_agent`. À la place, appelle immédiatement la fonction de transfert `transfer_to_...` appropriée pour passer la main de manière fluide :\n\n"
                 
                 for other_name, other_agent in self.agents.items():
-                    if other_name == "Jarvis":
+                    if other_name == _orch:
                         continue
                     # Extraire une description concise du rôle de l'agent à partir des deux premières phrases de son prompt
                     agent_desc = ""
