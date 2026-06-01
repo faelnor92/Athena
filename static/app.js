@@ -4596,6 +4596,16 @@ if (btnOfficeRotate) {
 // =========================================================================
 
 // Télémétrie & Rafraîchissement
+const _btnResetTelemetry = document.getElementById("btn-reset-telemetry");
+if (_btnResetTelemetry) _btnResetTelemetry.addEventListener("click", async () => {
+    if (!confirm("Remettre à zéro les compteurs (requêtes, outils, tokens, coût) ?")) return;
+    try {
+        await apiFetch("/api/telemetry/reset", { method: "POST" });
+        if (typeof loadCockpitData === "function") loadCockpitData();
+        logToTerminal("Compteurs du cockpit remis à zéro.", "system");
+    } catch (e) { logToTerminal("Réinitialisation : " + e, "error"); }
+});
+
 async function loadCockpitData() {
     try {
         const response = await apiFetch("/api/telemetry");

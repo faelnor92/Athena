@@ -1976,6 +1976,14 @@ async def force_agenda_sync():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/telemetry/reset")
+async def reset_telemetry():
+    """Remet à zéro les compteurs du cockpit (requêtes, outils, tokens, coût)."""
+    global TELEMETRY
+    TELEMETRY = {"total_queries": 0, "tool_calls": 0, "total_tokens": 0, "total_cost": 0.0}
+    return {"status": "success", **TELEMETRY}
+
+
 @app.get("/api/telemetry")
 async def get_telemetry():
     try:
