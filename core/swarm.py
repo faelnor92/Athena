@@ -983,6 +983,23 @@ class Swarm:
             if chan:
                 effective_tools = [f for f in effective_tools if channels.tool_allowed(chan, f.__name__)]
 
+            # Garde-fou anti sur-délégation : pour une question triviale/générale adressée
+            # à l'orchestrateur, on RETIRE les outils de délégation pour ce tour → il répond
+            # lui-même (qwen3 a tendance à transférer à tort sinon).
+            if current_agent.name == getattr(self, "orchestrator_name", "Jarvis"):
+                last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+                lu = str(last_user).lower().strip()
+                _trivial_pat = ("qui es-tu", "qui es tu", "qui est tu", "tu es qui", "ton nom",
+                                "présente", "presente", "bonjour", "salut", "coucou", "hello", "hey",
+                                "merci", "ça va", "ca va", "comment vas", "quelle heure", "quel jour",
+                                "quelle date", "c'est quoi", "que sais-tu faire", "que peux-tu",
+                                "tes capacités", "aide", "help")
+                is_trivial = any(p in lu for p in _trivial_pat)
+                if is_trivial:
+                    effective_tools = [f for f in effective_tools
+                                       if not f.__name__.startswith("transfer_to_")
+                                       and f.__name__ not in ("query_agent", "debate_between_agents")]
+
             # Enregistrer l'activation de l'agent
             steps.append({
                 "type": "activation",
@@ -1000,6 +1017,12 @@ class Swarm:
                 system_prompt += f"Tu DOIS commencer ta toute première réponse par la phrase d'introduction suivante exactement : \"{current_agent.welcome_message}\". Ne change pas un seul mot de cette phrase de présentation, commence directement par elle, puis poursuis naturellement pour répondre à l'utilisateur.\n"
                 
             if current_agent.name == getattr(self, "orchestrator_name", "Jarvis"):
+                # Date/heure courantes (l'orchestrateur peut répondre « quelle heure ? »).
+                try:
+                    import datetime as _dt
+                    system_prompt += f"\nContexte : nous sommes le {_dt.datetime.now().strftime('%A %d %B %Y, %H:%M')} (heure du serveur).\n"
+                except Exception:
+                    pass
                 system_prompt += tools.memory_tools.core_mem.get_as_prompt()
                 # Profil utilisateur évolutif (personnalisation durable).
                 try:
