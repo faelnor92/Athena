@@ -499,7 +499,8 @@ def _chat_prepare(sess, req, run_id):
 
     chain = []
     curr_id = sess.active_node_id
-    node_map = {m["id"]: m for m in sess.messages}
+    # Tolérant aux messages legacy sans 'id' (sinon KeyError casse tout le chat).
+    node_map = {m["id"]: m for m in sess.messages if m.get("id")}
     while curr_id:
         node = node_map.get(curr_id)
         if not node:
@@ -876,7 +877,7 @@ class ForkRequest(BaseModel):
 
 @app.post("/api/chat/fork")
 async def fork_chat(req: ForkRequest):
-    node_map = {m["id"]: m for m in session.messages}
+    node_map = {m["id"]: m for m in session.messages if m.get("id")}
     if req.message_id not in node_map:
         raise HTTPException(status_code=404, detail="Checkpoint non trouvé.")
         
@@ -919,7 +920,7 @@ async def terminal_coder(req: TerminalRequest):
     # Reconstruire la chaîne linéaire de messages existante pour donner le contexte à l'IA
     chain = []
     curr_id = session.active_node_id
-    node_map = {m["id"]: m for m in session.messages}
+    node_map = {m["id"]: m for m in session.messages if m.get("id")}
     while curr_id:
         node = node_map.get(curr_id)
         if not node:
