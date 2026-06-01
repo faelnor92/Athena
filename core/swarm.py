@@ -1066,10 +1066,13 @@ class Swarm:
             # répondre directement, pas refuser le travail).
             _orch = getattr(self, "orchestrator_name", "Jarvis")
             if current_agent.name == _orch and len(self.agents) > 1:
-                system_prompt += "\n\n⚙️ ROUTAGE DE L'ESSAIM (délègue si pertinent, sinon réponds toi-même) :\n"
-                system_prompt += f"Tu es {current_agent.name}, l'orchestrateur. Voici les agents spécialisés DISPONIBLES et leur domaine. "
-                system_prompt += "Examine la demande : si elle relève CLAIREMENT du domaine d'un de ces agents, délègue-lui ; "
-                system_prompt += "SINON, réponds toi-même directement et utilement (n'invente pas d'agent inexistant).\n\n"
+                system_prompt += "\n\n⚙️ ROUTAGE DE L'ESSAIM (délègue UNIQUEMENT si nécessaire) :\n"
+                system_prompt += f"Tu es {current_agent.name}, l'orchestrateur. Tu réponds TOI-MÊME, sans déléguer, à : "
+                system_prompt += "ta présentation/identité, les questions générales ou conversationnelles, et tout ce qui relève de TES propres outils "
+                system_prompt += "(mémoire, agenda, listes, domotique, recherche web, notifications, images). "
+                system_prompt += "Tu ne délègues QUE si la demande exige EXPLICITEMENT le métier d'un des agents ci-dessous "
+                system_prompt += "(ex. écrire/déboguer du code, rédiger un roman, traduire un texte…) — et alors à UN SEUL agent pertinent. "
+                system_prompt += "Ne délègue jamais une simple question (comme « qui es-tu ? ») et n'invente pas d'agent inexistant.\n\n"
 
                 for other_name, other_agent in self.agents.items():
                     if other_name == _orch:

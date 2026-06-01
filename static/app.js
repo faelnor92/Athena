@@ -1333,6 +1333,15 @@ async function playAgentSteps(steps, immediate = false) {
     });
 }
 
+// Rendu Markdown inline léger (gras, italique, code, liens) — sans dépendance externe.
+function _mdInline(s) {
+    s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    s = s.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[\s(>])\*([^*\n]+?)\*(?=[\s).,!?:;]|<|$)/g, '$1<em>$2</em>');
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return s;
+}
+
 function appendAgentMessage(agentName, content, id = null) {
     if (!content) return;
     
@@ -1359,6 +1368,12 @@ function appendAgentMessage(agentName, content, id = null) {
         formattedContent = formattedContent.replace(/```python([\s\S]*?)```/g, "<pre><code>$1</code></pre>");
         formattedContent = formattedContent.replace(/```([\s\S]*?)```/g, "<pre><code>$1</code></pre>");
     }
+
+    // Markdown inline (gras/italique/code/liens), appliqué HORS des blocs de code.
+    formattedContent = formattedContent
+        .split(/(<pre>[\s\S]*?<\/pre>)/)
+        .map(seg => seg.indexOf("<pre>") === 0 ? seg : _mdInline(seg))
+        .join("");
     
     // 2. Détection automatique des fichiers d'images générées bruts (image_generee_xxxx.png)
     const imgRegex = /image_generee_\d+\.png/gi;
