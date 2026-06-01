@@ -1774,8 +1774,8 @@ chatForm.addEventListener("submit", async (e) => {
     appendUserMessage(text);
     
     // Activer visuellement Jarvis immédiatement pendant le chargement en arrière-plan
-    setActiveAgentVisual("Jarvis");
-    const jarvisBubble = document.getElementById("bubble-Jarvis");
+    setActiveAgentVisual(orchestratorName());
+    const jarvisBubble = document.getElementById("bubble-"+orchestratorName());
     if (jarvisBubble) {
         jarvisBubble.textContent = "Analyse de la demande et coordination de l'essaim... 🧠⚙️";
     }
@@ -1868,7 +1868,7 @@ btnReset.addEventListener("click", async () => {
             await apiFetch("/api/reset", { method: "POST" });
             await loadConversations();
             await reloadChatHistory(true);
-            setActiveAgentVisual("Jarvis");
+            setActiveAgentVisual(orchestratorName());
             logToTerminal("Essaim réinitialisé.");
             document.querySelectorAll(".link-line").forEach(l => l.classList.remove("active-flow"));
         } catch (err) {
@@ -4089,7 +4089,7 @@ async function init() {
     loadAgendaEvents();
     loadListItems();
     logToTerminal("Dashboard No-Code, Bureau Virtuel, Agenda et Listes connectés.");
-    setActiveAgentVisual("Jarvis");
+    setActiveAgentVisual(orchestratorName());
     initSpeech();
 }
 
