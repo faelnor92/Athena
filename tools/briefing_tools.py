@@ -3,7 +3,7 @@ import json
 import requests
 import urllib.parse
 from datetime import datetime
-from tools.agenda_tools import AGENDA_FILE, ensure_agenda_file
+from tools.agenda_tools import load_agenda
 from tools.list_tools import get_list_items
 
 def get_daily_briefing(city: str = "Paris") -> str:
@@ -30,16 +30,13 @@ def get_daily_briefing(city: str = "Paris") -> str:
     except Exception as e:
         briefing += f"🌡️ **Météo à {city.capitalize()}** : Échec de la récupération ({str(e)}).\n\n"
         
-    # 2. AGENDA DU JOUR
-    ensure_agenda_file()
+    # 2. AGENDA DU JOUR (agenda de l'utilisateur courant)
     today_events = []
-    if os.path.exists(AGENDA_FILE):
-        try:
-            with open(AGENDA_FILE, "r", encoding="utf-8") as f:
-                events = json.load(f)
-            today_events = [e for e in events if e.get("datetime", "").startswith(today_str)]
-        except Exception as err:
-            print(f"📅 [Briefing Erreur Agenda] {err}")
+    try:
+        events = load_agenda()
+        today_events = [e for e in events if e.get("datetime", "").startswith(today_str)]
+    except Exception as err:
+        print(f"📅 [Briefing Erreur Agenda] {err}")
             
     briefing += "📅 **Vos Rendez-vous d'aujourd'hui** :\n"
     if today_events:

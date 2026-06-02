@@ -67,8 +67,8 @@ _ADMIN_EXACT = {
     ("GET", "/api/config/mcp"), ("POST", "/api/config/mcp"),
     ("POST", "/api/config/voice-wake"),
     ("GET", "/api/backup"), ("POST", "/api/backup/restore"),
-    ("GET", "/api/config/agenda"), ("POST", "/api/config/agenda"),
-    ("POST", "/api/config/agenda/google-key"),
+    # NB: /api/config/agenda* n'est PLUS admin-only : la config agenda est désormais
+    # PAR UTILISATEUR (chacun ne touche que la sienne via user_config). Cf. config_agenda.py.
     ("POST", "/api/telegram/pairing/approve"),
     ("POST", "/api/telegram/pairing/revoke"),
     ("POST", "/api/pricing"), ("POST", "/api/pricing/reset"),

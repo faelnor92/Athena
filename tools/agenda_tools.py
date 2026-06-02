@@ -1,65 +1,117 @@
 import os
+import re
 import json
 import uuid
+import functools
+import contextlib
+import threading
 from datetime import datetime
 from typing import List, Dict, Any
 import tools.agenda_sync as agenda_sync
 
-AGENDA_FILE = "workspace/agenda.json"
+# --- Multi-tenant : agenda PAR UTILISATEUR --------------------------------
+# Données et identifiants (iCal/CalDAV/Google) sont propres à chaque utilisateur
+# (bucket "local" en mode sans auth). Pour ne pas réécrire agenda_sync (qui lit des
+# os.getenv en interne), un context manager injecte temporairement, SOUS VERROU, la
+# config de l'utilisateur courant dans l'environnement le temps de l'opération.
+_AGENDA_LOCK = threading.RLock()
+_ENV_KEYS = ["EXTERNAL_ICAL_URL", "GOOGLE_CALENDAR_ID", "CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD"]
+
+
+def _user_slug() -> str:
+    from core import user_config
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", user_config.current_user_key()) or "local"
+
+
+def agenda_file() -> str:
+    """Fichier d'événements de l'utilisateur courant."""
+    return os.path.join("workspace", f"agenda_{_user_slug()}.json")
+
+
+def google_creds_path() -> str:
+    """Clé de service Google de l'utilisateur courant."""
+    return os.path.join("workspace", f"google_credentials_{_user_slug()}.json")
+
+
+@contextlib.contextmanager
+def user_agenda_context():
+    """Applique la config agenda de l'utilisateur courant (env + chemin clé Google)
+    le temps de l'opération, puis restaure. Sérialisé (RLock) car mute os.environ."""
+    from core import user_config
+    with _AGENDA_LOCK:
+        saved_env = {k: os.environ.get(k) for k in _ENV_KEYS}
+        saved_gkey = agenda_sync.GOOGLE_KEY_PATH
+        try:
+            for k in _ENV_KEYS:
+                v = user_config.get(k)
+                if v:
+                    os.environ[k] = str(v)
+                else:
+                    os.environ.pop(k, None)
+            agenda_sync.GOOGLE_KEY_PATH = google_creds_path()
+            yield
+        finally:
+            for k, old in saved_env.items():
+                if old is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = old
+            agenda_sync.GOOGLE_KEY_PATH = saved_gkey
+
+
+def _per_user(fn):
+    """Décorateur : exécute la fonction dans le contexte agenda de l'utilisateur courant."""
+    @functools.wraps(fn)
+    def wrap(*a, **k):
+        with user_agenda_context():
+            return fn(*a, **k)
+    return wrap
+
 
 def ensure_agenda_file():
-    """Garantit un agenda.json VALIDE : crée le fichier s'il manque, et le répare
-    s'il est vide ou corrompu (cas fréquent quand aucun agenda n'est encore utilisé)."""
+    """Garantit un agenda_<user>.json VALIDE (crée/répare)."""
     os.makedirs("workspace", exist_ok=True)
+    path = agenda_file()
     needs_init = True
-    if os.path.exists(AGENDA_FILE):
+    if os.path.exists(path):
         try:
-            with open(AGENDA_FILE, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
             if content:
-                json.loads(content)  # vérifie la validité
+                json.loads(content)
                 needs_init = False
         except Exception:
-            needs_init = True  # vide ou JSON invalide → on réinitialise
+            needs_init = True
     if needs_init:
-        with open(AGENDA_FILE, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump([], f)
 
 
 def load_agenda() -> list:
-    """Charge la liste d'événements de façon robuste (jamais d'exception sur vide/corrompu)."""
+    """Charge la liste d'événements de l'utilisateur courant (robuste)."""
     ensure_agenda_file()
     try:
-        with open(AGENDA_FILE, "r", encoding="utf-8") as f:
+        with open(agenda_file(), "r", encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, list) else []
     except Exception:
         return []
 
 
+@_per_user
 def sync_all_external_calendars() -> int:
-    """
-    Synchronise toutes les sources externes configurées vers le cache local agenda.json.
-    
-    Returns:
-        int: Nombre d'événements externes importés avec succès.
-    """
-    # 1. Charger les événements existants (robuste : vide/corrompu → [])
+    """Synchronise les sources externes de l'utilisateur courant vers son cache local."""
     events = load_agenda()
 
-    # S'il n'y a AUCUNE source externe configurée, rien à synchroniser (no-op silencieux).
     has_external = bool(os.getenv("EXTERNAL_ICAL_URL")) or \
         (os.path.exists(agenda_sync.GOOGLE_KEY_PATH) and os.getenv("GOOGLE_CALENDAR_ID")) or \
         (os.getenv("CALDAV_URL") and os.getenv("CALDAV_USERNAME") and os.getenv("CALDAV_PASSWORD"))
     if not has_external:
         return 0
 
-    # Filtrer pour ne garder QUE les événements créés localement (source = 'local' ou absente)
     local_events = [e for e in events if e.get("source", "local") == "local"]
-    
     external_events = []
-    
-    # 2. Synchronisation iCal
+
     ical_url = os.getenv("EXTERNAL_ICAL_URL")
     if ical_url:
         print(f"📅 [Sync] Démarrage de la synchro iCal sur {ical_url[:30]}...")
@@ -67,49 +119,47 @@ def sync_all_external_calendars() -> int:
         for e in ical_events:
             e["source"] = "ical"
         external_events.extend(ical_events)
-        
-    # 3. Synchronisation Google Calendar
+
     if os.path.exists(agenda_sync.GOOGLE_KEY_PATH) and os.getenv("GOOGLE_CALENDAR_ID"):
         print("📅 [Sync] Démarrage de la synchro Google Calendar...")
         google_events = agenda_sync.sync_google_calendar()
         for e in google_events:
             e["source"] = "google"
         external_events.extend(google_events)
-        
-    # 4. Synchronisation CalDAV / Nextcloud
+
     if os.getenv("CALDAV_URL") and os.getenv("CALDAV_USERNAME") and os.getenv("CALDAV_PASSWORD"):
         print("📅 [Sync] Démarrage de la synchro CalDAV...")
         caldav_events = agenda_sync.sync_caldav_calendar()
         for e in caldav_events:
             e["source"] = "caldav"
         external_events.extend(caldav_events)
-        
-    # 5. Fusionner et enregistrer
+
     merged = local_events + external_events
-    # Trier par date chronologique (robuste si une clé manque)
     merged.sort(key=lambda x: x.get("datetime", ""))
-    
-    with open(AGENDA_FILE, "w", encoding="utf-8") as f:
+
+    with open(agenda_file(), "w", encoding="utf-8") as f:
         json.dump(merged, f, indent=4, ensure_ascii=False)
-        
-    print(f"📅 [Sync] Synchronisation terminée avec succès ! {len(external_events)} événements externes importés.")
+
+    print(f"📅 [Sync] Synchronisation terminée ! {len(external_events)} événements externes importés.")
     return len(external_events)
 
+
+@_per_user
 def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60, description: str = "") -> str:
     """
     Ajoute un événement ou rendez-vous dans l'agenda de l'utilisateur (local et externe).
-    
+
     Args:
         title (str): Le titre du rendez-vous.
         datetime_str (str): La date et heure au format AAAA-MM-JJ HH:MM.
         duration_minutes (int): Durée estimée en minutes (défaut: 60).
         description (str): Détails ou notes complémentaires.
-        
+
     Returns:
         str: Message de confirmation de l'ajout.
     """
     ensure_agenda_file()
-    
+
     try:
         try:
             parsed_dt = datetime.strptime(datetime_str.strip(), "%Y-%m-%d %H:%M")
@@ -118,29 +168,25 @@ def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60
         iso_str = parsed_dt.strftime("%Y-%m-%d %H:%M")
     except Exception:
         return f"Erreur : Format de date invalide '{datetime_str}'. Utilisez le format 'AAAA-MM-JJ HH:MM'."
-        
-    # Déterminer la source cible de l'écriture
-    # Si Google est configuré, on l'écrit prioritairement sur Google
+
     written_externally = False
     source = "local"
     event_id = uuid.uuid4().hex[:8]
-    
+
     if os.path.exists(agenda_sync.GOOGLE_KEY_PATH) and os.getenv("GOOGLE_CALENDAR_ID"):
         print("📅 [Agenda] Écriture en cours sur Google Calendar...")
         success = agenda_sync.add_google_calendar_event(title, iso_str, int(duration_minutes), description)
         if success:
             written_externally = True
             source = "google"
-            
-    # Sinon si CalDAV est configuré
+
     elif os.getenv("CALDAV_URL") and os.getenv("CALDAV_USERNAME") and os.getenv("CALDAV_PASSWORD"):
         print("📅 [Agenda] Écriture en cours sur CalDAV...")
         success = agenda_sync.add_caldav_calendar_event(title, iso_str, int(duration_minutes), description)
         if success:
             written_externally = True
             source = "caldav"
-            
-    # Toujours écrire dans le cache local agenda.json pour un affichage immédiat
+
     event = {
         "id": event_id,
         "title": title,
@@ -149,46 +195,46 @@ def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60
         "description": description,
         "reminded_15m": False,
         "reminded_now": False,
-        "source": source
+        "source": source,
     }
-    
-    with open(AGENDA_FILE, "r", encoding="utf-8") as f:
+
+    with open(agenda_file(), "r", encoding="utf-8") as f:
         events = json.load(f)
-        
+
     events.append(event)
     events.sort(key=lambda x: x["datetime"])
-    
-    with open(AGENDA_FILE, "w", encoding="utf-8") as f:
+
+    with open(agenda_file(), "w", encoding="utf-8") as f:
         json.dump(events, f, indent=4, ensure_ascii=False)
-        
-    # Si on a écrit sur un compte externe, on force un rafraîchissement rapide
+
     if written_externally:
         sync_all_external_calendars()
         return f"📅 Événement synchronisé avec succès sur votre calendrier externe ('{title}' le {iso_str})."
-        
+
     return f"📅 Événement ajouté localement avec succès : '{title}' le {iso_str}."
 
+
+@_per_user
 def list_calendar_events() -> str:
     """
     Force la synchronisation et liste tous les rendez-vous de l'agenda.
     """
     ensure_agenda_file()
-    # Déclencher une synchronisation silencieuse rapide à la lecture
     try:
         sync_all_external_calendars()
     except Exception as e:
         print(f"📅 [Sync Avertissement] Échec de la synchronisation à chaud : {e}")
-        
-    with open(AGENDA_FILE, "r", encoding="utf-8") as f:
+
+    with open(agenda_file(), "r", encoding="utf-8") as f:
         events = json.load(f)
-        
+
     if not events:
         return "📅 Votre agenda est actuellement vide."
-        
+
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     upcoming = [e for e in events if e["datetime"] >= now_str]
     past = [e for e in events if e["datetime"] < now_str]
-    
+
     output = "📅 --- ÉVÉNEMENTS PLANIFIÉS ---\n"
     if upcoming:
         for e in upcoming:
@@ -199,48 +245,45 @@ def list_calendar_events() -> str:
             output += "\n"
     else:
         output += "Aucun événement à venir.\n"
-        
+
     if past:
         output += "\n⌛ --- ÉVÉNEMENTS PASSÉS (Historique) ---\n"
         for e in past[-5:]:
             source_lbl = f"({e.get('source', 'local')})" if e.get('source') else "(local)"
             output += f"- [{e['id']}] {e['datetime']} : {e['title']} {source_lbl}\n"
-            
+
     return output
 
+
+@_per_user
 def delete_calendar_event(event_id: str) -> str:
     """
     Supprime un rendez-vous (local ou externe) de l'agenda par son ID.
     """
     ensure_agenda_file()
-    with open(AGENDA_FILE, "r", encoding="utf-8") as f:
+    with open(agenda_file(), "r", encoding="utf-8") as f:
         events = json.load(f)
-        
+
     target_event = next((e for e in events if e["id"] == event_id), None)
     if not target_event:
         return f"Erreur : Aucun événement trouvé avec l'identifiant '{event_id}'."
-        
+
     source = target_event.get("source", "local")
     deleted_externally = False
-    
-    # Si c'est un événement Google
+
     if source == "google":
         print(f"📅 [Agenda] Suppression en cours sur Google Calendar pour l'event {event_id}...")
         deleted_externally = agenda_sync.delete_google_calendar_event(event_id)
-        
-    # Si c'est un événement CalDAV
     elif source == "caldav":
         print(f"📅 [Agenda] Suppression en cours sur CalDAV pour l'event {event_id}...")
         deleted_externally = agenda_sync.delete_caldav_calendar_event(event_id)
-        
-    # Nettoyer du cache local
+
     filtered_events = [e for e in events if e["id"] != event_id]
-    with open(AGENDA_FILE, "w", encoding="utf-8") as f:
+    with open(agenda_file(), "w", encoding="utf-8") as f:
         json.dump(filtered_events, f, indent=4, ensure_ascii=False)
-        
+
     if deleted_externally or source in ["google", "caldav"]:
-        # Rafraîchir
         sync_all_external_calendars()
         return f"📅 L'événement [{event_id}] a été supprimé de votre agenda externe avec succès."
-        
+
     return f"📅 L'événement local [{event_id}] a été supprimé de votre agenda."

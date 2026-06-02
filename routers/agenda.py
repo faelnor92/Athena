@@ -16,11 +16,9 @@ class AgendaEventRequest(BaseModel):
 
 @router.get("/api/agenda")
 async def get_agenda_api():
-    from tools.agenda_tools import ensure_agenda_file, AGENDA_FILE
-    ensure_agenda_file()
-    with open(AGENDA_FILE, "r", encoding="utf-8") as f:
-        events = json.load(f)
-    return events
+    # Agenda de l'utilisateur courant (résolu dans load_agenda via user_config).
+    from tools.agenda_tools import load_agenda
+    return load_agenda()
 
 
 @router.post("/api/agenda")
