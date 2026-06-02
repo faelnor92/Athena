@@ -39,7 +39,13 @@ def auto_approve_enabled() -> bool:
 def is_sensitive(func) -> bool:
     if getattr(func, "_requires_approval", False):
         return True
-    return getattr(func, "__name__", "") in sensitive_tool_names()
+    name = getattr(func, "__name__", "")
+    # execute_python_code n'est « sûr » que parce qu'il s'exécute en sandbox Docker.
+    # Si la sandbox est désactivée (SANDBOX_MODE=off), il tourne avec les droits du
+    # serveur → on exige alors une approbation, comme execute_bash_command.
+    if name == "execute_python_code" and os.getenv("SANDBOX_MODE", "docker").strip().lower() == "off":
+        return True
+    return name in sensitive_tool_names()
 
 
 def accepts_kw(func, name: str) -> bool:

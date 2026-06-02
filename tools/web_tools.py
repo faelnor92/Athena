@@ -1,7 +1,30 @@
 import requests
 import re
 import html as _html
-from urllib.parse import unquote
+from urllib.parse import unquote, urljoin
+
+from tools.net_guard import check_url as _check_url
+
+
+def _safe_get(url: str, headers: dict, timeout: int = 10, max_redirects: int = 5):
+    """GET avec anti-SSRF : valide l'URL initiale ET chaque redirection avant de la suivre.
+    Renvoie (response, None) ou (None, message_erreur)."""
+    current = (url or "").strip()
+    if not re.match(r"^https?://", current):
+        return None, "Erreur : fournis une URL http(s) valide."
+    for _ in range(max_redirects + 1):
+        err = _check_url(current)
+        if err:
+            return None, err
+        r = requests.get(current, headers=headers, timeout=timeout, allow_redirects=False)
+        if r.is_redirect or r.is_permanent_redirect:
+            loc = r.headers.get("Location")
+            if not loc:
+                return r, None
+            current = urljoin(current, loc)
+            continue
+        return r, None
+    return None, "Erreur : trop de redirections."
 
 def web_search(query: str) -> str:
     """
@@ -74,10 +97,12 @@ def web_scrape(url: str) -> str:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
     }
     try:
-        r = requests.get(url, headers=headers, timeout=10)
+        r, err = _safe_get(url, headers, timeout=10)
+        if err:
+            return err
         if r.status_code != 200:
             return f"Erreur : Code HTTP {r.status_code} lors du chargement de la page."
-            
+
         html = r.text
         
         # 1. Retirer les scripts, styles, et balises de structure lourde

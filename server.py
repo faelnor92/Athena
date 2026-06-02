@@ -53,13 +53,81 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Gestion des sessions d'authentification : token -> {username, role}.
+# Gestion des sessions d'authentification : token -> {username, role, exp}.
 ACTIVE_SESSIONS = {}
+_SESSION_TTL = int(os.getenv("SESSION_TTL_HOURS", "168") or 168) * 3600  # défaut 7 jours
+
+# Anti-brute-force du login : IP -> [timestamps des échecs récents].
+_LOGIN_FAILURES = {}
+_LOGIN_MAX_FAILS = int(os.getenv("LOGIN_MAX_FAILS", "8") or 8)
+_LOGIN_WINDOW = int(os.getenv("LOGIN_WINDOW_SECONDS", "300") or 300)
+
+
+def _is_exposed_host(host: str) -> bool:
+    """Vrai si le bind n'est pas strictement local (loopback)."""
+    return host not in ("127.0.0.1", "localhost", "::1")
+
+
+def _enforce_network_security():
+    """Refuse une exposition réseau (0.0.0.0/IP publique) sans ADMIN_PASSWORD.
+    Appelé AU CHARGEMENT DU MODULE pour couvrir aussi `uvicorn server:app`
+    (et pas seulement `python server.py`)."""
+    if os.getenv("ALLOW_INSECURE_NETWORK", "").lower() in ("true", "1", "yes"):
+        return
+    host = os.getenv("HOST", "0.0.0.0").strip()
+    if _is_exposed_host(host) and not os.getenv("ADMIN_PASSWORD", "").strip() and user_store.count() == 0:
+        raise RuntimeError(
+            f"[SÉCURITÉ] Bind exposé ('{host}') sans ADMIN_PASSWORD ni utilisateur. "
+            "Définissez ADMIN_PASSWORD, OU lancez en HOST=127.0.0.1, OU "
+            "forcez ALLOW_INSECURE_NETWORK=true (déconseillé)."
+        )
+
+
+_enforce_network_security()
 
 
 def _auth_active() -> bool:
     """L'auth est active s'il y a un mot de passe admin OU des utilisateurs."""
     return bool(os.getenv("ADMIN_PASSWORD", "").strip()) or user_store.count() > 0
+
+
+def _new_session(username: str, role: str) -> str:
+    """Crée un jeton de session horodaté (expire après _SESSION_TTL)."""
+    token = secrets.token_hex(24)
+    ACTIVE_SESSIONS[token] = {"username": username, "role": role, "exp": time.time() + _SESSION_TTL}
+    return token
+
+
+# --- Autorisation par rôle : endpoints réservés à l'administrateur -----------
+# (config système, exécution de code, secrets, sauvegardes). Un compte de rôle
+# « user » authentifié reçoit 403. Vérifié de façon CENTRALISÉE dans le
+# middleware pour ne dépendre d'aucun oubli au niveau d'un endpoint.
+_ADMIN_EXACT = {
+    ("POST", "/api/terminal/coder"),
+    ("POST", "/api/reset"),
+    ("POST", "/api/workspace/config"),
+    ("POST", "/api/config/agents"),
+    ("GET", "/api/config/env"), ("POST", "/api/config/env"),
+    ("GET", "/api/config/mcp"), ("POST", "/api/config/mcp"),
+    ("POST", "/api/config/voice-wake"),
+    ("GET", "/api/backup"), ("POST", "/api/backup/restore"),
+    ("POST", "/api/config/agenda/google-key"),
+    ("POST", "/api/telegram/pairing/approve"),
+    ("POST", "/api/telegram/pairing/revoke"),
+    ("POST", "/api/pricing"), ("POST", "/api/pricing/reset"),
+}
+_ADMIN_PREFIX = (
+    ("POST", "/api/config/satellites"),
+    ("DELETE", "/api/config/satellites/"),
+    ("DELETE", "/api/config/skills/"),
+    ("GET", "/api/users"), ("POST", "/api/users"), ("DELETE", "/api/users/"),
+)
+
+
+def _is_admin_only(method: str, path: str) -> bool:
+    if (method, path) in _ADMIN_EXACT:
+        return True
+    return any(method == m and path.startswith(pfx) for m, pfx in _ADMIN_PREFIX)
 
 
 class LoginRequest(BaseModel):
@@ -76,35 +144,55 @@ async def auth_middleware(request: Request, call_next):
         if not auth_header or not auth_header.startswith("Bearer "):
             return JSONResponse(status_code=401, content={"detail": "Non autorisé. Jeton de session manquant."})
         token = auth_header.split(" ")[1]
-        if token not in ACTIVE_SESSIONS:
+        sess = ACTIVE_SESSIONS.get(token)
+        if not sess:
             return JSONResponse(status_code=401, content={"detail": "Non autorisé. Session expirée ou invalide."})
-        request.state.user = ACTIVE_SESSIONS[token]
+        if sess.get("exp", 0) < time.time():
+            ACTIVE_SESSIONS.pop(token, None)
+            return JSONResponse(status_code=401, content={"detail": "Session expirée. Reconnectez-vous."})
+        request.state.user = sess
+        # Garde-fou d'autorisation : endpoints sensibles réservés aux admins.
+        if _is_admin_only(request.method, request.url.path) and sess.get("role") != "admin":
+            return JSONResponse(status_code=403, content={"detail": "Réservé à l'administrateur."})
     response = await call_next(request)
     return response
 
 
 @app.post("/api/login")
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
     admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+
+    # Anti-brute-force : throttle par IP au-delà de N échecs dans la fenêtre.
+    client_ip = request.client.host if request.client else "?"
+    now = time.time()
+    fails = [t for t in _LOGIN_FAILURES.get(client_ip, []) if now - t < _LOGIN_WINDOW]
+    if len(fails) >= _LOGIN_MAX_FAILS:
+        _LOGIN_FAILURES[client_ip] = fails
+        raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
+
+    def _fail():
+        fails.append(now)
+        _LOGIN_FAILURES[client_ip] = fails
 
     # 1. Multi-utilisateur : si des comptes existent et un username est fourni.
     if user_store.count() > 0 and req.username:
         role = user_store.verify(req.username, req.password)
         if role:
-            token = secrets.token_hex(24)
-            ACTIVE_SESSIONS[token] = {"username": req.username, "role": role}
+            _LOGIN_FAILURES.pop(client_ip, None)
+            token = _new_session(req.username, role)
             return {"status": "success", "token": token, "username": req.username, "role": role}
 
     # 2. Admin « bootstrap » via ADMIN_PASSWORD (toujours valable pour l'owner).
     if admin_password and secrets.compare_digest(req.password, admin_password):
-        token = secrets.token_hex(24)
-        ACTIVE_SESSIONS[token] = {"username": req.username or "admin", "role": "admin"}
+        _LOGIN_FAILURES.pop(client_ip, None)
+        token = _new_session(req.username or "admin", "admin")
         return {"status": "success", "token": token, "username": req.username or "admin", "role": "admin"}
 
     # 3. Aucune auth configurée.
     if not _auth_active():
         return {"status": "success", "token": "no-auth-required", "username": "local", "role": "admin"}
 
+    _fail()
     raise HTTPException(status_code=401, detail="Identifiants incorrects")
 
 
@@ -477,10 +565,13 @@ def _resolve_starting_agent(sess, req):
             aliases.extend(["robert", "codeur"])
         elif name == "Traducteur":
             aliases.extend(["sofia", "traducteur"])
+        import re as _re
         for alias in aliases:
-            idx = last_user_content.find(f"@{alias}")
-            if idx != -1 and idx < first_mention_idx:
-                first_mention_idx = idx
+            # On accepte « @correcteur » MAIS aussi le nom seul comme MOT entier
+            # (« demande au correcteur… ») → l'agent nommé prend la main directement.
+            m = _re.search(r"@?\b" + _re.escape(alias) + r"\b", last_user_content)
+            if m and m.start() < first_mention_idx:
+                first_mention_idx = m.start()
                 mentioned_agent = agent
     if mentioned_agent:
         return mentioned_agent
@@ -1425,11 +1516,25 @@ async def upload_workspace_file(file: UploadFile = File(...)):
     try:
         base_dir = get_workspace_dir()
         filename = os.path.basename(file.filename)
+        if not filename or filename in (".", ".."):
+            raise HTTPException(status_code=400, detail="Nom de fichier invalide.")
         dest_path = os.path.join(base_dir, filename)
-        
+
+        # Écriture en flux avec plafond de taille (anti-DoS mémoire/disque).
+        max_mb = int(os.getenv("MAX_UPLOAD_MB", "50") or 50)
+        max_bytes = max_mb * 1024 * 1024
+        written = 0
         with open(dest_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    f.close()
+                    os.remove(dest_path)
+                    raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {max_mb} Mo).")
+                f.write(chunk)
             
         # Déclenchement automatique de l'ingestion sémantique intelligente si c'est un document texte ou code
         ext = os.path.splitext(filename)[1].lower()
@@ -1454,6 +1559,8 @@ async def upload_workspace_file(file: UploadFile = File(...)):
             "ingested": ingested,
             "report": report
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1860,6 +1967,12 @@ async def get_config_env():
         "SELF_IMPROVE", "AUTO_APPROVE_SENSITIVE", "SENSITIVE_TOOLS",
         "LLM_MAX_RETRIES", "SWARM_MAX_SECONDS", "SWARM_MAX_TOKENS", "SWARM_MAX_PARALLEL",
         "MEMORY_MAX_MESSAGES", "MEMORY_KEEP_RECENT", "LOG_LEVEL",
+        # Sécurité réseau / sessions
+        "SESSION_TTL_HOURS", "TELEGRAM_REQUIRE_PAIRING",
+        # Orchestration & agents (avancé)
+        "DELEGATION_ROUTER", "FAST_MODEL", "FALLBACK_MODELS", "AUTO_CRITIC",
+        "USER_MODELING", "SELF_IMPROVE_SKILLS", "TOOL_SCRIPTS", "PROMPT_CACHE",
+        "EXPERIENCE_MAX", "DOC_MAX_CHUNKS",
         # Messageries & notifications (canaux de livraison des résultats/alertes)
         "DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL", "NOTIFY_WEBHOOK_URL",
         "TELEGRAM_CHAT_ID", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
@@ -2017,6 +2130,33 @@ async def reset_telemetry():
     global TELEMETRY
     TELEMETRY = {"total_queries": 0, "tool_calls": 0, "total_tokens": 0, "total_cost": 0.0}
     return {"status": "success", **TELEMETRY}
+
+
+@app.get("/api/config/tools")
+async def get_config_tools():
+    """Tous les outils réellement disponibles (statiques + compétences + MCP) pour la
+    checklist par agent — dynamique : tout outil enregistré apparaît automatiquement."""
+    from core.swarm import AVAILABLE_TOOLS, load_dynamic_skills
+    out = {}
+
+    def add(name, fn, category):
+        doc = " ".join((getattr(fn, "__doc__", "") or "").strip().split())
+        out[name] = {"key": name, "desc": doc[:140], "category": category}
+
+    for n, fn in AVAILABLE_TOOLS.items():
+        add(n, fn, "standard")
+    try:
+        for n, fn in load_dynamic_skills().items():
+            add(n, fn, "competence")
+    except Exception:
+        pass
+    try:
+        from tools.mcp_manager import mcp_manager
+        for n, fn in mcp_manager.tool_functions().items():
+            add(n, fn, "mcp")
+    except Exception:
+        pass
+    return {"tools": sorted(out.values(), key=lambda t: t["key"])}
 
 
 @app.get("/api/telemetry")
@@ -3082,10 +3222,6 @@ async def transcribe_meeting(file: UploadFile = File(...)):
 # Sert les fichiers statiques de l'interface Web
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
-def _is_exposed_host(host: str) -> bool:
-    """Vrai si le bind n'est pas strictement local (loopback)."""
-    return host not in ("127.0.0.1", "localhost", "::1")
-
 
 if __name__ == "__main__":
     import sys
@@ -3095,21 +3231,9 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
     admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
 
-    # Garde-fou : refus de démarrer exposé sur le réseau sans mot de passe admin.
-    # En exposition (0.0.0.0 / IP publique), l'absence d'ADMIN_PASSWORD ouvrirait
-    # l'interface (et l'exécution de commandes) à n'importe qui sur le réseau.
-    if _is_exposed_host(host) and not admin_password:
-        print(
-            "\n\033[91m[SÉCURITÉ] Démarrage refusé.\033[0m\n"
-            f"Le serveur est configuré pour écouter sur '{host}' (exposé réseau) "
-            "mais ADMIN_PASSWORD est vide.\n"
-            "  → Définissez ADMIN_PASSWORD dans votre .env, OU\n"
-            "  → Pour un usage purement local, lancez avec HOST=127.0.0.1.\n"
-            "Recommandation : placez le service derrière un reverse-proxy HTTPS "
-            "(Caddy, Nginx, Traefik) et n'exposez jamais le port 8000 en clair.\n"
-        )
-        sys.exit(1)
-
+    # Note : le garde-fou réseau (_enforce_network_security) s'exécute déjà au
+    # CHARGEMENT du module — il couvre aussi `uvicorn server:app`. Ici on ne fait
+    # qu'un message d'avertissement convivial en mode local sans mot de passe.
     if not admin_password:
         print("\033[93m[AVERTISSEMENT] ADMIN_PASSWORD vide : authentification désactivée "
               "(autorisé uniquement car bind local).\033[0m")

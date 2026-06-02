@@ -11,8 +11,8 @@ import shutil
 import subprocess
 import tempfile
 import html as _html
-import ipaddress
-import urllib.parse
+
+from tools.net_guard import is_blocked_url as _is_blocked_host
 
 
 def _find_chromium():
@@ -22,21 +22,6 @@ def _find_chromium():
             return p
     env = os.getenv("CHROMIUM_BIN", "").strip()
     return env or None
-
-
-def _is_blocked_host(url: str) -> bool:
-    """Bloque localhost et les IP internes/métadonnées (anti-SSRF basique)."""
-    try:
-        host = urllib.parse.urlparse(url).hostname or ""
-    except Exception:
-        return True
-    if host in ("localhost", "127.0.0.1", "::1", "metadata.google.internal"):
-        return True
-    try:
-        ip = ipaddress.ip_address(host)
-        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
-    except ValueError:
-        return False  # nom de domaine public
 
 
 def _html_to_text(raw: str) -> str:

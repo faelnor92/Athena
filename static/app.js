@@ -1963,7 +1963,22 @@ const BEHAVIOR_SCHEMA = [
         { key: "ADMIN_PASSWORD", label: "Mot de passe admin (réseau)", type: "password", def: "" },
         { key: "HOST", label: "Écoute : 127.0.0.1 (local) ou 0.0.0.0 (réseau)", type: "text", def: "0.0.0.0" },
         { key: "PORT", label: "Port", type: "number", def: "8000" },
+        { key: "ALLOWED_ORIGINS", label: "Origines CORS autorisées (CSV ; vide = local)", type: "text", def: "" },
+        { key: "SESSION_TTL_HOURS", label: "Durée de validité d'une session (heures)", type: "number", def: "168" },
+        { key: "TELEGRAM_REQUIRE_PAIRING", label: "Exiger un pairage Telegram (DM)", type: "toggle", def: "true" },
         { key: "ACTIVE_WORKSPACE_DIR", label: "Dossier de travail (vide = workspace/)", type: "text", def: "" },
+    ]},
+    { section: "Orchestration & agents (avancé)", fields: [
+        { key: "DELEGATION_ROUTER", label: "Aiguillage LLM vers le bon spécialiste", type: "toggle", def: "true" },
+        { key: "FAST_MODEL", label: "Modèle rapide pour micro-décisions (vide = modèle de l'agent)", type: "text", def: "" },
+        { key: "FALLBACK_MODELS", label: "Modèles de repli si échec (CSV)", type: "text", def: "" },
+        { key: "AUTO_CRITIC", label: "Auto-critique des réponses", type: "toggle", def: "false" },
+        { key: "USER_MODELING", label: "Profil utilisateur évolutif", type: "toggle", def: "true" },
+        { key: "SELF_IMPROVE_SKILLS", label: "Induction/réparation auto de compétences", type: "toggle", def: "true" },
+        { key: "TOOL_SCRIPTS", label: "Autoriser run_tool_script (enchaînement d'outils)", type: "toggle", def: "true" },
+        { key: "PROMPT_CACHE", label: "Cache de prompt", type: "select", options: [["auto", "Auto (Anthropic)"], ["on", "Forcé"], ["off", "Désactivé"]], def: "auto" },
+        { key: "EXPERIENCE_MAX", label: "Retours d'expérience conservés (max)", type: "number", def: "50" },
+        { key: "DOC_MAX_CHUNKS", label: "Passages max analysés par document", type: "number", def: "60" },
     ]},
     { section: "Mémoire", fields: [
         { key: "MEMORY_MAX_MESSAGES", label: "Compaction au-delà de N messages (0 = off)", type: "number", def: "40" },
@@ -3286,21 +3301,48 @@ function openAgentFormModal(agentName = null) {
         }
     };
     
-    // Injecter les outils standards avec descriptions et badges clairs
-    ALL_AVAILABLE_TOOLS.forEach(tool => {
-        const item = document.createElement("div");
-        item.className = "tool-checkbox-card";
-        const checked = isEdit && agent.tools && agent.tools.includes(tool.key) ? "checked" : "";
-        item.innerHTML = `
-            <input type="checkbox" name="tools" value="${tool.key}" id="tool-${tool.key}" ${checked}>
-            <label for="tool-${tool.key}" class="tool-checkbox-label">
-                <span class="tool-checkbox-title">${tool.title}</span>
-                <span class="tool-checkbox-desc">${tool.desc}</span>
-                <span class="tool-checkbox-key"><code>${tool.key}</code></span>
-            </label>
-        `;
-        checkboxesTools.appendChild(item);
-    });
+    // Injecter les outils : liste curée (jolis libellés) + TOUS les outils réellement
+    // enregistrés côté serveur (standard + compétences + MCP) qui ne sont pas dans la
+    // liste curée, pour qu'aucun outil cochable ne soit oublié.
+    const renderToolChecklist = (tools) => {
+        checkboxesTools.innerHTML = "";
+        tools.forEach(tool => {
+            const item = document.createElement("div");
+            item.className = "tool-checkbox-card";
+            const checked = isEdit && agent.tools && agent.tools.includes(tool.key) ? "checked" : "";
+            item.innerHTML = `
+                <input type="checkbox" name="tools" value="${tool.key}" id="tool-${tool.key}" ${checked}>
+                <label for="tool-${tool.key}" class="tool-checkbox-label">
+                    <span class="tool-checkbox-title">${tool.title}</span>
+                    <span class="tool-checkbox-desc">${tool.desc || ""}</span>
+                    <span class="tool-checkbox-key"><code>${tool.key}</code></span>
+                </label>
+            `;
+            checkboxesTools.appendChild(item);
+        });
+    };
+    // Rendu immédiat avec la liste curée (réactif), puis fusion avec le serveur.
+    renderToolChecklist(ALL_AVAILABLE_TOOLS);
+    apiFetch("/api/config/tools")
+        .then(res => res.json())
+        .then(data => {
+            const curatedKeys = new Set(ALL_AVAILABLE_TOOLS.map(t => t.key));
+            const catBadge = { competence: "🧩 Compétence", mcp: "🔌 MCP", standard: "🔧 Outil" };
+            const extras = (data.tools || [])
+                .filter(rt => !curatedKeys.has(rt.key))
+                .map(rt => ({
+                    key: rt.key,
+                    title: (catBadge[rt.category] || "🔧 Outil") + " · " + rt.key,
+                    desc: rt.desc || "",
+                }));
+            // Réafficher aussi un outil coché qui ne serait plus enregistré (alerte visuelle).
+            const realKeys = new Set((data.tools || []).map(rt => rt.key));
+            const orphanChecked = (isEdit && agent.tools ? agent.tools : [])
+                .filter(k => !curatedKeys.has(k) && !realKeys.has(k))
+                .map(k => ({ key: k, title: "⚠️ Inconnu · " + k, desc: "Outil coché mais non enregistré côté serveur." }));
+            renderToolChecklist([...ALL_AVAILABLE_TOOLS, ...extras, ...orphanChecked]);
+        })
+        .catch(err => console.error("Erreur de récupération des outils:", err));
     
     // Injecter les autres agents pour cocher les handoffs
     agentsConfig.forEach(otherAgent => {
