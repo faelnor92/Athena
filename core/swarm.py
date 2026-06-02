@@ -49,6 +49,8 @@ AVAILABLE_TOOLS = {
     "memorize_fact": tools.memory_tools.memorize_fact,
     "store_document": tools.memory_tools.store_document,
     "search_memory": tools.memory_tools.search_memory,
+    "remember_relation": tools.memory_tools.remember_relation,
+    "query_graph": tools.memory_tools.query_graph,
     "execute_python_code": tools.code_sandbox.execute_python_code,
     "execute_bash_command": tools.system_tools.execute_bash_command,
     "save_new_skill": tools.skills_manager.save_new_skill,

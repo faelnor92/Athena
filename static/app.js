@@ -3414,6 +3414,16 @@ const ALL_AVAILABLE_TOOLS = [
         desc: "Enregistrer à long terme des détails sur vous, vos goûts ou vos préférences."
     },
     {
+        key: "remember_relation",
+        title: "🕸️ Mémoire-graphe : Enregistrer une relation",
+        desc: "Lier deux entités (sujet —relation→ objet), ex. « Tim écrit Les Larmes de l'Olympe »."
+    },
+    {
+        key: "query_graph",
+        title: "🕸️ Mémoire-graphe : Voisinage d'une entité",
+        desc: "Retrouver tout ce qui est connecté à une entité (relations directes et à un saut)."
+    },
+    {
         key: "store_document",
         title: "📁 Archiver des notes / documents",
         desc: "Stocker des fichiers textuels longs ou notes pour qu'ils soient gardés en mémoire."

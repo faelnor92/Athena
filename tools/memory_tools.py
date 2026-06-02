@@ -1,25 +1,81 @@
 import json
+import os
 from core.memory import CoreMemory, SemanticMemory
+from core import graph_memory
 
 # Instanciation globale (singletons pour la durée du process)
 core_mem = CoreMemory()
 semantic_mem = SemanticMemory()
+
+
+def _auto_extract_triples(text: str):
+    """Extraction best-effort de relations (s, r, o) depuis un texte, via le LLM.
+    Gated par GRAPH_MEMORY_AUTO. Silencieux en cas d'échec (le fait reste mémorisé)."""
+    if os.getenv("GRAPH_MEMORY_AUTO", "false").lower() not in ("true", "1", "yes"):
+        return
+    try:
+        import server
+        swarm = getattr(server, "swarm", None)
+        if swarm is None:
+            return
+        orch = getattr(swarm, "orchestrator_name", None)
+        model = (swarm.agents.get(orch).model if orch and swarm.agents.get(orch)
+                 else (next(iter(swarm.agents.values())).model if swarm.agents else "gpt-4o"))
+        resp = swarm._complete(model, [
+            {"role": "system", "content": (
+                "Extrais les relations factuelles du texte sous forme de triplets "
+                "(sujet, relation, objet). Réponds UNIQUEMENT par un tableau JSON "
+                "[[\"sujet\",\"relation\",\"objet\"], …]. Vide [] si aucune relation claire.")},
+            {"role": "user", "content": text[:1000]},
+        ], tools_schema=None, allow_continuation=False, allow_fallback=True)
+        raw = (resp.choices[0].message.content or "").strip()
+        m = raw[raw.find("["):raw.rfind("]") + 1]
+        triples = json.loads(m) if m else []
+        graph_memory.add_triples(triples)
+    except Exception:
+        pass
+
 
 def memorize_fact(key: str, value: str) -> str:
     """
     Mémorise un fait ou une préférence utilisateur essentielle et globale.
     Cet outil est parfait pour les préférences durables, les configurations,
     les noms de pièces de la maison, ou les détails généraux.
-    
+
     Args:
         key (str): L'étiquette de la préférence (ex: "prenom_utilisateur", "editeur_prefere")
         value (str): L'information à retenir (ex: "Alex", "VSCode")
-        
+
     Returns:
         str: Confirmation que la mémoire a été mise à jour.
     """
     core_mem.set(key, value)
+    _auto_extract_triples(f"{key} : {value}")
     return f"Fait mémorisé : {key} = {value}"
+
+
+def remember_relation(subject: str, relation: str, object: str) -> str:
+    """
+    Mémorise une RELATION entre deux entités dans la mémoire-graphe (ex. sujet="Tim",
+    relation="écrit", objet="Les Larmes de l'Olympe"). Permet ensuite de retrouver tout
+    ce qui est connecté à une entité avec query_graph. Complète la mémoire sémantique.
+    """
+    if graph_memory.add_triple(subject, relation, object):
+        return f"Relation mémorisée : {subject} —[{relation}]→ {object}"
+    return "Relation non enregistrée (sujet/objet manquant)."
+
+
+def query_graph(entity: str) -> str:
+    """
+    Interroge la mémoire-graphe : renvoie tout ce qui est CONNECTÉ à une entité
+    (relations directes et à un saut). Utile pour « que sais-tu sur X et ses liens ».
+    entity: le nom de l'entité (personne, projet, lieu, fichier…).
+    """
+    triples = graph_memory.neighborhood(entity, depth=2)
+    if not triples:
+        return f"Aucune relation connue pour « {entity} »."
+    lines = [f"- {t['s']} —[{t['r']}]→ {t['o']}" for t in triples]
+    return f"Relations liées à « {entity} » ({len(lines)}) :\n" + "\n".join(lines)
 
 def store_document(content: str, source: str = "general") -> str:
     """
