@@ -20,7 +20,10 @@ TELEMETRY = {
 CODER_CWD = None
 
 def get_workspace_dir() -> str:
-    return os.environ.get("ACTIVE_WORKSPACE_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workspace"))
+    # abspath : indispensable pour les vérifs anti-traversée (commonpath) des routeurs.
+    return os.path.abspath(
+        os.environ.get("ACTIVE_WORKSPACE_DIR",
+                       os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workspace")))
 
 def get_coder_cwd() -> str:
     global CODER_CWD

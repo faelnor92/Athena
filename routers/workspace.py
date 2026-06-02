@@ -5,8 +5,8 @@ from pydantic import BaseModel
 
 router = APIRouter(tags=["Workspace"])
 
-def get_workspace_dir() -> str:
-    return os.path.abspath(os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd()))
+# Source unique (évite la divergence) : cf. core/state.py.
+from core.state import get_workspace_dir
 
 @router.get("/api/workspace/config")
 async def get_workspace_config():
