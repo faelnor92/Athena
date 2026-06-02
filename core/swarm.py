@@ -1496,6 +1496,9 @@ class Swarm:
             def _run_tool(fn, a):
                 # Cache TTL des outils idempotents (web_search, etc.).
                 name = getattr(fn, "__name__", "")
+                from core.redaction import redact_secrets
+                args_str = redact_secrets(str(a))[:300]
+                logger.debug("→ outil '%s' args=%s", name, args_str)
                 ttl = _tool_cache_ttl()
                 cache_key = None
                 if ttl > 0 and name in _cacheable_tools():
@@ -1507,11 +1510,13 @@ class Swarm:
                         with _TOOL_CACHE_LOCK:
                             hit = _TOOL_CACHE.get(cache_key)
                         if hit and (time.time() - hit[0]) < ttl:
+                            logger.info("✓ outil '%s' (cache)", name)
                             return hit[1]
+                t0 = time.time()
                 try:
                     res = fn(**a)
                 except Exception as e:
-                    logger.exception("Erreur lors de l'exécution de l'outil '%s' avec les arguments: %s", name, a)
+                    logger.exception("✗ outil '%s' a levé une exception (args=%s)", name, args_str)
                     # Si c'est une compétence dynamique (skills/<nom>.py), on note l'échec
                     # pour tenter une réparation automatique en fin de run.
                     try:
@@ -1520,6 +1525,16 @@ class Swarm:
                     except Exception:
                         pass
                     return f"Erreur lors de l'exécution de l'outil : {str(e)}"
+                # Journalisation du RÉSULTAT : beaucoup d'outils signalent une erreur en
+                # RENVOYANT une chaîne « Erreur … » (sans exception) — invisible jusqu'ici.
+                dur_ms = int((time.time() - t0) * 1000)
+                is_err = isinstance(res, str) and res.lstrip()[:7].lower().startswith("erreur")
+                if is_err:
+                    logger.warning("⚠ outil '%s' a renvoyé une erreur en %dms : %s",
+                                   name, dur_ms, redact_secrets(res)[:200])
+                else:
+                    rlen = len(res) if isinstance(res, str) else 0
+                    logger.info("✓ outil '%s' OK en %dms (%d car.)", name, dur_ms, rlen)
                 if cache_key is not None and isinstance(res, str):
                     with _TOOL_CACHE_LOCK:
                         _TOOL_CACHE[cache_key] = (time.time(), res)
