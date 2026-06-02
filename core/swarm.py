@@ -513,13 +513,14 @@ class Swarm:
                 out.append(m)
         return out
 
-    def _delegation_relevant(self, agent: Agent, messages: list) -> bool:
-        """Mini-routeur : la dernière demande relève-t-elle CLAIREMENT d'un agent spécialisé
-        présent ? Indépendant de la langue (le LLM comprend) et des agents (liste dynamique).
-        Renvoie True si on doit laisser l'orchestrateur déléguer, False s'il doit répondre
-        lui-même. Désactivable via DELEGATION_ROUTER=false (on laisse alors déléguer)."""
+    def _route_target(self, agent: Agent, messages: list):
+        """Mini-routeur : à QUEL spécialiste confier la demande ? L'orchestrateur connaît
+        ainsi la spécialité de chaque agent (extraite de leur prompt) et route tout seul,
+        sans que l'utilisateur ait à nommer l'agent. Indépendant de la langue et des agents.
+        Renvoie : le NOM d'un agent (déléguer à lui) ; "" (aucun → l'orchestrateur répond
+        lui-même) ; None (routeur désactivé/indisponible → ne rien restreindre)."""
         if os.getenv("DELEGATION_ROUTER", "true").lower() not in ("true", "1", "yes"):
-            return True
+            return None
         orch = getattr(self, "orchestrator_name", "Jarvis")
         specialists = []
         for name, a in self.agents.items():
@@ -531,10 +532,10 @@ class Swarm:
                 desc = ". ".join(sents[:1])
             specialists.append(f"- {name} : {desc}")
         if not specialists:
-            return True
+            return ""
         last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
         if not str(last_user).strip():
-            return True
+            return ""
         names = [n for n in self.agents if n != orch]
         try:
             model = os.getenv("FAST_MODEL", "").strip() or agent.model
@@ -560,11 +561,14 @@ class Swarm:
             import re as _re
             token = _re.sub(r"[^a-z0-9_]", "", (ans.split() or [""])[0].lower())
             if token == "aucun" or not token:
-                return False
-            return any(token == n.lower() for n in names)
+                return ""
+            for n in names:
+                if token == n.lower():
+                    return n
+            return ""  # réponse non reconnue → biais « ne pas déléguer »
         except Exception as e:
             print(f"[Routeur délégation] indisponible ({e}) — délégation laissée au modèle.")
-            return True
+            return None
 
     def _route_model(self, default_model: str, messages: list) -> str:
         """Routage par difficulté : pour une requête manifestement triviale, utilise
@@ -969,7 +973,7 @@ class Swarm:
         tokens_used = 0
         skill_failures = []  # échecs de compétences dynamiques → réparées en fin de run
         _route_done = False   # routeur de délégation : décidé une seule fois par run
-        _route_allow = True   # autoriser la délégation par l'orchestrateur ?
+        _route_target = None  # spécialiste ciblé (nom) | "" (aucun) | None (non décidé)
 
         while True:
             # Annulation (barge-in vocal / bouton stop) : vérifiée à chaque tour.
@@ -1051,11 +1055,27 @@ class Swarm:
             if current_agent.name == getattr(self, "orchestrator_name", "Jarvis") and len(self.agents) > 1:
                 if not _route_done:
                     _route_done = True
-                    _route_allow = self._delegation_relevant(current_agent, messages)
-                if not _route_allow:
+                    _route_target = self._route_target(current_agent, messages)
+                if _route_target == "":
+                    # Aucun spécialiste pertinent → l'orchestrateur répond lui-même : on retire
+                    # les outils de délégation (il garde ses propres outils).
                     effective_tools = [f for f in effective_tools
                                        if not f.__name__.startswith("transfer_to_")
                                        and f.__name__ not in ("query_agent", "debate_between_agents")]
+                elif _route_target:
+                    # Un spécialiste correspond → on FORCE la délégation : on retire à
+                    # l'orchestrateur les outils-MÉTIER de ce spécialiste (il ne peut plus
+                    # faire son travail lui-même), en gardant ses outils d'orchestration.
+                    tgt = self.agents.get(_route_target)
+                    if tgt:
+                        tgt_tools = {f.__name__ for f in tgt.tools}
+                        _orch_keep = {"query_agent", "debate_between_agents", "memorize_fact",
+                                      "store_document", "search_memory", "send_notification",
+                                      "make_plan", "update_plan_step", "create_agent", "run_tool_script"}
+                        effective_tools = [f for f in effective_tools
+                                           if f.__name__.startswith("transfer_to_")
+                                           or f.__name__ not in tgt_tools
+                                           or f.__name__ in _orch_keep]
 
             # Enregistrer l'activation de l'agent
             steps.append({
@@ -1087,6 +1107,12 @@ class Swarm:
                     system_prompt += user_profile.as_prompt()
                 except Exception:
                     pass
+                # Indice de routage : un spécialiste a été identifié pour cette demande.
+                if _route_target:
+                    system_prompt += (
+                        f"\n➡️ AIGUILLAGE : cette demande relève du métier de « {_route_target} ». "
+                        f"Délègue-lui MAINTENANT (transfer_to_{_route_target} ou query_agent('{_route_target}', …)) "
+                        "— ne la traite pas toi-même.\n")
 
             # Chargement en cascade des fichiers de prompt locaux (custom Jarvis Swarm)
             local_instructions = ""
