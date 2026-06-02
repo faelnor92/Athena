@@ -62,6 +62,9 @@ def upsert_satellite(cfg: dict) -> list:
         "name": name,
         "host": (cfg.get("host") or "").strip(),
         "port": int(cfg.get("port") or 6053),
+        # Pièce (optionnel) : doit correspondre à l'état de l'entité de présence HA
+        # pour le follow-me (router la voix vers le satellite de la pièce active).
+        "area": (cfg.get("area") or (existing.get("area") if existing else "") or "").strip(),
     }
     key = (cfg.get("encryption_key") or "").strip()
     if not key and existing:

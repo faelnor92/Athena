@@ -2031,6 +2031,9 @@ const BEHAVIOR_SCHEMA = [
         { key: "VOICE_TTS_HTTP_URL", label: "Serveur TTS expressif (URL, ex. XTTS/Chatterbox)", type: "text", def: "" },
         { key: "VOICE_TTS_VOICE", label: "Voix / locuteur du TTS expressif", type: "text", def: "" },
     ]},
+    { section: "Présence / follow-me (optionnel)", fields: [
+        { key: "PRESENCE_ENTITY", label: "Entité HA de pièce courante (vide = désactivé)", type: "text", def: "" },
+    ]},
 ];
 
 async function loadConfigBehaviorPane() {
@@ -3238,6 +3241,11 @@ const ALL_AVAILABLE_TOOLS = [
         key: "get_ha_state",
         title: "🏠 Home Assistant : État des capteurs",
         desc: "Consulter l'état de vos lumières, capteurs ou interrupteurs connectés."
+    },
+    {
+        key: "get_current_room",
+        title: "📍 Présence : Pièce actuelle",
+        desc: "Lit l'entité HA de présence (optionnel) pour savoir dans quelle pièce vous êtes (follow-me)."
     },
     {
         key: "call_ha_service",
