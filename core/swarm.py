@@ -40,6 +40,7 @@ import tools.dev_tools
 import tools.git_tools
 import tools.code_nav
 import tools.presence
+import tools.n8n_tools
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -93,6 +94,7 @@ AVAILABLE_TOOLS = {
     "find_references": tools.code_nav.find_references,
     "file_outline": tools.code_nav.file_outline,
     "get_current_room": tools.presence.get_current_room,
+    "trigger_workflow": tools.n8n_tools.trigger_workflow,
 }
 
 def load_dynamic_skills() -> dict:

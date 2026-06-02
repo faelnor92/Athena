@@ -2167,6 +2167,9 @@ const BEHAVIOR_SCHEMA = [
     { section: "Présence / follow-me (optionnel)", fields: [
         { key: "PRESENCE_ENTITY", label: "Entité HA de pièce courante (vide = désactivé)", type: "text", def: "" },
     ]},
+    { section: "Automatisation (n8n)", fields: [
+        { key: "N8N_WORKFLOWS", label: "Workflows autorisés — JSON {\"nom\":\"url webhook\"}", type: "text", def: "" },
+    ]},
 ];
 
 async function loadConfigBehaviorPane() {
@@ -3379,6 +3382,11 @@ const ALL_AVAILABLE_TOOLS = [
         key: "get_current_room",
         title: "📍 Présence : Pièce actuelle",
         desc: "Lit l'entité HA de présence (optionnel) pour savoir dans quelle pièce vous êtes (follow-me)."
+    },
+    {
+        key: "trigger_workflow",
+        title: "🔗 Automatisation : Déclencher n8n",
+        desc: "Lance un workflow n8n déclaré (par nom). Sensible : effet de bord externe (approbation)."
     },
     {
         key: "call_ha_service",

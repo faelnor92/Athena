@@ -2282,6 +2282,8 @@ async def get_config_env():
         "VOICE_EMOTION_TAGS", "VOICE_TTS_HTTP_URL", "VOICE_TTS_VOICE",
         # Présence / follow-me (optionnel)
         "PRESENCE_ENTITY",
+        # Automatisation n8n (allowlist de workflows, JSON {nom: url})
+        "N8N_WORKFLOWS",
         # Orchestration & agents (avancé)
         "DELEGATION_ROUTER", "FAST_MODEL", "FALLBACK_MODELS", "AUTO_CRITIC",
         "USER_MODELING", "SELF_IMPROVE_SKILLS", "TOOL_SCRIPTS", "PROMPT_CACHE",
