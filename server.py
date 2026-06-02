@@ -956,6 +956,53 @@ async def chat_async_status(task_id: str):
     return {"task_id": task_id, **task}
 
 
+# --- Plan d'action persistant & éditable par l'humain ----------------------
+class PlanSetRequest(BaseModel):
+    client_id: str = "web"
+    items: List[Dict[str, Any]] = []
+
+
+class PlanStepRequest(BaseModel):
+    client_id: str = "web"
+    op: str                      # set_status | add | edit | delete
+    index: int = -1
+    text: str = ""
+    status: str = "done"
+
+
+@app.get("/api/plan")
+async def api_get_plan(client_id: str = "web"):
+    from core import plan_store
+    return {"items": plan_store.get_plan(client_id)}
+
+
+@app.post("/api/plan")
+async def api_set_plan(req: PlanSetRequest):
+    from core import plan_store
+    items = plan_store.set_plan(req.client_id, req.items)
+    return {"status": "success", "items": items}
+
+
+@app.post("/api/plan/step")
+async def api_plan_step(req: PlanStepRequest):
+    from core import plan_store
+    op = (req.op or "").strip().lower()
+    ok = False
+    if op == "set_status":
+        ok = plan_store.update_step(req.client_id, req.index, req.status)
+    elif op == "add":
+        ok = plan_store.add_step(req.client_id, req.text)
+    elif op == "edit":
+        ok = plan_store.edit_step(req.client_id, req.index, req.text)
+    elif op == "delete":
+        ok = plan_store.remove_step(req.client_id, req.index)
+    else:
+        raise HTTPException(status_code=400, detail="op invalide (set_status|add|edit|delete).")
+    if not ok:
+        raise HTTPException(status_code=400, detail="Opération refusée (index hors limites ou texte vide).")
+    return {"status": "success", "items": plan_store.get_plan(req.client_id)}
+
+
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
     """Streaming SSE : diffuse les étapes de l'essaim au fil de l'eau (events

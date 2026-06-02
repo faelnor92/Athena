@@ -73,6 +73,7 @@ AVAILABLE_TOOLS = {
     "send_notification": tools.notify_tools.send_notification,
     "make_plan": tools.planning_tools.make_plan,
     "update_plan_step": tools.planning_tools.update_plan_step,
+    "get_plan": tools.planning_tools.get_plan,
     "create_agent": tools.agent_tools.create_agent,
     "run_tool_script": tools.tool_script.run_tool_script,
     "render_page": tools.browser_tools.render_page,

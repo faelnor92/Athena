@@ -7,6 +7,16 @@ Les étapes sont publiées en temps réel via run_context (events 'plan' /
 import re
 
 from core import run_context
+from core import plan_store
+from core import channels
+
+
+def _cid():
+    """Canal/session courant (pour scoper le plan persistant)."""
+    try:
+        return channels.current_channel.get() or "web"
+    except Exception:
+        return "web"
 
 
 def make_plan(steps: str) -> str:
@@ -31,8 +41,10 @@ def make_plan(steps: str) -> str:
     if not items:
         return "Plan vide : fournis au moins une étape."
     run_context.publish_step({"type": "plan", "items": items})
+    plan_store.set_plan(_cid(), items)  # persiste (éditable par l'humain)
     return (f"Plan de {len(items)} étape(s) affiché. Exécute-les et appelle "
-            "update_plan_step(step=N, status='done') au fur et à mesure.")
+            "update_plan_step(step=N, status='done') au fur et à mesure. "
+            "L'utilisateur peut modifier ce plan ; relis-le au besoin avec get_plan().")
 
 
 def update_plan_step(step: int, status: str = "done") -> str:
@@ -54,4 +66,20 @@ def update_plan_step(step: int, status: str = "done") -> str:
     if status not in ("pending", "in_progress", "done", "failed"):
         status = "done"
     run_context.publish_step({"type": "plan_update", "index": idx, "status": status})
+    plan_store.update_step(_cid(), idx, status)
     return f"Étape {step} → {status}."
+
+
+def get_plan() -> str:
+    """
+    Relit le PLAN D'ACTION courant (avec les éventuelles MODIFICATIONS de l'utilisateur :
+    étapes cochées, ajoutées, éditées ou supprimées à la main). À utiliser pour te
+    resynchroniser sur ce que l'humain attend réellement avant de continuer.
+    """
+    items = plan_store.get_plan(_cid())
+    if not items:
+        return "Aucun plan en cours."
+    icons = {"pending": "⬜", "in_progress": "🔄", "done": "✅", "failed": "❌"}
+    lines = [f"{i+1}. {icons.get(it.get('status'), '⬜')} {it.get('text','')}"
+             for i, it in enumerate(items)]
+    return "Plan courant :\n" + "\n".join(lines)

@@ -23,6 +23,7 @@ core_memory.json
 agenda.json
 lists.json
 routines.json
+plans.json
 users.json
 satellites.json
 # Compétences générées par les agents à l'exécution (état local, pas du code source).

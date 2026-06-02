@@ -1117,30 +1117,85 @@ function animateHandoffMail(fromAgent, toAgent) {
 let currentPlanEl = null;
 const _PLAN_ICONS = { pending: "⬜", in_progress: "🔄", done: "✅", failed: "❌" };
 
+const _PLAN_CYCLE = ["pending", "in_progress", "done", "failed"];
+
+// Persiste une opération de plan côté serveur puis recharge l'affichage.
+async function _planOp(body) {
+    try {
+        await apiFetch("/api/plan/step", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ client_id: chatClientId, ...body }),
+        });
+        await reloadPlan();
+    } catch (e) { console.error("plan op", e); }
+}
+
+async function reloadPlan() {
+    if (!currentPlanEl) return;
+    try {
+        const r = await apiFetch(`/api/plan?client_id=${encodeURIComponent(chatClientId)}`);
+        const data = await r.json();
+        _fillPlan(currentPlanEl, data.items || []);
+    } catch (e) { /* silencieux */ }
+}
+
+// (Re)construit le contenu d'un bloc plan ÉDITABLE.
+function _fillPlan(el, items) {
+    el.innerHTML = "";
+    const title = document.createElement("div");
+    title.style.cssText = "font-weight:700;color:var(--accent-cyan);font-size:0.8rem;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;";
+    title.innerHTML = `<span>🗺️ Plan d'action</span><span style="font-weight:400;opacity:0.6;font-size:0.7rem;">modifiable</span>`;
+    el.appendChild(title);
+    (items || []).forEach((it, i) => {
+        const row = document.createElement("div");
+        row.className = "plan-item";
+        row.dataset.index = i;
+        row.style.cssText = "display:flex;gap:8px;align-items:center;font-size:0.8rem;padding:2px 0;";
+        const ic = document.createElement("span");
+        ic.className = "plan-icon";
+        ic.style.cssText = "cursor:pointer;user-select:none;";
+        ic.title = "Cliquer pour changer le statut";
+        ic.textContent = _PLAN_ICONS[it.status] || "⬜";
+        ic.onclick = () => {
+            const next = _PLAN_CYCLE[(_PLAN_CYCLE.indexOf(it.status) + 1) % _PLAN_CYCLE.length] || "done";
+            _planOp({ op: "set_status", index: i, status: next });
+        };
+        const tx = document.createElement("span");
+        tx.className = "plan-text";
+        tx.style.cssText = "flex:1;" + (it.status === "done" ? "opacity:0.6;text-decoration:line-through;" : "");
+        tx.textContent = it.text;
+        const edit = document.createElement("span");
+        edit.textContent = "✎"; edit.style.cssText = "cursor:pointer;opacity:0.5;";
+        edit.title = "Éditer";
+        edit.onclick = () => {
+            const v = prompt("Modifier l'étape :", it.text);
+            if (v && v.trim()) _planOp({ op: "edit", index: i, text: v.trim() });
+        };
+        const del = document.createElement("span");
+        del.textContent = "✕"; del.style.cssText = "cursor:pointer;opacity:0.5;";
+        del.title = "Supprimer";
+        del.onclick = () => { _planOp({ op: "delete", index: i }); };
+        row.append(ic, tx, edit, del);
+        el.appendChild(row);
+    });
+    const add = document.createElement("div");
+    add.textContent = "＋ Ajouter une étape";
+    add.style.cssText = "cursor:pointer;color:var(--accent-cyan);opacity:0.7;font-size:0.75rem;margin-top:6px;";
+    add.onclick = () => {
+        const v = prompt("Nouvelle étape :");
+        if (v && v.trim()) _planOp({ op: "add", text: v.trim() });
+    };
+    el.appendChild(add);
+}
+
 function renderPlan(items) {
     const container = document.getElementById("chat-messages");
     if (!container) return;
     const el = document.createElement("div");
     el.className = "swarm-plan animate-fade-in";
     el.style.cssText = "background:rgba(0,243,255,0.06);border:1px solid rgba(0,243,255,0.3);border-radius:10px;padding:10px 14px;margin:8px 0;";
-    const title = document.createElement("div");
-    title.style.cssText = "font-weight:700;color:var(--accent-cyan);font-size:0.8rem;margin-bottom:6px;";
-    title.textContent = "🗺️ Plan d'action";
-    el.appendChild(title);
-    (items || []).forEach((it, i) => {
-        const row = document.createElement("div");
-        row.className = "plan-item";
-        row.dataset.index = i;
-        row.style.cssText = "display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;padding:2px 0;";
-        const ic = document.createElement("span");
-        ic.className = "plan-icon";
-        ic.textContent = _PLAN_ICONS[it.status] || "⬜";
-        const tx = document.createElement("span");
-        tx.className = "plan-text";
-        tx.textContent = it.text;
-        row.append(ic, tx);
-        el.appendChild(row);
-    });
+    _fillPlan(el, items);
     container.appendChild(el);
     container.scrollTop = container.scrollHeight;
     currentPlanEl = el;
