@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
@@ -746,6 +746,214 @@ async def chat(req: ChatRequest):
         current_run_id.reset(token)
         channels.current_channel.reset(chan_token)
         approvals.auto_approve_var.reset(appr_token)
+
+
+# =========================================================================
+# INTÉGRATION : sorties structurées (JSON) & exécution asynchrone (callbacks)
+# Pour piloter Athena depuis n8n/Zapier/Make ou tout pipeline automatisé.
+# =========================================================================
+
+def _extract_json(text: str):
+    """Extrait le premier objet/tableau JSON équilibré d'un texte (tolère le bavardage
+    et les blocs ```json). Renvoie (obj, None) ou (None, raison)."""
+    if not text:
+        return None, "réponse vide"
+    s = text.strip()
+    # Retirer une éventuelle clôture ```json … ```
+    fence = re.search(r"```(?:json)?\s*([\[{].*?[\]}])\s*```", s, re.DOTALL)
+    if fence:
+        s = fence.group(1)
+    start = next((i for i, c in enumerate(s) if c in "{["), -1)
+    if start < 0:
+        return None, "aucun JSON détecté"
+    opener = s[start]
+    closer = "}" if opener == "{" else "]"
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(s)):
+        c = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == opener:
+            depth += 1
+        elif c == closer:
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(s[start:i + 1]), None
+                except Exception as e:
+                    return None, f"JSON invalide ({e})"
+    return None, "JSON non terminé"
+
+
+def _run_swarm_ephemeral(message: str):
+    """Exécute l'essaim sur un message UNIQUE sans persister de conversation
+    (pour les appels d'intégration). Renvoie (réponse_texte, agent, steps)."""
+    run_id = run_store.new_run_id()
+    run_started = time.time()
+    run_registry.start(run_id)
+    token = current_run_id.set(run_id)
+    chan_token = channels.current_channel.set("api")
+    appr_token = approvals.auto_approve_var.set(channels.auto_approve_for("api"))
+    try:
+        chain = [{"role": "user", "content": message, "id": uuid.uuid4().hex[:8]}]
+        starting = _orch_agent()
+        _next, new_chain, steps = swarm.run(starting, chain)
+        # Dernière réponse d'assistant.
+        final = ""
+        agent = _orch_name()
+        for m in reversed(new_chain):
+            if m.get("role") == "assistant" and (m.get("content") or "").strip():
+                final = m["content"].strip()
+                agent = m.get("name") or agent
+                break
+        run_store.save(run_id=run_id, agent=agent, status="success",
+                       user_message=message, final_response=final,
+                       duration_ms=int((time.time() - run_started) * 1000),
+                       steps=steps, created_at=run_started)
+        return final, agent, steps
+    finally:
+        run_registry.finish(run_id)
+        current_run_id.reset(token)
+        channels.current_channel.reset(chan_token)
+        approvals.auto_approve_var.reset(appr_token)
+
+
+class StructuredRequest(BaseModel):
+    # alias "schema" côté JSON (n8n-friendly), attribut Python "output_schema"
+    # pour ne pas masquer BaseModel.schema.
+    model_config = {"populate_by_name": True}
+    message: str
+    output_schema: Dict[str, Any] = Field(default=None, alias="schema")
+
+
+@app.post("/api/structured")
+async def chat_structured(req: StructuredRequest):
+    """Renvoie une réponse JSON STRICTE (validée par schéma si fourni), pour intégration
+    n8n/Zapier. Exécute l'essaim (outils compris) puis extrait/valide le JSON, avec une
+    relance corrective si nécessaire. Réponse : {data, raw, agent, valid}."""
+    schema = req.output_schema
+    instruct = ("\n\nRÉPONDS UNIQUEMENT par un objet JSON valide, sans texte autour, "
+                "sans bloc de code.")
+    if schema:
+        instruct += " Le JSON doit respecter ce schéma JSON :\n" + json.dumps(schema, ensure_ascii=False)
+    prompt = req.message + instruct
+
+    last_err = None
+    for attempt in range(2):
+        text, agent, _steps = await asyncio.to_thread(_run_swarm_ephemeral, prompt)
+        obj, err = _extract_json(text)
+        if obj is not None and schema:
+            try:
+                import jsonschema
+                jsonschema.validate(obj, schema)
+            except Exception as ve:
+                err = f"non conforme au schéma : {ve}".split("\n")[0]
+                obj = None
+        if obj is not None:
+            return {"data": obj, "raw": text, "agent": agent, "valid": True}
+        last_err = err
+        prompt = (req.message + instruct +
+                  f"\n\n⚠️ Ta réponse précédente était invalide ({err}). Renvoie UNIQUEMENT "
+                  "le JSON corrigé.")
+    raise HTTPException(status_code=422, detail=f"Sortie JSON invalide après 2 tentatives : {last_err}")
+
+
+ASYNC_TASKS = {}  # task_id -> {status, result, error, created}
+_ASYNC_LOCK = threading.Lock()
+
+
+class AsyncChatRequest(BaseModel):
+    message: str
+    callback_url: str = None
+    client_id: str = "web"
+    structured_schema: Dict[str, Any] = None
+
+
+def _async_worker(task_id: str, req_message: str, client_id: str, callback_url: str, schema):
+    result = None
+    error = None
+    try:
+        if schema is not None:
+            text, agent, _ = _run_swarm_ephemeral(
+                req_message + "\n\nRÉPONDS UNIQUEMENT par un objet JSON valide."
+                + (" Schéma : " + json.dumps(schema, ensure_ascii=False) if schema else ""))
+            obj, _err = _extract_json(text)
+            result = {"agent": agent, "data": obj, "raw": text}
+        else:
+            # Conversation persistante normale.
+            run_id = run_store.new_run_id()
+            run_started = time.time()
+            run_registry.start(run_id)
+            t = current_run_id.set(run_id)
+            ch = channels.current_channel.set(client_id)
+            ap = approvals.auto_approve_var.set(channels.auto_approve_for(client_id))
+            try:
+                req = ChatRequest(message=req_message, client_id=client_id)
+                sess = sessions.get(client_id)
+                chain, starting, orig = _chat_prepare(sess, req, run_id)
+                _n, new_chain, steps = swarm.run(starting, chain)
+                final, agent = _chat_finalize(sess, req, run_id, run_started, new_chain, steps, orig)
+                result = {"agent": agent, "response": final, "steps": steps}
+            finally:
+                run_registry.finish(run_id)
+                current_run_id.reset(t)
+                channels.current_channel.reset(ch)
+                approvals.auto_approve_var.reset(ap)
+    except Exception as e:
+        error = str(e)
+        logger.exception("Tâche async %s en échec", task_id)
+
+    with _ASYNC_LOCK:
+        ASYNC_TASKS[task_id] = {"status": "error" if error else "done",
+                                "result": result, "error": error, "created": time.time()}
+        # Purge basique des vieilles tâches.
+        if len(ASYNC_TASKS) > 200:
+            for k in sorted(ASYNC_TASKS, key=lambda k: ASYNC_TASKS[k]["created"])[:50]:
+                ASYNC_TASKS.pop(k, None)
+
+    if callback_url:
+        try:
+            import requests as _rq
+            payload = {"task_id": task_id, "status": "error" if error else "done",
+                       "result": result, "error": error}
+            _rq.post(callback_url, json=payload, timeout=20)
+        except Exception as e:
+            logger.warning("Callback %s échoué (%s)", callback_url, e)
+
+
+@app.post("/api/chat/async")
+async def chat_async(req: AsyncChatRequest):
+    """Lance une tâche EN ARRIÈRE-PLAN et renvoie immédiatement un task_id (évite les
+    timeouts n8n sur les tâches longues). Si callback_url est fourni, le résultat y est
+    POSTé en JSON une fois terminé ; sinon, interroger GET /api/chat/async/{task_id}."""
+    task_id = uuid.uuid4().hex[:16]
+    with _ASYNC_LOCK:
+        ASYNC_TASKS[task_id] = {"status": "running", "result": None, "error": None, "created": time.time()}
+    threading.Thread(
+        target=_async_worker,
+        args=(task_id, req.message, req.client_id, req.callback_url, req.structured_schema),
+        daemon=True,
+    ).start()
+    return {"task_id": task_id, "status": "accepted"}
+
+
+@app.get("/api/chat/async/{task_id}")
+async def chat_async_status(task_id: str):
+    with _ASYNC_LOCK:
+        task = ASYNC_TASKS.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Tâche inconnue ou expirée.")
+    return {"task_id": task_id, **task}
 
 
 @app.post("/api/chat/stream")
