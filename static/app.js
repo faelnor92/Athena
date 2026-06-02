@@ -1403,6 +1403,74 @@ function escapeHtml(s) {
     }[c]));
 }
 
+// --- Artifacts : prévisualisation de code en bac à sable ISOLÉ ------------
+// Le code généré (HTML/JS/React) tourne dans un <iframe sandbox="allow-scripts">
+// SANS allow-same-origin → origine opaque : il ne peut PAS lire le token, le
+// localStorage ni le DOM parent. C'est la barrière de sécurité.
+const ARTIFACTS = [];
+
+function _artifactKind(lang, code) {
+    const l = (lang || "").toLowerCase();
+    const c = code || "";
+    if (["jsx", "tsx", "react"].includes(l)) return "react";
+    if (["html", "htm", "xml", "svg"].includes(l)) return "html";
+    if (/<!DOCTYPE html|<html[\s>]|<body[\s>]|<svg[\s>]/i.test(c)) return "html";
+    // JS seul : prévisualisable seulement s'il manipule le DOM.
+    if (["js", "javascript"].includes(l) && /document\.|window\.|createElement|innerHTML/.test(c)) return "js";
+    return null;
+}
+
+function _htmlTemplate(code) {
+    if (/<html[\s>]/i.test(code)) return code;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:system-ui;margin:12px;}</style></head><body>${code}</body></html>`;
+}
+
+function _jsTemplate(code) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:system-ui;margin:12px;}</style></head><body><div id="app"></div><script>${code}<\/script></body></html>`;
+}
+
+function _reactTemplate(code) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"><\/script>
+<style>body{font-family:system-ui;margin:12px;}</style></head>
+<body><div id="root"></div>
+<script type="text/babel" data-presets="react">
+${code}
+try { if (typeof App !== "undefined") ReactDOM.createRoot(document.getElementById("root")).render(<App />); } catch(e) { document.getElementById("root").textContent = e.message; }
+<\/script></body></html>`;
+}
+
+function openArtifact(i) {
+    const a = ARTIFACTS[i];
+    if (!a) return;
+    const overlay = document.createElement("div");
+    overlay.className = "lightbox-overlay";
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    const card = document.createElement("div");
+    card.style.cssText = "background:#fff;width:90vw;height:85vh;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,0.5);";
+    const bar = document.createElement("div");
+    bar.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:#111;color:#fff;font-size:0.78rem;";
+    const label = document.createElement("span");
+    label.textContent = `👁️ Aperçu (${a.kind}) — bac à sable isolé`;
+    const close = document.createElement("button");
+    close.textContent = "✕ Fermer";
+    close.style.cssText = "background:none;border:1px solid #555;color:#fff;cursor:pointer;border-radius:6px;padding:2px 8px;";
+    close.onclick = () => overlay.remove();
+    bar.append(label, close);
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("sandbox", "allow-scripts");
+    iframe.setAttribute("referrerpolicy", "no-referrer");
+    iframe.style.cssText = "flex:1;border:none;width:100%;background:#fff;";
+    iframe.srcdoc = a.kind === "react" ? _reactTemplate(a.code)
+                  : a.kind === "js" ? _jsTemplate(a.code)
+                  : _htmlTemplate(a.code);
+    card.append(bar, iframe);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+}
+
 // Retire les balises d'émotion vocale ([emotion: …], (ton: …)) pour qu'elles
 // n'apparaissent jamais dans le texte affiché (elles ne servent qu'au TTS).
 function _stripEmotionTags(s) {
@@ -1473,6 +1541,13 @@ function appendAgentMessage(agentName, content, id = null) {
         codeBlocks.push(`<pre><code>${escapeHtml(code)}</code></pre>`);
         return ` CODE${codeBlocks.length - 1} `;
     });
+    // Détection d'artifacts prévisualisables (HTML/JS/React) — bouton « Aperçu ».
+    const artifactIdx = [];
+    String(content).replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (mm, lang, code) => {
+        const kind = _artifactKind(lang, code);
+        if (kind) artifactIdx.push(ARTIFACTS.push({ code, kind }) - 1);
+        return mm;
+    });
     const blocks = [];
     raw = raw.replace(/!\[(.*?)\]\((.*?)\)/g, (m, alt, url) => {
         blocks.push(_imageCardHtml(url, alt));
@@ -1501,10 +1576,13 @@ function appendAgentMessage(agentName, content, id = null) {
     }
 
     let actionsHtml = "";
-    if (id) {
+    const artifactBtns = artifactIdx.map(i =>
+        `<button class="btn-artifact" onclick="openArtifact(${i})">👁️ Aperçu</button>`).join("");
+    if (id || artifactBtns) {
         actionsHtml = `
         <div class="message-actions">
-            <button class="btn-fork-here" onclick="forkConversation('${escapeHtml(id)}')">🌿 Brancher d'ici</button>
+            ${artifactBtns}
+            ${id ? `<button class="btn-fork-here" onclick="forkConversation('${escapeHtml(id)}')">🌿 Brancher d'ici</button>` : ""}
         </div>`;
     }
 
