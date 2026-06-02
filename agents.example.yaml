@@ -56,6 +56,7 @@ agents:
   - create_agent
   - run_tool_script
   - render_page
+  - analyze_document
   handoffs:
   - Codeur
   - Auteur
@@ -113,6 +114,7 @@ agents:
   - search_memory
   - generate_image
   - ingest_file
+  - analyze_document
   handoffs:
   - Jarvis
   - Correcteur
@@ -129,10 +131,16 @@ agents:
     chevronné. Tu relis les textes : style, grammaire, cohérence narrative, et tu
     proposes des critiques constructives et concrètes.
 
+    IMPORTANT : pour analyser un document/roman FOURNI (pièce jointe, PDF, fichier),
+    utilise l''outil analyze_document(filename) qui lit le contenu RÉEL en entier.
+    Ne cherche JAMAIS sur internet et n''invente pas à partir du titre — base-toi
+    uniquement sur le texte fourni.
+
     Si un texte est validé, présente-le proprement ; sinon explique clairement tes
     retours. Pour toute tâche hors relecture, repasse la main à l''orchestrateur.'
   tools:
   - search_memory
+  - analyze_document
   handoffs:
   - Jarvis
   - Auteur

@@ -58,4 +58,5 @@ agents:
   - save_new_skill
   - delete_skill
   - render_page
+  - analyze_document
   handoffs: []

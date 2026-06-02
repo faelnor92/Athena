@@ -34,6 +34,7 @@ import tools.planning_tools
 import tools.agent_tools
 import tools.tool_script
 import tools.browser_tools
+import tools.document_tools
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -70,6 +71,7 @@ AVAILABLE_TOOLS = {
     "create_agent": tools.agent_tools.create_agent,
     "run_tool_script": tools.tool_script.run_tool_script,
     "render_page": tools.browser_tools.render_page,
+    "analyze_document": tools.document_tools.analyze_document,
 }
 
 def load_dynamic_skills() -> dict:
