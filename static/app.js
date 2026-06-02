@@ -3201,6 +3201,26 @@ const ALL_AVAILABLE_TOOLS = [
         desc: "Indexe et commite les modifications (messages sémantiques). Ne pousse pas."
     },
     {
+        key: "search_code",
+        title: "🔎 Code : Rechercher (regex)",
+        desc: "Recherche une expression régulière dans tout le code du workspace (façon ripgrep)."
+    },
+    {
+        key: "find_definition",
+        title: "🎯 Code : Définition d'un symbole",
+        desc: "Localise où une fonction/classe/type est défini (multi-langages)."
+    },
+    {
+        key: "find_references",
+        title: "🔗 Code : Références d'un symbole",
+        desc: "Trouve toutes les utilisations d'un symbole dans le projet."
+    },
+    {
+        key: "file_outline",
+        title: "🗂️ Code : Plan d'un fichier",
+        desc: "Liste les fonctions/classes d'un fichier avec leur ligne, sans tout lire."
+    },
+    {
         key: "get_ha_state",
         title: "🏠 Home Assistant : État des capteurs",
         desc: "Consulter l'état de vos lumières, capteurs ou interrupteurs connectés."

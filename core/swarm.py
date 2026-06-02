@@ -38,6 +38,7 @@ import tools.document_tools
 import tools.code_edit
 import tools.dev_tools
 import tools.git_tools
+import tools.code_nav
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -85,6 +86,10 @@ AVAILABLE_TOOLS = {
     "git_log": tools.git_tools.git_log,
     "git_create_branch": tools.git_tools.git_create_branch,
     "git_commit": tools.git_tools.git_commit,
+    "search_code": tools.code_nav.search_code,
+    "find_definition": tools.code_nav.find_definition,
+    "find_references": tools.code_nav.find_references,
+    "file_outline": tools.code_nav.file_outline,
 }
 
 def load_dynamic_skills() -> dict:
