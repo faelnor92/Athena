@@ -74,3 +74,4 @@ agents.yaml
 
 # Pairage Telegram (contacts approuvés — donnée locale)
 telegram_paired.json
+user_configs.json
