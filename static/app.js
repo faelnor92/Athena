@@ -3171,6 +3171,11 @@ const ALL_AVAILABLE_TOOLS = [
         desc: "Applique un diff unifié (multi-modifications) avec vérification du contexte."
     },
     {
+        key: "run_checks",
+        title: "🧪 Code : Lancer tests / lint",
+        desc: "Exécute pytest/ruff/npm test… et renvoie un verdict PASS/FAIL centré sur les erreurs (boucle de correction)."
+    },
+    {
         key: "get_ha_state",
         title: "🏠 Home Assistant : État des capteurs",
         desc: "Consulter l'état de vos lumières, capteurs ou interrupteurs connectés."

@@ -43,7 +43,7 @@ def is_sensitive(func) -> bool:
     # execute_python_code n'est « sûr » que parce qu'il s'exécute en sandbox Docker.
     # Si la sandbox est désactivée (SANDBOX_MODE=off), il tourne avec les droits du
     # serveur → on exige alors une approbation, comme execute_bash_command.
-    if name == "execute_python_code" and os.getenv("SANDBOX_MODE", "docker").strip().lower() == "off":
+    if name in ("execute_python_code", "run_checks") and os.getenv("SANDBOX_MODE", "docker").strip().lower() == "off":
         return True
     return name in sensitive_tool_names()
 
