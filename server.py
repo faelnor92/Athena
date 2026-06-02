@@ -1556,129 +1556,15 @@ async def terminal_coder(req: TerminalRequest):
         channels.current_channel.reset(chan_token)
         approvals.auto_approve_var.reset(appr_token)
 
-@app.get("/api/memory")
-async def get_memory():
-    # Force le rechargement de la mémoire clé-valeur JSON
-    core_mem.load()
-    return core_mem.data
+# Endpoints mémoire / connaissances / agenda / listes : extraits en routeurs
+# dédiés (Single Responsibility). Voir routers/{memory,agenda,lists}.py.
+from routers import memory as _memory_router
+from routers import agenda as _agenda_router
+from routers import lists as _lists_router
+app.include_router(_memory_router.router)
+app.include_router(_agenda_router.router)
+app.include_router(_lists_router.router)
 
-@app.delete("/api/memory/{key}")
-async def delete_memory_key(key: str):
-    if core_mem.delete(key):
-        return {"status": "success", "message": f"Clé {key} supprimée de la mémoire."}
-    raise HTTPException(status_code=404, detail=f"Clé {key} introuvable dans la mémoire.")
-
-
-# =========================================================================
-# BASE DE CONNAISSANCES (mémoire vectorielle / RAG)
-# =========================================================================
-@app.get("/api/knowledge")
-async def list_knowledge(limit: int = 200):
-    import tools.memory_tools as mt
-    return {"count": mt.semantic_mem.count(), "documents": mt.semantic_mem.list_documents(limit)}
-
-
-@app.delete("/api/knowledge/{doc_id}")
-async def delete_knowledge(doc_id: str):
-    import tools.memory_tools as mt
-    if mt.semantic_mem.delete(doc_id):
-        return {"status": "success"}
-    raise HTTPException(status_code=404, detail="Document introuvable.")
-
-
-class IngestRequest(BaseModel):
-    url: str = None
-    text: str = None
-    source: str = "manuel"
-
-
-@app.post("/api/knowledge/ingest")
-async def ingest_knowledge(req: IngestRequest):
-    import tools.memory_tools as mt
-    if req.url:
-        from tools.web_tools import web_scrape
-        content = await asyncio.to_thread(web_scrape, req.url)
-        if not content or content.startswith("Erreur"):
-            raise HTTPException(status_code=400, detail=f"Impossible de récupérer la page : {content}")
-        doc_id = mt.semantic_mem.store(content, source=req.url)
-        return {"status": "success", "id": doc_id, "chars": len(content), "source": req.url}
-    if req.text and req.text.strip():
-        doc_id = mt.semantic_mem.store(req.text.strip(), source=req.source or "manuel")
-        return {"status": "success", "id": doc_id, "chars": len(req.text), "source": req.source}
-    raise HTTPException(status_code=400, detail="Fournis 'url' ou 'text'.")
-
-# =========================================================================
-# ENDPOINTS D'AGENDA / RENDEZ-VOUS
-# =========================================================================
-class AgendaEventRequest(BaseModel):
-    title: str
-    datetime_str: str
-    duration_minutes: int = 60
-    description: str = ""
-
-@app.get("/api/agenda")
-async def get_agenda_api():
-    from tools.agenda_tools import ensure_agenda_file, AGENDA_FILE
-    import json
-    ensure_agenda_file()
-    with open(AGENDA_FILE, "r", encoding="utf-8") as f:
-        events = json.load(f)
-    return events
-
-@app.post("/api/agenda")
-async def add_agenda_api(req: AgendaEventRequest):
-    from tools.agenda_tools import add_calendar_event
-    res = add_calendar_event(
-        title=req.title,
-        datetime_str=req.datetime_str,
-        duration_minutes=req.duration_minutes,
-        description=req.description
-    )
-    if "Erreur" in res:
-        raise HTTPException(status_code=400, detail=res)
-    return {"message": res}
-
-@app.delete("/api/agenda/{event_id}")
-async def delete_agenda_api(event_id: str):
-    from tools.agenda_tools import delete_calendar_event
-    res = delete_calendar_event(event_id)
-    if "Erreur" in res:
-        raise HTTPException(status_code=404, detail=res)
-    return {"message": res}
-
-# =========================================================================
-# ENDPOINTS DE LISTES UNIVERSELLES (COURSES, TODOS, IDEES) (NEW !)
-# =========================================================================
-class ListAddItemRequest(BaseModel):
-    list_name: str
-    text: str
-
-@app.get("/api/lists")
-async def get_lists_api(list_name: str = "taches"):
-    from tools.list_tools import get_list_items
-    return get_list_items(list_name)
-
-@app.post("/api/lists")
-async def add_list_item_api(req: ListAddItemRequest):
-    from tools.list_tools import add_list_item
-    item = add_list_item(req.list_name, req.text)
-    return {"status": "success", "item": item}
-
-@app.put("/api/lists/{list_name}/{item_id}/toggle")
-async def toggle_list_item_api(list_name: str, item_id: str):
-    from tools.list_tools import toggle_list_item
-    success = toggle_list_item(list_name, item_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Élément introuvable.")
-    return {"status": "success"}
-
-@app.delete("/api/lists/{list_name}/{item_id}")
-async def delete_list_item_api(list_name: str, item_id: str):
-    from tools.list_tools import delete_list_item
-    success = delete_list_item(list_name, item_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Élément introuvable.")
-    return {"status": "success"}
 
 @app.post("/api/reset")
 async def reset_chat():
