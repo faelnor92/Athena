@@ -3354,6 +3354,21 @@ const ALL_AVAILABLE_TOOLS = [
         desc: "Indexe et commite les modifications (messages sémantiques). Ne pousse pas."
     },
     {
+        key: "git_create_worktree",
+        title: "🌳 Git : Créer un worktree",
+        desc: "Répertoire de travail isolé sur une branche (sous .worktrees/) pour bosser sans toucher l'arbre principal."
+    },
+    {
+        key: "git_list_worktrees",
+        title: "🌳 Git : Lister les worktrees",
+        desc: "Liste les worktrees existants (chemin + branche)."
+    },
+    {
+        key: "git_remove_worktree",
+        title: "🌳 Git : Supprimer un worktree",
+        desc: "Retire un worktree (la branche est conservée)."
+    },
+    {
         key: "search_code",
         title: "🔎 Code : Rechercher (regex)",
         desc: "Recherche une expression régulière dans tout le code du workspace (façon ripgrep)."
