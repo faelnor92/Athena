@@ -40,6 +40,7 @@
  "GET /api/runs",
  "GET /api/runs/{run_id}",
  "GET /api/sessions/search",
+ "GET /api/system/version",
  "GET /api/telegram/pairing",
  "GET /api/telemetry",
  "GET /api/user-profile",
