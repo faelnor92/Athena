@@ -7,7 +7,7 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 ### 🧠 Moteur d'Orchestration & LLM
 * **Multi-Modèles** : OpenAI, Anthropic, Gemini, Ollama, Groq, Mistral, Qwen, API locales compatibles.
 * **Swarm (Essaim)** : Routage automatique entre agents spécialisés (handoffs), exécution concurrente, débats inter-agents.
-* **Architecture Modulaire** : Backend FastAPI découpé par routeurs fonctionnels (Chat, Auth, Workspace, Config, etc.).
+* **Architecture Modulaire** : Backend FastAPI découpé par routeurs fonctionnels, soutenu par une base de données **SQLite** robuste et thread-safe.
 * **Isolation Parfaite** : État isolé par exécution (ContextVars). Plusieurs requêtes parallèles ou Telegram n'interfèrent pas.
 
 ### 🌐 Interface Web Avancée
@@ -18,7 +18,8 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 
 ### 🧰 Outils & Extensibilité (Skills)
 * **Serveurs MCP (Model Context Protocol)** : Branchez des serveurs externes (GitHub, Postgres, FS) sans coder. Reconnexion à chaud.
-* **Compétences (Skills) Dynamiques** : Les agents codent, testent et déploient eux-mêmes de nouveaux outils Python persistants.
+* **Computer Use (RPA 2.0)** : Pilotage d'un navigateur interactif headless (Playwright) optimisé pour les LLMs (DOM allégé).
+* **Maintenance Autonome (Nightly)** : Un agent nocturne hardcodé et gratuit (Ollama) nettoie et vérifie (AST) le code des compétences automatiquement.
 * **Sandbox Docker** : Exécution de code et commandes shell confinées, sûres, jetables et bridées (CPU/RAM).
 * **Capacités Natives** : Recherche web, scraping, génération d'images/vidéos (Fal, Replicate).
 
