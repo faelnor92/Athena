@@ -64,8 +64,20 @@ _enforce_network_security()
 app.middleware("http")(auth_middleware)
 from core.state import swarm, _orch_name, _app_name, _orch_agent, ConversationManager, _session_file, ChatSession, SessionManager, sessions, session, TELEMETRY, CODER_CWD, get_coder_cwd, set_coder_cwd, get_model_cost
 
-from routers import config as _config_router
-app.include_router(_config_router.router)
+from routers import config_agents as _config_agents_router
+app.include_router(_config_agents_router.router)
+from routers import config_skills as _config_skills_router
+app.include_router(_config_skills_router.router)
+from routers import config_voice as _config_voice_router
+app.include_router(_config_voice_router.router)
+from routers import config_system as _config_system_router
+app.include_router(_config_system_router.router)
+from routers import config_metrics as _config_metrics_router
+app.include_router(_config_metrics_router.router)
+from routers import config_agenda as _config_agenda_router
+app.include_router(_config_agenda_router.router)
+from routers import config_routines as _config_routines_router
+app.include_router(_config_routines_router.router)
 from routers import system as _system_router
 app.include_router(_system_router.router)
 from routers import workspace as _workspace_router
@@ -80,6 +92,8 @@ from routers import lists as _lists_router
 app.include_router(_lists_router.router)
 from routers import plan as _plan_router
 app.include_router(_plan_router.router)
+from routers import logs as _logs_router
+app.include_router(_logs_router.router)
 # Sert les fichiers statiques de l'interface Web
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 

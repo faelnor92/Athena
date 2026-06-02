@@ -5412,13 +5412,17 @@ async function loadConversations() {
         const data = await response.json();
         
         selectConversations.innerHTML = "";
-        data.conversations.forEach(conv => {
-            const opt = document.createElement("option");
-            opt.value = conv.id;
-            opt.textContent = conv.name;
-            opt.selected = conv.active;
-            selectConversations.appendChild(opt);
-        });
+        if (!data.conversations || data.conversations.length === 0) {
+            selectConversations.innerHTML = '<option value="default" selected>Discussion principale</option>';
+        } else {
+            data.conversations.forEach(conv => {
+                const opt = document.createElement("option");
+                opt.value = conv.id;
+                opt.textContent = conv.name;
+                opt.selected = conv.active;
+                selectConversations.appendChild(opt);
+            });
+        }
     } catch (e) {
         console.error("Error loading conversations:", e);
     }
@@ -6296,3 +6300,70 @@ function appendSystemMessage(text) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+
+
+/* ===== Panneau de logs serveur live (autonome, injecté en JS) ===== */
+function _initLogPanel() {
+  if (window.__logPanel) return;
+  window.__logPanel = true;
+  let open = false, paused = false, level = "INFO";
+  const LV = { DEBUG:"#7f8c9a", INFO:"#5cc8ff", WARNING:"#ffcc66", ERROR:"#ff6b6b", CRITICAL:"#ff3b3b" };
+
+  const btn = document.createElement("button");
+  btn.textContent = "🗒 Logs";
+  btn.title = "Logs serveur (live)";
+  btn.style.cssText = "position:fixed;bottom:12px;right:12px;z-index:9998;background:#111;color:#fff;border:1px solid #444;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:12px;opacity:.85;";
+  document.body.appendChild(btn);
+
+  const panel = document.createElement("div");
+  panel.style.cssText = "position:fixed;bottom:52px;right:12px;width:min(640px,92vw);height:min(360px,60vh);z-index:9999;background:#0c0f14;border:1px solid #2a3340;border-radius:10px;display:none;flex-direction:column;box-shadow:0 8px 30px rgba(0,0,0,.5);font-family:ui-monospace,Menlo,Consolas,monospace;";
+  panel.innerHTML =
+    '<div style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:#11161d;border-bottom:1px solid #2a3340;font-size:12px;color:#cdd6e0;">' +
+    '<span style="font-weight:700;">🗒 Logs serveur</span>' +
+    '<select id="logp-level" style="background:#0c0f14;color:#cdd6e0;border:1px solid #2a3340;border-radius:5px;font-size:11px;"></select>' +
+    '<label style="display:flex;gap:4px;align-items:center;"><input type="checkbox" id="logp-pause"> pause</label>' +
+    '<button id="logp-clear" style="background:none;border:1px solid #2a3340;color:#cdd6e0;border-radius:5px;cursor:pointer;">vider</button>' +
+    '<span style="flex:1;"></span>' +
+    '<button id="logp-close" style="background:none;border:none;color:#cdd6e0;cursor:pointer;font-size:14px;">✕</button>' +
+    '</div>' +
+    '<div id="logp-body" style="flex:1;overflow:auto;padding:6px 10px;font-size:11.5px;line-height:1.45;color:#cdd6e0;white-space:pre-wrap;word-break:break-word;"></div>';
+  document.body.appendChild(panel);
+
+  const body = panel.querySelector("#logp-body");
+  const sel = panel.querySelector("#logp-level");
+  ["DEBUG","INFO","WARNING","ERROR"].forEach(function(l){ const o=document.createElement("option"); o.value=l; o.textContent=l; sel.appendChild(o); });
+  sel.value = level;
+
+  async function refresh() {
+    if (!open || paused) return;
+    try {
+      const r = await apiFetch("/api/logs?level=" + encodeURIComponent(level) + "&limit=300");
+      if (!r.ok) return;
+      const data = await r.json();
+      body.innerHTML = "";
+      (data.logs || []).forEach(function(l) {
+        const row = document.createElement("div");
+        const ts = document.createElement("span"); ts.style.color = "#5b6675"; ts.textContent = new Date(l.t*1000).toLocaleTimeString() + " ";
+        const lv = document.createElement("span"); lv.style.color = LV[l.level] || "#cdd6e0"; lv.style.fontWeight = "700"; lv.textContent = (l.level + "       ").slice(0,7) + " ";
+        const nm = document.createElement("span"); nm.style.color = "#7f8c9a"; nm.textContent = "[" + l.name + "] ";
+        const ms = document.createElement("span"); ms.textContent = l.msg;
+        row.append(ts, lv, nm, ms);
+        body.appendChild(row);
+      });
+      body.scrollTop = body.scrollHeight;
+    } catch (e) { /* silencieux */ }
+  }
+
+  btn.onclick = function(){ open = !open; panel.style.display = open ? "flex" : "none"; if (open) refresh(); };
+  panel.querySelector("#logp-close").onclick = function(){ open = false; panel.style.display = "none"; };
+  panel.querySelector("#logp-pause").onchange = function(e){ paused = e.target.checked; };
+  panel.querySelector("#logp-clear").onclick = function(){ body.innerHTML = ""; };
+  sel.onchange = async function(){
+    level = sel.value;
+    try { await apiFetch("/api/logs/level", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ level: level }) }); } catch (e) {}
+    refresh();
+  };
+  setInterval(refresh, 2500);
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", _initLogPanel);
+else _initLogPanel();
