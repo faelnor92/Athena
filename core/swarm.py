@@ -1256,12 +1256,19 @@ class Swarm:
 
             if message.content:
                 print(f"\033[92m{current_agent.name}:\033[0m {message.content}")
-                steps.append({
-                    "type": "message",
-                    "agent": current_agent.name,
-                    "content": message.content
-                })
-                
+                _has_tools = bool(getattr(message, "tool_calls", None))
+                # Narration COURTE qui précède un appel d'outil (« je vais utiliser… ») →
+                # step discret 'thought' (pas une bulle de chat), pour éviter le spam de
+                # messages intermédiaires avant une délégation.
+                if _has_tools and len(message.content.strip()) < 200:
+                    steps.append({"type": "thought", "agent": current_agent.name, "content": message.content})
+                else:
+                    steps.append({
+                        "type": "message",
+                        "agent": current_agent.name,
+                        "content": message.content
+                    })
+
             if not getattr(message, "tool_calls", None):
                 # Fallback sémantique si le modèle n'a pas déclenché de tool_call standard
                 semantic_transitioned = False
@@ -1334,6 +1341,17 @@ class Swarm:
                 break
                 
             tool_calls = getattr(message, "tool_calls", None) or []
+
+            # Anti-délégation parasite : si l'orchestrateur a DÉJÀ produit une vraie réponse
+            # (contenu substantiel) dans ce tour, on ignore les transferts émis en même temps
+            # (qwen3 ajoute parfois un transfer_to_ superflu après avoir répondu → il passe la
+            # main sans raison, ex. vers l'Auteur non sollicité).
+            if (current_agent.name == getattr(self, "orchestrator_name", "Jarvis")
+                    and message.content and len(message.content.strip()) >= 200):
+                _kept = [tc for tc in tool_calls if not tc.function.name.startswith("transfer_to_")]
+                if len(_kept) != len(tool_calls):
+                    print("[\033[93mOrchestrateur\033[0m] transfert superflu ignoré (réponse déjà fournie).")
+                tool_calls = _kept
 
             # 1. Préparation : résolution + coercition + validation + gate HITL.
             prepared = []  # (tool_call, func_name, args, func, blocked, call_args, arg_error)

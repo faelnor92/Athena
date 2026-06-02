@@ -1293,6 +1293,11 @@ async function playAgentSteps(steps, immediate = false) {
                     logToOrchestrator(`👤 Profil utilisateur mis à jour.`, "system");
                 }
 
+                else if (step.type === "thought") {
+                    // Narration interne avant un outil : log discret, pas de bulle de chat.
+                    logToOrchestrator(`💭 ${step.agent} : ${(step.content || "").slice(0, 120)}`, "system");
+                }
+
                 else if (step.type === "message" || step.type === "terminal_message") {
                     if (step.type === "terminal_message") {
                         // Afficher le message directement dans la console interactive avec rendu Markdown HTML
