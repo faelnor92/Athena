@@ -11,6 +11,14 @@ import platform
 import shutil
 
 
+def get_version() -> str:
+    try:
+        ver_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
+        with open(ver_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return "unknown"
+
 def get_platform_info() -> dict:
     system = platform.system()  # 'Linux', 'Windows', 'Darwin'
     os_name = {"Linux": "Linux", "Windows": "Windows", "Darwin": "macOS"}.get(system, system)

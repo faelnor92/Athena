@@ -165,6 +165,21 @@ def _init_conv_db():
                 active_conv_id  TEXT
             )
         """)
+        # Système de migration simple (Source de vérité)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA user_version")
+        db_version = cursor.fetchone()[0]
+        
+        # Version 1 : DB initiale. 
+        # Si db_version == 0, on vient de créer la table, on set à 1.
+        if db_version == 0:
+            conn.execute("PRAGMA user_version = 1")
+            
+        # Exemple de migration future :
+        # if db_version < 2:
+        #     conn.execute("ALTER TABLE conversations ADD COLUMN new_col TEXT")
+        #     conn.execute("PRAGMA user_version = 2")
+        
 _init_conv_db()
 
 def _session_file(client_id: str) -> str:

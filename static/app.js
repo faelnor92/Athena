@@ -50,6 +50,21 @@ async function applyBranding() {
     }
 }
 
+async function loadSystemVersion() {
+    try {
+        const r = await fetch("/api/system/version", { cache: "no-store" });
+        if (r.ok) {
+            const data = await r.json();
+            const el = document.getElementById("app-version-display");
+            if (el && data.version) {
+                el.textContent = `v${data.version}`;
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load system version:", e);
+    }
+}
+
 // Sonde de disponibilité : ping léger pour afficher/masquer le bandeau même au repos.
 async function _pingServer() {
     try {
@@ -60,7 +75,10 @@ async function _pingServer() {
     }
 }
 setInterval(_pingServer, 15000);
-window.addEventListener("DOMContentLoaded", applyBranding);
+window.addEventListener("DOMContentLoaded", () => {
+    applyBranding();
+    loadSystemVersion();
+});
 
 function showLoginOverlay() {
     const overlay = document.getElementById("login-overlay");

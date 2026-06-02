@@ -39,11 +39,17 @@ async def backup_restore(file: UploadFile = File(...)):
 @router.get("/api/platform")
 async def get_platform():
     """Détection automatique de l'OS hôte et de l'environnement d'exécution."""
-    from core.platform_info import get_platform_info, sandbox_active
+    from core.platform_info import get_platform_info, sandbox_active, get_version
     info = get_platform_info()
     info["sandbox_active"] = sandbox_active()
     info["app_name"] = os.getenv("APP_NAME", "Jarvis").strip() or "Jarvis"
     return info
+
+@router.get("/api/system/version")
+async def get_system_version():
+    """Retourne la version actuelle du framework."""
+    from core.platform_info import get_version
+    return {"version": get_version()}
 
 
 # --- Pairing Telegram -------------------------------------------------------

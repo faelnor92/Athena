@@ -99,6 +99,8 @@ if __name__ == "__main__":
         print("\033[93m[AVERTISSEMENT] ADMIN_PASSWORD vide : authentification désactivée "
               "(autorisé uniquement car bind local).\033[0m")
 
-    print(f"\n🚀 Lancement du serveur {_app_name()} Dashboard...")
+    from core.platform_info import get_version
+    version = get_version()
+    print(f"\n🚀 Lancement du serveur {_app_name()} Dashboard (v{version})...")
     print(f"👉 Accède à l'application ici : http://{'localhost' if host == '0.0.0.0' else host}:{port}\n")
     uvicorn.run("server:app", host=host, port=port, reload=True)
