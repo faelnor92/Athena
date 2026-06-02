@@ -32,3 +32,6 @@ pypdf==6.12.2
 # --- Optionnel : transcription de réunions (lourd, tire PyTorch) ------------
 # Décommentez si vous utilisez transcribe_and_summarize_meeting :
 # openai-whisper==20250625
+
+# --- Automatisation Web (Computer Use RPA) ----------------------------------
+playwright>=1.40.0
