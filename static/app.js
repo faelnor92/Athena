@@ -3176,6 +3176,31 @@ const ALL_AVAILABLE_TOOLS = [
         desc: "Exécute pytest/ruff/npm test… et renvoie un verdict PASS/FAIL centré sur les erreurs (boucle de correction)."
     },
     {
+        key: "git_status",
+        title: "🔀 Git : Statut",
+        desc: "Branche courante et fichiers modifiés du dépôt du workspace."
+    },
+    {
+        key: "git_diff",
+        title: "🔍 Git : Diff",
+        desc: "Affiche les modifications (optionnellement indexées ou pour un fichier)."
+    },
+    {
+        key: "git_log",
+        title: "📜 Git : Historique",
+        desc: "Liste les derniers commits (hash + message)."
+    },
+    {
+        key: "git_create_branch",
+        title: "🌿 Git : Nouvelle branche",
+        desc: "Crée une branche et bascule dessus (checkout -b)."
+    },
+    {
+        key: "git_commit",
+        title: "✅ Git : Commit",
+        desc: "Indexe et commite les modifications (messages sémantiques). Ne pousse pas."
+    },
+    {
         key: "get_ha_state",
         title: "🏠 Home Assistant : État des capteurs",
         desc: "Consulter l'état de vos lumières, capteurs ou interrupteurs connectés."
