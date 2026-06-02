@@ -67,6 +67,7 @@ _ADMIN_EXACT = {
     ("GET", "/api/config/mcp"), ("POST", "/api/config/mcp"),
     ("POST", "/api/config/voice-wake"),
     ("GET", "/api/backup"), ("POST", "/api/backup/restore"),
+    ("GET", "/api/config/agenda"), ("POST", "/api/config/agenda"),
     ("POST", "/api/config/agenda/google-key"),
     ("POST", "/api/telegram/pairing/approve"),
     ("POST", "/api/telegram/pairing/revoke"),
