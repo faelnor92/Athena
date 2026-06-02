@@ -1131,6 +1131,25 @@ class Swarm:
                         f"le résumer, appelle analyze_document('{upl}') — il lit le fichier RÉEL EN ENTIER. "
                         "N'utilise JAMAIS le web et n'invente rien à partir du titre.\n")
 
+            # Liste GÉNÉRIQUE des outils de l'agent : tout outil COCHÉ est utilisable, quel
+            # que soit son prompt métier. Surface chaque outil (nom + description) pour que
+            # le modèle (même léger) sache qu'il PEUT l'utiliser et ne dise jamais « je ne
+            # peux pas » alors qu'il a l'outil. Les transferts sont gérés par le routage.
+            if effective_tools and current_agent.supports_tools:
+                _tool_lines = []
+                for _f in effective_tools:
+                    _n = getattr(_f, "__name__", "")
+                    if _n.startswith("transfer_to_") or not _n:
+                        continue
+                    _doc = (getattr(_f, "__doc__", "") or "").strip().replace("\n", " ")
+                    _doc = " ".join(_doc.split())[:90]
+                    _tool_lines.append(f"- {_n} : {_doc}" if _doc else f"- {_n}")
+                if _tool_lines:
+                    system_prompt += (
+                        "\n🧰 OUTILS À TA DISPOSITION (utilise-les dès qu'ils sont pertinents ; "
+                        "ne dis JAMAIS que tu ne peux pas faire ce qu'un de ces outils permet) :\n"
+                        + "\n".join(_tool_lines) + "\n")
+
             # Chargement en cascade des fichiers de prompt locaux (custom Jarvis Swarm)
             local_instructions = ""
             current_dir = os.getcwd()
