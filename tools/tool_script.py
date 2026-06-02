@@ -115,13 +115,29 @@ def run_tool_script(code: str) -> str:
     out = io.StringIO()
     result_holder = {"err": None}
     timeout = float(os.getenv("TOOL_SCRIPT_TIMEOUT", "30") or 30)
+    # Budget d'instructions : interrompt RÉELLEMENT une boucle CPU-bound (les `for`
+    # sont autorisés) — le simple join() ne tue pas un thread bloqué en calcul.
+    max_steps = int(os.getenv("TOOL_SCRIPT_MAX_STEPS", "5000000") or 5000000)
 
     def _run():
+        import sys as _sys
+        steps = [0]
+
+        def _tracer(frame, event, arg):
+            if event == "line":
+                steps[0] += 1
+                if steps[0] > max_steps:
+                    raise RuntimeError(f"budget d'instructions dépassé ({max_steps})")
+            return _tracer
+
         try:
+            _sys.settrace(_tracer)
             with contextlib.redirect_stdout(out):
                 exec(code, ns)
         except Exception as e:
             result_holder["err"] = e
+        finally:
+            _sys.settrace(None)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()

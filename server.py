@@ -55,6 +55,22 @@ app.add_middleware(
 
 # Gestion des sessions d'authentification : token -> {username, role, exp}.
 ACTIVE_SESSIONS = {}
+
+# Utilisateur authentifié du requête courante (pour cloisonner les données par
+# utilisateur en mode multi-comptes). Posé par le middleware, lu par SessionManager.
+_current_username = contextvars.ContextVar("current_username", default=None)
+
+
+def _scope_cid(client_id: str) -> str:
+    """Préfixe le client_id par l'utilisateur authentifié (cloisonnement multi-comptes).
+    En mode local sans auth (aucun utilisateur), renvoie le client_id inchangé."""
+    client_id = (client_id or "web").strip() or "web"
+    if client_id.startswith("u:"):
+        return client_id  # déjà scopé
+    user = _current_username.get()
+    if user:
+        return f"u:{user}:{client_id}"
+    return client_id
 _SESSION_TTL = int(os.getenv("SESSION_TTL_HOURS", "168") or 168) * 3600  # défaut 7 jours
 
 # Anti-brute-force du login : IP -> [timestamps des échecs récents].
@@ -151,6 +167,7 @@ async def auth_middleware(request: Request, call_next):
             ACTIVE_SESSIONS.pop(token, None)
             return JSONResponse(status_code=401, content={"detail": "Session expirée. Reconnectez-vous."})
         request.state.user = sess
+        _current_username.set(sess.get("username"))
         # Garde-fou d'autorisation : endpoints sensibles réservés aux admins.
         if _is_admin_only(request.method, request.url.path) and sess.get("role") != "admin":
             return JSONResponse(status_code=403, content={"detail": "Réservé à l'administrateur."})
@@ -419,7 +436,8 @@ class SessionManager:
         self._lock = threading.Lock()
 
     def get(self, client_id: str = "web") -> "ChatSession":
-        client_id = (client_id or "web").strip() or "web"
+        # Cloisonnement par utilisateur authentifié (no-op en mode local sans auth).
+        client_id = _scope_cid(client_id)
         with self._lock:
             if client_id not in self._sessions:
                 self._sessions[client_id] = ChatSession(client_id=client_id)
@@ -427,9 +445,20 @@ class SessionManager:
 
 
 sessions = SessionManager()
-# Rétro-compatibilité : `session` = canal web (utilisé par les endpoints
-# d'arborescence/conversations/terminal qui n'ont pas encore de client_id).
-session = sessions.get("web")
+
+
+# Rétro-compatibilité : `session` = canal web. Proxy qui résout la session web
+# À CHAQUE ACCÈS (et non une fois pour toutes) afin d'appliquer le cloisonnement
+# par utilisateur (cf. _scope_cid) aux endpoints utilisant le `session` global.
+class _WebSessionProxy:
+    def __getattr__(self, name):
+        return getattr(sessions.get("web"), name)
+
+    def __setattr__(self, name, value):
+        setattr(sessions.get("web"), name, value)
+
+
+session = _WebSessionProxy()
 
 # Télémétrie en mémoire pour le cockpit de l'essaim
 TELEMETRY = {

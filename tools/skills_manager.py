@@ -76,7 +76,18 @@ def save_new_skill(skill_name: str, code: str, description: str) -> str:
     # Vérification que le code définit bien la fonction attendue
     if f"def {skill_name}" not in code:
         return f"Erreur : Le code fourni doit obligatoirement contenir la définition de la fonction 'def {skill_name}(...)'."
-        
+
+    # SÉCURITÉ : une skill est importée et EXÉCUTÉE dans le processus serveur (hors
+    # sandbox). On exige donc une fonction PURE et sûre (imports en liste blanche,
+    # aucun eval/exec/open/os/dunder). Une skill plus riche doit être déposée
+    # manuellement dans skills/ (action humaine délibérée, hors portée des agents).
+    ok, reason = validate_pure_skill(code, skill_name)
+    if not ok:
+        return (f"Erreur : compétence refusée pour raison de sécurité ({reason}). "
+                "Une skill enregistrée par un agent doit être une fonction pure et sûre "
+                "(imports autorisés : math, datetime, json, re, statistics, etc. ; "
+                "ni eval/exec/open, ni accès système).")
+
     os.makedirs("skills", exist_ok=True)
     filepath = os.path.join("skills", f"{skill_name}.py")
     

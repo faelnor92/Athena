@@ -1339,11 +1339,58 @@ async function playAgentSteps(steps, immediate = false) {
 }
 
 // Rendu Markdown inline léger (gras, italique, code, liens) — sans dépendance externe.
+// Échappe le HTML pour neutraliser toute injection (XSS) avant d'appliquer le markdown.
+// Le contenu d'un message peut contenir du HTML hostile (saisi par l'utilisateur, ou
+// rapporté par un agent depuis une page web/un document) → on l'échappe SYSTÉMATIQUEMENT.
+function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+}
+
+// URL sûre pour un attribut src/href : http(s) ou chemin interne /api/... uniquement.
+function _safeUrl(u) {
+    u = String(u || "").trim();
+    if (/^https?:\/\//i.test(u) || /^\/[\w./?=&%-]*$/.test(u)) {
+        return u.replace(/["'<>]/g, encodeURIComponent);
+    }
+    return "#";
+}
+
+// Carte image cliquable, SANS onclick inline interpolé : l'URL/alt passent par des
+// attributs data- (contexte attribut HTML, neutralisé par escapeHtml) et l'ouverture
+// se fait par délégation d'événement (cf. listener plus bas).
+function _imageCardHtml(url, alt) {
+    const su = escapeHtml(_safeUrl(url));
+    const sa = escapeHtml(alt || "");
+    return `
+        <div class="chat-generated-image-card animate-zoom-in" style="display: block; margin-top: 10px;" data-img-url="${su}" data-img-alt="${sa}">
+            <img src="${su}" alt="${sa}" class="chat-zoomable-image" />
+            <div class="chat-image-overlay">
+                <span>🖼️ ${sa}</span>
+                <span>🔍 Cliquer pour agrandir</span>
+            </div>
+        </div>`;
+}
+
+// Ouverture des images du chat par DÉLÉGATION (plus d'onclick inline interpolé).
+if (!window.__imgCardDelegation) {
+    window.__imgCardDelegation = true;
+    document.addEventListener("click", (e) => {
+        const card = e.target.closest && e.target.closest(".chat-generated-image-card");
+        if (card && card.dataset && card.dataset.imgUrl) {
+            openLightbox(card.dataset.imgUrl, card.dataset.imgAlt || "");
+        }
+    });
+}
+
 function _mdInline(s) {
+    // NB: s est déjà échappé en HTML ; le markdown ne réintroduit que des balises sûres.
     s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
     s = s.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/(^|[\s(>])\*([^*\n]+?)\*(?=[\s).,!?:;]|<|$)/g, '$1<em>$2</em>');
-    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // Le libellé du lien est déjà échappé ; l'URL est restreinte à http(s).
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s"']+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
     return s;
 }
 
@@ -1354,66 +1401,52 @@ function appendAgentMessage(agentName, content, id = null) {
     msg.className = `message agent-msg agent-${agentName} animate-fade-in`;
     if (id) msg.setAttribute("data-msg-id", id);
     
-    let formattedContent = content;
-    
-    // 1. Détection et formatage des images Markdown ![alt](url)
-    formattedContent = formattedContent.replace(/!\[(.*?)\]\((.*?)\)/g, (match, alt, url) => {
-        return `
-        <div class="chat-generated-image-card animate-zoom-in" style="display: block; margin-top: 10px;" onclick="openLightbox('${url}', '${alt}')">
-            <img src="${url}" alt="${alt}" class="chat-zoomable-image" />
-            <div class="chat-image-overlay">
-                <span>🖼️ ${alt}</span>
-                <span>🔍 Cliquer pour agrandir</span>
-            </div>
-        </div>
-        `;
+    // Rendu SÛR : on extrait du contenu BRUT les blocs de code et les images (en
+    // construisant un HTML sûr), on échappe TOUT le reste, puis on réinsère.
+    let raw = String(content);
+    const codeBlocks = [];
+    raw = raw.replace(/```(?:[a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (m, code) => {
+        codeBlocks.push(`<pre><code>${escapeHtml(code)}</code></pre>`);
+        return ` CODE${codeBlocks.length - 1} `;
     });
-    
-    if (content && content.includes("```")) {
-        formattedContent = formattedContent.replace(/```python([\s\S]*?)```/g, "<pre><code>$1</code></pre>");
-        formattedContent = formattedContent.replace(/```([\s\S]*?)```/g, "<pre><code>$1</code></pre>");
-    }
+    const blocks = [];
+    raw = raw.replace(/!\[(.*?)\]\((.*?)\)/g, (m, alt, url) => {
+        blocks.push(_imageCardHtml(url, alt));
+        return ` BLK${blocks.length - 1} `;
+    });
 
-    // Markdown inline (gras/italique/code/liens), appliqué HORS des blocs de code.
+    let formattedContent = escapeHtml(raw);
+    formattedContent = _mdInline(formattedContent);
+    formattedContent = formattedContent.replace(/\n/g, "<br>");
     formattedContent = formattedContent
-        .split(/(<pre>[\s\S]*?<\/pre>)/)
-        .map(seg => seg.indexOf("<pre>") === 0 ? seg : _mdInline(seg))
-        .join("");
-    
-    // 2. Détection automatique des fichiers d'images générées bruts (image_generee_xxxx.png)
+        .replace(/ CODE(\d+) /g, (m, i) => codeBlocks[+i])
+        .replace(/ BLK(\d+) /g, (m, i) => blocks[+i]);
+
+    // Détection automatique des fichiers d'images générées bruts (image_generee_xxxx.png)
     const imgRegex = /image_generee_\d+\.png/gi;
     const foundImages = [...new Set(content.match(imgRegex) || [])];
-    
+
     let imagesHtml = "";
     if (foundImages.length > 0) {
         foundImages.forEach(filename => {
             // Éviter le doublon si déjà rendu par le parser markdown
             if (!formattedContent.includes("chat-generated-image-card") || !formattedContent.includes(filename)) {
-                imagesHtml += `
-                <div class="chat-generated-image-card animate-zoom-in" style="display: block; margin-top: 10px;" onclick="openLightbox('/api/workspace/download?path=${filename}', '${filename}')">
-                    <img src="/api/workspace/download?path=${filename}" alt="${filename}" class="chat-zoomable-image" />
-                    <div class="chat-image-overlay">
-                        <span>🖼️ ${filename}</span>
-                        <span>🔍 Cliquer pour agrandir</span>
-                    </div>
-                </div>`;
+                imagesHtml += _imageCardHtml(`/api/workspace/download?path=${encodeURIComponent(filename)}`, filename);
             }
         });
     }
-    
-    formattedContent = formattedContent.replace(/\n/g, "<br>");
-    
+
     let actionsHtml = "";
     if (id) {
         actionsHtml = `
         <div class="message-actions">
-            <button class="btn-fork-here" onclick="forkConversation('${id}')">🌿 Brancher d'ici</button>
+            <button class="btn-fork-here" onclick="forkConversation('${escapeHtml(id)}')">🌿 Brancher d'ici</button>
         </div>`;
     }
-    
+
     msg.innerHTML = `
         <div class="message-meta">
-            <span class="agent-tag" style="color: ${getAgentColor(agentName)}">${agentName}</span>
+            <span class="agent-tag" style="color: ${getAgentColor(agentName)}">${escapeHtml(agentName)}</span>
         </div>
         <div class="message-content">${formattedContent}${imagesHtml}</div>
         ${actionsHtml}
@@ -1431,13 +1464,13 @@ function appendUserMessage(content, id = null) {
     if (id) {
         actionsHtml = `
         <div class="message-actions">
-            <button class="btn-fork-here" onclick="forkConversation('${id}')">🌿 Brancher d'ici</button>
+            <button class="btn-fork-here" onclick="forkConversation('${escapeHtml(id)}')">🌿 Brancher d'ici</button>
         </div>`;
     }
-    
+
     msg.innerHTML = `
         <div class="message-meta" style="color: var(--color-user)">Vous</div>
-        <div class="message-content">${content.replace(/\n/g, "<br>")}</div>
+        <div class="message-content">${escapeHtml(content).replace(/\n/g, "<br>")}</div>
         ${actionsHtml}
     `;
     chatMessages.appendChild(msg);
