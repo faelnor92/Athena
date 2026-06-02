@@ -1114,6 +1114,23 @@ class Swarm:
                         f"Délègue-lui MAINTENANT (transfer_to_{_route_target} ou query_agent('{_route_target}', …)) "
                         "— ne la traite pas toi-même.\n")
 
+            # Si l'agent peut analyser des documents ET qu'un fichier est joint dans la
+            # conversation, lui rappeler de l'analyser avec analyze_document (jamais le web).
+            # Robuste : marche quel que soit l'agent à qui la tâche est confiée.
+            if any(getattr(f, "__name__", "") == "analyze_document" for f in effective_tools):
+                import re as _re2
+                upl = None
+                for _m in reversed(messages):
+                    _mt = _re2.search(r"(uploads/[^\s\)\]\"']+)", str(_m.get("content", "") or ""))
+                    if _mt:
+                        upl = _mt.group(1)
+                        break
+                if upl:
+                    system_prompt += (
+                        f"\n📎 DOCUMENT JOINT : « {upl} ». Pour le relire / l'analyser / le critiquer / "
+                        f"le résumer, appelle analyze_document('{upl}') — il lit le fichier RÉEL EN ENTIER. "
+                        "N'utilise JAMAIS le web et n'invente rien à partir du titre.\n")
+
             # Chargement en cascade des fichiers de prompt locaux (custom Jarvis Swarm)
             local_instructions = ""
             current_dir = os.getcwd()
