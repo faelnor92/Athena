@@ -1348,6 +1348,15 @@ function escapeHtml(s) {
     }[c]));
 }
 
+// Retire les balises d'émotion vocale ([emotion: …], (ton: …)) pour qu'elles
+// n'apparaissent jamais dans le texte affiché (elles ne servent qu'au TTS).
+function _stripEmotionTags(s) {
+    return String(s == null ? "" : s)
+        .replace(/[\[(]\s*(?:emotion|émotion|ton|tone|style)\s*[:=]\s*[^\])]+?\s*[\])]/gi, "")
+        .replace(/[ \t]{2,}/g, " ")
+        .trimStart();
+}
+
 // URL sûre pour un attribut src/href : http(s) ou chemin interne /api/... uniquement.
 function _safeUrl(u) {
     u = String(u || "").trim();
@@ -1403,7 +1412,7 @@ function appendAgentMessage(agentName, content, id = null) {
     
     // Rendu SÛR : on extrait du contenu BRUT les blocs de code et les images (en
     // construisant un HTML sûr), on échappe TOUT le reste, puis on réinsère.
-    let raw = String(content);
+    let raw = _stripEmotionTags(String(content));
     const codeBlocks = [];
     raw = raw.replace(/```(?:[a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (m, code) => {
         codeBlocks.push(`<pre><code>${escapeHtml(code)}</code></pre>`);
@@ -2016,6 +2025,11 @@ const BEHAVIOR_SCHEMA = [
     { section: "Mémoire", fields: [
         { key: "MEMORY_MAX_MESSAGES", label: "Compaction au-delà de N messages (0 = off)", type: "number", def: "40" },
         { key: "MEMORY_KEEP_RECENT", label: "Messages récents gardés mot pour mot", type: "number", def: "12" },
+    ]},
+    { section: "Voix expressive", fields: [
+        { key: "VOICE_EMOTION_TAGS", label: "Émotions vocales (le LLM colore sa voix)", type: "toggle", def: "false" },
+        { key: "VOICE_TTS_HTTP_URL", label: "Serveur TTS expressif (URL, ex. XTTS/Chatterbox)", type: "text", def: "" },
+        { key: "VOICE_TTS_VOICE", label: "Voix / locuteur du TTS expressif", type: "text", def: "" },
     ]},
 ];
 

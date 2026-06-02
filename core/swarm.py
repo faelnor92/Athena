@@ -1168,6 +1168,16 @@ class Swarm:
                         "ne dis JAMAIS que tu ne peux pas faire ce qu'un de ces outils permet) :\n"
                         + "\n".join(_tool_lines) + "\n")
 
+            # Expressivité vocale (optionnelle) : autorise une balise d'émotion en TÊTE
+            # de réponse, retirée du texte affiché et exploitée par le TTS expressif.
+            if os.getenv("VOICE_EMOTION_TAGS", "false").lower() in ("true", "1", "yes"):
+                system_prompt += (
+                    "\n🎭 EXPRESSIVITÉ : tu peux commencer ta réponse par UNE balise d'émotion "
+                    "entre crochets, ex. « [emotion: enjoué] », « [emotion: calme] », "
+                    "« [emotion: empathique] » (valeurs : neutre, enjoué, excité, triste, calme, "
+                    "sérieux, empathique, fâché, chuchoté). Elle est invisible pour l'utilisateur "
+                    "et sert à colorer la voix. N'en mets qu'UNE, au tout début.\n")
+
             # Chargement en cascade des fichiers de prompt locaux (custom Jarvis Swarm)
             local_instructions = ""
             current_dir = os.getcwd()

@@ -2023,6 +2023,8 @@ async def get_config_env():
         "MEMORY_MAX_MESSAGES", "MEMORY_KEEP_RECENT", "LOG_LEVEL",
         # Sécurité réseau / sessions
         "SESSION_TTL_HOURS", "TELEGRAM_REQUIRE_PAIRING",
+        # Voix expressive
+        "VOICE_EMOTION_TAGS", "VOICE_TTS_HTTP_URL", "VOICE_TTS_VOICE",
         # Orchestration & agents (avancé)
         "DELEGATION_ROUTER", "FAST_MODEL", "FALLBACK_MODELS", "AUTO_CRITIC",
         "USER_MODELING", "SELF_IMPROVE_SKILLS", "TOOL_SCRIPTS", "PROMPT_CACHE",

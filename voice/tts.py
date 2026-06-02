@@ -1,8 +1,16 @@
-"""Synthèse vocale (TTS) locale : Piper (recommandé) ou pyttsx3 (repli)."""
+"""Synthèse vocale (TTS) : Piper, pyttsx3, ou un moteur EXPRESSIF via HTTP.
+
+Le moteur "http" permet de brancher n'importe quel serveur TTS expressif local
+(XTTS, Chatterbox, Qwen3-TTS, OpenAI-compatible…) qui renvoie un WAV, et de lui passer
+une ÉMOTION extraite du texte (cf. voice/emotion.py). Le pipeline texte multi-agent
+reste inchangé : on ne remplace que la voix.
+"""
 import os
 import subprocess
 import tempfile
 import wave
+
+from voice.emotion import split_emotion
 
 
 class TTSUnavailable(RuntimeError):
@@ -15,6 +23,39 @@ class TTS:
         self.piper_model = piper_model
         self.piper_bin = piper_bin
         self._pyttsx = None
+
+    # --------------------------------------------------- TTS expressif via HTTP
+    def _http_to_wav(self, text: str, emotion: str = "neutral") -> str:
+        """Appelle un serveur TTS expressif et écrit le WAV renvoyé.
+        Config : VOICE_TTS_HTTP_URL (POST), VOICE_TTS_VOICE, VOICE_TTS_FORMAT.
+        Corps JSON générique : {text, voice, emotion, format}. Compatible aussi avec
+        une API style OpenAI (/v1/audio/speech : {model, input, voice})."""
+        import requests
+        url = os.getenv("VOICE_TTS_HTTP_URL", "").strip()
+        if not url:
+            raise TTSUnavailable("VOICE_TTS_HTTP_URL non défini pour le moteur TTS 'http'.")
+        voice = os.getenv("VOICE_TTS_VOICE", "").strip()
+        fmt = os.getenv("VOICE_TTS_FORMAT", "wav").strip() or "wav"
+        if "/audio/speech" in url:  # forme OpenAI-compatible
+            payload = {"model": os.getenv("VOICE_TTS_MODEL", "tts-1"), "input": text,
+                       "voice": voice or "alloy", "response_format": fmt}
+        else:  # forme générique
+            payload = {"text": text, "voice": voice, "emotion": emotion, "format": fmt}
+        headers = {"Content-Type": "application/json"}
+        key = os.getenv("VOICE_TTS_API_KEY", "").strip()
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        try:
+            r = requests.post(url, json=payload, headers=headers,
+                              timeout=int(os.getenv("VOICE_TTS_TIMEOUT", "30")))
+        except Exception as e:
+            raise TTSUnavailable(f"Serveur TTS HTTP injoignable : {e}") from e
+        if r.status_code != 200:
+            raise TTSUnavailable(f"Serveur TTS HTTP : code {r.status_code} ({r.text[:160]}).")
+        out = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
+        with open(out, "wb") as f:
+            f.write(r.content)
+        return out
 
     # ------------------------------------------------------------------ Piper
     def _piper_to_wav(self, text: str) -> str:
@@ -52,29 +93,50 @@ class TTS:
         """Synthétise puis joue le texte. Si stop_event (threading.Event) est
         fourni et déclenché pendant la lecture (Piper), celle-ci est coupée
         (barge-in). pyttsx3 ne supporte pas l'interruption."""
-        text = (text or "").strip()
+        emotion, text = split_emotion(text or "")
+        text = text.strip()
         if not text:
             return
         if self.engine == "pyttsx3":
             engine = self._ensure_pyttsx()
+            self._apply_pyttsx_emotion(engine, emotion)
             engine.say(text)
             engine.runAndWait()
             return
-        # Piper -> wav -> lecture
-        wav_path = self._piper_to_wav(text)
+        if self.engine == "http":
+            wav_path = self._http_to_wav(text, emotion)
+        else:
+            wav_path = self._piper_to_wav(text)
         try:
             self._play_wav(wav_path, stop_event)
         finally:
             if os.path.exists(wav_path):
                 os.remove(wav_path)
 
+    @staticmethod
+    def _apply_pyttsx_emotion(engine, emotion):
+        """Approximation d'émotion pour pyttsx3 (monocorde) via débit/volume."""
+        try:
+            base = engine.getProperty("rate") or 200
+            tuning = {
+                "excited": (1.18, 1.0), "cheerful": (1.08, 1.0), "angry": (1.12, 1.0),
+                "sad": (0.85, 0.85), "calm": (0.9, 0.9), "empathetic": (0.92, 0.95),
+                "whisper": (0.95, 0.5), "serious": (0.95, 1.0), "neutral": (1.0, 1.0),
+            }.get(emotion, (1.0, 1.0))
+            engine.setProperty("rate", int(base * tuning[0]))
+            engine.setProperty("volume", tuning[1])
+        except Exception:
+            pass
+
     def synth_wav_bytes(self, text: str) -> bytes:
         """Synthétise et renvoie les octets WAV (pour streaming vers un satellite)."""
-        text = (text or "").strip()
+        emotion, text = split_emotion(text or "")
+        text = text.strip()
         if not text:
             return b""
         if self.engine == "pyttsx3":
             engine = self._ensure_pyttsx()
+            self._apply_pyttsx_emotion(engine, emotion)
             tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
             try:
                 engine.save_to_file(text, tmp)
@@ -84,7 +146,10 @@ class TTS:
             finally:
                 if os.path.exists(tmp):
                     os.remove(tmp)
-        wav_path = self._piper_to_wav(text)
+        if self.engine == "http":
+            wav_path = self._http_to_wav(text, emotion)
+        else:
+            wav_path = self._piper_to_wav(text)
         try:
             with open(wav_path, "rb") as f:
                 return f.read()
