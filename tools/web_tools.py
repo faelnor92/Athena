@@ -3,20 +3,21 @@ import re
 import html as _html
 from urllib.parse import unquote, urljoin
 
-from tools.net_guard import check_url as _check_url
+from tools.net_guard import safe_resolve as _safe_resolve, pin_host as _pin_host
 
 
 def _safe_get(url: str, headers: dict, timeout: int = 10, max_redirects: int = 5):
-    """GET avec anti-SSRF : valide l'URL initiale ET chaque redirection avant de la suivre.
-    Renvoie (response, None) ou (None, message_erreur)."""
+    """GET avec anti-SSRF : valide l'URL initiale ET chaque redirection, et ÉPINGLE la
+    connexion sur l'IP validée (anti DNS-rebinding / TOCTOU). (response, None) ou (None, err)."""
     current = (url or "").strip()
     if not re.match(r"^https?://", current):
         return None, "Erreur : fournis une URL http(s) valide."
     for _ in range(max_redirects + 1):
-        err = _check_url(current)
+        host, ip, err = _safe_resolve(current)
         if err:
             return None, err
-        r = requests.get(current, headers=headers, timeout=timeout, allow_redirects=False)
+        with _pin_host(host, ip):
+            r = requests.get(current, headers=headers, timeout=timeout, allow_redirects=False)
         if r.is_redirect or r.is_permanent_redirect:
             loc = r.headers.get("Location")
             if not loc:

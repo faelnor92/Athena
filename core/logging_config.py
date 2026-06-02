@@ -11,6 +11,21 @@ from logging.handlers import RotatingFileHandler
 _CONFIGURED = False
 
 
+class _RedactionFilter(logging.Filter):
+    """Masque les secrets dans le message formaté de chaque enregistrement de log."""
+    def filter(self, record):
+        try:
+            from core.redaction import redact_secrets
+            if record.args:
+                record.msg = redact_secrets(record.getMessage())
+                record.args = ()
+            else:
+                record.msg = redact_secrets(record.msg)
+        except Exception:
+            pass
+        return True
+
+
 def setup_logging():
     global _CONFIGURED
     if _CONFIGURED:
@@ -29,6 +44,7 @@ def setup_logging():
         encoding="utf-8",
     )
     file_handler.setFormatter(fmt)
+    file_handler.addFilter(_RedactionFilter())
 
     root = logging.getLogger()
     root.setLevel(level)

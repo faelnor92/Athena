@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 import shlex
+import tempfile
 import secrets
 import asyncio
 import threading
@@ -306,6 +307,7 @@ class ConversationManager:
         self.filepath = filepath
         self.conversations = {} # id -> {"name": str, "messages": list, "active_node_id": str, "active_agent": str}
         self.active_id = "default"
+        self._save_lock = threading.Lock()
         self.load()
         
     def load(self):
@@ -325,9 +327,26 @@ class ConversationManager:
             }
             
     def save(self):
+        # Écriture ATOMIQUE et VERROUILLÉE : on écrit dans un fichier temporaire du
+        # même répertoire puis on le bascule via os.replace (atomique). Un crash ou
+        # deux sauvegardes concurrentes ne peuvent plus tronquer/corrompre le JSON.
         try:
-            with open(self.filepath, "w", encoding="utf-8") as f:
-                json.dump(self.conversations, f, ensure_ascii=False, indent=2)
+            with self._save_lock:
+                directory = os.path.dirname(os.path.abspath(self.filepath)) or "."
+                os.makedirs(directory, exist_ok=True)
+                fd, tmp = tempfile.mkstemp(prefix=".conv-", suffix=".tmp", dir=directory)
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as f:
+                        json.dump(self.conversations, f, ensure_ascii=False, indent=2)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(tmp, self.filepath)
+                except Exception:
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+                    raise
         except Exception as e:
             print(f"Error saving conversations: {e}")
             

@@ -65,6 +65,8 @@ class RunStore:
         created_at: Optional[float] = None,
     ):
         try:
+            from core.redaction import redact_secrets
+            steps_json = redact_secrets(json.dumps(steps or [], ensure_ascii=False))
             with self._lock, self._connect() as conn:
                 conn.execute(
                     """
@@ -78,13 +80,13 @@ class RunStore:
                         created_at if created_at is not None else time.time(),
                         agent,
                         status,
-                        user_message,
-                        final_response,
+                        redact_secrets(user_message),
+                        redact_secrets(final_response),
                         int(duration_ms),
                         int(total_tokens),
                         float(total_cost),
-                        error,
-                        json.dumps(steps or [], ensure_ascii=False),
+                        redact_secrets(error),
+                        steps_json,
                     ),
                 )
         except Exception:
