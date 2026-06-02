@@ -23,6 +23,21 @@ Write-Host "====================================================================
 Write-Host "📦 Système détecté : Windows" -ForegroundColor $Magenta
 Write-Host ""
 
+# Support de l'installation distante via iex (One-Liner)
+if (-not (Test-Path "server.py")) {
+    Write-Host "🔄 Installation distante détectée. Clonage du dépôt dans 'jarvis'..." -ForegroundColor $Yellow
+    $GitCheck = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $GitCheck) {
+        Write-Host "❌ Erreur : git est requis pour cloner le dépôt." -ForegroundColor $Red
+        Exit 1
+    }
+    git clone https://github.com/faelnor92/jarvis.git jarvis
+    if ($LASTEXITCODE -ne 0) { Exit 1 }
+    Set-Location jarvis
+    & .\install.ps1
+    Exit 0
+}
+
 $ScriptDir = $PSScriptRoot
 if (-not $ScriptDir) { $ScriptDir = Get-Location }
 

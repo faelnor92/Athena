@@ -46,13 +46,19 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 
 ## 🚀 Installation Rapide (1-Liner)
 
-Copiez et collez cette commande dans votre terminal (Linux / macOS) :
+> [!NOTE]
+> *Si ce dépôt est privé, vous devez disposer des droits d'accès (token ou clé SSH) pour que ces commandes fonctionnent, ou vous pouvez cloner manuellement le dépôt.*
 
+**Linux / macOS** : Copiez et collez cette commande dans votre terminal :
 ```bash
 curl -sSL https://raw.githubusercontent.com/faelnor92/jarvis/main/install.sh | bash
 ```
 
-* **Windows** : Clonez le dépôt et exécutez `.\install.ps1`
+**Windows** : Exécutez cette commande dans PowerShell :
+```powershell
+iwr -useb https://raw.githubusercontent.com/faelnor92/jarvis/main/install.ps1 | iex
+```
+
 * **Docker Compose** : `docker compose up -d --build`
 
 **Démarrage** : `jarvis start` ou `python3 server.py`. Accessible sur 👉 **http://localhost:8000/**.
