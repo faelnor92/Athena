@@ -1221,7 +1221,20 @@ def _run_routine(routine: dict):
     prompt = (routine.get("prompt") or "").strip()
     if not prompt:
         return
-    starting = swarm.agents.get(routine.get("agent", _orch_name())) or _orch_agent()
+        
+    agent_name = routine.get("agent", _orch_name())
+    if agent_name == "_nightly_agent":
+        from core.swarm import Agent
+        from tools.maintenance import cleanup_skills
+        starting = Agent(
+            name="NightlyAgent",
+            model="ollama/qwen2.5:0.5b",
+            instructions="Tu es le concierge nocturne de Jarvis. Ta seule mission est d'exécuter l'outil cleanup_skills.",
+            tools=[cleanup_skills]
+        )
+    else:
+        starting = swarm.agents.get(agent_name) or _orch_agent()
+        
     rid = run_store.new_run_id()
     started = time.time()
     token = current_run_id.set(rid)

@@ -208,16 +208,30 @@ if ($OllamaCheck) {
         }
     }
     
-    $HasModel = $Models -match "llama|qwen|mistral|phi"
+    $HasModel = $Models -match "qwen2.5:0.5b"
     if (-not $HasModel) {
-        Write-Host "⚠ Aucun modèle adapté aux agents n'a été détecté dans Ollama." -ForegroundColor $Yellow
-        Write-Host "   Il est fortement recommandé de télécharger un modèle compact (ex: Qwen 2.5 Coder 1.5B)." -ForegroundColor $Yellow
-        Write-Host "   Pour le faire automatiquement, tapez : ollama pull qwen2.5-coder:1.5b" -ForegroundColor $Cyan
+        Write-Host "⚠ Le modèle de maintenance (qwen2.5:0.5b) n'est pas détecté." -ForegroundColor $Yellow
+        $InstallModel = Read-Host "Voulez-vous le télécharger pour activer l'Agent de Nuit Gratuit ? (o/n)"
+        if ($InstallModel -match "^[OoYy]") {
+            Write-Host "Téléchargement de qwen2.5:0.5b..." -ForegroundColor $Cyan
+            & ollama pull qwen2.5:0.5b
+        }
     }
 } else {
     Write-Host "⚠ Note : Ollama n'est pas détecté sur cette machine." -ForegroundColor $Yellow
-    Write-Host "   Si vous souhaitez faire tourner vos agents localement et gratuitement :" -ForegroundColor $Yellow
-    Write-Host "   Téléchargez Ollama pour Windows sur : https://ollama.com" -ForegroundColor $Cyan
+    Write-Host "   Ollama est recommandé pour faire tourner l'Agent de Maintenance de Nuit gratuitement." -ForegroundColor $Yellow
+    
+    $WingetCheck = Get-Command winget -ErrorAction SilentlyContinue
+    if ($WingetCheck) {
+        $InstallOllama = Read-Host "Voulez-vous installer Ollama maintenant via winget ? (o/n)"
+        if ($InstallOllama -match "^[OoYy]") {
+            Write-Host "Installation d'Ollama..." -ForegroundColor $Cyan
+            & winget install Ollama
+            Write-Host "⚠ Veuillez redémarrer ce script d'installation après l'installation d'Ollama." -ForegroundColor $Yellow
+        }
+    } else {
+        Write-Host "   Téléchargez Ollama pour Windows sur : https://ollama.com" -ForegroundColor $Cyan
+    }
 }
 
 # -------------------------------------------------------------------------

@@ -297,16 +297,26 @@ if command -v ollama &> /dev/null; then
     echo -e "Modèles installés :"
     ollama list | tail -n +2 | awk '{print " - " $1}'
     
-    # Proposer de pull un modèle léger si aucun modèle de code/texte n'est détecté
-    if ! ollama list | grep -qE "llama|qwen|mistral|phi"; then
-        echo -e "${YELLOW}⚠ Aucun modèle adapté aux agents n'a été détecté dans Ollama.${NC}"
-        echo -e "   Il est fortement recommandé de télécharger un modèle compact (ex: Qwen 2.5 Coder 1.5B)."
-        echo -e "   Pour le faire automatiquement en arrière-plan :"
-        echo -e "   👉 ${CYAN}ollama pull qwen2.5-coder:1.5b${NC}"
+    if ! ollama list | grep -q "qwen2.5:0.5b"; then
+        echo -e "${YELLOW}⚠ Le modèle de maintenance (qwen2.5:0.5b) n'est pas détecté.${NC}"
+        read -p "Voulez-vous le télécharger pour activer l'Agent de Nuit Gratuit ? (o/n) : " INSTALL_MODEL
+        if [[ "$INSTALL_MODEL" =~ ^[OoYy] ]]; then
+            echo -e "${CYAN}Téléchargement de qwen2.5:0.5b...${NC}"
+            ollama pull qwen2.5:0.5b
+        fi
     fi
 else
-    echo -e "${YELLOW}⚠ Note : Ollama n'est pas détecté. Si vous souhaitez faire tourner vos agents${NC}"
-    echo -e "   en 100% local et gratuit (sans clés API cloud), installez Ollama : ${BOLD}https://ollama.com${NC}"
+    echo -e "${YELLOW}⚠ Note : Ollama n'est pas détecté.${NC}"
+    echo -e "Ollama est recommandé pour faire tourner l'Agent de Maintenance de Nuit gratuitement."
+    read -p "Voulez-vous installer Ollama maintenant ? (o/n) : " INSTALL_OLLAMA
+    if [[ "$INSTALL_OLLAMA" =~ ^[OoYy] ]]; then
+        echo -e "${CYAN}Installation d'Ollama...${NC}"
+        curl -fsSL https://ollama.com/install.sh | sh
+        echo -e "${CYAN}Téléchargement du modèle de maintenance (qwen2.5:0.5b)...${NC}"
+        ollama pull qwen2.5:0.5b
+    else
+        echo -e "Vous pouvez l'installer plus tard via : ${BOLD}https://ollama.com${NC}"
+    fi
 fi
 
 # -------------------------------------------------------------------------
