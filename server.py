@@ -959,7 +959,7 @@ async def chat_async_status(task_id: str):
 # --- Plan d'action persistant & éditable par l'humain ----------------------
 class PlanSetRequest(BaseModel):
     client_id: str = "web"
-    items: List[Dict[str, Any]] = []
+    items: List[Any] = []  # str ou {text, status} — normalisé par plan_store.set_plan
 
 
 class PlanStepRequest(BaseModel):
