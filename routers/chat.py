@@ -5,8 +5,11 @@ import asyncio
 import re
 import threading
 import traceback
+import uuid
+import contextvars
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, UploadFile, File
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -18,6 +21,7 @@ from core.state import (
     ConversationManager, _session_file, ChatSession, SessionManager, 
     sessions, session, TELEMETRY, CODER_CWD, get_coder_cwd, set_coder_cwd, get_model_cost
 )
+from routers.config_routines import _check_budget
 
 import logging
 logger = logging.getLogger(__name__)
