@@ -148,7 +148,9 @@ def _definition_patterns(symbol: str):
         rf"\b(const|let|var)\s+{s}\s*=",                     # JS/TS assignation
         rf"\bfunc\s+(\([^)]*\)\s*)?{s}\b",                   # Go
         rf"\bfn\s+{s}\b",                                    # Rust
-        rf"\b(struct|enum|trait|interface|type)\s+{s}\b",    # divers
+        rf"\b(struct|enum|trait|interface|type|class|record|namespace|module)\s+{s}\b",  # OOP (Java/C#/C++/Ruby…)
+        rf"\bdef\s+{s}\b",                                    # Ruby/Python
+        rf"^[\w\s:<>\*&\[\],]*\b{s}\s*\([^;{{)]*\)\s*\{{",    # fonction/méthode C-family (corps {)
         rf"^\s*{s}\s*[:=]\s*(async\s+)?(function|\()",       # méthode/propriété
     ]
 
@@ -181,6 +183,20 @@ _OUTLINE_PATTERNS = {
     ".ts": [r"\bfunction\s+(\w+)", r"\bclass\s+(\w+)", r"\b(?:export\s+)?(?:const|function|class)\s+(\w+)"],
     ".go": [r"\bfunc\s+(?:\([^)]*\)\s*)?(\w+)", r"\btype\s+(\w+)"],
     ".rs": [r"\bfn\s+(\w+)", r"\b(?:struct|enum|trait)\s+(\w+)"],
+    # Famille C / OOP : type de retour + nom + (...) + { , et déclarations de type.
+    ".java": [r"\b(?:class|interface|enum|record)\s+(\w+)",
+              r"^[\w\s:<>\[\],]*\b(\w+)\s*\([^;{)]*\)\s*\{"],
+    ".cs":   [r"\b(?:class|interface|enum|struct|record|namespace)\s+(\w+)",
+              r"^[\w\s:<>\[\],]*\b(\w+)\s*\([^;{)]*\)\s*\{"],
+    ".cpp":  [r"\b(?:class|struct|enum)\s+(\w+)",
+              r"^[\w\s:<>\*&\[\],]*\b(\w+)\s*\([^;{)]*\)\s*\{"],
+    ".cc":   [r"\b(?:class|struct|enum)\s+(\w+)",
+              r"^[\w\s:<>\*&\[\],]*\b(\w+)\s*\([^;{)]*\)\s*\{"],
+    ".c":    [r"^[\w\s:<>\*&\[\],]*\b(\w+)\s*\([^;{)]*\)\s*\{", r"\b(?:struct|enum)\s+(\w+)"],
+    ".h":    [r"^[\w\s:<>\*&\[\],]*\b(\w+)\s*\([^;{)]*\)\s*[\{;]", r"\b(?:class|struct|enum)\s+(\w+)"],
+    ".hpp":  [r"^[\w\s:<>\*&\[\],]*\b(\w+)\s*\([^;{)]*\)\s*[\{;]", r"\b(?:class|struct|enum)\s+(\w+)"],
+    ".rb":   [r"\bdef\s+(\w+)", r"\b(?:class|module)\s+(\w+)"],
+    ".php":  [r"\bfunction\s+(\w+)", r"\b(?:class|trait|interface)\s+(\w+)"],
 }
 
 
@@ -196,8 +212,10 @@ def file_outline(path: str) -> str:
     ext = os.path.splitext(real)[1].lower()
     pats = _OUTLINE_PATTERNS.get(ext)
     if not pats:
-        pats = [r"^\s*(?:async\s+)?def\s+(\w+)", r"^\s*class\s+(\w+)",
-                r"\bfunction\s+(\w+)", r"\bfunc\s+(\w+)", r"\bfn\s+(\w+)"]
+        pats = [r"^\s*(?:async\s+)?def\s+(\w+)", r"\bfunction\s+(\w+)",
+                r"\bfunc\s+(\w+)", r"\bfn\s+(\w+)",
+                r"\b(?:class|struct|interface|enum|trait|module|record)\s+(\w+)",
+                r"^[\w\s:<>\*&\[\],]*\b(\w+)\s*\([^;{)]*\)\s*\{"]
     compiled = [re.compile(p) for p in pats]
     out = []
     try:

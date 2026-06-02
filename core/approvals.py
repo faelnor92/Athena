@@ -16,7 +16,7 @@ import os
 # Outils sensibles par défaut (surchargés par SENSITIVE_TOOLS, liste CSV).
 # NB: execute_python_code est exclu (déjà isolé en sandbox Docker).
 _DEFAULT_SENSITIVE = (
-    "execute_bash_command,run_ssh_command,save_new_skill,trigger_workflow,"
+    "execute_bash_command,run_ssh_command,save_new_skill,trigger_workflow,computer_use_action,"
     "call_ha_service,delete_skill,delete_calendar_event,delete_list_item"
 )
 

@@ -8,7 +8,10 @@ import time
 import threading
 import contextvars
 import concurrent.futures
-from typing import Callable, Tuple, List
+from typing import Callable, Tuple, List, Dict, Any, Optional, Set
+import logging
+
+logger = logging.getLogger("jarvis.swarm")
 from litellm import completion
 from .agent import Agent, Result
 from . import approvals
@@ -41,6 +44,7 @@ import tools.git_tools
 import tools.code_nav
 import tools.presence
 import tools.n8n_tools
+import tools.computer_use
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -100,6 +104,7 @@ AVAILABLE_TOOLS = {
     "file_outline": tools.code_nav.file_outline,
     "get_current_room": tools.presence.get_current_room,
     "trigger_workflow": tools.n8n_tools.trigger_workflow,
+    "computer_use_action": tools.computer_use.computer_use_action,
 }
 
 def load_dynamic_skills() -> dict:
@@ -1506,6 +1511,7 @@ class Swarm:
                 try:
                     res = fn(**a)
                 except Exception as e:
+                    logger.exception("Erreur lors de l'exécution de l'outil '%s' avec les arguments: %s", name, a)
                     # Si c'est une compétence dynamique (skills/<nom>.py), on note l'échec
                     # pour tenter une réparation automatique en fin de run.
                     try:
