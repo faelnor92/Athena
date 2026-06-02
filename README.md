@@ -44,10 +44,15 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 * **Protection Active** : Anti-Bruteforce (Throttling IP) sur la connexion. Mots de passe hashés PBKDF2.
 * **Workspace Confiné** : Le code source et le `.env` sont strictement inaccessibles à l'IA explorant les fichiers.
 
-## 🚀 Installation Rapide
+## 🚀 Installation Rapide (1-Liner)
 
-* **Linux / macOS** : `chmod +x install.sh && ./install.sh`
-* **Windows** : `.\install.ps1`
+Copiez et collez cette commande dans votre terminal (Linux / macOS) :
+
+```bash
+curl -sSL https://raw.githubusercontent.com/faelnor92/jarvis/main/install.sh | bash
+```
+
+* **Windows** : Clonez le dépôt et exécutez `.\install.ps1`
 * **Docker Compose** : `docker compose up -d --build`
 
 **Démarrage** : `jarvis start` ou `python3 server.py`. Accessible sur 👉 **http://localhost:8000/**.

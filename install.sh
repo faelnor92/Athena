@@ -33,6 +33,19 @@ echo "=========================================================================$
 echo -e "📦 Système détecté : ${MAGENTA}${BOLD}${OS_TYPE}${NC}"
 echo ""
 
+# Support pour l'installation en 1 ligne (curl | bash)
+if [ ! -f "server.py" ]; then
+    echo -e "${YELLOW}🔄 Installation distante détectée. Clonage du dépôt dans 'jarvis'...${NC}"
+    if ! command -v git &> /dev/null; then
+        echo -e "${RED}❌ Erreur : git est requis pour cloner le dépôt.${NC}"
+        exit 1
+    fi
+    git clone https://github.com/faelnor92/jarvis.git jarvis
+    cd jarvis || exit 1
+    chmod +x install.sh
+    exec ./install.sh
+fi
+
 # -------------------------------------------------------------------------
 # ÉTAPE 1 : Dépendances Système
 # -------------------------------------------------------------------------
