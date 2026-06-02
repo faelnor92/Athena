@@ -956,51 +956,9 @@ async def chat_async_status(task_id: str):
     return {"task_id": task_id, **task}
 
 
-# --- Plan d'action persistant & éditable par l'humain ----------------------
-class PlanSetRequest(BaseModel):
-    client_id: str = "web"
-    items: List[Any] = []  # str ou {text, status} — normalisé par plan_store.set_plan
-
-
-class PlanStepRequest(BaseModel):
-    client_id: str = "web"
-    op: str                      # set_status | add | edit | delete
-    index: int = -1
-    text: str = ""
-    status: str = "done"
-
-
-@app.get("/api/plan")
-async def api_get_plan(client_id: str = "web"):
-    from core import plan_store
-    return {"items": plan_store.get_plan(client_id)}
-
-
-@app.post("/api/plan")
-async def api_set_plan(req: PlanSetRequest):
-    from core import plan_store
-    items = plan_store.set_plan(req.client_id, req.items)
-    return {"status": "success", "items": items}
-
-
-@app.post("/api/plan/step")
-async def api_plan_step(req: PlanStepRequest):
-    from core import plan_store
-    op = (req.op or "").strip().lower()
-    ok = False
-    if op == "set_status":
-        ok = plan_store.update_step(req.client_id, req.index, req.status)
-    elif op == "add":
-        ok = plan_store.add_step(req.client_id, req.text)
-    elif op == "edit":
-        ok = plan_store.edit_step(req.client_id, req.index, req.text)
-    elif op == "delete":
-        ok = plan_store.remove_step(req.client_id, req.index)
-    else:
-        raise HTTPException(status_code=400, detail="op invalide (set_status|add|edit|delete).")
-    if not ok:
-        raise HTTPException(status_code=400, detail="Opération refusée (index hors limites ou texte vide).")
-    return {"status": "success", "items": plan_store.get_plan(req.client_id)}
+# Plan d'action : extrait en routeur dédié (routers/plan.py).
+from routers import plan as _plan_router
+app.include_router(_plan_router.router)
 
 
 @app.post("/api/chat/stream")
@@ -1825,37 +1783,9 @@ async def get_config_skills():
         raise HTTPException(status_code=500, detail=f"Erreur de lecture des compétences : {str(e)}")
 
 
-@app.get("/api/backup")
-async def backup_download():
-    """Télécharge une archive ZIP de tout l'état (conversations, mémoire, runs…)."""
-    import datetime
-    from core.backup import make_backup
-    data = await asyncio.to_thread(make_backup)
-    fname = f"jarvis-backup-{datetime.date.today().isoformat()}.zip"
-    return Response(content=data, media_type="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
-
-
-@app.post("/api/backup/restore")
-async def backup_restore(file: UploadFile = File(...)):
-    """Restaure l'état depuis une archive ZIP (écrase l'état actuel)."""
-    from core.backup import restore_backup
-    data = await file.read()
-    try:
-        res = await asyncio.to_thread(restore_backup, data)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Restauration impossible : {e}")
-    return {"status": "success", **res, "note": "Redémarre le serveur pour recharger entièrement la mémoire."}
-
-
-@app.get("/api/platform")
-async def get_platform():
-    """Détection automatique de l'OS hôte et de l'environnement d'exécution."""
-    from core.platform_info import get_platform_info, sandbox_active
-    info = get_platform_info()
-    info["sandbox_active"] = sandbox_active()
-    info["app_name"] = os.getenv("APP_NAME", "Jarvis").strip() or "Jarvis"
-    return info
+# Sauvegarde, plateforme, pairing Telegram : extraits en routeur (routers/system.py).
+from routers import system as _system_router
+app.include_router(_system_router.router)
 
 
 @app.get("/api/config/mcp")
@@ -2101,34 +2031,7 @@ async def notify_channels():
     return {"configured": configured_channels()}
 
 
-@app.get("/api/telegram/pairing")
-async def telegram_pairing_status():
-    """État du DM pairing Telegram (demandes en attente, contacts approuvés)."""
-    from core import telegram_pairing
-    return telegram_pairing.status()
-
-
-class PairingActionRequest(BaseModel):
-    code: str = ""
-    chat_id: str = ""
-
-
-@app.post("/api/telegram/pairing/approve")
-async def telegram_pairing_approve(req: PairingActionRequest):
-    from core import telegram_pairing
-    cid = None
-    if req.code:
-        cid = telegram_pairing.approve_code(req.code)
-    elif req.chat_id:
-        telegram_pairing.approve_chat(req.chat_id); cid = req.chat_id
-    return {"status": "success" if cid else "not_found", "chat_id": cid, "pairing": telegram_pairing.status()}
-
-
-@app.post("/api/telegram/pairing/revoke")
-async def telegram_pairing_revoke(req: PairingActionRequest):
-    from core import telegram_pairing
-    ok = telegram_pairing.revoke_chat(req.chat_id) if req.chat_id else False
-    return {"status": "success" if ok else "not_found", "pairing": telegram_pairing.status()}
+# (Endpoints /api/telegram/pairing déplacés dans routers/system.py.)
 
 
 @app.get("/api/config/env")
