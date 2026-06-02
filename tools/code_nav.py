@@ -20,8 +20,8 @@ _MAX = 80
 
 def _ws():
     try:
-        import server
-        return os.path.realpath(server.get_workspace_dir())
+        from core.state import get_workspace_dir
+        return os.path.realpath(get_workspace_dir())
     except Exception:
         base = os.getenv("ACTIVE_WORKSPACE_DIR", "").strip() or os.path.join(os.getcwd(), "workspace")
         return os.path.realpath(base)

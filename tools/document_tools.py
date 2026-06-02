@@ -15,8 +15,8 @@ def _resolve(filename: str):
     """Trouve le fichier dans workspace/uploads ou workspace, par chemin ou par nom."""
     ws = None
     try:
-        import server
-        ws = server.get_workspace_dir()
+        from core.state import get_workspace_dir
+        ws = get_workspace_dir()
     except Exception:
         ws = os.getenv("ACTIVE_WORKSPACE_DIR", "").strip() or os.path.join(os.getcwd(), "workspace")
     name = (filename or "").strip().strip('"').strip("'")
