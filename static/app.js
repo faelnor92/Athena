@@ -3151,6 +3151,26 @@ if (sshForm) {
 // =========================================================================
 const ALL_AVAILABLE_TOOLS = [
     {
+        key: "read_file",
+        title: "📖 Code : Lire un fichier",
+        desc: "Lit un fichier du workspace avec numéros de ligne (pour éditer ensuite précisément)."
+    },
+    {
+        key: "edit_file",
+        title: "✏️ Code : Éditer (str-replace)",
+        desc: "Modification ciblée et non destructive par remplacement de texte exact. Le plus sûr."
+    },
+    {
+        key: "write_file",
+        title: "📝 Code : Créer / réécrire un fichier",
+        desc: "Crée ou remplace intégralement un fichier (écriture atomique)."
+    },
+    {
+        key: "apply_patch",
+        title: "🩹 Code : Appliquer un diff",
+        desc: "Applique un diff unifié (multi-modifications) avec vérification du contexte."
+    },
+    {
         key: "get_ha_state",
         title: "🏠 Home Assistant : État des capteurs",
         desc: "Consulter l'état de vos lumières, capteurs ou interrupteurs connectés."
