@@ -273,6 +273,12 @@ def _orch_name() -> str:
     return getattr(swarm, "orchestrator_name", None) or "Jarvis"
 
 
+def _app_name() -> str:
+    """Nom de l'application (branding), pour tout texte visible par l'utilisateur
+    (notifications, messages Telegram…). Suit APP_NAME, sinon le nom de l'orchestrateur."""
+    return os.getenv("APP_NAME", "").strip() or _orch_name()
+
+
 def _orch_agent():
     """Renvoie l'agent orchestrateur, avec repli sur le 1er agent disponible."""
     a = swarm.agents.get(_orch_name())
@@ -315,7 +321,7 @@ class ConversationManager:
                 "name": "Discussion principale",
                 "messages": [],
                 "active_node_id": None,
-                "active_agent": "Jarvis"
+                "active_agent": _orch_name()
             }
             
     def save(self):
@@ -334,7 +340,7 @@ class ConversationManager:
             "name": name,
             "messages": [],
             "active_node_id": None,
-            "active_agent": "Jarvis"
+            "active_agent": _orch_name()
         }
         self.active_id = conv_id
         self.save()
@@ -350,7 +356,7 @@ class ConversationManager:
                         "name": "Discussion principale",
                         "messages": [],
                         "active_node_id": None,
-                        "active_agent": "Jarvis"
+                        "active_agent": _orch_name()
                     }
             self.save()
             
@@ -362,7 +368,7 @@ class ConversationManager:
                     "name": "Discussion principale",
                     "messages": [],
                     "active_node_id": None,
-                    "active_agent": "Jarvis"
+                    "active_agent": _orch_name()
                 }
         return self.conversations[self.active_id]
 
@@ -405,12 +411,12 @@ class ChatSession:
         
     @property
     def active_agent(self):
-        agent_name = self.manager.get_active().get("active_agent", "Jarvis")
+        agent_name = self.manager.get_active().get("active_agent", _orch_name())
         return swarm.agents.get(agent_name) or _orch_agent()
         
     @active_agent.setter
     def active_agent(self, agent_obj):
-        self.manager.get_active()["active_agent"] = agent_obj.name if agent_obj else "Jarvis"
+        self.manager.get_active()["active_agent"] = agent_obj.name if agent_obj else _orch_name()
         # Générer un titre de discussion automatique s'il s'agit du premier message
         active_conv = self.manager.get_active()
         if len(active_conv["messages"]) > 0 and active_conv["name"].startswith("Discussion "):
@@ -425,7 +431,7 @@ class ChatSession:
         active_conv = self.manager.get_active()
         active_conv["messages"] = []
         active_conv["active_node_id"] = None
-        active_conv["active_agent"] = "Jarvis"
+        active_conv["active_agent"] = _orch_name()
         self.manager.save()
 
 class SessionManager:
@@ -669,7 +675,7 @@ def _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_ch
     TELEMETRY["total_tokens"] += total_tokens_in_turn
     TELEMETRY["total_cost"] += total_cost_in_turn
 
-    run_agent = sess.active_agent.name if sess.active_agent else "Jarvis"
+    run_agent = sess.active_agent.name if sess.active_agent else _orch_name()
     run_store.save(
         run_id=run_id, agent=run_agent, status="success",
         user_message=req.message, final_response=final_response,
@@ -700,7 +706,7 @@ async def chat(req: ChatRequest):
     sess = sessions.get(req.client_id)
     try:
         if not sess.active_agent:
-            raise HTTPException(status_code=500, detail="Jarvis n'est pas initialisé.")
+            raise HTTPException(status_code=500, detail=f"{_app_name()} n'est pas initialisé.")
         chain, starting_agent, original_chain_len = _chat_prepare(sess, req, run_id)
         # swarm.run est bloquant : exécuté dans un thread (contexte copié) pour
         # ne pas bloquer la boucle asyncio (concurrence des requêtes).
@@ -710,7 +716,7 @@ async def chat(req: ChatRequest):
     except Exception as e:
         logger.exception("Erreur Chat (run %s)", run_id)
         run_store.save(
-            run_id=run_id, agent="Jarvis", status="error",
+            run_id=run_id, agent=_orch_name(), status="error",
             user_message=req.message, error=str(e),
             duration_ms=int((time.time() - run_started) * 1000),
             steps=run_registry.status(run_id)["steps"], created_at=run_started,
@@ -741,7 +747,7 @@ async def chat_stream(req: ChatRequest):
         appr_token = approvals.auto_approve_var.set(channels.auto_approve_for(req.client_id))
         try:
             if not sess.active_agent:
-                yield _sse("error", {"detail": "Jarvis n'est pas initialisé."})
+                yield _sse("error", {"detail": f"{_app_name()} n'est pas initialisé."})
                 return
             chain, starting_agent, original_chain_len = _chat_prepare(sess, req, run_id)
 
@@ -781,7 +787,7 @@ async def chat_stream(req: ChatRequest):
         except Exception as e:
             logger.exception("Erreur Chat stream (run %s)", run_id)
             run_store.save(
-                run_id=run_id, agent="Jarvis", status="error",
+                run_id=run_id, agent=_orch_name(), status="error",
                 user_message=req.message, error=str(e),
                 duration_ms=int((time.time() - run_started) * 1000),
                 steps=run_registry.status(run_id)["steps"], created_at=run_started,
@@ -960,7 +966,7 @@ async def get_chat_tree():
     return {
         "messages": session.messages,
         "active_node_id": session.active_node_id,
-        "active_agent": session.active_agent.name if session.active_agent else "Jarvis"
+        "active_agent": session.active_agent.name if session.active_agent else _orch_name()
     }
 
 @app.get("/api/conversations")
@@ -1010,7 +1016,7 @@ async def fork_chat(req: ForkRequest):
     session.active_node_id = req.message_id
     
     # Retrouver intelligemment quel agent était actif à ce moment précis de l'historique
-    active_agent_name = "Jarvis"
+    active_agent_name = _orch_name()
     curr_id = req.message_id
     while curr_id:
         node = node_map.get(curr_id)
@@ -1037,7 +1043,7 @@ class TerminalRequest(BaseModel):
 @app.post("/api/terminal/coder")
 async def terminal_coder(req: TerminalRequest):
     if not session.active_agent:
-        raise HTTPException(status_code=500, detail="Jarvis n'est pas initialisé.")
+        raise HTTPException(status_code=500, detail=f"{_app_name()} n'est pas initialisé.")
         
     coder_agent = swarm.agents.get("Codeur")
     if not coder_agent:
@@ -1924,7 +1930,7 @@ async def notify_test(req: NotifyTestRequest):
     """Envoie un message de test sur les messageries (ou un canal précis)."""
     from core.notifications import notify, configured_channels
     ch = (req.channel or "").strip().lower() or None
-    sent = notify("✅ Test de notification depuis Jarvis.", title="Jarvis — test", channel=ch)
+    sent = notify(f"✅ Test de notification depuis {_app_name()}.", title=f"{_app_name()} — test", channel=ch)
     return {"sent": sent, "configured": configured_channels()}
 
 
@@ -2572,21 +2578,21 @@ def telegram_bot_worker():
                             print(f"🤖 [Telegram] Accès refusé pour {chat_id} (pairing requis, code {code}).")
                             continue
                         else:
-                            _tg_send(chat_id, "✅ Bienvenue — ce compte est désormais l'administrateur de Jarvis.")
+                            _tg_send(chat_id, f"✅ Bienvenue — ce compte est désormais l'administrateur de {_app_name()}.")
 
                     # Commande d'approbation par l'administrateur : /approve <code>
                     if text.strip().lower().startswith("/approve ") and _pair.is_allowed(chat_id):
                         cid = _pair.approve_code(text.strip().split(None, 1)[1])
                         _tg_send(chat_id, f"✅ Contact {cid} approuvé." if cid else "Code de pairage inconnu.")
                         if cid:
-                            _tg_send(cid, "✅ Ton accès à Jarvis a été approuvé. Tu peux maintenant discuter.")
+                            _tg_send(cid, f"✅ Ton accès à {_app_name()} a été approuvé. Tu peux maintenant discuter.")
                         continue
 
                     # Initialiser la session si elle n'existe pas
                     if chat_id not in telegram_sessions:
                         default_agent = _orch_agent() or list(swarm.agents.values())[0]
                         telegram_sessions[chat_id] = {
-                            "messages": [{"role": "system", "content": "Tu es Jarvis, le superviseur de l'essaim multi-agent."}],
+                            "messages": [{"role": "system", "content": f"Tu es {_orch_name()}, le superviseur de l'essaim multi-agent."}],
                             "active_agent": default_agent
                         }
                     
@@ -2596,7 +2602,7 @@ def telegram_bot_worker():
                     if text.strip() == "/reset":
                         default_agent = _orch_agent() or list(swarm.agents.values())[0]
                         telegram_sessions[chat_id] = {
-                            "messages": [{"role": "system", "content": "Tu es Jarvis, le superviseur de l'essaim multi-agent."}],
+                            "messages": [{"role": "system", "content": f"Tu es {_orch_name()}, le superviseur de l'essaim multi-agent."}],
                             "active_agent": default_agent
                         }
                         requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json={
@@ -2728,7 +2734,7 @@ def agenda_scheduler():
                     if 0 < diff_minutes <= 15.0 and not e.get("reminded_15m", False):
                         e["reminded_15m"] = True
                         updated = True
-                        msg = f"🔔 [Jarvis Agenda] Rappel : Votre événement '{e['title']}' commence dans {int(diff_minutes)} minutes (à {e['datetime']})."
+                        msg = f"🔔 [{_app_name()} Agenda] Rappel : Votre événement '{e['title']}' commence dans {int(diff_minutes)} minutes (à {e['datetime']})."
                         if e.get("description"):
                             msg += f"\nDescription : {e['description']}"
                         broadcast_notification(msg)
@@ -2737,7 +2743,7 @@ def agenda_scheduler():
                     elif -1.0 <= diff_minutes <= 0.5 and not e.get("reminded_now", False):
                         e["reminded_now"] = True
                         updated = True
-                        msg = f"⚡ [Jarvis Agenda] C'est l'heure ! Votre événement '{e['title']}' commence maintenant ({e['datetime']})."
+                        msg = f"⚡ [{_app_name()} Agenda] C'est l'heure ! Votre événement '{e['title']}' commence maintenant ({e['datetime']})."
                         if e.get("description"):
                             msg += f"\nDescription : {e['description']}"
                         broadcast_notification(msg)
@@ -2769,7 +2775,7 @@ def _check_budget():
         _budget_alert_date = today
         broadcast_notification(
             f"⚠️ Budget quotidien dépassé : {cost:.2f} € / {limit:.2f} € (les requêtes continuent).",
-            title="Alerte budget Jarvis",
+            title=f"Alerte budget {_app_name()}",
         )
 
 
@@ -2832,7 +2838,7 @@ def _run_routine(routine: dict):
     prompt = (routine.get("prompt") or "").strip()
     if not prompt:
         return
-    starting = swarm.agents.get(routine.get("agent", "Jarvis")) or _orch_agent()
+    starting = swarm.agents.get(routine.get("agent", _orch_name())) or _orch_agent()
     rid = run_store.new_run_id()
     started = time.time()
     token = current_run_id.set(rid)
@@ -2865,7 +2871,7 @@ class RoutineRequest(BaseModel):
     id: str = None
     name: str
     prompt: str
-    agent: str = "Jarvis"
+    agent: str = ""  # vide = orchestrateur (résolu à l'exécution via _orch_name)
     schedule: Dict[str, Any]
     enabled: bool = True
     notify: bool = True
@@ -3267,6 +3273,6 @@ if __name__ == "__main__":
         print("\033[93m[AVERTISSEMENT] ADMIN_PASSWORD vide : authentification désactivée "
               "(autorisé uniquement car bind local).\033[0m")
 
-    print("\n🚀 Lancement du serveur Jarvis Dashboard...")
+    print(f"\n🚀 Lancement du serveur {_app_name()} Dashboard...")
     print(f"👉 Accède à l'application ici : http://{'localhost' if host == '0.0.0.0' else host}:{port}\n")
     uvicorn.run("server:app", host=host, port=port, reload=True)

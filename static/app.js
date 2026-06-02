@@ -2815,7 +2815,7 @@ function saveNewRoutineFromForm() {
     if (!name || !prompt) { const st = document.getElementById("routine-save-status"); if (st) st.textContent = "❌ Nom et tâche requis."; return; }
     saveRoutine({
         name, prompt,
-        agent: document.getElementById("routine-agent").value || "Jarvis",
+        agent: document.getElementById("routine-agent").value || orchestratorName(),
         schedule,
         notify: document.getElementById("routine-notify").checked
     });
@@ -3511,7 +3511,7 @@ function initSpeech() {
                 btnVoiceToggle.textContent = "🔊 Voix ON";
                 btnVoiceToggle.style.backgroundColor = "rgba(16, 185, 129, 0.2)";
                 btnVoiceToggle.style.borderColor = "var(--success-color)";
-                speakText("Lecture vocale activée. Bonjour !", "Jarvis");
+                speakText("Lecture vocale activée. Bonjour !", orchestratorName());
             } else {
                 btnVoiceToggle.textContent = "🔇 Voix OFF";
                 btnVoiceToggle.style.backgroundColor = "";
@@ -5813,9 +5813,15 @@ function initMentionAutocomplete() {
             return nameMatch || displayMatch;
         });
 
-        // Toujours proposer Jarvis s'il correspond au préfixe
-        if ("jarvis".includes(prefix.toLowerCase()) && !filteredAgentsList.some(a => a.name.toLowerCase() === "jarvis")) {
-            filteredAgentsList.unshift({ name: "Jarvis", display_name: "Jarvis Superviseur", avatar_type: "robot_neon" });
+        // Toujours proposer l'orchestrateur (renommable) s'il correspond au préfixe
+        const _orchN = orchestratorName();
+        if (_orchN.toLowerCase().includes(prefix.toLowerCase()) && !filteredAgentsList.some(a => a.name.toLowerCase() === _orchN.toLowerCase())) {
+            const _orchA = orchestratorAgent();
+            filteredAgentsList.unshift({
+                name: _orchN,
+                display_name: (_orchA && _orchA.display_name) || _orchN,
+                avatar_type: (_orchA && _orchA.avatar_type) || "robot_neon",
+            });
         }
 
         if (filteredAgentsList.length === 0) {
