@@ -23,6 +23,7 @@ C'est la méthode la plus visuelle et la plus simple.
 - **La vue 3D** : Sur la page principale, vous verrez une représentation visuelle d'Athena et de ses "Agents" (Le Codeur, Le Chercheur, etc.). Lorsqu'Athena réfléchit ou délègue une tâche, vous verrez des animations lumineuses vous indiquant quel agent est en train de travailler.
 - **L'Orchestrateur automatique** : Dans la barre de discussion en bas, écrivez simplement votre requête. Dans l'Interface Web, **vous parlez toujours à l'Orchestrateur**. C'est lui qui est assez intelligent pour comprendre votre demande et l'assigner automatiquement au bon agent (ex: il passera le relais à l'Agent Codeur si vous demandez un script).
 - **L'Explorateur de fichiers (Workspaces)** : Sur la gauche se trouve un panneau contenant vos fichiers. Vous pouvez y glisser-déposer des documents (PDF, Markdown, code source) pour que l'IA puisse les analyser. 
+- **La Console Web (Terminal Intégré)** : En plus du chat, l'interface possède un véritable terminal de code intégré. Vous pouvez y suivre en direct l'exécution des scripts Python du "Bac à sable" (Sandbox), vérifier les erreurs, ou interagir directement avec la ligne de commande sans jamais quitter votre navigateur !
 
 ### B. Depuis la Console Interactive (CLI)
 Si vous préférez le terminal à l'interface graphique, vous pouvez lancer une discussion textuelle pure.
