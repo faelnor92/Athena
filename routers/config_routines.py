@@ -47,6 +47,31 @@ def _check_budget():
 def _run_routine(routine: dict):
     import logging
     logger = logging.getLogger("athena.routines")
+
+    # Pont Workflow : une routine peut déclencher un pipeline déterministe (au lieu d'un
+    # prompt). Exécuté dans le contexte du propriétaire ; le prompt sert d'entrée initiale.
+    pid = routine.get("pipeline_id")
+    if pid:
+        from core.pipelines import pipeline_store
+        from tools.pipeline_tools import run_pipeline
+        from core.state import _current_username
+        owner = routine.get("owner") or "local"
+        utok = _current_username.set(owner)
+        try:
+            p = pipeline_store.get(pid)
+            if not p or (p.get("owner") or "local") != owner:
+                logger.warning("routine '%s' : pipeline %s introuvable", routine.get("name"), pid)
+                return
+            res = run_pipeline(p, routine.get("prompt") or "")
+            if routine.get("notify", True):
+                msg = res.get("error") or res.get("final") or "Workflow terminé."
+                broadcast_notification(msg, title=f"🛠️ {routine.get('name', p.get('name'))}")
+        except Exception:
+            logger.exception("Erreur pipeline routine '%s'", routine.get("name"))
+        finally:
+            _current_username.reset(utok)
+        return
+
     prompt = (routine.get("prompt") or "").strip()
     if not prompt:
         return
@@ -102,12 +127,13 @@ router = APIRouter(tags=["Config Routines & Transcribe"])
 class RoutineRequest(BaseModel):
     id: str = None
     name: str
-    prompt: str
+    prompt: str = ""
     agent: str = ""
     schedule: Dict[str, Any]
     enabled: bool = True
     notify: bool = True
     secret: str = None
+    pipeline_id: str = None  # si défini : la routine déclenche ce workflow déterministe
 
 def _me() -> str:
     from core.user_config import current_user_key

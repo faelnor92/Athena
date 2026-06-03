@@ -580,6 +580,7 @@
                 <div class="modal-tab-group">Extensions</div>
                 <button class="modal-tab-btn" id="modal-tab-mcp">🧩 Serveurs MCP</button>
                 <button class="modal-tab-btn" id="modal-tab-routines">🗓️ Routines</button>
+                <button class="modal-tab-btn" id="modal-tab-workflows">🛠️ Workflows</button>
                 <button class="modal-tab-btn" id="modal-tab-knowledge">📚 Connaissances</button>
             </div>
 
@@ -1196,6 +1197,29 @@
                     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
                     <h5 style="color: var(--accent-cyan); margin: 8px 0;">📊 Mon usage</h5>
                     <div id="myusage" style="font-size: 0.8rem; opacity: 0.85;">…</div>
+                </div>
+
+                <div class="modal-pane" id="pane-workflows" style="display: none;">
+                    <h3>🛠️ Workflows (pipelines déterministes)</h3>
+                    <p class="section-desc" style="margin-bottom: 8px;">Mode <strong>chaîne de montage</strong> (type CrewAI), optionnel : une suite ordonnée d'étapes (agent + instruction). Les étapes s'exécutent séquentiellement, la sortie de l'une devient l'entrée de la suivante, et aucun agent ne peut dévier de la chaîne. Reproductible et auditable — le swarm organique reste le mode par défaut.</p>
+                    <div id="workflows-list" style="display: flex; flex-direction: column; gap: 8px; margin: 10px 0; max-height: 200px; overflow-y: auto;"></div>
+
+                    <h5 style="color: var(--accent-cyan); margin: 8px 0;">Nouveau / éditer un workflow</h5>
+                    <input type="hidden" id="workflow-id">
+                    <div class="form-group"><label>Nom</label><input id="workflow-name" type="text" placeholder="Ex: Qualité du code"></div>
+                    <label style="font-size: 0.8rem; opacity: 0.8;">Étapes (dans l'ordre)</label>
+                    <div id="workflow-steps" style="display: flex; flex-direction: column; gap: 8px; margin: 6px 0;"></div>
+                    <button type="button" id="btn-workflow-add-step" class="btn" style="width: 100%;">➕ Ajouter une étape</button>
+                    <div style="display: flex; gap: 6px; margin-top: 8px;">
+                        <button type="button" id="btn-workflow-save" class="btn btn-primary" style="flex: 1;">💾 Enregistrer</button>
+                        <button type="button" id="btn-workflow-clear" class="btn" style="flex: 1;">✨ Nouveau</button>
+                    </div>
+                    <div id="workflow-save-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
+
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
+                    <h5 style="color: var(--accent-cyan); margin: 8px 0;">▶ Exécuter</h5>
+                    <div class="form-group"><label>Entrée initiale (optionnelle)</label><textarea id="workflow-run-input" style="min-height: 44px;" placeholder="Donnée/tâche de départ transmise à la 1ʳᵉ étape."></textarea></div>
+                    <div id="workflow-run-result" style="margin-top: 8px; font-size: 0.82rem;"></div>
                 </div>
 
                 <div class="modal-pane" id="pane-knowledge" style="display: none;">

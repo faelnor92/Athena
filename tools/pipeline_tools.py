@@ -1,4 +1,93 @@
-"""Outil de chaîne de montage (Pipeline rigide)."""
+"""Outil de chaîne de montage (Pipeline rigide).
+
+Deux usages :
+- `run_rigid_pipeline` : outil ad-hoc que l'orchestrateur peut appeler (liste d'agents + tâche).
+- `run_pipeline` : exécution d'un WORKFLOW nommé/sauvegardé (cf. core/pipelines.py) — mode
+  déterministe type CrewAI, lancé directement (UI/API/routine), chaque étape tracée.
+"""
+import os
+import time
+
+
+def run_pipeline(pipeline: dict, initial_input: str = "") -> dict:
+    """Exécute un workflow déterministe : étapes séquentielles, sortie d'une étape = entrée
+    de la suivante, aucun agent ne peut dévier (locked + lock_delegation). Chaque étape est
+    un run tracé distinct (observabilité). Renvoie {name, steps:[{agent, output, run_id,
+    error?}], final, error?}."""
+    from core.state import swarm, _orch_agent, _current_username
+    from core.tracing import run_store
+    from core.run_context import registry as run_registry, current_run_id
+    from core import channels, approvals
+
+    steps_def = pipeline.get("steps") or []
+    name = pipeline.get("name") or "Workflow"
+    if not steps_def:
+        return {"name": name, "steps": [], "final": "", "error": "Pipeline sans étape."}
+
+    max_turns = int(os.getenv("PIPELINE_STEP_MAX_TURNS", "6") or 6)
+    results = []
+    carry = (initial_input or "").strip()
+
+    # Contexte commun : canal dédié + auto-approbation (exécution batch déterministe).
+    chan_token = channels.current_channel.set("pipeline")
+    appr_token = approvals.auto_approve_var.set(True)
+    try:
+        for i, step in enumerate(steps_def):
+            agent = swarm.agents.get(step["agent"])
+            if not agent:
+                results.append({"agent": step["agent"], "output": "",
+                                "error": "Agent introuvable dans le système."})
+                return {"name": name, "steps": results, "final": carry,
+                        "error": f"Agent '{step['agent']}' introuvable (étape {i + 1})."}
+
+            parts = [f"[Étape {i + 1}/{len(steps_def)} — instruction]\n{step['instruction']}"]
+            if step.get("expected_output"):
+                parts.append(f"[Format / sortie attendue]\n{step['expected_output']}")
+            if carry:
+                parts.append(f"[Entrée fournie par l'étape précédente]\n{carry}")
+            content = "\n\n".join(parts)
+
+            rid = run_store.new_run_id()
+            started = time.time()
+            rid_token = current_run_id.set(rid)
+            run_registry.start(rid)
+            try:
+                final_agent, msgs, steps = swarm.run(
+                    starting_agent=agent,
+                    messages=[{"role": "user", "content": content}],
+                    max_turns=max_turns, locked=True, lock_delegation=True,
+                )
+                output = ""
+                for m in reversed(msgs):
+                    if m.get("role") == "assistant" and m.get("content"):
+                        output = m["content"]
+                        break
+                output = output or "(aucun résultat texte)"
+                run_store.save(
+                    run_id=rid, agent=final_agent.name, status="pipeline",
+                    user_message=f"[{name}] étape {i + 1} → {agent.name}",
+                    final_response=output,
+                    duration_ms=int((time.time() - started) * 1000),
+                    steps=list(steps), created_at=started,
+                )
+                results.append({"agent": agent.name, "output": output, "run_id": rid})
+                carry = output
+            except Exception as e:
+                run_store.save(run_id=rid, agent=agent.name, status="error",
+                               user_message=f"[{name}] étape {i + 1}", error=str(e),
+                               created_at=started)
+                results.append({"agent": agent.name, "output": "", "error": str(e), "run_id": rid})
+                return {"name": name, "steps": results, "final": carry,
+                        "error": f"Échec à l'étape {i + 1} ({agent.name}) : {e}"}
+            finally:
+                run_registry.finish(rid)
+                current_run_id.reset(rid_token)
+    finally:
+        channels.current_channel.reset(chan_token)
+        approvals.auto_approve_var.reset(appr_token)
+
+    return {"name": name, "steps": results, "final": carry}
+
 
 def run_rigid_pipeline(agents_list: str, task: str) -> str:
     """EXÉCUTION STRICTE EN CHAÎNE DE MONTAGE.

@@ -417,6 +417,8 @@ const modalTabMcp = document.getElementById("modal-tab-mcp");
 const paneMcp = document.getElementById("pane-mcp");
 const modalTabRoutines = document.getElementById("modal-tab-routines");
 const paneRoutines = document.getElementById("pane-routines");
+const modalTabWorkflows = document.getElementById("modal-tab-workflows");
+const paneWorkflows = document.getElementById("pane-workflows");
 const modalTabKnowledge = document.getElementById("modal-tab-knowledge");
 const paneKnowledge = document.getElementById("pane-knowledge");
 const modalTabUsers = document.getElementById("modal-tab-users");
@@ -2262,8 +2264,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor, modalTabMessaging].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneKnowledge, paneUsers, paneSatellites, paneDoctor, paneMessaging].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabWorkflows, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor, modalTabMessaging].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneWorkflows, paneKnowledge, paneUsers, paneSatellites, paneDoctor, paneMessaging].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -3324,6 +3326,12 @@ if (modalTabRoutines && paneRoutines) {
     modalTabRoutines.addEventListener("click", () => switchModalTab(modalTabRoutines, () => {
         paneRoutines.style.display = "block";
         loadRoutinesPane();
+    }));
+}
+if (modalTabWorkflows && paneWorkflows) {
+    modalTabWorkflows.addEventListener("click", () => switchModalTab(modalTabWorkflows, () => {
+        paneWorkflows.style.display = "block";
+        loadWorkflowsPane();
     }));
 }
 const _routineSchedType = document.getElementById("routine-sched-type");
@@ -7107,3 +7115,110 @@ async function loadMyUsage() {
         box.innerHTML = `Aujourd'hui : ${fmt(d.today)}<br>30 jours : ${fmt(d.month)}<br>Total : ${fmt(d.total)}`;
     } catch (e) { box.textContent = "—"; }
 }
+
+
+/* ===================== Workflows (pipelines déterministes) ===================== */
+let _wfSteps = [];
+function _wfAgentOptions(sel) {
+    const list = Array.isArray(agentsConfig) ? agentsConfig : [];
+    return list.map(a => `<option value="${a.name}"${a.name === sel ? " selected" : ""}>${a.display_name || a.name}</option>`).join("");
+}
+function _esc(t) { return (t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+function renderWorkflowSteps() {
+    const box = document.getElementById("workflow-steps");
+    if (!box) return;
+    box.innerHTML = _wfSteps.length ? _wfSteps.map((s, i) => `
+        <div class="glass" style="padding:8px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <strong style="font-size:0.78rem;">Étape ${i + 1}</strong>
+            <select data-wf="agent" data-i="${i}" style="flex:1;">${_wfAgentOptions(s.agent)}</select>
+            <button type="button" data-wf="del" data-i="${i}" class="btn" style="padding:2px 8px;">🗑️</button>
+          </div>
+          <textarea data-wf="instruction" data-i="${i}" placeholder="Instruction de l'agent pour cette étape" style="width:100%;min-height:40px;box-sizing:border-box;">${_esc(s.instruction)}</textarea>
+          <input data-wf="expected_output" data-i="${i}" placeholder="Sortie attendue (optionnel)" value="${(s.expected_output || "").replace(/"/g, "&quot;")}" style="width:100%;box-sizing:border-box;margin-top:4px;">
+        </div>`).join("") : "<p style='opacity:0.6;font-size:0.8rem;'>Aucune étape. Ajoutez-en une.</p>";
+    box.querySelectorAll("[data-wf]").forEach(el => {
+        const i = +el.dataset.i, k = el.dataset.wf;
+        if (k === "del") el.onclick = () => { _wfSteps.splice(i, 1); renderWorkflowSteps(); };
+        else el.oninput = el.onchange = () => { _wfSteps[i][k] = el.value; };
+    });
+}
+function addWorkflowStep() {
+    const first = (Array.isArray(agentsConfig) && agentsConfig[0]) ? agentsConfig[0].name : "";
+    _wfSteps.push({ agent: first, instruction: "", expected_output: "" });
+    renderWorkflowSteps();
+}
+function clearWorkflowForm() {
+    const idEl = document.getElementById("workflow-id"); if (idEl) idEl.value = "";
+    const nm = document.getElementById("workflow-name"); if (nm) nm.value = "";
+    _wfSteps = []; renderWorkflowSteps();
+    const res = document.getElementById("workflow-run-result"); if (res) res.innerHTML = "";
+}
+async function loadWorkflowsPane() {
+    clearWorkflowForm();
+    const box = document.getElementById("workflows-list");
+    if (!box) return;
+    try {
+        const d = await (await apiFetch("/api/pipelines")).json();
+        const ps = d.pipelines || [];
+        box.innerHTML = ps.length ? ps.map(p => `
+            <div class="glass" style="padding:8px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;display:flex;align-items:center;gap:8px;">
+              <div style="flex:1;"><strong>${_esc(p.name)}</strong><br><span style="opacity:0.6;font-size:0.75rem;">${(p.steps || []).length} étape(s) : ${(p.steps || []).map(s => _esc(s.agent)).join(" → ")}</span></div>
+              <button type="button" class="btn" data-act="run" data-id="${p.id}" style="padding:2px 8px;" title="Exécuter">▶</button>
+              <button type="button" class="btn" data-act="edit" data-id="${p.id}" style="padding:2px 8px;" title="Éditer">✏️</button>
+              <button type="button" class="btn" data-act="del" data-id="${p.id}" style="padding:2px 8px;" title="Supprimer">🗑️</button>
+            </div>`).join("") : "<p style='opacity:0.6;font-size:0.8rem;'>Aucun workflow. Créez-en un ci-dessous.</p>";
+        box.querySelectorAll("[data-act]").forEach(el => {
+            const id = el.dataset.id, act = el.dataset.act, p = ps.find(x => x.id === id);
+            el.onclick = () => { if (act === "run") runWorkflow(id); else if (act === "edit") editWorkflow(p); else deleteWorkflow(id); };
+        });
+    } catch (e) { box.innerHTML = "<p style='opacity:0.6;'>Erreur de chargement.</p>"; }
+}
+function editWorkflow(p) {
+    if (!p) return;
+    document.getElementById("workflow-id").value = p.id;
+    document.getElementById("workflow-name").value = p.name || "";
+    _wfSteps = (p.steps || []).map(s => ({ agent: s.agent, instruction: s.instruction, expected_output: s.expected_output || "" }));
+    renderWorkflowSteps();
+}
+async function saveWorkflow() {
+    const status = document.getElementById("workflow-save-status");
+    const name = document.getElementById("workflow-name").value.trim();
+    if (!name) { status.textContent = "Donnez un nom au workflow."; return; }
+    if (!_wfSteps.length) { status.textContent = "Ajoutez au moins une étape."; return; }
+    const body = { id: document.getElementById("workflow-id").value || null, name, steps: _wfSteps };
+    try {
+        await apiFetch("/api/pipelines", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        status.textContent = "✅ Workflow enregistré.";
+        loadWorkflowsPane();
+    } catch (e) { status.textContent = "❌ " + e; }
+}
+async function runWorkflow(id) {
+    const res = document.getElementById("workflow-run-result");
+    const input = (document.getElementById("workflow-run-input") || {}).value || "";
+    res.innerHTML = "⏳ Exécution déterministe en cours…";
+    try {
+        const r = await apiFetch(`/api/pipelines/${id}/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ input }) });
+        const d = await r.json();
+        let html = "";
+        if (d.error) html += `<div style="color:#f88;">⚠️ ${_esc(d.error)}</div>`;
+        (d.steps || []).forEach((s, i) => {
+            html += `<div class="glass" style="padding:6px;margin:4px 0;border-radius:6px;"><strong>Étape ${i + 1} — ${_esc(s.agent)}</strong>` +
+                (s.error ? `<div style='color:#f88;'>${_esc(s.error)}</div>` : `<pre style="white-space:pre-wrap;font-size:0.78rem;margin:4px 0;">${_esc(s.output)}</pre>`) + `</div>`;
+        });
+        if (d.final && !d.error) html += `<div style="margin-top:6px;"><strong style="color:var(--accent-cyan);">Résultat final :</strong><pre style="white-space:pre-wrap;font-size:0.8rem;">${_esc(d.final)}</pre></div>`;
+        res.innerHTML = html || "(aucun résultat)";
+    } catch (e) { res.innerHTML = "❌ " + e; }
+}
+async function deleteWorkflow(id) {
+    if (!confirm("Supprimer ce workflow ?")) return;
+    try { await apiFetch(`/api/pipelines/${id}`, { method: "DELETE" }); loadWorkflowsPane(); } catch (e) {}
+}
+(function wireWorkflows() {
+    const add = document.getElementById("btn-workflow-add-step");
+    const save = document.getElementById("btn-workflow-save");
+    const clr = document.getElementById("btn-workflow-clear");
+    if (add) add.addEventListener("click", addWorkflowStep);
+    if (save) save.addEventListener("click", saveWorkflow);
+    if (clr) clr.addEventListener("click", clearWorkflowForm);
+})();
