@@ -32,6 +32,9 @@ def purge_user(username: str) -> dict:
     for base in (
         os.getenv("USER_PROFILE_PATH", "user_profile.md"),
         os.getenv("CORE_MEMORY_PATH", "core_memory.json"),
+        os.getenv("GRAPH_MEMORY_PATH", "graph_memory.db"),
+        os.getenv("GRAPH_MEMORY_PATH", "graph_memory.db") + "-wal",
+        os.getenv("GRAPH_MEMORY_PATH", "graph_memory.db") + "-shm",
         os.getenv("GRAPH_MEMORY_PATH", "graph_memory.json"),
     ):
         if _rm(_suffixed(base)):
@@ -42,6 +45,16 @@ def purge_user(username: str) -> dict:
         p = os.path.join("workspace", pat)
         if _rm(p):
             removed.append(pat)
+
+    # 2b. Dossiers de PROJETS de l'utilisateur (workspace/projects/<slug>/).
+    try:
+        import shutil
+        pdir = os.path.join("workspace", "projects", slug)
+        if os.path.isdir(pdir):
+            shutil.rmtree(pdir, ignore_errors=True)
+            removed.append(f"projects/{slug}")
+    except Exception:
+        pass
 
     # 3. Conversations scopées (conversations_u_<user>_*.json) + variantes.
     try:

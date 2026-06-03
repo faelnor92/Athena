@@ -96,6 +96,8 @@ from routers import logs as _logs_router
 app.include_router(_logs_router.router)
 from routers import user_settings as _user_settings_router
 app.include_router(_user_settings_router.router)
+from routers import projects as _projects_router
+app.include_router(_projects_router.router)
 
 
 # Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Jarvis →

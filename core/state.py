@@ -21,6 +21,14 @@ CODER_CWD = None
 
 def get_workspace_dir() -> str:
     # abspath : indispensable pour les vérifs anti-traversée (commonpath) des routeurs.
+    # Si l'utilisateur courant a un PROJET ACTIF, on s'y scope ; sinon workspace de base.
+    try:
+        from core import projects
+        p = projects.active_path()
+        if p:
+            return os.path.abspath(p)
+    except Exception:
+        pass
     return os.path.abspath(
         os.environ.get("ACTIVE_WORKSPACE_DIR",
                        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workspace")))
@@ -342,6 +350,7 @@ class ChatSession:
         self.manager._update_conv(self.manager.active_id, "messages", [])
         self.manager._update_conv(self.manager.active_id, "active_node_id", None)
         self.manager._update_conv(self.manager.active_id, "active_agent", _orch_name())
+        self.manager._update_conv(self.manager.active_id, "name", "Discussion principale")
 
 class SessionManager:
     def __init__(self):
