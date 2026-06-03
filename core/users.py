@@ -28,116 +28,106 @@ def verify_password(password: str, stored: str) -> bool:
     return secrets.compare_digest(candidate, h)
 
 
+_NS = "users"
+
+
 class UserStore:
+    """Comptes utilisateurs, adossés au store SQLite partagé (process-safe, multi-worker).
+
+    L'argument `path` (compat) sert uniquement à migrer un éventuel users.json existant.
+    """
     def __init__(self, path: str = None):
-        self.path = path or USERS_PATH
-        self._lock = threading.Lock()
-        self._data = self._load()
-
-    def _load(self) -> dict:
-        if os.path.exists(self.path):
-            try:
-                with open(self.path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                return {}
-        return {}
-
-    def _save(self):
-        try:
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"[Users] sauvegarde impossible : {e}")
+        from core import shared_store
+        self._s = shared_store
+        self._s.migrate_json_dict(path or USERS_PATH, _NS)
 
     def count(self) -> int:
-        with self._lock:
-            return len(self._data)
+        return self._s.count(_NS)
 
     def list(self) -> list:
-        with self._lock:
-            return [{"username": u, "role": d.get("role", "user"), "quota_max_tokens": d.get("quota_max_tokens"), "tokens_used_today": d.get("tokens_used_today", 0)} for u, d in self._data.items()]
+        return [{"username": u, "role": d.get("role", "user"),
+                 "quota_max_tokens": d.get("quota_max_tokens"),
+                 "tokens_used_today": d.get("tokens_used_today", 0)}
+                for u, d in self._s.items(_NS).items()]
 
     def create(self, username: str, password: str, role: str = "user") -> bool:
         username = (username or "").strip()
         if not username or not password:
             return False
         import datetime
-        today = datetime.date.today().isoformat()
-        with self._lock:
-            self._data[username] = {
-                "hash": hash_password(password), 
-                "role": role if role in ("admin", "user") else "user",
-                "quota_max_tokens": None, # None means unlimited
-                "tokens_used_today": 0,
-                "last_reset_date": today
-            }
-            self._save()
-            return True
+        self._s.set(_NS, username, {
+            "hash": hash_password(password),
+            "role": role if role in ("admin", "user") else "user",
+            "quota_max_tokens": None,  # None = illimité
+            "tokens_used_today": 0,
+            "last_reset_date": datetime.date.today().isoformat(),
+        })
+        return True
 
     def set_password(self, username: str, password: str) -> bool:
-        with self._lock:
-            if username not in self._data:
-                return False
-            self._data[username]["hash"] = hash_password(password)
-            self._save()
+        def _set(d):
+            if d is None:
+                raise KeyError
+            d["hash"] = hash_password(password)
+            return d
+        try:
+            self._s.update(_NS, username, _set)
             return True
+        except KeyError:
+            return False
+
+    def set_quota(self, username: str, max_tokens) -> bool:
+        """Définit le quota journalier de tokens (None/0 = illimité)."""
+        def _set(d):
+            if d is None:
+                raise KeyError
+            d["quota_max_tokens"] = max_tokens
+            return d
+        try:
+            self._s.update(_NS, username, _set)
+            return True
+        except KeyError:
+            return False
 
     def delete(self, username: str) -> bool:
-        with self._lock:
-            if username in self._data:
-                del self._data[username]
-                self._save()
-                return True
-            return False
+        return self._s.delete(_NS, username)
 
     def verify(self, username: str, password: str):
         """Renvoie le rôle si identifiants valides, sinon None."""
-        with self._lock:
-            d = self._data.get(username)
+        d = self._s.get(_NS, username)
         if d and verify_password(password, d.get("hash", "")):
             return d.get("role", "user")
         return None
 
     def check_quota(self, username: str, required_tokens: int = 0) -> bool:
-        """Vérifie si l'utilisateur a suffisamment de quota (True si OK, False si dépassé)."""
+        """True si l'utilisateur a encore du quota aujourd'hui (False si dépassé)."""
         import datetime
-        with self._lock:
-            d = self._data.get(username)
-            if not d:
-                return True # Si l'utilisateur n'existe pas (ex: système), on laisse passer
-            
-            quota_max = d.get("quota_max_tokens")
-            if quota_max is None or quota_max <= 0:
-                return True # Illimité
-            
-            today = datetime.date.today().isoformat()
-            last_reset = d.get("last_reset_date", "")
-            if last_reset != today:
-                # Nouveau jour, on reset
-                d["tokens_used_today"] = 0
-                d["last_reset_date"] = today
-                self._save()
-                
-            used = d.get("tokens_used_today", 0)
-            return (used + required_tokens) <= quota_max
+        d = self._s.get(_NS, username)
+        if not d:
+            return True  # utilisateur inconnu (système) → on laisse passer
+        quota_max = d.get("quota_max_tokens")
+        if quota_max is None or quota_max <= 0:
+            return True  # illimité
+        today = datetime.date.today().isoformat()
+        used = d.get("tokens_used_today", 0) if d.get("last_reset_date") == today else 0
+        return (used + required_tokens) <= quota_max
 
     def consume_tokens(self, username: str, amount: int):
-        """Consomme des tokens pour l'utilisateur."""
+        """Incrémente la conso du jour de façon ATOMIQUE (sûr en multi-process)."""
         import datetime
-        if amount <= 0: return
-        with self._lock:
-            d = self._data.get(username)
-            if not d: return
-            
-            today = datetime.date.today().isoformat()
-            last_reset = d.get("last_reset_date", "")
-            if last_reset != today:
+        if amount <= 0:
+            return
+        today = datetime.date.today().isoformat()
+
+        def _bump(d):
+            if d is None:
+                return None  # utilisateur inconnu → ne rien créer
+            if d.get("last_reset_date") != today:
                 d["tokens_used_today"] = 0
                 d["last_reset_date"] = today
-                
             d["tokens_used_today"] = d.get("tokens_used_today", 0) + amount
-            self._save()
+            return d
+        self._s.update(_NS, username, _bump)
 
 
 user_store = UserStore()

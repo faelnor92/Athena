@@ -16,74 +16,58 @@ import uuid
 from datetime import datetime, timedelta
 
 
+_NS = "routines"
+
+
 class RoutineStore:
+    """Routines adossées au store SQLite partagé (process-safe, multi-worker)."""
     def __init__(self, path: str = None):
-        self.path = path or os.getenv("ROUTINES_PATH", "routines.json")
-        self._lock = threading.Lock()
-        self._data = self._load()
-
-    def _load(self) -> dict:
-        if os.path.exists(self.path):
-            try:
-                with open(self.path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                return {}
-        return {}
-
-    def _save(self):
-        try:
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"[Routines] sauvegarde impossible : {e}")
+        from core import shared_store
+        self._s = shared_store
+        self._s.migrate_json_dict(path or os.getenv("ROUTINES_PATH", "routines.json"), _NS)
 
     def list(self) -> list:
-        with self._lock:
-            return list(self._data.values())
+        return self._s.values(_NS)
 
     def get(self, rid: str):
-        with self._lock:
-            return self._data.get(rid)
+        return self._s.get(_NS, rid)
 
     def upsert(self, routine: dict) -> dict:
-        with self._lock:
-            rid = routine.get("id") or uuid.uuid4().hex[:8]
-            routine["id"] = rid
-            routine.setdefault("enabled", True)
-            routine.setdefault("notify", True)
-            routine.setdefault("agent", "Athena")
-            # Propriétaire (multi-tenant) : la routine s'exécutera dans SON contexte.
-            if not routine.get("owner"):
-                try:
-                    from core.user_config import current_user_key
-                    routine["owner"] = current_user_key()
-                except Exception:
-                    routine["owner"] = "local"
-            prev = self._data.get(rid, {})
-            # Conserver last_run existant si non fourni.
-            if "last_run" not in routine:
-                routine["last_run"] = prev.get("last_run")
-            # Conserver le secret existant si l'appel n'en fournit pas.
-            if not routine.get("secret") and prev.get("secret"):
-                routine["secret"] = prev["secret"]
-            # Webhook entrant : générer un secret si toujours absent.
-            if (routine.get("schedule") or {}).get("type") == "webhook" and not routine.get("secret"):
-                routine["secret"] = uuid.uuid4().hex
-            self._data[rid] = routine
-            self._save()
-            return routine
+        rid = routine.get("id") or uuid.uuid4().hex[:8]
+        routine["id"] = rid
+        routine.setdefault("enabled", True)
+        routine.setdefault("notify", True)
+        routine.setdefault("agent", "Athena")
+        # Propriétaire (multi-tenant) : la routine s'exécutera dans SON contexte.
+        if not routine.get("owner"):
+            try:
+                from core.user_config import current_user_key
+                routine["owner"] = current_user_key()
+            except Exception:
+                routine["owner"] = "local"
+        prev = self._s.get(_NS, rid) or {}
+        # Conserver last_run existant si non fourni.
+        if "last_run" not in routine:
+            routine["last_run"] = prev.get("last_run")
+        # Conserver le secret existant si l'appel n'en fournit pas.
+        if not routine.get("secret") and prev.get("secret"):
+            routine["secret"] = prev["secret"]
+        # Webhook entrant : générer un secret si toujours absent.
+        if (routine.get("schedule") or {}).get("type") == "webhook" and not routine.get("secret"):
+            routine["secret"] = uuid.uuid4().hex
+        self._s.set(_NS, rid, routine)
+        return routine
 
     def delete(self, rid: str):
-        with self._lock:
-            self._data.pop(rid, None)
-            self._save()
+        self._s.delete(_NS, rid)
 
     def mark_run(self, rid: str, when_iso: str):
-        with self._lock:
-            if rid in self._data:
-                self._data[rid]["last_run"] = when_iso
-                self._save()
+        def _mark(d):
+            if d is None:
+                return None
+            d["last_run"] = when_iso
+            return d
+        self._s.update(_NS, rid, _mark)
 
 
 routine_store = RoutineStore()

@@ -94,3 +94,9 @@ agents.yaml
 # Pairage Telegram (contacts approuvés — donnée locale)
 telegram_paired.json
 user_configs.json
+
+# Store d_état partagé (multi-worker) — données runtime
+athena_state.sqlite3
+athena_state.sqlite3-wal
+athena_state.sqlite3-shm
+*.migrated

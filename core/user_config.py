@@ -7,53 +7,23 @@ mot de passe CalDAV — comme .env, en clair, à protéger au niveau FS).
 
 Distinct de core/state.py (état runtime) et de .env (config GLOBALE du serveur).
 """
-import json
 import os
-import tempfile
-import threading
 
-_LOCK = threading.Lock()
-_DATA = {}            # {user: {key: value}}
-_LOADED = False
+from core import shared_store
 
-
-def _path():
-    p = os.getenv("USER_CONFIGS_PATH", "").strip()
-    if p:
-        return p
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "user_configs.json")
+_NS = "user_config"        # une entrée par utilisateur : user -> {key: value}
+_migrated = False
 
 
-def _load():
-    global _LOADED
-    if _LOADED:
+def _ensure_migrated():
+    """Importe une fois un éventuel user_configs.json hérité ({user:{...}}) dans SQLite."""
+    global _migrated
+    if _migrated:
         return
-    try:
-        with open(_path(), "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                _DATA.update(data)
-    except Exception:
-        pass
-    _LOADED = True
-
-
-def _save():
-    p = _path()
-    directory = os.path.dirname(os.path.abspath(p)) or "."
-    try:
-        os.makedirs(directory, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=".ucfg-", suffix=".tmp", dir=directory)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(_DATA, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, p)
-    except Exception:
-        try:
-            os.remove(tmp)
-        except Exception:
-            pass
+    legacy = os.getenv("USER_CONFIGS_PATH", "").strip() or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "user_configs.json")
+    shared_store.migrate_json_dict(legacy, _NS)
+    _migrated = True
 
 
 def current_user_key() -> str:
@@ -73,53 +43,55 @@ def user_slug(user: str = None) -> str:
 
 def get(key: str, default=None, user: str = None):
     user = user or current_user_key()
-    with _LOCK:
-        _load()
-        return _DATA.get(user, {}).get(key, default)
+    _ensure_migrated()
+    return (shared_store.get(_NS, user) or {}).get(key, default)
 
 
 def get_all(user: str = None) -> dict:
     user = user or current_user_key()
-    with _LOCK:
-        _load()
-        return dict(_DATA.get(user, {}))
+    _ensure_migrated()
+    return dict(shared_store.get(_NS, user) or {})
 
 
 def set(key: str, value, user: str = None):
     user = user or current_user_key()
-    with _LOCK:
-        _load()
-        _DATA.setdefault(user, {})[key] = value
-        _save()
+    _ensure_migrated()
+
+    def _set(bucket):
+        bucket = bucket or {}
+        bucket[key] = value
+        return bucket
+    shared_store.update(_NS, user, _set)
 
 
 def set_many(mapping: dict, user: str = None):
     user = user or current_user_key()
-    with _LOCK:
-        _load()
-        bucket = _DATA.setdefault(user, {})
+    _ensure_migrated()
+
+    def _set(bucket):
+        bucket = bucket or {}
         for k, v in (mapping or {}).items():
             bucket[k] = v
-        _save()
+        return bucket
+    shared_store.update(_NS, user, _set)
 
 
 def delete(key: str, user: str = None) -> bool:
     user = user or current_user_key()
-    with _LOCK:
-        _load()
-        if key in _DATA.get(user, {}):
-            del _DATA[user][key]
-            _save()
-            return True
-    return False
+    _ensure_migrated()
+    outcome = {"ok": False}
+
+    def _del(bucket):
+        bucket = bucket or {}
+        if key in bucket:
+            del bucket[key]
+            outcome["ok"] = True
+        return bucket
+    shared_store.update(_NS, user, _del)
+    return outcome["ok"]
 
 
 def delete_user(user: str) -> bool:
     """Supprime entièrement la config d'un utilisateur (suppression de compte)."""
-    with _LOCK:
-        _load()
-        if user in _DATA:
-            del _DATA[user]
-            _save()
-            return True
-    return False
+    _ensure_migrated()
+    return shared_store.delete(_NS, user)

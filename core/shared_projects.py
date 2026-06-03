@@ -7,49 +7,23 @@ Les fichiers restent physiquement chez le propriétaire ; les membres y accèden
 chemin enregistré (validé), en lecture seule (viewer) ou en écriture (editor).
 Store JSON global (atomique + verrou).
 """
-import json
 import os
-import tempfile
-import threading
 
-_LOCK = threading.Lock()
-_DATA = {}
-_LOADED = False
+from core import shared_store
 
-
-def _path():
-    return os.getenv("SHARED_PROJECTS_PATH", "").strip() or os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "shared_projects.json")
+_NS = "shared_projects"
+_migrated = False
 
 
-def _load():
-    global _LOADED
-    if _LOADED:
+def _ensure_migrated():
+    """Importe une fois un éventuel shared_projects.json hérité dans le store SQLite."""
+    global _migrated
+    if _migrated:
         return
-    try:
-        with open(_path(), "r", encoding="utf-8") as f:
-            d = json.load(f)
-            if isinstance(d, dict):
-                _DATA.update(d)
-    except Exception:
-        pass
-    _LOADED = True
-
-
-def _save():
-    p = _path()
-    try:
-        fd, tmp = tempfile.mkstemp(prefix=".shproj-", suffix=".tmp", dir=os.path.dirname(os.path.abspath(p)) or ".")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(_DATA, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, p)
-    except Exception:
-        try:
-            os.remove(tmp)
-        except Exception:
-            pass
+    legacy = os.getenv("SHARED_PROJECTS_PATH", "").strip() or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "shared_projects.json")
+    shared_store.migrate_json_dict(legacy, _NS)
+    _migrated = True
 
 
 def share(pid: str, owner: str, name: str, path: str, member: str, role: str = "viewer") -> bool:
@@ -57,32 +31,37 @@ def share(pid: str, owner: str, name: str, path: str, member: str, role: str = "
     if not member or member == owner:
         return False
     role = role if role in ("viewer", "editor") else "viewer"
-    with _LOCK:
-        _load()
-        entry = _DATA.setdefault(pid, {"owner": owner, "name": name, "path": path, "members": {}})
-        entry.update({"owner": owner, "name": name, "path": path})
-        entry.setdefault("members", {})[member] = role
-        _save()
+    _ensure_migrated()
+
+    def _set(e):
+        e = e or {"owner": owner, "name": name, "path": path, "members": {}}
+        e.update({"owner": owner, "name": name, "path": path})
+        e.setdefault("members", {})[member] = role
+        return e
+    shared_store.update(_NS, pid, _set)
     return True
 
 
 def unshare(pid: str, member: str) -> bool:
-    with _LOCK:
-        _load()
-        e = _DATA.get(pid)
+    _ensure_migrated()
+    outcome = {"ok": False}
+
+    def _rm(e):
         if e and member in e.get("members", {}):
             del e["members"][member]
+            outcome["ok"] = True
             if not e["members"]:
-                del _DATA[pid]
-            _save()
-            return True
-    return False
+                return None  # plus aucun membre → suppression du partage
+        return e
+    if shared_store.get(_NS, pid) is None:
+        return False
+    shared_store.update(_NS, pid, _rm)
+    return outcome["ok"]
 
 
 def get(pid: str):
-    with _LOCK:
-        _load()
-        return _DATA.get(pid)
+    _ensure_migrated()
+    return shared_store.get(_NS, pid)
 
 
 def members(pid: str) -> dict:
@@ -102,21 +81,17 @@ def role_for(pid: str, user: str):
 
 def projects_for(user: str) -> list:
     """Projets PARTAGÉS avec `user` (membre), avec rôle et chemin."""
-    with _LOCK:
-        _load()
-        out = []
-        for pid, e in _DATA.items():
-            role = e.get("members", {}).get(user)
-            if role:
-                out.append({"id": pid, "name": e.get("name", pid), "path": e.get("path", ""),
-                            "shared": True, "owner": e.get("owner"), "role": role})
-        return out
+    _ensure_migrated()
+    out = []
+    for pid, e in shared_store.items(_NS).items():
+        role = e.get("members", {}).get(user)
+        if role:
+            out.append({"id": pid, "name": e.get("name", pid), "path": e.get("path", ""),
+                        "shared": True, "owner": e.get("owner"), "role": role})
+    return out
 
 
 def remove_project(pid: str):
     """Supprime tout partage d'un projet (à sa suppression par le propriétaire)."""
-    with _LOCK:
-        _load()
-        if pid in _DATA:
-            del _DATA[pid]
-            _save()
+    _ensure_migrated()
+    shared_store.delete(_NS, pid)

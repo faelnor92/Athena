@@ -9,27 +9,15 @@ import threading
 import time
 
 
+_NS = "invites"
+
+
 class InviteStore:
+    """Invitations adossées au store SQLite partagé (process-safe, multi-worker)."""
     def __init__(self, path: str = None):
-        self.path = path or os.getenv("INVITES_PATH", "invites.json")
-        self._lock = threading.Lock()
-        self._data = self._load()
-
-    def _load(self) -> dict:
-        if os.path.exists(self.path):
-            try:
-                with open(self.path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                return {}
-        return {}
-
-    def _save(self):
-        try:
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"[Invites] sauvegarde impossible : {e}")
+        from core import shared_store
+        self._s = shared_store
+        self._s.migrate_json_dict(path or os.getenv("INVITES_PATH", "invites.json"), _NS)
 
     def create(self, role: str = "user", expires_hours: int = 168, created_by: str = "") -> dict:
         code = secrets.token_urlsafe(16)
@@ -42,41 +30,37 @@ class InviteStore:
             "used_by": None,
             "used_at": None,
         }
-        with self._lock:
-            self._data[code] = inv
-            self._save()
+        self._s.set(_NS, code, inv)
         return inv
 
     def list(self) -> list:
-        with self._lock:
-            return list(self._data.values())
+        return self._s.values(_NS)
 
     def revoke(self, code: str) -> bool:
-        with self._lock:
-            if code in self._data:
-                del self._data[code]
-                self._save()
-                return True
-            return False
+        return self._s.delete(_NS, code)
 
     def check(self, code: str):
         """Renvoie l'invitation si VALIDE (existe, non utilisée, non expirée), sinon None."""
-        with self._lock:
-            inv = self._data.get(code)
+        inv = self._s.get(_NS, code)
         if not inv or inv.get("used_by") or inv.get("expires_at", 0) < time.time():
             return None
         return inv
 
     def consume(self, code: str, username: str) -> bool:
-        """Marque l'invitation comme utilisée (atomique). False si déjà prise/invalide."""
-        with self._lock:
-            inv = self._data.get(code)
+        """Marque l'invitation comme utilisée de façon ATOMIQUE. False si déjà prise/invalide."""
+        outcome = {"ok": False}
+
+        def _use(inv):
             if not inv or inv.get("used_by") or inv.get("expires_at", 0) < time.time():
-                return False
+                return inv  # inchangé (invalide / déjà prise)
             inv["used_by"] = username
             inv["used_at"] = time.time()
-            self._save()
-            return True
+            outcome["ok"] = True
+            return inv
+        if self._s.get(_NS, code) is None:
+            return False
+        self._s.update(_NS, code, _use)
+        return outcome["ok"]
 
 
 invite_store = InviteStore()

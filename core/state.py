@@ -120,8 +120,27 @@ def get_model_cost(model_name: str, prompt_tokens: int, completion_tokens: int) 
         print(f"[Pricing Error] {e}")
         return 0.0
 
-# Sessions d'authentification Web
-ACTIVE_SESSIONS = {}
+# Sessions d'authentification Web — adossées au store SQLite partagé pour rester
+# cohérentes entre workers (un login sur un worker est reconnu par les autres).
+# API dict-like minimale : ACTIVE_SESSIONS[token] = {...} / .get(token) / .pop(token, None).
+class _SessionStore:
+    _NS = "sessions"
+
+    def __setitem__(self, token, value):
+        from core import shared_store
+        shared_store.set(self._NS, token, value)
+
+    def get(self, token, default=None):
+        from core import shared_store
+        return shared_store.get(self._NS, token, default)
+
+    def pop(self, token, default=None):
+        from core import shared_store
+        v = shared_store.get(self._NS, token, default)
+        shared_store.delete(self._NS, token)
+        return v
+
+ACTIVE_SESSIONS = _SessionStore()
 _current_username = contextvars.ContextVar("current_username", default=None)
 
 def _scope_cid(client_id: str) -> str:

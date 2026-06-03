@@ -21,6 +21,7 @@ class CoreMemory:
         self._base = filepath or os.getenv("CORE_MEMORY_PATH", "core_memory.json")
         self._cache = {}      # user -> dict
         self._loaded = set()
+        self._mtimes = {}     # user -> mtime du fichier au dernier chargement
         self._lock = threading.Lock()
 
     def _key(self) -> str:
@@ -32,10 +33,18 @@ class CoreMemory:
         root, ext = os.path.splitext(self._base)
         return f"{root}_{user_slug()}{ext or '.json'}"
 
+    def _disk_mtime(self) -> float:
+        try:
+            return os.path.getmtime(self._path())
+        except OSError:
+            return 0.0
+
     @property
     def data(self) -> dict:
         u = self._key()
-        if u not in self._loaded:
+        # Multi-worker : si le fichier a été modifié par un autre process depuis notre
+        # dernier chargement (mtime plus récent), on recharge pour ne pas servir du périmé.
+        if u not in self._loaded or self._disk_mtime() > self._mtimes.get(u, 0):
             self.load()
         return self._cache.setdefault(u, {})
 
@@ -43,22 +52,31 @@ class CoreMemory:
         u = self._key()
         d = {}
         p = self._path()
+        mtime = 0.0
         if os.path.exists(p):
             try:
                 with open(p, "r", encoding="utf-8") as f:
                     d = json.load(f)
+                mtime = os.path.getmtime(p)
             except Exception as e:
                 print(f"[\033[91mErreur\033[0m] Chargement core memory: {e}")
                 d = {}
         with self._lock:
             self._cache[u] = d if isinstance(d, dict) else {}
             self._loaded.add(u)
+            self._mtimes[u] = mtime
 
     def save(self):
         u = self._key()
         try:
-            with open(self._path(), "w", encoding="utf-8") as f:
+            p = self._path()
+            with open(p, "w", encoding="utf-8") as f:
                 json.dump(self._cache.get(u, {}), f, indent=4, ensure_ascii=False)
+            # Mémorise le mtime de notre propre écriture (évite un rechargement inutile).
+            try:
+                self._mtimes[u] = os.path.getmtime(p)
+            except OSError:
+                pass
         except Exception as e:
             print(f"[\033[91mErreur\033[0m] Sauvegarde core memory: {e}")
 
