@@ -131,6 +131,41 @@ async def get_workspace_file_meta(path: str):
     return {"path": path, "exists": True, "mtime": os.path.getmtime(clean)}
 
 
+class FileWriteRequest(BaseModel):
+    path: str
+    content: str
+
+
+@router.post("/api/workspace/file")
+async def save_workspace_file(req: FileWriteRequest):
+    """Sauvegarde (édition humaine dans l'IDE). Garde de RÔLE : un viewer d'un projet
+    partagé ne peut PAS écrire (can_write, comme les outils de l'agent). Écriture atomique."""
+    from core import projects
+    if not projects.can_write():
+        raise HTTPException(status_code=403,
+                            detail="Lecture seule : vous n'avez pas le droit d'écriture sur ce projet.")
+    clean = _safe_workspace_path(req.path)
+    if os.path.isdir(clean):
+        raise HTTPException(status_code=400, detail="Chemin invalide (dossier).")
+    import tempfile
+    parent = os.path.dirname(clean) or "."
+    os.makedirs(parent, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".ide-", suffix=".tmp", dir=parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(req.content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, clean)
+    except Exception as e:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "success", "path": req.path, "mtime": os.path.getmtime(clean)}
+
+
 class PresenceRequest(BaseModel):
     path: str
 
