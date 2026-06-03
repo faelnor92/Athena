@@ -11,7 +11,7 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 
 ### 🔐 Multi-Tenant Pro & Collaboration
 * **Sécurité & SSO** : Support de l'authentification OIDC / OAuth2 pour l'entreprise. Système d'inscription par invitation géré par l'administrateur.
-* **Chiffrement E2E au Repos** : Les conversations en base de données (SQLite) sont chiffrées de bout en bout via AES-256 (Fernet) pour une confidentialité totale.
+* **Chiffrement au Repos** : Les conversations et les traces d'exécution stockées en base (SQLite) sont chiffrées au repos via Fernet (AES-128-CBC + HMAC-SHA256). La clé reste sous votre contrôle (`.env` ou secret-manager externe).
 * **Contrôle des Coûts (Quotas)** : Bridage automatique des dépenses API via un système de quotas de tokens journaliers configurable par utilisateur.
 * **Sécurité Avancée** : Protection intégrée anti-SSRF (DNS rebinding) pour la navigation web et masquage automatique des secrets (Redaction) dans les logs.
 * **Isolation Absolue** : Chaque utilisateur dispose de sa propre mémoire (RAG, Core Memory), de son propre agenda, de ses listes et de son budget API.
@@ -66,39 +66,50 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 
 **Linux / macOS** : Copiez et collez cette commande dans votre terminal :
 ```bash
-curl -sSL https://raw.githubusercontent.com/faelnor92/athena/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/faelnor92/Athena/main/install.sh | bash
 ```
 
 **Windows** : Exécutez cette commande dans PowerShell :
 ```powershell
-iwr -useb https://raw.githubusercontent.com/faelnor92/athena/main/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/faelnor92/Athena/main/install.ps1 | iex
 ```
 
 * **Alternative Docker Compose** : `docker compose up -d --build`
 
 **Démarrage** : `athena start` ou `python3 server.py`. Accessible sur 👉 **http://localhost:8000/**.
 
+### ⚙️ Déploiement multi-worker (montée en charge)
+L'état mutable partagé (comptes & quotas, sessions d'auth, routines, invitations, projets partagés, config par-utilisateur) est stocké dans une base SQLite commune en mode WAL (`athena_state.sqlite3`), avec des mises à jour atomiques — donc **cohérent entre plusieurs workers** :
+```bash
+uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
+```
+> [!NOTE]
+> **Caveat RAG.** La base vectorielle (ChromaDB `PersistentClient`) n'est pas conçue pour des écritures multi-process concurrentes. En multi-worker, faites tourner **ChromaDB en mode serveur** (client/serveur) ou réservez l'indexation RAG à un worker dédié. Tout le reste de l'état est multi-worker-safe.
+
 ---
 
 ## 🛡️ Tableau Comparatif : Athena vs Marché
 
+> [!NOTE]
+> **Méthodologie.** Comparer ce qui est comparable : **Athena**, **Hermes** et **OpenClaw** sont des *applications/assistants hébergés* ; **CrewAI** et **AutoGen** sont des *librairies d'orchestration* que l'on intègre dans son propre code (la sécurité, l'auth ou le multi-tenant y relèvent de l'application qu'on bâtit autour — d'où les « N/A »). Le différenciateur d'Athena n'est pas « avoir une UI » (OpenClaw a aussi des apps), mais le **multi-tenant + sécurité de niveau entreprise + coding agentique + observabilité** réunis dans un seul produit auto-hébergé.
+
 | Catégorie | Critère | 🦉 Athena | Hermes Agent | OpenClaw | CrewAI | AutoGen |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Interface & UX** | **Interface Graphique (UI)** | **Oui (Dashboard complet, 3D, Graphe Nodal)** | Non | Non | Non | Basique (AutoGen Studio) |
-| | **Interaction** | Web, Terminal UI, Telegram, Discord, Voix | CLI, Telegram, Slack, Discord | CLI | Scripts Python purs | CLI |
-| | **Intégration IDE** | Non (Bureau Virtuel unifié favorisé) | Non | **Oui (Native CLI/IDE)** | Non | Non |
-| **Orchestration** | **Modèle Multi-Agents** | **Essaim (Swarm) avec routage sémantique automatique** | Sous-agents isolés parallèles | Multi-agents basique | Séquentiel / Hiérarchique strict | Débats / Chat de groupe |
-| | **Topologies de Chat Groupé** | **Oui (Débats et transferts organiques)** | Handoffs isolés | Modèle standard | Pipelines stricts définis à l'avance | **Débats de groupe complexes, algorithmes (Round Robin, etc.)** |
-| | **Exécution de scripts rigides** | **Oui (Outil optionnel de chaîne de montage)** | Organique | Linéaire basique | **Très robuste (Assembly line stricte native)** | Linéaire ou organique |
-| | **Persistance (Mémoire)** | **Oui (Vector DB, historique, conservation inter-sessions)** | **Oui (SQLite + FTS5)** | Non (Fichiers locaux) | Non (Épisodique) | Non (Sauf implémentation manuelle) |
-| | **Apprentissage (Closed-Loop)**| **Oui (Création de "Skills" à la volée + RAG Experience)** | **Oui (Génération de "Skills")** | Non | Non | Non |
-| | **Support Outils & MCP** | **Oui (Outils natifs, MCP, intégration Home Assistant)** | Oui (MCP) | Oui | Partiel (Custom tools) | Partiel |
-| **Sécurité Globale** | **Authentification** | **Mot de passe, Tokens Sécurisés, SSO (OIDC)** | Non (Exécution locale isolée) | Non | Non | Non |
-| | **Contrôle d'Accès (RBAC)** | **Oui (Rôles Lecteur vs Éditeur, permissions par utilisateur)** | Non | Non | Non | Non |
-| | **Limitation de Quotas / Coûts** | **Oui (Quota LLM strict par utilisateur, compaction mémoire)** | Non | Non | Non | Non |
-| **Exécution & Réseau**| **Isolation du Code (Sandbox)**| **Oui (Conteneur Docker éphémère, ressources limitées)** | Varie selon déploiement | Non (Tourne sur la machine hôte) | Non | **Oui (Docker supporté)** |
-| | **Bouclier Anti-SSRF (Réseau)**| **Oui (Protection contre DNS Rebinding et scans locaux)** | Non | Non | Non | Non |
-| **Protection Données** | **Censure des Secrets (Logs)** | **Oui (Masque automatiquement les clés API et mots de passe)** | Non | Non | Non | Non |
-| | **Chiffrement de bout en bout**| **Oui (AES-256 Fernet sur les bases de données)** | Non | N/A | N/A | N/A |
-| | **Isolation Multi-Locataires** | **Oui (Conversations et mémoires isolées par utilisateur)** | Non | N/A | N/A | N/A |
-| | **Approbation Humaine (HITL)** | **Oui (Interception des actions sensibles via l'UI web)** | Oui (Via terminaux de chat) | Non / Basique | Requiert du code spécifique | Requiert du code spécifique |
+| **Interface & UX** | **Interface Graphique (UI)** | **Dashboard web complet (3D isométrique, graphe nodal, terminal intégré)** | Non | Apps companion (macOS/iOS/Android) + Live Canvas | Non (CrewAI Studio séparé) | Basique (AutoGen Studio) |
+| | **Canaux d'interaction** | Web, Terminal UI, Telegram, Discord, Slack, Voix | CLI, Telegram, Slack, Discord | **15+ canaux (WhatsApp, Telegram, Signal, iMessage, Slack, Discord…)** | Code Python | CLI / code |
+| | **Intégration IDE / dev local** | Console de code web + Sandbox | Non | Oui (assistant local) | S'intègre dans votre code | S'intègre dans votre code |
+| **Orchestration** | **Modèle Multi-Agents** | **Essaim (Swarm) à routage sémantique automatique** | Sous-agents isolés parallèles | Routage multi-agents (isolation par workspace) | Séquentiel / Hiérarchique | Débats / Chat de groupe |
+| | **Topologies de groupe** | Débats et transferts organiques | Handoffs isolés | Routage par canal/agent | Process séquentiel/hiérarchique | **Group chat avancé (Round Robin, etc.)** |
+| | **Pipelines rigides** | Oui (chaîne de montage optionnelle) | Organique | — | **Natif (assembly line stricte)** | Linéaire ou organique |
+| | **Persistance (Mémoire)** | **Vector DB + historique chiffré inter-sessions** | Oui (SQLite + FTS5) | Oui (sessions persistantes) | Oui (court/long terme + entités) | Limité (extensions/teachability) |
+| | **Apprentissage (closed-loop)**| **Skills auto-générés + RAG d'expérience** | Oui (génération de skills) | Outils extensibles | Non | Non (hors teachability) |
+| | **Outils & MCP** | **Outils natifs + MCP + Home Assistant** | Oui (MCP) | Oui (browser, canvas, cron, MCP) | Oui (crewai-tools + MCP) | Oui (function calling, extensions) |
+| **Sécurité Globale** | **Authentification** | **Mot de passe, tokens, SSO (OIDC)** | Non (local) | Basique (local) | N/A (librairie) | N/A (librairie) |
+| | **Contrôle d'accès (RBAC)** | **Oui (rôles Lecteur/Éditeur, permissions par user)** | Non | Non | N/A | N/A |
+| | **Quotas / coûts par user** | **Oui (quota tokens/jour par compte + alertes budget)** | Non | Non | N/A | N/A |
+| **Exécution & Réseau**| **Sandbox d'exécution** | **Conteneur Docker éphémère (ressources limitées)** | Varie | Hôte | Via code interpreter | **Oui (Docker supporté)** |
+| | **Bouclier anti-SSRF** | **Oui (DNS rebinding, blocage réseau interne/métadonnées)** | Non | Non | N/A | N/A |
+| **Protection Données** | **Masquage des secrets (logs)** | **Oui (clés API / mots de passe redacted)** | Non | Partiel | N/A | N/A |
+| | **Chiffrement au repos** | **Oui (Fernet/AES-128 sur conversations + traces)** | Non | Dépend du stockage | N/A | N/A |
+| | **Isolation multi-locataires** | **Oui (mémoire/agenda/budget isolés par user)** | Non | Par workspace | N/A | N/A |
+| | **Approbation humaine (HITL)** | **Oui (interception des actions sensibles dans l'UI)** | Oui (via chat) | Basique | À coder soi-même | À coder soi-même |
