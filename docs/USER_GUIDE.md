@@ -72,26 +72,50 @@ En cliquant sur l'icône d'engrenage (⚙️) dans la barre latérale, vous acc�
 - **Agenda Principal (URL)** : Collez l'adresse d'un flux iCal (Google Calendar). L'IA pourra alors lire votre planning.
 - **Serveur CalDAV (URL, Utilisateur, Mot de passe)** : Si vous utilisez un agenda avancé (Nextcloud, Synology), l'IA pourra *créer* et *modifier* des événements directement.
 
-### Onglet "Comportement" (Le Cerveau d'Athena)
-C'est la section la plus importante pour ajuster les "bras" (outils) de la machine.
+### Onglet "Comportement & Sécurité" (Le Cerveau d'Athena)
+C'est la section la plus importante pour ajuster le comportement global et les sécurités de la machine. Elle est divisée en plusieurs sous-sections :
 
-* **Mémoire Sémantique**
-  - `Base de faits (Core Memory)` : Liste tout ce qu'Athena a appris sur vous de façon permanente (vos goûts, votre métier). Vous pouvez y supprimer des éléments.
-  - `Rafraîchir les documents RAG` : Force l'IA à relire et indexer mathématiquement tous les documents de l'explorateur de fichiers.
+#### 1. Exécution & garde-fous
+- `Sandbox d'exécution de code/commandes` : Choisissez **Docker** (recommandé) pour que l'IA exécute ses scripts dans un bac à sable sécurisé, ou **Local** si vous voulez qu'elle agisse directement sur votre système d'exploitation.
+- `Auto-amélioration` : Autorise l'IA à tirer des leçons de ses échecs pour créer des règles de comportement futures.
+- `Budgets (Temps et Tokens)` : Sécurités financières. Permet de brider le nombre de secondes maximum (0 = infini) ou le nombre de jetons maximum que l'IA a le droit de consommer par tâche.
+- `Alerte coût du jour` : Si la dépense journalière dépasse ce seuil en euros, vous recevrez une notification.
 
-* **Routines & Automatisations**
-  - `Liste des Routines` : Affiche les tâches programmées. Vous pouvez en désactiver une ou récupérer son adresse "Webhook" (pour la déclencher depuis un logiciel comme n8n).
+#### 2. Sécurité
+- `Auto-approuver les outils sensibles` : Par défaut (décoché), l'IA vous demandera toujours une confirmation avant d'utiliser un outil marqué comme "sensible" (ex: écrire dans un fichier système). Si vous le cochez, l'IA devient totalement autonome (à vos risques et périls).
+- `Mot de passe admin / Origines CORS` : Sécurisation du serveur web pour empêcher les connexions extérieures non désirées.
+- `Durée de validité d'une session` : Temps (en heures) avant d'être déconnecté de l'interface (défaut: 168h, soit une semaine).
 
-* **Gestion des Outils (Sécurité & Capacités)**
-  - `Exécution de Code Sandbox` : **Essentiel pour le Code Agentique**. Autorise l'IA à exécuter le code qu'elle écrit dans un conteneur sécurisé.
-  - `Computer Use (Navigateur)` : Autorise l'IA à utiliser le navigateur web caché.
+#### 3. Orchestration & agents (avancé)
+- `Aiguillage LLM (Delegation Router)` : L'Orchestrateur lit votre message et choisit le bon agent. 
+- `Modèle rapide` : Vous pouvez forcer un modèle très rapide (ex: `gpt-4o-mini` ou `haiku`) juste pour les prises de décision de routage, ce qui rend l'IA plus nerveuse.
+- `Modèles de repli (Fallback)` : Si l'API de votre IA principale plante, Athena tentera d'utiliser ces modèles de secours.
+- `Cache de prompt` : Technologie permettant d'économiser de l'argent et du temps sur les longues conversations.
+- `Auto-critique` : Si activé, l'IA relit et vérifie sa propre réponse avant de vous l'envoyer.
 
-* **Connecteurs externes (MCP)**
-  - `Serveurs MCP Connectés` : Affiche si des plugins standards (ex: connecteur GitHub, Home Assistant) sont bien branchés à l'IA.
+#### 4. Mémoire
+- `Compaction au-delà de N messages` : Pour éviter de faire exploser la facture, Athena résume automatiquement les vieilles parties de la conversation au bout de N messages (40 par défaut).
+- `Messages récents gardés mot pour mot` : Athena garde toujours les N derniers échanges stricts en mémoire à court terme (12 par défaut).
 
-* **Observabilité & Logs (Pour les curieux)**
-  - `Niveau de bavardage (Log Level)` : Réglez sur `DEBUG` si vous voulez voir dans les moindres détails techniques comment l'IA réfléchit et appelle ses outils.
-  - `Redémarrer le moteur Vocal` : Bouton de secours pour relancer le serveur de génération de voix Kokoro en cas de bug.
+#### 5. Voix expressive
+- `Émotions vocales` : Le LLM insère des balises `[laugh]`, `[sad]` dans ses textes, et le moteur vocal adapte son ton !
+- `Serveur TTS expressif & Voix` : Si vous utilisez un moteur vocal tiers (comme XTTS), renseignez son adresse IP ici.
+
+#### 6. Conscience Spatiale (Présence / follow-me)
+- `Entité HA de pièce courante` : Si vous avez des détecteurs de présence sur Home Assistant, indiquez ici l'entité (ex: `sensor.piece_actuelle`). L'IA saura alors dans quelle pièce vous êtes pour y allumer la bonne lumière ou adapter son comportement.
+
+#### 7. Automatisation (n8n)
+- `Workflows autorisés` : Vous pouvez connecter Athena à des automatisations n8n complexes en lui donnant accès à des adresses web (Webhooks).
+
+### Les autres Onglets du Panneau de Réglages
+En plus de "Comportement", la barre latérale des réglages vous donne accès à d'autres menus spécialisés :
+
+* **Onglet "Connaissances (RAG)"** : C'est ici que vous pouvez demander à l'IA d'analyser (ou de purger) les documents que vous avez placés dans l'Explorateur de fichiers.
+* **Onglet "Routines"** : Permet de programmer des tâches automatiques (ex: "Fais le résumé de la maison tous les jours à 7h00"). Vous pouvez aussi y récupérer les adresses "Webhooks" de ces routines.
+* **Onglet "Satellites Vocaux"** : Permet de configurer les enceintes ESP32 connectées à Athena.
+* **Onglet "Extensions MCP"** : Permet de brancher des plugins externes standards (ex: connecteur GitHub, connecteur Home Assistant) à l'IA.
+* **Onglet "Diagnostics & Système"** : Vérifie la santé de l'installation (base de données, STT, TTS). C'est ici que se trouve le bouton d'urgence **Redémarrer le moteur Vocal (Kokoro)** en cas de bug sonore.
+* **Onglet "Utilisateurs" (Admin)** : Si vous êtes administrateur, vous pouvez ici inviter de nouvelles personnes sur votre serveur et gérer leurs droits.
 
 ---
 
