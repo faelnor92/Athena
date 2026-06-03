@@ -1,5 +1,34 @@
 # Historique des Versions (Changelog)
 
+## v0.9.38 (Sécurité durcie)
+Durcissement de sécurité « béton » : surface d'authentification, en-têtes HTTP, audit,
+limitation de débit, RBAC par outil, 2FA, et corrections.
+
+### 🔑 Authentification & sessions
+- **Throttle anti-brute-force partagé** entre workers (store SQLite) au lieu d'un compteur par-process.
+- **Révocation de sessions** : un changement/reset de mot de passe (et la suppression d'un compte) invalide les sessions concernées ; un token volé ne survit plus. Endpoint **`POST /api/logout`** + purge des sessions expirées.
+- **Politique de mot de passe** : `MIN_PASSWORD_LENGTH` (défaut **8**, au lieu de 4).
+- **2FA / TOTP optionnelle** (RFC 6238, Python pur, compatible Google Authenticator/Authy/FreeOTP) : secret stocké chiffré, enrôlement self-service + champ code à la connexion, réinitialisation par un admin. Aucun impact pour les comptes sans 2FA.
+
+### 🛡️ Surface HTTP & abus
+- **En-têtes de sécurité** : CSP, X-Frame-Options=DENY (anti-clickjacking), X-Content-Type-Options, Referrer-Policy, Permissions-Policy, HSTS (en HTTPS). Configurables (`SECURITY_HEADERS`, `CONTENT_SECURITY_POLICY`).
+- **Rate-limiting** général par IP (`RATE_LIMIT_PER_MIN`, défaut 300/min, 429 au dépassement).
+
+### 🔒 Autorisation & traçabilité
+- **Validation admin des automatisations** : pipelines/routines créés par un compte « user » restent en attente jusqu'à validation par un admin (UI + API). Auto-validé en mode local/foyer.
+- **RBAC par outil** : `ADMIN_ONLY_TOOLS` réserve certains outils (bash/python/SSH…) aux admins.
+- **Journal d'audit** : trace append-only des événements sensibles (connexions, mots de passe, comptes, invitations, validations, 2FA), masquage des secrets, `GET /api/audit` (admin).
+
+### 🚀 Déploiement & outillage
+- **Image Docker** non-root + `HEALTHCHECK`.
+- **`scripts/security_scan.sh`** : pip-audit + bandit (si installés) + détection de secrets versionnés.
+- **README** : section « Sécurité en production » (TLS/HSTS, clé hors `.env`, garde-fous).
+
+### 🐛 Correctifs
+- **Sauvegarde** : la base d'état partagé `athena_state.sqlite3` (comptes/quotas/routines/projets/config) et les données par-utilisateur sont désormais incluses dans le backup (régression de la migration multi-worker corrigée).
+
+---
+
 ## v0.9.37 (Multi-Worker & Workflows)
 Montée en charge (déploiement multi-worker), nouveau mode d'orchestration déterministe, fiabilisation de la voix et **rectifications d'exactitude** dans la documentation.
 

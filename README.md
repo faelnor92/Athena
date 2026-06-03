@@ -1,6 +1,6 @@
 # 🎛️ Athena — Framework Multi-Agent Auto-Hébergé
 
-![Version](https://img.shields.io/badge/version-0.9.37-blue.svg)
+![Version](https://img.shields.io/badge/version-0.9.38-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 
 Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des serveurs légers ou avec des GPU modestes. Accessible via **Interface Web**, **CLI**, **Telegram** et **Vocal Local**.
