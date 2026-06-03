@@ -1,0 +1,208 @@
+# Beta Features
+
+Some ha-mcp tools are gated behind feature flags and disabled by default. They can be enabled via the web Settings UI or via environment variables (non-add-on installs). Beta tools are still being evaluated and may change, be promoted to stable, or be removed based on field experience.
+
+## Current beta tools
+
+| Tool | Toggle / env var | Description |
+|---|---|---|
+| `ha_config_set_yaml` | `enable_yaml_config_editing` (dev add-on Configuration tab); or web Settings UI master + sub-toggle; or `ENABLE_BETA_FEATURES=true` + `ENABLE_YAML_CONFIG_EDITING=true` env vars | Raw YAML editing of `configuration.yaml` and packages/*.yaml for YAML-only integrations. |
+| `ha_list_files` | `enable_filesystem_tools` (dev add-on); or web Settings UI master + sub-toggle; or `ENABLE_BETA_FEATURES=true` + `HAMCP_ENABLE_FILESYSTEM_TOOLS=true` env vars | List files in allowed directories (www/, themes/, custom_templates/). Requires `ha_mcp_tools` custom component. |
+| `ha_read_file` | `enable_filesystem_tools` (dev add-on); or web Settings UI master + sub-toggle; or `ENABLE_BETA_FEATURES=true` + `HAMCP_ENABLE_FILESYSTEM_TOOLS=true` env vars | Read files from allowed paths. Requires `ha_mcp_tools` custom component. |
+| `ha_write_file` | `enable_filesystem_tools` (dev add-on); or web Settings UI master + sub-toggle; or `ENABLE_BETA_FEATURES=true` + `HAMCP_ENABLE_FILESYSTEM_TOOLS=true` env vars | Write files to allowed directories. Requires `ha_mcp_tools` custom component. |
+| `ha_delete_file` | `enable_filesystem_tools` (dev add-on); or web Settings UI master + sub-toggle; or `ENABLE_BETA_FEATURES=true` + `HAMCP_ENABLE_FILESYSTEM_TOOLS=true` env vars | Delete files from allowed directories. Requires `ha_mcp_tools` custom component. |
+| `ha_install_mcp_tools` | `enable_custom_component_integration` (dev add-on); or web Settings UI master + sub-toggle; or `ENABLE_BETA_FEATURES=true` + `HAMCP_ENABLE_CUSTOM_COMPONENT_INTEGRATION=true` env vars | Installs the `ha_mcp_tools` custom component via HACS. |
+| `ha_manage_custom_tool` | `enable_code_mode` (dev add-on); or web Settings UI master + sub-toggle; or `ENABLE_BETA_FEATURES=true` + `ENABLE_CODE_MODE=true` env vars | Sandboxed Python "escape hatch" that lets AI assistants write, run, save, and delete custom tools when no built-in tool covers the request. Code runs in pydantic-monty (no filesystem, no network); sandbox can call the HA REST API (`api_get`/`api_post`), send WebSocket commands (`ws_send`), call registered MCP tools (`call_tool`), or delete a saved tool (`delete_saved_tool`). Saved tools persist to disk via `CODE_MODE_SAVED_TOOLS_PATH` (defaults to `/data/saved_tools.json` in the dev add-on). |
+| _(behaviour flag, no new tool)_ | `enable_lite_docstrings` (dev add-on); or web Settings UI master + sub-toggle; or `ENABLE_BETA_FEATURES=true` + `ENABLE_LITE_DOCSTRINGS=true` env vars | Replaces the docstrings on a handful of heavy ha-mcp tools (automations, scripts, scenes, helpers, dashboards, `ha_call_service`, `ha_config_set_yaml`) with shorter variants that defer schema and example detail to `ha_get_skill_guide` (or its `skill://` resource). Reduces idle catalog token usage; relies on the LLM actually calling the skill tool/resource when it needs detail. See "Known limitations" below. |
+| `ha_get_dashboard_screenshot` (+ `include_screenshot` on `ha_config_get_dashboard`, `return_screenshot` on `ha_config_set_dashboard`) | `enable_dashboard_screenshot` (dev add-on); or web Settings UI master + sub-toggle; or `ENABLE_BETA_FEATURES=true` + `HAMCP_ENABLE_DASHBOARD_SCREENSHOT=true` env vars | Render a Lovelace dashboard to a PNG so the AI can see what it reads or creates. Rendering runs in a separate, opt-in engine — balloob's **Puppet** add-on (headless Chromium, Apache-2.0), which you install yourself — nothing heavy is installed unless you enable this AND install the engine. |
+
+## How to enable
+
+There are three paths depending on how you run ha-mcp:
+
+### Dev channel add-on (Home Assistant users)
+
+The dev channel add-on continues to expose its beta sub-flags on its
+Configuration page. Toggle them there, restart the add-on, done — the
+master beta toggle is auto-enabled for dev add-on users at start-up.
+No web-UI step is needed.
+
+### Stable channel add-on (Home Assistant users)
+
+The stable add-on does NOT expose individual beta toggles. Use the web
+Settings UI instead:
+
+1. Open the add-on's web UI tab.
+2. Open the **Server Settings** tab.
+3. Flip **Enable beta features** on.
+4. Enable the desired beta toggle below it (e.g. **Enable YAML config
+   editing (beta)**).
+5. Restart the add-on.
+
+### Non-add-on installs (Docker, uvx, pip)
+
+Either flip the master + sub-toggles in the web Settings UI as above, or
+set both env vars: `ENABLE_BETA_FEATURES=true` AND the specific sub-flag
+env var (e.g. `ENABLE_YAML_CONFIG_EDITING=true`). Sub-flag env vars are
+ignored unless the master is also true.
+
+## Known limitations
+
+### `ha_config_set_yaml`
+
+This tool edits `configuration.yaml` and package files directly, bypassing Home Assistant's config-entry flow. It includes safeguards (backup before every edit, YAML validation, key allowlist, path traversal blocking, post-edit config check), but operators should be aware of the following:
+
+**Config check has blind spots.** HA's config check — run automatically post-edit, and available manually via `ha_get_system_health(include="config_check")` — validates YAML syntax but does not catch all integration-level schema errors. An edit can pass validation, HA boots cleanly, but the target entity silently does not exist. Common LLM mistakes include mixing legacy and modern template sensor syntax, wrong field names (`value_template:` vs `state:`), and bad Jinja expressions.
+
+**`action: remove` removes the entire top-level key.** Asking an LLM to remove a single sensor can result in the entire `template:` key being deleted, not just the intended entry.
+
+**Most keys require a full HA restart.** Only `template`, `mqtt`, and `group` support reload. All other keys require restarting Home Assistant for changes to take effect. The tool response includes `post_action` indicating which is needed.
+
+**`command_line:` entries execute shell commands.** The allowlist includes `command_line:` for legitimate use cases, but an LLM could inadvertently create a sensor with a command that reads sensitive files or modifies the system.
+
+**Recovery requires filesystem access.** If an edit causes HA to enter recovery mode (e.g., a bad `!include` reference), `ha_config_set_yaml` cannot fix its own damage since the custom component doesn't load in recovery mode. Recovery requires SSH, the File Editor add-on, or `docker exec`.
+
+**Backups are filesystem-only.** Per-edit backups are written to `.ha_mcp_tools_backups/` (at the Home Assistant config root) but no ha-mcp tool can restore them. They are a safety net for manual recovery.
+
+**Recommended prerequisites:**
+- Comfort with editing `configuration.yaml` via SSH or File Editor when things go wrong
+- Understanding that dedicated tools (`ha_config_set_helper`, `ha_config_set_automation`, `ha_config_set_script`, etc.) should be preferred for anything they support
+
+### `ha_list_files`, `ha_read_file`, `ha_write_file`, `ha_delete_file`
+
+These tools provide direct file access to your Home Assistant filesystem and require `HAMCP_ENABLE_FILESYSTEM_TOOLS=true` and the `ha_mcp_tools` custom component installed and active.
+
+`HAMCP_ENABLE_CUSTOM_COMPONENT_INTEGRATION=true` is only needed if you want to allow the `ha_install_mcp_tools` installer tool; it is not required for the filesystem tools themselves.
+
+**Access is restricted but sensitive.** Only `www/`, `themes/`, and `custom_templates/` are writable. `ha_read_file` additionally allows reading config YAML files, logs, and `custom_components/`. An AI assistant with these tools enabled has meaningful read access to your HA configuration.
+
+**No undo.** `ha_delete_file` and `ha_write_file` (with `overwrite=True`) are irreversible. There is no recycle bin or automatic backup for file operations.
+
+**Requires the custom component.** If `ha_mcp_tools` is not installed and active, all file tools will return an error with installation instructions.
+
+### `ha_manage_custom_tool`
+
+This tool exposes a sandboxed Python interpreter (`pydantic-monty`) to the AI as an escape hatch for operations no built-in tool covers. It also lets the AI save tools for reuse via `save_as` / `run_saved` / `list_saved`, and delete them from inside the sandbox via `delete_saved_tool(name)`. Sandbox code can hit the HA REST API directly (`api_get`/`api_post`), send HA WebSocket commands (`ws_send`), or call other registered MCP tools (`call_tool`). The sandbox blocks filesystem and arbitrary network I/O, but operators should still be aware of the following:
+
+**The AI gets to write and run code on your HA instance.** Even though the sandbox prevents it from touching the filesystem or the public network, code can still call any tool the MCP server has registered, including write/destructive tools, and can hit any endpoint reachable via the HA REST or WebSocket API. The WebSocket surface in particular covers most registry CRUD (areas, devices, entities, automations) and template rendering — so this is effectively "do whatever HA's own UI can do, in any combination." Treat this like giving the AI a generic "do whatever existing tools allow you to do, in any combination" capability — not a tightly scoped per-feature tool.
+
+**Saved tools persist by default in the dev add-on.** Tools the AI saves via `save_as` are written to `CODE_MODE_SAVED_TOOLS_PATH` (defaults to `/data/saved_tools.json` in the add-on) and re-loaded on the next start. The cap is 256 saved tools per instance. Operators who want a clean slate can stop the add-on and delete the file. Operators migrating between environments can copy that JSON file to the new instance — it survives add-on updates, but **not** add-on uninstall/reinstall (the `/data` volume is recreated). Outside the add-on (pip / uvx / Docker direct), persistence is opt-in: set `CODE_MODE_SAVED_TOOLS_PATH=/path/to/tools.json` to enable.
+
+**Recursive self-call is blocked, but composition is not.** The sandbox refuses to invoke `ha_manage_custom_tool` from inside itself, so it can't directly recurse, but it can chain together every other tool the server registers. A buggy or adversarial prompt can still cause unexpected fan-out across destructive tools.
+
+**Resource limits are best-effort.** 30s wall-clock, 10 MB memory, recursion depth 100, and 100 API/tool calls per execution are enforced by the sandbox runtime; the per-execution call cap is enforced by ha-mcp itself. All four are configurable via the `CODE_MODE_MAX_*` env vars within the bounds defined in `src/ha_mcp/config.py`. They protect against runaway loops, not against intentionally crafted abuse — keep `ENABLE_CODE_MODE=false` in any environment where untrusted prompts can reach the server.
+
+**Outbound HTTP is restricted to your HA instance.** `api_get` / `api_post` reject absolute URLs (`http://...`, `https://...`), protocol-relative URLs (`//host/...`), and userinfo (`user@host/...`). This stops a prompt-injected LLM from redirecting the request elsewhere and exfiltrating the HA bearer token via the still-attached `Authorization` header. Only HA-relative paths reach the underlying httpx client.
+
+**Safer-path enforcement on REST and WebSocket.** Several endpoints have wrapping MCP tools that perform validation, lint, hash-locking, or invariant checks; raw `api_post` / `ws_send` would skip those. The sandbox blocks a small denylist on each surface:
+
+- `api_post`: writes to `/api/states/<entity_id>` (which can conjure ghost entities), `/api/events/<HA-internal-event-name>` (Core internal events that can fan out into user automations), and `/api/config/{automation,script}/config/*` (forced through `ha_config_set_automation` / `ha_config_set_script`). `config/scene/config/*` is intentionally not blocked because no `ha_config_set_scene` wrapping tool exists yet — the block would just remove capability with no validated alternative path.
+- `ws_send`: `config/core/update` (rewrites HA's location/timezone/currency in `.storage/core.config`), `lovelace/config/save` and `lovelace/dashboards/{create,delete,update}` (forced through `ha_config_set_dashboard`), and `config/{area,device,entity}_registry/{delete,disable,update}` (forced through `ha_set_area_or_floor` / `ha_set_device` / `ha_set_entity` etc.).
+- Service calls (`POST /api/services/<domain>/<service>`), webhook firing (`POST /api/webhook/<id>`), custom event types (`POST /api/events/my_event_name`), and registry **read** queries (e.g. `config/area_registry/list`) all stay allowed.
+
+**Sandbox failures are classified.** When sandboxed code raises, the error response now uses one of three codes — `SANDBOX_LIMIT_EXCEEDED` (memory / time / recursion / invocation cap), `SANDBOX_SYNTAX_UNSUPPORTED` (imports, classes, `with`, `match`, hard syntax errors) or `SANDBOX_RUNTIME_ERROR` (everything else) — with suggestions tailored to the category. Previously every Monty failure surfaced as `INTERNAL_ERROR` with "check the Python code for syntax errors" advice, which actively misled callers when the real cause was a memory cap or a missing module import.
+
+**Sandbox actions are auditable.** Every state-changing sandbox call (`POST /api/...`, every `ws_send`) logs a structured `sandbox.api_post` / `sandbox.ws_send` line at DEBUG level. Blocked attempts (e.g. a refused `POST /api/states/...` or a refused `config/core/update`) log a `sandbox.api_post.blocked` / `sandbox.ws_send.blocked` line at INFO level so they're visible in default operator logs.
+
+To get a full forensic trail of allowed calls, escalate the `ha_mcp.tools.tools_code` logger to DEBUG. This is HA's [`logger:` integration](https://www.home-assistant.io/integrations/logger/) and goes in **`configuration.yaml`** (not the add-on options):
+
+```yaml
+# configuration.yaml
+logger:
+  default: warning
+  logs:
+    ha_mcp.tools.tools_code: debug
+```
+
+Reload the `Logger` integration (or restart HA) to apply.
+
+**ARM platforms require the async sandbox path.** On systems where `Monty.run_async` is unavailable, the tool fails fast with a clear error rather than falling back silently.
+
+**Recommended prerequisites:**
+- You're comfortable with the AI authoring small Python snippets that wrap existing tools or HA REST endpoints
+- You have `destructiveHint=True` confirmation enabled on the MCP client and you actually read the prompts
+
+### `enable_lite_docstrings`
+
+Replaces the docstrings on a handful of heavy ha-mcp tools (automations, scripts, scenes, helpers, dashboards, `ha_call_service`, `ha_config_set_yaml`) with shorter variants that defer schema and example detail to `ha_get_skill_guide` (or its `skill://` resource). This is a behaviour flag, not a new tool.
+
+**The trade-off.** This reduces idle tool-catalog token usage but relies on the LLM actually calling the skill tool (or reading the skill resource) when it needs detail. Some models will skip the extra tool call and produce worse output than they would have with the full docstrings in front of them.
+
+**Search discoverability shrinks too.** Clients that BM25-search the tool catalog (claude.ai's native deferred-tool search, ha-mcp's own `enable_tool_search` index) see fewer tokens per lite-mapped tool, so natural-language queries that previously matched on words in the full docstring may rank lower or miss. ha-mcp's explicit `_SEARCH_KEYWORDS` boosts still apply on top of the lite text, but coverage outside those boosts will be thinner.
+
+Pair this toggle with one of the following to mitigate:
+
+- A client that supports MCP resources (the model can read `skill://` directly without an extra tool round-trip).
+- `enable_tool_search` — the search transform's description already nudges the LLM toward the skill resources.
+- A clear system prompt that instructs the LLM to consult `ha_get_skill_guide` before creating/editing automations, scripts, or helpers.
+
+**Startup warning.** When this flag is enabled via environment variable, a single WARNING line is emitted at startup so non-add-on users see the trade-off in their logs. The add-on UI surfaces the same warning in the toggle's description.
+
+**What is replaced.** Only the descriptions exposed via the MCP `list_tools` reply are swapped. The Python docstrings in `src/ha_mcp/tools/` are unchanged — the substitution happens via a FastMCP transform installed during server initialisation. Tools not in the lite mapping pass through with their original descriptions.
+
+**Recommended prerequisites:**
+- A client that lets you watch tool-call traces, so you can see whether the LLM is actually fetching the skill content before acting
+- Willingness to disable the flag if the model regresses on your prompts
+
+### Dashboard screenshot (`ha_get_dashboard_screenshot` / `include_screenshot` / `return_screenshot`)
+
+Rendering does not run inside ha-mcp; it runs in a separate engine — balloob's
+**Puppet** add-on (headless Chromium, https://github.com/balloob/home-assistant-addons).
+ha-mcp does not vendor it; you install it yourself. Operators should know:
+
+**Setup by deployment.**
+- *HA OS / Supervised:* add balloob's add-on repository
+  (`https://github.com/balloob/home-assistant-addons`) under Settings >
+  Add-ons > Add-on Store > Repositories, install the **Puppet** add-on, set its
+  `access_token` option to a Home Assistant long-lived access token, and start
+  it. ha-mcp discovers the running add-on through the Supervisor (it matches
+  the `*_puppet` slug). (The assistant can do this for you end-to-end via
+  `ha_manage_addon(action="add_repository", repository=...)` then
+  `action="install"` / `action="start"`, but you must supply the token.)
+- *Docker / Container:* run Puppet's image as a sidecar (build it from
+  balloob's `puppet/` directory, with `access_token` set) and point ha-mcp at
+  it with `HAMCP_DASHBOARD_SCREENSHOT_ENGINE_URL=http://<engine-host>:10000`.
+- *stdio / standalone:* not supported (no place to host the engine); the tool
+  returns a clear error.
+
+**A long-lived access token is required.** Puppet authenticates by injecting a
+Home Assistant long-lived access token (the `access_token` option) into the
+browser. There is no token-less mode: the add-on's Supervisor token is not a
+valid HA frontend credential (HA Core rejects it), and a token cannot be minted
+programmatically. Create the token under Profile > Security — ideally for a
+dedicated, low-privilege user, since the engine holds whatever access that
+token grants. If the token is missing or invalid, Puppet lands on the login
+page and (by its design) restarts; ha-mcp surfaces this as a clear "set the
+engine's access token" error rather than a silent failure.
+
+**Puppet's HTTP listener has no inbound auth, and it publishes host port
+10000.** Anyone who can reach `http://<ha-host>:10000` can pull
+fully-authenticated dashboard renders. Keep it on a trusted network only — do
+NOT expose port 10000 to an untrusted LAN or the internet. (This is balloob's
+upstream packaging; the add-on's own info page calls it a prototype with "no
+security.")
+
+**Charts are best-effort.** Canvas cards (ApexCharts, mini-graph-card,
+history-graph) paint after the dashboard reports "loaded". The default
+render-settle is generous, but a heavy chart card may still come back blank;
+raise the `wait_ms` parameter on `ha_get_dashboard_screenshot` for those.
+
+**Capturing below the fold.** By default the render is clipped to the viewport.
+Pass `full_page=true` (on `ha_get_dashboard_screenshot`, or alongside
+`include_screenshot` / `return_screenshot`) to capture a dashboard that scrolls
+past the viewport. With stock Puppet this renders a tall viewport, so short
+dashboards may have trailing whitespace and a dashboard taller than ~4096px is
+still clipped — limitations removed once Puppet gains a native full-page mode.
+
+**Graceful by design — with one deliberate exception.** If the feature is off,
+both `include_screenshot` and `return_screenshot` return the dashboard config /
+write result with a `warnings` entry. `return_screenshot` (set) also degrades a
+render failure to a warning so it never breaks a write that already committed.
+`include_screenshot` (get) is a pure read where the screenshot *is* the
+requested payload, so a render failure surfaces as an error (matching the
+standalone `ha_get_dashboard_screenshot` tool) rather than a warning a caller
+might miss.
+
+**The rendered path comes from the caller.** `ha_get_dashboard_screenshot`
+validates `dashboard_path` (rejects URLs, query strings, fragments, `..`, and
+backslashes) so it can only target Lovelace frontend routes.

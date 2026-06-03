@@ -1,0 +1,703 @@
+"""
+Service call and device operation tools for Home Assistant MCP server.
+
+This module provides service execution and WebSocket-enabled operation monitoring tools.
+"""
+
+import logging
+from typing import Annotated, Any, cast
+
+import httpx
+from fastmcp import Context
+from fastmcp.exceptions import ToolError
+from fastmcp.tools import tool
+from pydantic import Field
+
+from ..client.rest_client import HomeAssistantConnectionError
+from ..errors import (
+    create_validation_error,
+)
+from .helpers import (
+    exception_to_structured_error,
+    log_tool_usage,
+    raise_tool_error,
+    register_tool_methods,
+)
+from .util_helpers import (
+    compact_service_result,
+    parse_json_param,
+    parse_string_list_param,
+    project_entity_record,
+    wait_for_state_change,
+)
+
+
+def _parse_json_dict_param(
+    data: str | dict[str, Any] | None,
+    *,
+    type_error_message: str,
+) -> dict[str, Any] | None:
+    if data is None:
+        return None
+    raw: Any = None
+    try:
+        raw = parse_json_param(data, "data")
+    except ValueError as e:
+        raise_tool_error(
+            create_validation_error(
+                f"Invalid data parameter: {e}",
+                parameter="data",
+                invalid_json=True,
+            )
+        )
+    if raw is not None and not isinstance(raw, dict):
+        raise_tool_error(
+            create_validation_error(
+                type_error_message,
+                parameter="data",
+                details=f"Received type: {type(raw).__name__}",
+            )
+        )
+    return raw if isinstance(raw, dict) else None
+
+
+def _parse_event_data(data: str | dict[str, Any] | None) -> dict[str, Any] | None:
+    return _parse_json_dict_param(
+        data, type_error_message="Event data must be a JSON object (dict)"
+    )
+
+
+logger = logging.getLogger(__name__)
+
+# Services that produce observable state changes on entities
+_STATE_CHANGING_SERVICES = {
+    "turn_on",
+    "turn_off",
+    "toggle",
+    "open",
+    "close",
+    "lock",
+    "unlock",
+    "set_temperature",
+    "set_hvac_mode",
+    "set_fan_mode",
+    "set_speed",
+    "select_option",
+    "set_value",
+    "set_datetime",
+    "set_cover_position",
+    "set_position",
+    "play_media",
+    "media_play",
+    "media_pause",
+    "media_stop",
+}
+
+# Domains where service calls don't produce entity state changes
+_NON_STATE_CHANGING_DOMAINS = {
+    "automation",
+    "script",
+    "homeassistant",
+    "notify",
+    "tts",
+    "persistent_notification",
+    "logbook",
+    "system_log",
+}
+
+# Mapping from service name to the expected resulting state
+_SERVICE_TO_STATE: dict[str, str] = {
+    "turn_on": "on",
+    "turn_off": "off",
+    "open": "open",
+    "close": "closed",
+    "lock": "locked",
+    "unlock": "unlocked",
+}
+
+
+def _build_service_suggestions(
+    domain: str, service: str, entity_id: str | None
+) -> list[str]:
+    """Build common error suggestions for service call failures."""
+    return [
+        f"Verify {entity_id} exists using ha_get_state()"
+        if entity_id
+        else "Specify an entity_id for targeted service calls",
+        f"Check available services for {domain} domain using ha_get_skill_guide",
+        "Use ha_search_entities() to find correct entity IDs",
+    ]
+
+
+class ServiceTools:
+    """Service call and device operation tools for Home Assistant."""
+
+    def __init__(self, client: Any, device_tools: Any) -> None:
+        self._client = client
+        self._device_tools = device_tools
+
+    @staticmethod
+    def _parse_service_data(
+        data: str | dict[str, Any] | None,
+        entity_id: str | None,
+    ) -> dict[str, Any]:
+        """Parse and validate the data parameter into a service_data dict."""
+        service_data: dict[str, Any] = (
+            _parse_json_dict_param(
+                data, type_error_message="Data parameter must be a JSON object"
+            )
+            or {}
+        )
+        if entity_id:
+            service_data["entity_id"] = entity_id
+        return service_data
+
+    @staticmethod
+    def _build_timeout_response(
+        domain: str,
+        service: str,
+        entity_id: str | None,
+        data: str | dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Build a partial-success response for service call timeouts."""
+        return {
+            "success": True,
+            "partial": True,
+            "domain": domain,
+            "service": service,
+            "entity_id": entity_id,
+            "parameters": data,
+            "message": (
+                f"Service {domain}.{service} was dispatched but Home Assistant "
+                f"did not respond within the timeout period. The operation is likely "
+                f"still running in the background."
+            ),
+            "warnings": [
+                "Response timed out. This is normal for long-running services "
+                f"like updates or firmware installs. Use ha_get_state('{entity_id}') "
+                "to check the current status."
+                if entity_id
+                else "Response timed out. This is normal for long-running services. "
+                "The service was dispatched and may still be executing."
+            ],
+        }
+
+    async def _capture_initial_state(self, entity_id: str | None) -> str | None:
+        """Capture the current state of an entity before a service call."""
+        try:
+            state_data = await self._client.get_entity_state(entity_id)
+            return state_data.get("state") if state_data else None
+        except Exception as e:
+            logger.debug(
+                f"Could not fetch initial state for {entity_id}: {e} — state verification may be degraded"
+            )
+            return None
+
+    async def _verify_state_change(
+        self,
+        entity_id: str,
+        service: str,
+        initial_state: str | None,
+        response: dict[str, Any],
+    ) -> None:
+        """Wait for and verify entity state change after a service call, updating response in place."""
+        try:
+            expected = _SERVICE_TO_STATE.get(service)
+            new_state = await wait_for_state_change(
+                self._client,
+                entity_id,
+                expected_state=expected,
+                initial_state=initial_state,
+                timeout=10.0,
+            )
+            if new_state:
+                response["verified_state"] = new_state.get("state")
+            else:
+                response.setdefault("warnings", []).append(
+                    "Service executed but state change could not be verified within timeout."
+                )
+        except Exception as e:
+            response.setdefault("warnings", []).append(
+                f"Service executed but state verification failed: {e}"
+            )
+
+    @staticmethod
+    def _project_service_result(
+        result: Any,
+        *,
+        entity_id: str | None,
+        verbose: bool,
+        fields: list[str] | None,
+        attribute_keys: list[str] | None,
+    ) -> tuple[Any, list[str]]:
+        """Apply compact / explicit projection to a service-call ``result``.
+
+        Issue #1446. Precedence:
+
+        - ``verbose=True``: bypass every transformation; return ``result`` as-is.
+        - Explicit ``fields`` or ``attribute_keys``: apply per-record projection
+          via ``project_entity_record`` to every record. No compaction; this is
+          the power-user path.
+        - Default: apply ``compact_service_result`` (filter to ``entity_id``
+          record when single string, drop top-level metadata + heavy lists).
+
+        Returns ``(projected, warnings)``. ``warnings`` collects per-record
+        typo-guard diagnostics from ``project_entity_record`` (e.g. all-empty
+        ``attribute_keys`` filter) — deduplicated so an N-record list with the
+        same typo doesn't emit N copies of the same warning.
+        """
+        if verbose:
+            return result, []
+        if fields is None and attribute_keys is None:
+            return compact_service_result(result, entity_id), []
+        if not isinstance(result, list):
+            return result, []
+        warnings: list[str] = []
+        # ``result_attribute_keys`` only takes effect when ``attributes`` is in
+        # the projected ``result_fields`` (or ``result_fields`` is None). Surface
+        # a warning rather than silently ignoring the parameter — mirrors
+        # ha_get_state's attribute_keys_no_effect handling.
+        if (
+            attribute_keys is not None
+            and fields is not None
+            and "attributes" not in fields
+        ):
+            warnings.append(
+                "result_attribute_keys was ignored because 'attributes' is not "
+                "in result_fields. Add 'attributes' to result_fields (or omit "
+                "result_fields) to apply result_attribute_keys."
+            )
+        projected: list[Any] = []
+        seen_warnings: set[str] = set()
+        for record in result:
+            new_record, warn = project_entity_record(record, fields, attribute_keys)
+            projected.append(new_record)
+            if warn and warn not in seen_warnings:
+                seen_warnings.add(warn)
+                warnings.append(warn)
+        return projected, warnings
+
+    @tool(
+        name="ha_call_service",
+        tags={"Service & Device Control"},
+        annotations={"destructiveHint": True, "title": "Call Service"},
+    )
+    @log_tool_usage
+    async def ha_call_service(
+        self,
+        domain: str,
+        service: str,
+        entity_id: str | None = None,
+        data: dict[str, Any] | None = None,
+        return_response: bool = False,
+        wait: bool = True,
+        verbose: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Return HA's raw service response unchanged (default: False). "
+                    "Use as an escape hatch when you need the full propagation "
+                    "chain or raw attribute payload (debug / inspection). "
+                    "WARNING: brings back token-bloat for nested-group targets — "
+                    "prefer result_fields / result_attribute_keys for targeted control."
+                ),
+            ),
+        ] = False,
+        result_fields: Annotated[
+            str | list[str] | None,
+            Field(
+                default=None,
+                description=(
+                    "Project each record in 'result' to only these top-level keys "
+                    "(e.g. ['entity_id', 'state']). Mirrors ha_get_state's fields=. "
+                    "Setting this DISABLES default compaction — no entity-id filter, "
+                    "no metadata strip — and applies the explicit projection instead."
+                ),
+            ),
+        ] = None,
+        result_attribute_keys: Annotated[
+            str | list[str] | None,
+            Field(
+                default=None,
+                description=(
+                    "Project each record's 'attributes' dict to only these keys "
+                    "(e.g. ['brightness', 'rgb_color']). Mirrors ha_get_state's "
+                    "attribute_keys=. Setting this DISABLES default compaction. "
+                    "Requires 'attributes' to be present in result_fields (or "
+                    "result_fields=None)."
+                ),
+            ),
+        ] = None,
+    ) -> dict[str, Any]:
+        """
+        Execute Home Assistant services to control entities and trigger automations.
+
+        This is the universal tool for controlling all Home Assistant entities. Services follow
+        the pattern domain.service (e.g., light.turn_on, climate.set_temperature).
+
+        **Basic Usage:**
+        ```python
+        # Turn on a light
+        ha_call_service("light", "turn_on", entity_id="light.living_room")
+
+        # Set temperature with parameters
+        ha_call_service("climate", "set_temperature",
+                      entity_id="climate.thermostat", data={"temperature": 22})
+
+        # Trigger automation
+        ha_call_service("automation", "trigger", entity_id="automation.morning_routine")
+
+        # Universal controls work with any entity
+        ha_call_service("homeassistant", "toggle", entity_id="switch.porch_light")
+        ```
+
+        **Key behavior:**
+        - **wait** (default True): wait for the entity state to change before
+          returning. Only applies to state-changing services on a single entity.
+        - **Result compaction (default ON)**: ``result`` is trimmed
+          to the targeted entity's record (drops parent-group propagation) and
+          stripped of ``context`` / ``last_*`` metadata and heavy attribute
+          lists (``effect_list``, ``hue_scenes``). Escape hatches: ``verbose=True``
+          for the raw HA response, or ``result_fields`` / ``result_attribute_keys``
+          for explicit per-record projection (mirrors ``ha_get_state``).
+
+        **For detailed service documentation, use ha_get_skill_guide.**
+
+        Common patterns: Use ha_get_state() to check current values before making changes.
+        Use ha_search_entities() to find correct entity IDs.
+        """
+        # ha_mcp_tools.* services are restricted to the ha-mcp server's
+        # dedicated wrappers (which inject the required caller token). Block
+        # ha_call_service from forwarding to that domain — it would otherwise
+        # be a bypass path around the dedicated tools.
+        # HA core's service registry lowercases the domain on fallback lookup
+        # (homeassistant/core.py ServiceRegistry.async_call), so normalise
+        # here to make sure a mixed-case `HA_MCP_TOOLS` can't slip past this
+        # exact-string check and still resolve downstream.
+        if isinstance(domain, str) and domain.strip().lower() == "ha_mcp_tools":
+            raise_tool_error(
+                create_validation_error(
+                    (
+                        "ha_call_service cannot invoke services in the "
+                        "'ha_mcp_tools' domain. Use the dedicated MCP tool "
+                        "instead: ha_list_files, ha_read_file, ha_write_file, "
+                        "ha_delete_file, or ha_config_set_yaml."
+                    ),
+                    parameter="domain",
+                )
+            )
+        try:
+            service_data = self._parse_service_data(data, entity_id)
+
+            return_response_bool = return_response
+            wait_bool = wait
+            verbose_bool = verbose
+            try:
+                parsed_result_fields = parse_string_list_param(
+                    result_fields, "result_fields", allow_csv=True
+                )
+            except ValueError as e:
+                raise_tool_error(
+                    create_validation_error(str(e), parameter="result_fields")
+                )
+            try:
+                parsed_result_attribute_keys = parse_string_list_param(
+                    result_attribute_keys, "result_attribute_keys", allow_csv=True
+                )
+            except ValueError as e:
+                raise_tool_error(
+                    create_validation_error(str(e), parameter="result_attribute_keys")
+                )
+
+            # Determine if we should wait for state change:
+            # Only for state-changing services on a single entity, not for
+            # trigger/reload/fire-and-forget services or services without entities.
+            should_wait = (
+                wait_bool
+                and entity_id is not None
+                and service in _STATE_CHANGING_SERVICES
+                and domain not in _NON_STATE_CHANGING_DOMAINS
+            )
+
+            # Capture initial state before the call
+            initial_state = None
+            if should_wait:
+                initial_state = await self._capture_initial_state(entity_id)
+
+            result = await self._client.call_service(
+                domain, service, service_data, return_response=return_response_bool
+            )
+
+            projected_result, projection_warnings = self._project_service_result(
+                result,
+                entity_id=entity_id,
+                verbose=verbose_bool,
+                fields=parsed_result_fields,
+                attribute_keys=parsed_result_attribute_keys,
+            )
+
+            response: dict[str, Any] = {
+                "success": True,
+                "domain": domain,
+                "service": service,
+                "entity_id": entity_id,
+                "parameters": data,
+                "result": projected_result,
+                "message": f"Successfully executed {domain}.{service}",
+            }
+            if projection_warnings:
+                response.setdefault("warnings", []).extend(projection_warnings)
+
+            # If return_response was requested, include the service_response key prominently
+            if return_response_bool and isinstance(result, dict):
+                response["service_response"] = result.get("service_response", result)
+
+            # Wait for entity state to change
+            if should_wait and entity_id is not None:
+                await self._verify_state_change(
+                    entity_id,
+                    service,
+                    initial_state,
+                    response,
+                )
+
+            return response
+        except HomeAssistantConnectionError as error:
+            # Check if this is a timeout - for service calls, timeouts typically
+            # mean the service was dispatched but HA didn't respond in time.
+            # The operation is likely still running (e.g., update.install, long automations).
+            if isinstance(error.__cause__, httpx.TimeoutException):
+                return self._build_timeout_response(domain, service, entity_id, data)
+            # Non-timeout connection errors are real failures
+            exception_to_structured_error(
+                error,
+                context={
+                    "domain": domain,
+                    "service": service,
+                    "entity_id": entity_id,
+                },
+                suggestions=_build_service_suggestions(domain, service, entity_id),
+            )
+        except ToolError:
+            raise
+        except Exception as error:
+            # Use structured error response
+            suggestions = _build_service_suggestions(domain, service, entity_id)
+            if entity_id:
+                suggestions.extend(
+                    [
+                        f"For automation: ha_call_service('automation', 'trigger', entity_id='{entity_id}')",
+                        f"For universal control: ha_call_service('homeassistant', 'toggle', entity_id='{entity_id}')",
+                    ]
+                )
+            exception_to_structured_error(
+                error,
+                context={
+                    "domain": domain,
+                    "service": service,
+                    "entity_id": entity_id,
+                },
+                suggestions=suggestions,
+            )
+
+    @tool(
+        name="ha_get_operation_status",
+        tags={"Service & Device Control"},
+        annotations={"readOnlyHint": True, "title": "Get Operation Status"},
+    )
+    @log_tool_usage
+    async def ha_get_operation_status(
+        self,
+        operation_id: Annotated[
+            str | list[str],
+            Field(
+                description=(
+                    "Single operation ID or list of operation IDs to check. "
+                    "Use a single string for one operation, or a list for bulk status checks."
+                ),
+            ),
+        ],
+        timeout_seconds: int = 10,
+    ) -> dict[str, Any]:
+        """
+        Check status of one or more device operations with real-time WebSocket verification.
+
+        Pass a single operation_id string to check one operation, or a list of IDs
+        to check multiple operations at once (bulk status).
+
+        The timeout_seconds parameter applies to single-operation checks only.
+        Bulk checks poll each operation individually with a short internal timeout.
+
+        Use this to track operations initiated by ha_bulk_control or ha_call_service.
+        For current entity states, use ha_get_state instead.
+        """
+        try:
+            # Handle JSON string coercion (MCP clients may send '["op1","op2"]')
+            resolved_id: str | list[str] = operation_id
+            if isinstance(operation_id, str):
+                try:
+                    parsed = parse_json_param(operation_id, "operation_id")
+                    if isinstance(parsed, list):
+                        resolved_id = [str(item) for item in parsed]
+                except ValueError:
+                    pass  # Plain string — treat as single operation ID
+
+            if isinstance(resolved_id, list):
+                result = await self._device_tools.get_bulk_operation_status(
+                    operation_ids=resolved_id
+                )
+                return cast(dict[str, Any], result)
+            result = await self._device_tools.get_device_operation_status(
+                operation_id=resolved_id, timeout_seconds=timeout_seconds
+            )
+            return cast(dict[str, Any], result)
+        except ToolError:
+            raise
+        except Exception as e:
+            op_context: dict[str, Any] = {"operation_id": operation_id}
+            exception_to_structured_error(
+                e,
+                context=op_context,
+                suggestions=[
+                    "Verify the operation ID(s) are valid",
+                    "Use ha_get_state() to check current entity states instead",
+                ],
+            )
+
+    @tool(
+        name="ha_bulk_control",
+        tags={"Service & Device Control"},
+        annotations={"destructiveHint": True, "title": "Bulk Control"},
+    )
+    @log_tool_usage
+    async def ha_bulk_control(
+        self,
+        operations: list[dict[str, Any]],
+        parallel: bool = True,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        """Control multiple devices with bulk operation support and WebSocket tracking."""
+        parallel_bool = parallel
+
+        # FastMCP validates operations as list[dict] before this runs.
+        # parse_json_param is kept as a defensive passthrough for the list case.
+        try:
+            parsed_operations = parse_json_param(operations, "operations")
+        except ValueError as e:
+            raise_tool_error(
+                create_validation_error(
+                    f"Invalid operations parameter: {e}",
+                    parameter="operations",
+                    invalid_json=True,
+                )
+            )
+
+        if not isinstance(parsed_operations, list):
+            raise_tool_error(
+                create_validation_error(
+                    "Operations parameter must be a list",
+                    parameter="operations",
+                    details=f"Received type: {type(parsed_operations).__name__}",
+                )
+            )
+
+        operations_list = cast(list[dict[str, Any]], parsed_operations)
+        result = await self._device_tools.bulk_device_control(
+            operations=operations_list, parallel=parallel_bool, ctx=ctx
+        )
+        return cast(dict[str, Any], result)
+
+    @tool(
+        name="ha_call_event",
+        tags={"Service & Device Control"},
+        annotations={
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "title": "Call Event",
+        },
+    )
+    @log_tool_usage
+    async def ha_call_event(
+        self,
+        event_type: str,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Execute a custom event on the Home Assistant event bus.
+
+        When NOT to use: for controlling entities (lights, switches, climate) — use
+        ha_call_service instead. For triggering automations by name, use
+        ha_call_service("automation", "trigger").
+
+        Use this to publish custom event types consumed by event-triggered automations,
+        Node-RED flows, or custom integrations that subscribe to specific event types.
+
+        Caveats: Events are fire-and-forget; this tool confirms the event was accepted
+        by the bus but does not verify whether any automation or subscriber acted on it.
+        """
+        # Validate event_type before hitting the wire — empty strings or path separators
+        # produce malformed URLs at POST /api/events/{event_type}.
+        if not event_type or not event_type.strip():
+            raise_tool_error(
+                create_validation_error(
+                    "event_type cannot be empty or whitespace",
+                    parameter="event_type",
+                )
+            )
+        if "/" in event_type or "\\" in event_type:
+            raise_tool_error(
+                create_validation_error(
+                    "event_type cannot contain path separators",
+                    parameter="event_type",
+                    details=f"Received: {event_type!r}",
+                )
+            )
+
+        parsed_data = _parse_event_data(data)
+
+        try:
+            response = await self._client.fire_event(event_type, parsed_data)
+        except HomeAssistantConnectionError as error:
+            if isinstance(error.__cause__, httpx.TimeoutException):
+                return {
+                    "success": True,
+                    "partial": True,
+                    "event_type": event_type,
+                    "message": (
+                        f"Event {event_type} was dispatched but Home Assistant "
+                        "did not respond within the timeout period."
+                    ),
+                    "warnings": [
+                        "Response timed out. The event was dispatched and may still "
+                        "have been delivered to subscribers."
+                    ],
+                }
+            exception_to_structured_error(
+                error,
+                context={"event_type": event_type},
+                suggestions=["Check Home Assistant connection"],
+            )
+        except ToolError:
+            raise
+        except Exception as e:
+            exception_to_structured_error(
+                e,
+                context={"event_type": event_type},
+                suggestions=[
+                    "Check Home Assistant connection",
+                    "Verify event_type is a valid identifier",
+                ],
+            )
+
+        return {
+            "success": True,
+            "event_type": event_type,
+            "message": response.get("message", f"Event {event_type} fired."),
+        }
+
+
+def register_service_tools(mcp: Any, client: Any, **kwargs: Any) -> None:
+    """Register service call and operation monitoring tools with the MCP server."""
+    device_tools = kwargs.get("device_tools")
+    if not device_tools:
+        raise ValueError("device_tools is required for service tools registration")
+    register_tool_methods(mcp, ServiceTools(client, device_tools))

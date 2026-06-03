@@ -1,0 +1,59 @@
+version: 2
+updates:
+  # Docker updates are now handled by Renovate (see renovate.json)
+  # Dependabot's Docker ecosystem removed to avoid duplicate PRs
+
+  # Update GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # Update Python dependencies via uv (reads uv.lock)
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      # Group dev dependencies together
+      dev-dependencies:
+        patterns:
+          - "pytest*"
+          - "black"
+          - "ruff"
+          - "mypy"
+          - "isort"
+        update-types:
+          - "minor"
+          - "patch"
+      # Group production dependencies
+      production-dependencies:
+        patterns:
+          - "fastmcp"
+          - "httpx"
+          - "pydantic"
+          - "websockets"
+        update-types:
+          - "patch"

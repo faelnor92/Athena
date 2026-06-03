@@ -1,0 +1,189 @@
+# ha-mcp Code Review Guidelines
+
+## Project Context
+
+**ha-mcp** is a Model Context Protocol (MCP) server that enables AI assistants to control Home Assistant smart homes. It provides tools for entity control, automations, device management, and configuration via Home Assistant's REST and WebSocket APIs.
+
+**Key Technologies:**
+- Python 3.13, FastMCP framework
+- Home Assistant REST API & WebSocket API
+- MCP Protocol (Model Context Protocol)
+- Architecture: Tool registry with lazy loading, service layer pattern, WebSocket state verification
+
+**Code Organization:**
+- `src/ha_mcp/tools/` - MCP tools (auto-discovered; current count: `site/src/data/tools.json`)
+- `src/ha_mcp/client/` - REST and WebSocket clients
+- `tests/src/e2e/` - End-to-end tests with real Home Assistant instance
+- `tests/src/unit/` - Unit tests for utilities
+
+## Test Coverage Requirements
+
+Use best judgement - not all changes require new tests, but the overall feature/tool should be tested.
+
+**When tests ARE required (HIGH severity):**
+- New MCP tools in `src/ha_mcp/tools/` without any E2E tests
+- Tools that previously had NO tests - add E2E tests even if not part of current PR
+- Core functionality changes in `client/`, `server.py`, or `errors.py` without coverage
+- Bug fixes without regression tests
+
+**When tests may NOT be required:**
+- Refactoring with existing comprehensive test coverage
+- Documentation-only changes (`*.md` files)
+- Minor parameter additions to well-tested tools
+- Internal utilities already covered by E2E tests
+
+**If unsure about test coverage:** Flag with MEDIUM severity to manually verify test adequacy.
+
+**Test locations:**
+- E2E tests (preferred for tools): `tests/src/e2e/`
+- Unit tests (utilities): `tests/src/unit/`
+
+## Exception Handling in Test Polling Loops
+
+Boot-phase verification helpers and async polling loops in `tests/src/e2e/` use **narrow `except (Specific1, Specific2, ...)` clauses + debug-level logging** for expected transient failures. Catch only the exception classes the polling target legitimately raises — e.g. `(requests.exceptions.RequestException, json.JSONDecodeError)` for direct HTTP polling, or the `_POLLING_TRANSIENT_ERRORS` tuple in `tests/src/e2e/utilities/wait_helpers.py` for MCP-client polling.
+
+Bugs — `TypeError`, `AttributeError`, `KeyError`, `AssertionError`, etc. — **must propagate** out of polling loops so they surface as clear test failures instead of being swallowed and retried until timeout.
+
+**Do NOT flag:**
+- Narrow `except (SpecificException, ...)` in polling/retry loops paired with `logger.debug(...)` — this is the intentional convention.
+- Broad `except Exception` at top-level setup/teardown handlers or cleanup loops marked `# pragma: no cover - cleanup best-effort`, where recovery is the same regardless of error class.
+
+See issue #1266.
+
+## Security Patterns
+
+**Critical security checks (flag HIGH/CRITICAL severity):**
+
+1. **Unescaped user input** in f-strings or string interpolation
+2. **`eval()` or `exec()` calls** - Never acceptable
+3. **Credentials in code** - API keys, tokens, passwords
+4. **SQL injection risks** - String concatenation in queries
+5. **Prompt injection risks** - User input interpolated into tool descriptions or prompts
+6. **AGENTS.md/CLAUDE.md modifications** - Changes that alter agent behavior, security policies, or review processes
+7. **`.github/` workflow changes** - Secrets access, permission changes, `pull_request_target` usage
+8. **`.claude/` agent/skill changes** - Could affect agent behavior or introduce backdoors
+
+## MCP Safety Annotations Accuracy
+
+Verify that safety annotations match actual tool behavior:
+
+- Tool with `readOnlyHint: True` must NOT modify state (no writes, no service calls)
+- Tool with `destructiveHint: True` must actually delete data
+- State-changing operations should have `idempotentHint: True` only if safe to retry
+
+Flag HIGH severity if annotation contradicts actual behavior in the implementation.
+
+## Tool Naming Convention
+
+The canonical tool naming rules — approved verbs, the optional `ha_<namespace>_<verb>_<noun>` shape, and the list of accepted exceptions — are defined in [`AGENTS.md` → Writing MCP Tools → Naming Convention](../AGENTS.md#naming-convention). Treat that section as the single source of truth and consult it when reviewing.
+
+Flag MEDIUM severity if a tool name violates the rules defined there.
+
+## Tool File Organization
+
+New tools MUST be in `tools_<domain>.py` with `register_<domain>_tools()` function. Tools are auto-discovered by registry - no manual registration needed.
+
+## Structured Error Responses
+
+All error handling MUST use:
+
+```python
+from ..errors import create_error_response, ErrorCode
+return create_error_response(
+    code=ErrorCode.APPROPRIATE_CODE,
+    message="Clear error description",
+    suggestions=["Actionable suggestion"]
+)
+```
+
+Flag HIGH severity if errors use plain exceptions or dict returns instead of structured errors from `errors.py`.
+
+
+## Code Conventions
+
+## MCP Tool Docstrings
+
+These rules apply to new or modified tool docstrings in the PR diff only -- not to pre-existing docstrings in unchanged files.
+
+**Flag MEDIUM severity when a new or modified tool docstring:**
+- Does not start with an action verb (`Returns...` should be `Get...`; valid verbs: `Get`, `List`, `Search`, `Create`, `Update`, `Delete`, `Remove`, `Execute`, `Call`, `Manage`)
+- Is missing entirely or is still a placeholder
+- References a non-existent tool (e.g., `ha_get_domain_docs` -- the correct name is `ha_get_skill_guide`)
+- Embeds a full parameter schema instead of deferring to `ha_get_skill_guide`
+- Is a workflow-entry tool but gives no hint about the next natural tool to call
+- Multi-line docstring does not follow the structure template: (1) what the tool does, (2) when NOT to use it with preferred alternatives, (3) when to use it, (4) caveats. See AGENTS.md "Tool Docstrings" for details.
+
+**Do NOT flag:**
+- Concise one-liners on straightforward tools (progressive disclosure: brief by default)
+- Missing examples on tools with obvious single-parameter calls
+- Multi-line docstrings that stay focused and on-topic
+
+1. **Async/await**: Use consistently for I/O operations
+2. **Type hints**: Required for all function signatures
+
+## Documentation Standards
+
+1. **Comments**: Only for non-obvious logic - too many comments is an anti-pattern (code should be self-documenting)
+2. **CHANGELOG.md**: Auto-generated via semantic-release (don't edit manually)
+
+## Architecture Alignment
+
+1. **New tools**: Create `tools_<domain>.py` with `register_<domain>_tools()` function
+2. **Shared logic**: Use service layer (`smart_search.py`, `device_control.py`)
+3. **WebSocket operations**: Verify state changes in real-time
+4. **Tool completion**: Operations should wait for completion (not just API acknowledgment)
+
+## Context Engineering & Progressive Disclosure
+
+This project follows [context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) and [progressive disclosure](https://www.nngroup.com/articles/progressive-disclosure/) principles:
+
+**Review for:**
+
+1. **Statelessness (HIGH severity if violated):**
+   - Tools should NOT maintain server-side session state
+   - Use content-derived identifiers (hashes, IDs) that clients pass back
+   - Example: Dashboard updates use content hashing, not session tracking
+
+2. **Validation delegation (MEDIUM severity):**
+   - Let Home Assistant's backend handle validation when possible
+   - Keep tool parameters simple - backend handles coercion, defaults, validation
+   - Only add tool-side validation when it genuinely adds value
+
+3. **Progressive disclosure (flag if violated):**
+   - Tool descriptions should be concise, NOT embed full documentation
+   - Hint at documentation tools for complex schemas
+   - Error responses should guide next steps (include `suggestions` array)
+   - Return essential data only - let users request details via follow-up tools
+
+4. **When tool-side logic IS valuable:**
+   - Format normalization for UX convenience (e.g., `"09:00"` → `"09:00:00"`)
+   - Parsing JSON strings from MCP clients that stringify arrays
+   - Combining multiple HA API calls into one logical operation
+
+## Breaking Changes
+
+A change is BREAKING only if it removes functionality that users depend on.
+
+**Breaking Changes (flag CRITICAL):**
+- Deleting a tool without providing alternative functionality elsewhere
+- Removing a feature that has no replacement in any other tool
+- Making something impossible that was previously possible
+
+**NOT Breaking (these are improvements - encourage them):**
+- Tool consolidation (combining multiple tools into one)
+- Tool refactoring (restructuring how tools work internally)
+- Parameter changes (as long as same outcome achievable)
+- Return value restructuring (as long as data still accessible)
+- Tool renaming with clear migration path
+
+**Rationale:** Tool consolidation reduces token usage and cognitive load for AI agents. Refactoring improves maintainability. Only flag CRITICAL when functionality is genuinely lost forever.
+
+## Non-Blocking Suggestions and Scope
+
+Scope is defined by the user (the maintainer / author of the PR), not by the reviewer (bot or human). **Never unilaterally file a follow-up issue or PR** — raise scope concerns in the PR review and let the user decide whether to address inline, defer, or dismiss. Do not skip legitimate findings — surface them.
+
+If you believe a finding is likely out of scope, say so explicitly so the user can verify: *"This may be out of scope — user should verify. I think it is out of scope because [specific reason]."* Do not bucket findings as "for a future PR" or "post-merge follow-up."
+
+Do not phrase findings as "post-merge follow-up," "nice to have," or "happy to file an issue" when the change is small and bundleable. Either apply the suggestion inline with a code suggestion block, or raise it plainly and let the user decide.
+
+See AGENTS.md § *Boy Scout Rule — Handling Discovered Improvements* for the author/agent-side rule.

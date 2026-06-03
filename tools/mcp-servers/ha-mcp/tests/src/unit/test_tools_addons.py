@@ -1,0 +1,4272 @@
+"""Unit tests for add-on tools (AddOnTools, manage_addon, _validate_addon_access, _call_addon_api, _call_addon_ws, list_addons)."""
+
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
+import pytest
+import websockets.exceptions
+from fastmcp.exceptions import ToolError
+
+from ha_mcp.tools.tools_addons import (
+    _apply_response_transform,
+    _call_addon_api,
+    _call_addon_ws,
+    _extract_addon_log_level,
+    _is_signal_message,
+    _slice_ws_messages,
+    _summarize_ws_messages,
+    get_addon_info,
+    list_addons,
+)
+
+# Standard mock return for a running addon with Ingress support
+_RUNNING_ADDON_INFO = {
+    "success": True,
+    "addon": {
+        "name": "Test Addon",
+        "slug": "test_addon",
+        "ingress": True,
+        "state": "started",
+        "ingress_entry": "/api/hassio_ingress/abc123",
+        "ip_address": "172.30.33.99",
+        "ingress_port": 5000,
+    },
+}
+
+_INGRESS_SESSION_TOKEN = "test-ingress-session"
+
+
+def _make_mock_client() -> MagicMock:
+    """Create a mock HomeAssistantClient."""
+    client = MagicMock()
+    client.base_url = "http://localhost:8123"
+    client.token = "test-token"
+    return client
+
+
+def _parse_tool_error(exc_info: pytest.ExceptionInfo[ToolError]) -> dict:
+    """Parse the JSON payload from a ToolError."""
+    return json.loads(str(exc_info.value))
+
+
+@pytest.fixture(autouse=True)
+def _default_offhost_env(monkeypatch):
+    """Pin tests to the off-host install variant by default.
+
+    `is_running_in_addon()` reads `SUPERVISOR_TOKEN` from the environment.
+    Without explicit pinning, a test inheriting that env var from the host
+    shell would silently flip into the HA-add-on branch and assert the wrong
+    route. Tests exercising the addon variant must `monkeypatch.setenv`
+    inside their body to override this default.
+    """
+    monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
+
+
+@pytest.fixture
+def mock_ingress_session():
+    """Patch _create_ingress_session to return a fixed token without WS calls."""
+    with patch(
+        "ha_mcp.tools.tools_addons._create_ingress_session",
+        new_callable=AsyncMock,
+        return_value=_INGRESS_SESSION_TOKEN,
+    ) as m:
+        yield m
+
+
+class TestCallAddonApiErrors:
+    """Tests for _call_addon_api error paths."""
+
+    @pytest.mark.asyncio
+    async def test_path_traversal_rejected(self):
+        """Paths containing '..' components should be rejected."""
+        client = _make_mock_client()
+        with pytest.raises(ToolError) as exc_info:
+            await _call_addon_api(client, "test_addon", "../../etc/passwd")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert (
+            "traversal" in result["error"]["message"].lower()
+            or ".." in result["error"]["message"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_path_traversal_middle_segment(self):
+        """Paths with '..' in the middle should also be rejected."""
+        client = _make_mock_client()
+        with pytest.raises(ToolError) as exc_info:
+            await _call_addon_api(client, "test_addon", "api/../secret/data")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert ".." in result["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_path_with_dotdot_in_name_allowed(self):
+        """Paths where '..' is part of a filename (not a segment) should pass traversal check."""
+        client = _make_mock_client()
+
+        # "..foo" is not a ".." path segment, so it should pass the traversal check
+        # but it will fail on the addon info lookup (next step)
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": False,
+                    "error": {"code": "RESOURCE_NOT_FOUND", "message": "Not found"},
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_api(client, "test_addon", "..foo/bar")
+
+        # Should have passed traversal check and failed on addon lookup instead
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "Not found" in result["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_addon_not_found(self):
+        """Should raise ToolError when add-on slug doesn't exist."""
+        client = _make_mock_client()
+        error_response = {
+            "success": False,
+            "error": {
+                "code": "RESOURCE_NOT_FOUND",
+                "message": "Add-on 'fake_addon' not found",
+            },
+        }
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=error_response,
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_api(client, "fake_addon", "/api/test")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "not found" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_addon_no_ingress_support(self):
+        """Should raise ToolError when add-on doesn't support Ingress."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": False,
+                        "state": "started",
+                    },
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_api(client, "test_addon", "/api/test")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "ingress" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_addon_not_running(self):
+        """Should raise ToolError when add-on is not running."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": True,
+                        "state": "stopped",
+                        "ingress_entry": "/api/hassio_ingress/abc123",
+                    },
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_api(client, "test_addon", "/api/test")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "not running" in result["error"]["message"].lower()
+        assert "stopped" in result["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_addon_no_ingress_entry(self):
+        """Should raise ToolError when add-on has Ingress but no entry path."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": True,
+                        "state": "started",
+                        "ingress_entry": "",
+                    },
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_api(client, "test_addon", "/api/test")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert (
+            "ingress_entry" in result["error"]["message"].lower()
+            or "ingress" in result["error"]["message"].lower()
+        )
+
+    @pytest.mark.asyncio
+    async def test_direct_port_missing_ip_address(self):
+        """Direct-port mode requires the addon's container ip_address."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": False,
+                        "state": "started",
+                        "ip_address": "",
+                    },
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_api(client, "test_addon", "/flows", port=1880)
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "ip_address" in str(result).lower()
+
+    @pytest.mark.asyncio
+    async def test_http_timeout(self, mock_ingress_session):
+        """Should raise ToolError when add-on API doesn't respond."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = httpx.TimeoutException("timed out")
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_api(client, "test_addon", "/api/test", timeout=5)
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert (
+            "timeout" in result["error"]["message"].lower()
+            or "timed out" in str(result).lower()
+        )
+
+    @pytest.mark.asyncio
+    async def test_http_connection_error(self, mock_ingress_session):
+        """Should raise ToolError when can't reach add-on."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = httpx.ConnectError(
+                "Connection refused"
+            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_api(client, "test_addon", "/api/test")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert (
+            "connect" in result["error"]["message"].lower()
+            or "connection" in str(result).lower()
+        )
+
+    @pytest.mark.asyncio
+    async def test_http_ingress_routes_through_ha_core(self, mock_ingress_session):
+        """Ingress mode targets HA Core's /api/hassio_ingress proxy with a session cookie."""
+        client = _make_mock_client()
+
+        captured: dict[str, object] = {}
+
+        async def fake_request(*, method, url, headers, content):
+            captured["method"] = method
+            captured["url"] = url
+            captured["headers"] = dict(headers)
+            response = MagicMock()
+            response.headers = {"content-type": "application/json"}
+            response.status_code = 200
+            response.json.return_value = {"ok": True}
+            response.text = '{"ok": true}'
+            return response
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = fake_request
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(client, "test_addon", "/api/test")
+
+        assert result["success"] is True
+        # URL is HA Core's ingress proxy, NOT the addon container IP
+        assert captured["url"] == (
+            "http://localhost:8123/api/hassio_ingress/abc123/api/test"
+        )
+        # Session cookie attached
+        headers = captured["headers"]
+        assert headers["Cookie"] == f"ingress_session={_INGRESS_SESSION_TOKEN}"
+        # Direct-container Ingress headers MUST NOT be set — HA Core adds them
+        # itself when it proxies upstream, and adding our own would conflict.
+        assert "X-Ingress-Path" not in headers
+        assert "X-Hass-Source" not in headers
+        # Bearer would be forwarded to the add-on upstream — leak vector.
+        assert "Authorization" not in headers
+        # Ingress session was minted exactly once
+        mock_ingress_session.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_http_direct_port_skips_ingress_session(self, mock_ingress_session):
+        """Direct-port mode connects to container IP and does not mint an ingress session."""
+        client = _make_mock_client()
+
+        captured: dict[str, object] = {}
+
+        async def fake_request(*, method, url, headers, content):
+            captured["url"] = url
+            captured["headers"] = dict(headers)
+            response = MagicMock()
+            response.headers = {"content-type": "application/json"}
+            response.status_code = 200
+            response.json.return_value = {"ok": True}
+            response.text = '{"ok": true}'
+            return response
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = fake_request
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(client, "test_addon", "/flows", port=1880)
+
+        assert result["success"] is True
+        assert captured["url"] == "http://172.30.33.99:1880/flows"
+        assert "Cookie" not in captured["headers"]
+        mock_ingress_session.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_http_direct_port_offhost_error_hints_at_ingress(
+        self, mock_ingress_session
+    ):
+        """ConnectError in direct-port mode should suggest dropping `port` for off-host hosts."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = httpx.ConnectError(
+                "No route to host"
+            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_api(client, "test_addon", "/flows", port=1880)
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        assert any("ingress" in s.lower() for s in suggestions), suggestions
+
+    @pytest.mark.asyncio
+    async def test_http_direct_port_timeout_hints_at_ingress(
+        self, mock_ingress_session
+    ):
+        """Timeouts in direct-port mode should also suggest dropping `port`.
+
+        On real off-host installs, packets to the addon's container IP often
+        get silently dropped by the upstream router instead of refused —
+        which surfaces as TimeoutException, not ConnectError. The same
+        actionable hint must apply.
+        """
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = httpx.TimeoutException(
+                "Connection timed out"
+            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_api(
+                    client, "test_addon", "/flows", port=1880, timeout=5
+                )
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        assert any("ingress" in s.lower() for s in suggestions), suggestions
+
+    @pytest.mark.asyncio
+    async def test_http_ingress_timeout_hints_at_ha_core(self, mock_ingress_session):
+        """Timeouts in ingress mode should point at HA Core, not the add-on."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = httpx.TimeoutException("timed out")
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_api(client, "test_addon", "/api/test", timeout=5)
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        assert any(client.base_url in s for s in suggestions), suggestions
+        assert not any("'port' parameter" in s for s in suggestions), suggestions
+
+    @pytest.mark.asyncio
+    async def test_http_ingress_connection_error_hints_at_ha_core(
+        self, mock_ingress_session
+    ):
+        """ConnectError in ingress mode should point at HA Core, not the add-on.
+
+        The actual failure on off-host installs is HA Core unreachable from
+        the MCP host — the old generic "Check that the add-on is running"
+        hint sent users on a wild-goose chase.
+        """
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = httpx.ConnectError(
+                "Connection refused"
+            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_api(client, "test_addon", "/api/test")
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        # Suggestion should reference the configured HA URL so the user
+        # knows where to verify reachability.
+        assert any(client.base_url in s for s in suggestions), suggestions
+        # Direct-port-only hint must not surface in ingress-mode failures.
+        assert not any("'port' parameter" in s for s in suggestions), suggestions
+
+    @pytest.mark.asyncio
+    async def test_http_base_url_with_trailing_slash(self, mock_ingress_session):
+        """Trailing slash on base_url must not produce a doubled slash in the request URL."""
+        client = _make_mock_client()
+        client.base_url = "http://localhost:8123/"
+
+        captured: dict[str, object] = {}
+
+        async def fake_request(*, method, url, headers, content):
+            captured["url"] = url
+            response = MagicMock()
+            response.headers = {"content-type": "application/json"}
+            response.status_code = 200
+            response.json.return_value = {"ok": True}
+            response.text = '{"ok": true}'
+            return response
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = fake_request
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await _call_addon_api(client, "test_addon", "/api/test")
+
+        assert captured["url"] == (
+            "http://localhost:8123/api/hassio_ingress/abc123/api/test"
+        )
+
+    @pytest.mark.asyncio
+    async def test_http_addon_variant_uses_direct_ingress_port(
+        self, monkeypatch, mock_ingress_session
+    ):
+        """When running as the HA add-on, ingress mode hits the addon's container
+        directly with `core.ingress` source headers — no HA Core proxy hop, no
+        session cookie. This is the path that worked on master pre-PR."""
+        monkeypatch.setenv("SUPERVISOR_TOKEN", "supervisor-test-token")
+        client = _make_mock_client()
+        # Inside the addon variant, base_url points at Supervisor's proxy mount.
+        client.base_url = "http://supervisor/core"
+
+        captured: dict[str, object] = {}
+
+        async def fake_request(*, method, url, headers, content):
+            captured["url"] = url
+            captured["headers"] = dict(headers)
+            response = MagicMock()
+            response.headers = {"content-type": "application/json"}
+            response.status_code = 200
+            response.json.return_value = {"ok": True}
+            response.text = '{"ok": true}'
+            return response
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = fake_request
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(client, "test_addon", "/api/test")
+
+        assert result["success"] is True
+        # URL is the addon container's ingress port — NOT the HA Core proxy.
+        assert captured["url"] == "http://172.30.33.99:5000/api/test"
+        headers = captured["headers"]
+        # Source-trust headers, the way master routed pre-PR.
+        assert headers["X-Ingress-Path"] == "/api/hassio_ingress/abc123"
+        assert headers["X-Hass-Source"] == "core.ingress"
+        # No HA-Core-side auth — not going through Core.
+        assert "Cookie" not in headers
+        assert "Authorization" not in headers
+        # No ingress session minted on the addon variant.
+        mock_ingress_session.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_http_addon_variant_missing_ingress_port_errors(self, monkeypatch):
+        """Addon variant requires both ip_address and ingress_port."""
+        monkeypatch.setenv("SUPERVISOR_TOKEN", "supervisor-test-token")
+        client = _make_mock_client()
+        client.base_url = "http://supervisor/core"
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": True,
+                        "state": "started",
+                        "ingress_entry": "/api/hassio_ingress/abc123",
+                        "ip_address": "172.30.33.99",
+                        "ingress_port": None,
+                    },
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_api(client, "test_addon", "/api/test")
+
+        result = _parse_tool_error(exc_info)
+        assert result["error"]["code"] == "INTERNAL_ERROR"
+        assert "ingress_port" in str(result).lower()
+
+    @pytest.mark.asyncio
+    async def test_http_addon_variant_connect_error_hints_at_addon_network(
+        self, monkeypatch, mock_ingress_session
+    ):
+        """ConnectError on addon variant should suggest restarting the target
+        add-on, not 'verify HA reachable' (HA is fine — sibling network is the
+        problem)."""
+        monkeypatch.setenv("SUPERVISOR_TOKEN", "supervisor-test-token")
+        client = _make_mock_client()
+        client.base_url = "http://supervisor/core"
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = httpx.ConnectError(
+                "No route to host"
+            )
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_api(client, "test_addon", "/api/test")
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        # Addon-variant suggestion should be about the target add-on / addon
+        # network — not about HA Core reachability.
+        assert any(
+            "restart" in s.lower() or "addon network" in s.lower() for s in suggestions
+        ), suggestions
+        # The off-host hint about HA Core reachability must NOT appear here.
+        assert not any(client.base_url in s for s in suggestions), suggestions
+
+    @pytest.mark.asyncio
+    async def test_http_401_response_hints_at_auth(self, mock_ingress_session):
+        """A 401 from the add-on points at auth/token/session, NOT at IP
+        restriction. addon_config is dropped because it's a credential
+        problem, not a misconfigured add-on."""
+        client = _make_mock_client()
+
+        async def fake_request(*, method, url, headers, content):
+            response = MagicMock()
+            response.headers = {"content-type": "application/json"}
+            response.status_code = 401
+            response.json.return_value = {}
+            response.text = "{}"
+            return response
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = fake_request
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(client, "test_addon", "/api/test")
+
+        assert result["status_code"] == 401
+        suggestion = result["suggestion"].lower()
+        # Auth-flavored hint expected.
+        assert any(
+            token in suggestion for token in ("auth", "token", "scope", "session")
+        ), result["suggestion"]
+        # IP-restriction hint must NOT fire on 401 — it would misdirect.
+        assert "nginx" not in suggestion, result["suggestion"]
+        assert "ip restriction" not in suggestion, result["suggestion"]
+        # addon_config is irrelevant for a credential problem.
+        assert "addon_config" not in result, result
+
+    @pytest.mark.asyncio
+    async def test_http_403_response_hints_at_ip_restriction(
+        self, mock_ingress_session
+    ):
+        """A 403 keeps the existing 'Nginx IP restriction' hint and
+        addon_config attachment — the LLM uses addon_config to spot
+        leave_front_door_open / port toggles."""
+        client = _make_mock_client()
+
+        async def fake_request(*, method, url, headers, content):
+            response = MagicMock()
+            response.headers = {"content-type": "application/json"}
+            response.status_code = 403
+            response.json.return_value = {}
+            response.text = "{}"
+            return response
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = fake_request
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(client, "test_addon", "/api/test")
+
+        assert result["status_code"] == 403
+        suggestion = result["suggestion"].lower()
+        # Existing IP-restriction wording preserved on 403.
+        assert "nginx" in suggestion or "ip restriction" in suggestion, result[
+            "suggestion"
+        ]
+        # addon_config attached so the LLM can spot relevant settings.
+        assert "addon_config" in result, result
+        for key in ("options", "ports", "host_network", "ingress_port"):
+            assert key in result["addon_config"], result["addon_config"]
+
+    @pytest.mark.asyncio
+    async def test_http_403_with_unmapped_ports_suggests_mapping(
+        self, mock_ingress_session
+    ):
+        """403 with an unmapped container port → suggestion names the port
+        and emits the exact map-and-retry recipe."""
+        client = _make_mock_client()
+        addon_with_unmapped_port = {
+            "success": True,
+            "addon": {
+                **_RUNNING_ADDON_INFO["addon"],
+                "ports": {"6052/tcp": None, "9999/tcp": 9999},
+            },
+        }
+
+        async def fake_request(*, method, url, headers, content):
+            response = MagicMock()
+            response.headers = {"content-type": "application/json"}
+            response.status_code = 403
+            response.json.return_value = {}
+            response.text = "{}"
+            return response
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=addon_with_unmapped_port,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = fake_request
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(client, "test_addon", "/api/test")
+
+        assert result["status_code"] == 403
+        suggestion = result["suggestion"]
+        assert "6052/tcp" in suggestion, suggestion
+        assert "Configuration" in suggestion and "Network" in suggestion, suggestion
+        assert "port=6052" in suggestion, suggestion
+        assert "slug='test_addon'" in suggestion, suggestion
+        assert "9999/tcp" not in suggestion, suggestion
+        assert "Nginx IP restriction" not in suggestion, suggestion
+
+    @pytest.mark.asyncio
+    async def test_http_403_with_multiple_unmapped_ports_picks_lowest(
+        self, mock_ingress_session
+    ):
+        """With multiple unmapped ports, the suggestion must be
+        deterministic (lowest-sorted port wins, not iteration order)."""
+        client = _make_mock_client()
+        addon_info = {
+            "success": True,
+            "addon": {
+                **_RUNNING_ADDON_INFO["addon"],
+                "ports": {"9000/tcp": None, "1880/tcp": None, "5000/tcp": None},
+            },
+        }
+
+        async def fake_request(*, method, url, headers, content):
+            response = MagicMock()
+            response.headers = {"content-type": "application/json"}
+            response.status_code = 403
+            response.json.return_value = {}
+            response.text = "{}"
+            return response
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=addon_info,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = fake_request
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(client, "test_addon", "/api/test")
+
+        suggestion = result["suggestion"]
+        # Sorted ascending: "1880/tcp" wins over "5000/tcp" and "9000/tcp".
+        assert "1880/tcp" in suggestion, suggestion
+        assert "port=1880" in suggestion, suggestion
+
+    @pytest.mark.asyncio
+    async def test_http_403_reads_network_field_when_ports_absent(
+        self, mock_ingress_session
+    ):
+        """Supervisor responses sometimes carry the port map under
+        `network` instead of `ports`. The 403 suggestion must read both."""
+        client = _make_mock_client()
+        addon_info = {
+            "success": True,
+            "addon": {
+                **_RUNNING_ADDON_INFO["addon"],
+                "network": {"8080/tcp": None},
+                # No "ports" key at all.
+            },
+        }
+
+        async def fake_request(*, method, url, headers, content):
+            response = MagicMock()
+            response.headers = {"content-type": "application/json"}
+            response.status_code = 403
+            response.json.return_value = {}
+            response.text = "{}"
+            return response
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=addon_info,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = fake_request
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(client, "test_addon", "/api/test")
+
+        suggestion = result["suggestion"]
+        assert "8080/tcp" in suggestion, suggestion
+        assert "port=8080" in suggestion, suggestion
+
+    @pytest.mark.asyncio
+    async def test_http_403_with_malformed_port_key_falls_back_to_generic(
+        self, mock_ingress_session
+    ):
+        """If a port-dict key isn't the canonical `<port>/<proto>` shape,
+        the unmapped-port suggestion would render `port=` with a non-numeric
+        value — fall back to the generic Nginx-restriction message instead."""
+        client = _make_mock_client()
+        addon_info = {
+            "success": True,
+            "addon": {
+                **_RUNNING_ADDON_INFO["addon"],
+                "ports": {"not-a-port": None},
+            },
+        }
+
+        async def fake_request(*, method, url, headers, content):
+            response = MagicMock()
+            response.headers = {"content-type": "application/json"}
+            response.status_code = 403
+            response.json.return_value = {}
+            response.text = "{}"
+            return response
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=addon_info,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.httpx.AsyncClient",
+            ) as mock_httpx,
+        ):
+            mock_http_client = AsyncMock()
+            mock_http_client.request.side_effect = fake_request
+            mock_httpx.return_value.__aenter__ = AsyncMock(
+                return_value=mock_http_client
+            )
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(client, "test_addon", "/api/test")
+
+        suggestion = result["suggestion"].lower()
+        assert "nginx" in suggestion or "ip restriction" in suggestion, suggestion
+
+
+class TestCreateIngressSession:
+    """Tests for _create_ingress_session error and success paths.
+
+    The fixture mocks this helper away in most other tests, so its own
+    error handling needs direct coverage.
+    """
+
+    @pytest.mark.asyncio
+    async def test_returns_session_token_on_success(self):
+        """Happy path: returns the session string from Supervisor's response."""
+        from ha_mcp.tools.tools_addons import _create_ingress_session
+
+        client = _make_mock_client()
+
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value={"success": True, "result": {"session": "abc-token-123"}},
+        ):
+            session = await _create_ingress_session(client)
+
+        assert session == "abc-token-123"
+
+    @pytest.mark.asyncio
+    async def test_supervisor_error_response_propagates(self):
+        """When _supervisor_api_call returns success=False, the error is raised."""
+        from ha_mcp.tools.tools_addons import _create_ingress_session
+
+        client = _make_mock_client()
+        error_response = {
+            "success": False,
+            "error": {
+                "code": "CONNECTION_FAILED",
+                "message": "WS connection failed",
+            },
+        }
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._supervisor_api_call",
+                new_callable=AsyncMock,
+                return_value=error_response,
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _create_ingress_session(client)
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert result["error"]["code"] == "CONNECTION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_result_missing_session_field(self):
+        """Supervisor returns success but no `session` field — raise."""
+        from ha_mcp.tools.tools_addons import _create_ingress_session
+
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._supervisor_api_call",
+                new_callable=AsyncMock,
+                return_value={"success": True, "result": {}},
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _create_ingress_session(client)
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "ingress session" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_empty_session_token_rejected(self):
+        """Empty session string is rejected (not silently treated as valid)."""
+        from ha_mcp.tools.tools_addons import _create_ingress_session
+
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._supervisor_api_call",
+                new_callable=AsyncMock,
+                return_value={"success": True, "result": {"session": ""}},
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _create_ingress_session(client)
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "ingress session" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_non_string_session_token_rejected(self):
+        """A non-string `session` value is rejected."""
+        from ha_mcp.tools.tools_addons import _create_ingress_session
+
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._supervisor_api_call",
+                new_callable=AsyncMock,
+                return_value={"success": True, "result": {"session": 12345}},
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _create_ingress_session(client)
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "ingress session" in result["error"]["message"].lower()
+
+
+# Standard mock return for a running addon with Ingress support (for WS tests)
+_RUNNING_ADDON_INFO_WS = {
+    "success": True,
+    "addon": {
+        "name": "Test Addon",
+        "slug": "test_addon",
+        "ingress": True,
+        "state": "started",
+        "ingress_entry": "/api/hassio_ingress/abc123",
+        "ip_address": "172.30.33.99",
+        "ingress_port": 5000,
+    },
+}
+
+
+class TestCallAddonWsErrors:
+    """Tests for _call_addon_ws error paths."""
+
+    @pytest.mark.asyncio
+    async def test_ws_path_traversal_rejected(self):
+        """Paths containing '..' components should be rejected."""
+        client = _make_mock_client()
+        with pytest.raises(ToolError) as exc_info:
+            await _call_addon_ws(client, "test_addon", "../../etc/passwd")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert (
+            "traversal" in result["error"]["message"].lower()
+            or ".." in result["error"]["message"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_ws_addon_not_found(self):
+        """Should raise ToolError when add-on slug doesn't exist."""
+        client = _make_mock_client()
+        error_response = {
+            "success": False,
+            "error": {
+                "code": "RESOURCE_NOT_FOUND",
+                "message": "Add-on 'fake_addon' not found",
+            },
+        }
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=error_response,
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_ws(client, "fake_addon", "/compile")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "not found" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ws_addon_no_ingress_support(self):
+        """Should raise ToolError when add-on doesn't support Ingress and no port override."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": False,
+                        "state": "started",
+                    },
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_ws(client, "test_addon", "/compile")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "ingress" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ws_addon_no_ingress_with_port_override(self):
+        """Should succeed past Ingress check when port override is provided."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": False,
+                        "state": "started",
+                        "ip_address": "172.30.33.99",
+                    },
+                },
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            # Simulate a quick connection that closes immediately
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(
+                None, None
+            )
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(client, "test_addon", "/compile", port=6052)
+
+        # Should have passed the Ingress check (port override bypasses it)
+        assert result["success"] is True
+        assert result["closed_by"] == "server_closed"
+
+    @pytest.mark.asyncio
+    async def test_ws_addon_not_running(self):
+        """Should raise ToolError when add-on is not running."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": True,
+                        "state": "stopped",
+                        "ingress_entry": "/api/hassio_ingress/abc123",
+                    },
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_ws(client, "test_addon", "/compile")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "not running" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "status,must_mention",
+        [
+            (401, ("token", "scope", "session")),
+            (403, ("token", "scope", "session")),
+        ],
+    )
+    async def test_ws_handshake_4xx_auth_hints_at_token(
+        self, mock_ingress_session, status, must_mention
+    ):
+        """401/403 from the WS handshake should suggest token/scope, not path."""
+        from websockets.datastructures import Headers
+        from websockets.http11 import Response
+
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            response = Response(status, "Unauthorized", Headers())
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(
+                side_effect=websockets.exceptions.InvalidStatus(response),
+            )
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(client, "test_addon", "/compile")
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        joined = " ".join(suggestions).lower()
+        assert any(k in joined for k in must_mention), suggestions
+        # Path-shape hint should NOT be the primary suggestion for an auth failure.
+        assert not any("supports WebSocket on this path" in s for s in suggestions), (
+            suggestions
+        )
+
+    @pytest.mark.asyncio
+    async def test_ws_handshake_404_keeps_path_hint(self, mock_ingress_session):
+        """404 from the WS handshake should still surface the path-shape hint."""
+        from websockets.datastructures import Headers
+        from websockets.http11 import Response
+
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            response = Response(404, "Not Found", Headers())
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(
+                side_effect=websockets.exceptions.InvalidStatus(response),
+            )
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(client, "test_addon", "/compile")
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        assert any(
+            "path" in s.lower() or "endpoints" in s.lower() for s in suggestions
+        ), suggestions
+
+    @pytest.mark.asyncio
+    async def test_ws_handshake_failure(self, mock_ingress_session):
+        """Should raise ToolError when WebSocket handshake fails."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(
+                side_effect=websockets.exceptions.InvalidHandshake("403 Forbidden"),
+            )
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(client, "test_addon", "/compile")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "handshake" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ws_ingress_routes_through_ha_core(self, mock_ingress_session):
+        """Ingress WS mode targets HA Core's /api/hassio_ingress proxy with a session cookie."""
+        client = _make_mock_client()
+
+        captured: dict[str, object] = {}
+
+        def capture_connect(url, **kwargs):
+            captured["url"] = url
+            captured["kwargs"] = kwargs
+            cm = MagicMock()
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(
+                None, None
+            )
+            cm.__aenter__ = AsyncMock(return_value=mock_ws)
+            cm.__aexit__ = AsyncMock(return_value=False)
+            return cm
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+                side_effect=capture_connect,
+            ),
+        ):
+            result = await _call_addon_ws(client, "test_addon", "/validate")
+
+        assert result["success"] is True
+        assert captured["url"] == (
+            "ws://localhost:8123/api/hassio_ingress/abc123/validate"
+        )
+        headers = captured["kwargs"]["additional_headers"]
+        assert headers["Cookie"] == f"ingress_session={_INGRESS_SESSION_TOKEN}"
+        assert "Authorization" not in headers
+
+    @pytest.mark.asyncio
+    async def test_ws_direct_port_skips_ingress_session(self, mock_ingress_session):
+        """Direct-port WS mode hits the container IP and does not mint a session."""
+        client = _make_mock_client()
+
+        captured: dict[str, object] = {}
+
+        def capture_connect(url, **kwargs):
+            captured["url"] = url
+            captured["headers"] = dict(kwargs.get("additional_headers", {}))
+            cm = MagicMock()
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(
+                None, None
+            )
+            cm.__aenter__ = AsyncMock(return_value=mock_ws)
+            cm.__aexit__ = AsyncMock(return_value=False)
+            return cm
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+                side_effect=capture_connect,
+            ),
+        ):
+            result = await _call_addon_ws(client, "test_addon", "/validate", port=6052)
+
+        assert result["success"] is True
+        assert captured["url"] == "ws://172.30.33.99:6052/validate"
+        # Direct-port mode must NOT carry the ingress session cookie — that
+        # cookie only authenticates against HA Core's hassio_ingress proxy.
+        assert "Cookie" not in captured["headers"]
+        mock_ingress_session.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ws_https_base_url_uses_wss_scheme(self, mock_ingress_session):
+        """When client.base_url is https, ingress WS targets wss://."""
+        client = _make_mock_client()
+        client.base_url = "https://homeassistant.example.com:8123"
+
+        captured: dict[str, object] = {}
+
+        def capture_connect(url, **kwargs):
+            captured["url"] = url
+            cm = MagicMock()
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(
+                None, None
+            )
+            cm.__aenter__ = AsyncMock(return_value=mock_ws)
+            cm.__aexit__ = AsyncMock(return_value=False)
+            return cm
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+                side_effect=capture_connect,
+            ),
+        ):
+            result = await _call_addon_ws(client, "test_addon", "/validate")
+
+        assert result["success"] is True
+        assert captured["url"] == (
+            "wss://homeassistant.example.com:8123/api/hassio_ingress/abc123/validate"
+        )
+
+    @pytest.mark.asyncio
+    async def test_ws_base_url_with_trailing_slash(self, mock_ingress_session):
+        """Trailing slash on base_url must not produce a doubled slash in the WS URL."""
+        client = _make_mock_client()
+        client.base_url = "http://localhost:8123/"
+
+        captured: dict[str, object] = {}
+
+        def capture_connect(url, **kwargs):
+            captured["url"] = url
+            cm = MagicMock()
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(
+                None, None
+            )
+            cm.__aenter__ = AsyncMock(return_value=mock_ws)
+            cm.__aexit__ = AsyncMock(return_value=False)
+            return cm
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+                side_effect=capture_connect,
+            ),
+        ):
+            await _call_addon_ws(client, "test_addon", "/validate")
+
+        assert captured["url"] == (
+            "ws://localhost:8123/api/hassio_ingress/abc123/validate"
+        )
+
+    @pytest.mark.asyncio
+    async def test_ws_direct_port_offhost_error_hints_at_ingress(
+        self, mock_ingress_session
+    ):
+        """OSError in direct-port WS mode should suggest dropping `port` for off-host hosts."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(
+                side_effect=OSError("No route to host"),
+            )
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(client, "test_addon", "/validate", port=6052)
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        assert any("ingress" in s.lower() for s in suggestions), suggestions
+
+    @pytest.mark.asyncio
+    async def test_ws_direct_port_timeout_hints_at_ingress(self, mock_ingress_session):
+        """TimeoutError in direct-port WS mode should suggest dropping `port`."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(
+                side_effect=TimeoutError(),
+            )
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(
+                    client, "test_addon", "/validate", port=6052, timeout=5
+                )
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        assert any("ingress" in s.lower() for s in suggestions), suggestions
+
+    @pytest.mark.asyncio
+    async def test_ws_ingress_timeout_hints_at_ha_core(self, mock_ingress_session):
+        """TimeoutError in ingress WS mode should point at HA Core."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(
+                side_effect=TimeoutError(),
+            )
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(client, "test_addon", "/validate", timeout=5)
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        assert any(client.base_url in s for s in suggestions), suggestions
+        assert not any("'port' parameter" in s for s in suggestions), suggestions
+
+    @pytest.mark.asyncio
+    async def test_ws_ingress_connection_error_hints_at_ha_core(
+        self, mock_ingress_session
+    ):
+        """OSError in ingress WS mode should point at HA Core, not the add-on.
+
+        The actual failure on off-host installs is HA Core unreachable from
+        the MCP host — the old generic "Check that the add-on is running"
+        hint sent users on a wild-goose chase.
+        """
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(
+                side_effect=OSError("Connection refused"),
+            )
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(client, "test_addon", "/validate")
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        assert any(client.base_url in s for s in suggestions), suggestions
+        assert not any("'port' parameter" in s for s in suggestions), suggestions
+
+    @pytest.mark.asyncio
+    async def test_ws_connection_closed_during_send(self, mock_ingress_session):
+        """Should raise ToolError when connection closes during send."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.send.side_effect = websockets.exceptions.ConnectionClosed(
+                None, None
+            )
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(
+                    client,
+                    "test_addon",
+                    "/compile",
+                    body={"type": "spawn", "configuration": "test.yaml"},
+                )
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "closed unexpectedly" in result["error"]["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ws_connection_error(self, mock_ingress_session):
+        """Should raise ToolError when can't connect to add-on WebSocket."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(
+                side_effect=OSError("Connection refused"),
+            )
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(client, "test_addon", "/compile")
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert (
+            "connect" in result["error"]["message"].lower()
+            or "connection" in str(result).lower()
+        )
+
+    @pytest.mark.asyncio
+    async def test_ws_collects_messages(self, mock_ingress_session):
+        """Should collect text messages and parse JSON ones."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            # Simulate 3 messages then connection close
+            mock_ws.recv.side_effect = [
+                '{"event": "line", "data": "Compiling..."}',
+                '{"event": "line", "data": "Done."}',
+                '{"event": "exit", "code": 0}',
+                websockets.exceptions.ConnectionClosed(None, None),
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(client, "test_addon", "/compile")
+
+        assert result["success"] is True
+        assert result["message_count"] == 3
+        assert result["closed_by"] == "server_closed"
+        # JSON messages should be parsed
+        assert result["messages"][0] == {"event": "line", "data": "Compiling..."}
+        assert result["messages"][2] == {"event": "exit", "code": 0}
+
+    @pytest.mark.asyncio
+    async def test_ws_strips_ansi_codes(self, mock_ingress_session):
+        """Should strip ANSI escape codes from messages."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = [
+                "\x1b[32mSUCCESS\x1b[0m Build complete",
+                websockets.exceptions.ConnectionClosed(None, None),
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(client, "test_addon", "/compile")
+
+        assert result["success"] is True
+        assert result["messages"][0] == "SUCCESS Build complete"
+
+    @pytest.mark.asyncio
+    async def test_ws_skips_binary_frames(self, mock_ingress_session):
+        """Should skip binary WebSocket frames."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = [
+                b"\x00\x01\x02",  # binary frame, should be skipped
+                "text message",
+                websockets.exceptions.ConnectionClosed(None, None),
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(client, "test_addon", "/compile")
+
+        assert result["success"] is True
+        assert result["message_count"] == 1
+        assert result["messages"][0] == "text message"
+
+    @pytest.mark.asyncio
+    async def test_ws_wait_for_close_false_returns_early(self, mock_ingress_session):
+        """With wait_for_close=False, should return after silence timeout."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            # First message arrives, then silence (TimeoutError)
+            mock_ws.recv.side_effect = [
+                "first response",
+                TimeoutError(),
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(
+                client,
+                "test_addon",
+                "/events",
+                wait_for_close=False,
+                timeout=10,
+            )
+
+        assert result["success"] is True
+        assert result["message_count"] == 1
+        assert result["closed_by"] == "silence"
+
+    @pytest.mark.asyncio
+    async def test_ws_direct_port_missing_ip_address(self):
+        """Direct-port WS mode requires the addon's container ip_address."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": False,
+                        "state": "started",
+                        "ip_address": "",
+                    },
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_ws(client, "test_addon", "/validate", port=6052)
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "ip_address" in str(result).lower()
+
+    @pytest.mark.asyncio
+    async def test_ws_addon_variant_uses_direct_ingress_port(
+        self, monkeypatch, mock_ingress_session
+    ):
+        """When running as the HA add-on, ingress WS hits the addon container's
+        ingress port directly with `core.ingress` source headers — no HA Core
+        proxy hop, no session cookie."""
+        monkeypatch.setenv("SUPERVISOR_TOKEN", "supervisor-test-token")
+        client = _make_mock_client()
+        client.base_url = "http://supervisor/core"
+
+        captured: dict[str, object] = {}
+
+        def capture_connect(url, **kwargs):
+            captured["url"] = url
+            captured["headers"] = dict(kwargs.get("additional_headers", {}))
+            cm = MagicMock()
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(
+                None, None
+            )
+            cm.__aenter__ = AsyncMock(return_value=mock_ws)
+            cm.__aexit__ = AsyncMock(return_value=False)
+            return cm
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+                side_effect=capture_connect,
+            ),
+        ):
+            result = await _call_addon_ws(client, "test_addon", "/validate")
+
+        assert result["success"] is True
+        # WS to the addon container's ingress port — never to HA Core.
+        assert captured["url"] == "ws://172.30.33.99:5000/validate"
+        headers = captured["headers"]
+        assert headers["X-Ingress-Path"] == "/api/hassio_ingress/abc123"
+        assert headers["X-Hass-Source"] == "core.ingress"
+        assert "Cookie" not in headers
+        assert "Authorization" not in headers
+        mock_ingress_session.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ws_addon_variant_wss_not_used_for_https_base_url(
+        self, monkeypatch, mock_ingress_session
+    ):
+        """Even when client.base_url is HTTPS, the addon-variant route hits the
+        container's bridge IP — always plain `ws://`. The base_url scheme is
+        irrelevant here because we never go through HA Core."""
+        monkeypatch.setenv("SUPERVISOR_TOKEN", "supervisor-test-token")
+        client = _make_mock_client()
+        client.base_url = "https://homeassistant.example.com:8123"
+
+        captured: dict[str, object] = {}
+
+        def capture_connect(url, **kwargs):
+            captured["url"] = url
+            cm = MagicMock()
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(
+                None, None
+            )
+            cm.__aenter__ = AsyncMock(return_value=mock_ws)
+            cm.__aexit__ = AsyncMock(return_value=False)
+            return cm
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+                side_effect=capture_connect,
+            ),
+        ):
+            await _call_addon_ws(client, "test_addon", "/validate")
+
+        assert captured["url"].startswith("ws://"), captured["url"]
+        assert not captured["url"].startswith("wss://"), captured["url"]
+
+    @pytest.mark.asyncio
+    async def test_ws_addon_variant_missing_ingress_port_errors(self, monkeypatch):
+        """Addon variant requires both ip_address and ingress_port for WS."""
+        monkeypatch.setenv("SUPERVISOR_TOKEN", "supervisor-test-token")
+        client = _make_mock_client()
+        client.base_url = "http://supervisor/core"
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": True,
+                        "state": "started",
+                        "ingress_entry": "/api/hassio_ingress/abc123",
+                        "ip_address": "172.30.33.99",
+                        "ingress_port": None,
+                    },
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_ws(client, "test_addon", "/validate")
+
+        result = _parse_tool_error(exc_info)
+        assert result["error"]["code"] == "INTERNAL_ERROR"
+        assert "ingress_port" in str(result).lower()
+
+    @pytest.mark.asyncio
+    async def test_ws_addon_variant_connect_error_hints_at_addon_network(
+        self, monkeypatch, mock_ingress_session
+    ):
+        """OSError on addon-variant WS should suggest restarting the target
+        add-on, not 'verify HA reachable'."""
+        monkeypatch.setenv("SUPERVISOR_TOKEN", "supervisor-test-token")
+        client = _make_mock_client()
+        client.base_url = "http://supervisor/core"
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws_connect.side_effect = OSError("No route to host")
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(client, "test_addon", "/validate")
+
+        result = _parse_tool_error(exc_info)
+        suggestions = result["error"].get("suggestions", [])
+        assert any(
+            "restart" in s.lower() or "addon network" in s.lower() for s in suggestions
+        ), suggestions
+        assert not any(client.base_url in s for s in suggestions), suggestions
+
+
+class TestSliceWsMessages:
+    """Tests for the _slice_ws_messages helper (pure function)."""
+
+    def test_no_offset_no_limit_returns_all(self):
+        """Without offset/limit, all collected messages pass through."""
+        messages = [1, 2, 3, 4, 5]
+        sliced, meta = _slice_ws_messages(messages, offset=0, limit=None)
+        assert sliced == messages
+        assert meta == {"total_collected": 5, "offset": 0, "returned": 5}
+
+    def test_limit_truncates(self):
+        """Limit caps the returned count."""
+        sliced, meta = _slice_ws_messages([1, 2, 3, 4, 5], offset=0, limit=3)
+        assert sliced == [1, 2, 3]
+        assert meta["returned"] == 3
+        assert meta["limit"] == 3
+
+    def test_offset_skips_head(self):
+        """Offset drops the first N messages."""
+        sliced, _ = _slice_ws_messages([1, 2, 3, 4, 5], offset=2, limit=None)
+        assert sliced == [3, 4, 5]
+
+    def test_offset_plus_limit(self):
+        """Offset + limit selects a window."""
+        sliced, meta = _slice_ws_messages([1, 2, 3, 4, 5], offset=1, limit=2)
+        assert sliced == [2, 3]
+        assert meta["offset"] == 1
+        assert meta["limit"] == 2
+        assert meta["returned"] == 2
+
+    def test_offset_beyond_total_returns_empty(self):
+        """Offset past the end yields an empty slice but stable metadata."""
+        sliced, meta = _slice_ws_messages([1, 2, 3], offset=10, limit=None)
+        assert sliced == []
+        assert meta["total_collected"] == 3
+        assert meta["returned"] == 0
+
+    def test_negative_offset_clamped_to_zero(self):
+        """Negative offset is clamped — no reverse slicing."""
+        sliced, _ = _slice_ws_messages([1, 2, 3], offset=-5, limit=None)
+        assert sliced == [1, 2, 3]
+
+    def test_negative_limit_clamped_to_zero(self):
+        """Negative limit is clamped to zero (empty return)."""
+        sliced, _ = _slice_ws_messages([1, 2, 3], offset=0, limit=-1)
+        assert sliced == []
+
+
+class TestIsSignalMessage:
+    """Tests for the _is_signal_message heuristic."""
+
+    def test_info_log_is_signal(self):
+        assert _is_signal_message("INFO Reading configuration")
+
+    def test_warning_log_is_signal(self):
+        assert _is_signal_message("WARNING Something looks off")
+        assert _is_signal_message("WARN deprecated setting")
+
+    def test_error_log_is_signal(self):
+        assert _is_signal_message("ERROR Compile failed")
+        assert _is_signal_message({"level": "ERROR", "msg": "boom"})
+
+    def test_exit_event_is_signal(self):
+        assert _is_signal_message({"event": "exit", "code": 0})
+        assert _is_signal_message({"returncode": 1})
+
+    def test_config_valid_is_signal(self):
+        assert _is_signal_message("Configuration is valid!")
+
+    def test_yaml_dump_line_is_not_signal(self):
+        """Plain YAML-shaped lines are non-signal (expected to be elided)."""
+        assert not _is_signal_message("  - platform: gpio")
+        assert not _is_signal_message("sensor:")
+        assert not _is_signal_message("    pin: GPIO0")
+
+
+class TestSummarizeWsMessages:
+    """Tests for the _summarize_ws_messages heuristic."""
+
+    def test_short_non_signal_run_passes_through(self):
+        """A run shorter than the threshold is not elided."""
+        messages = ["  key1: val", "  key2: val", "  key3: val"]
+        result, meta = _summarize_ws_messages(messages, run_threshold=10)
+        assert result == messages
+        assert meta["elided_count"] == 0
+
+    def test_long_non_signal_run_is_elided(self):
+        """A run ≥ threshold is collapsed with context kept at each end."""
+        messages = [f"  line_{i}: value" for i in range(50)]
+        result, meta = _summarize_ws_messages(
+            messages, run_threshold=10, context_keep=2
+        )
+        # 2 head + 1 elision marker + 2 tail = 5 entries
+        assert len(result) == 5
+        assert result[0] == "  line_0: value"
+        assert result[1] == "  line_1: value"
+        assert isinstance(result[2], dict)
+        assert result[2]["elided"] == 46
+        assert "summarize=False" in result[2]["note"]
+        assert result[3] == "  line_48: value"
+        assert result[4] == "  line_49: value"
+        assert meta["original_count"] == 50
+        assert meta["elided_count"] == 46
+
+    def test_signal_messages_split_runs(self):
+        """Signal messages break non-signal runs so each run is checked separately."""
+        messages = (
+            [f"  k{i}: v" for i in range(5)]
+            + ["INFO something happened"]
+            + [f"  k{i}: v" for i in range(5)]
+        )
+        result, meta = _summarize_ws_messages(messages, run_threshold=10)
+        # Neither 5-long run is ≥ threshold → nothing elided
+        assert result == messages
+        assert meta["elided_count"] == 0
+
+    def test_mixed_with_esphome_validate_shape(self):
+        """Simulates a realistic ESPHome /validate stream: header signals, big
+        YAML dump, trailing success signal."""
+        messages = (
+            ["INFO Reading configuration motion1.yaml..."]
+            + [f"    key_{i}: val_{i}" for i in range(100)]
+            + [
+                "INFO Configuration is valid!",
+                {"event": "exit", "code": 0},
+            ]
+        )
+        result, meta = _summarize_ws_messages(messages, run_threshold=10)
+        # 1 header INFO + (2 context + 1 elided + 2 context) + 2 trailing signals
+        assert len(result) == 8
+        assert "Reading configuration" in str(result[0])
+        assert result[1] == "    key_0: val_0"
+        assert isinstance(result[3], dict)
+        assert result[3]["elided"] == 96
+        assert "Configuration is valid" in str(result[6])
+        assert result[7] == {"event": "exit", "code": 0}
+        assert meta["elided_count"] == 96
+
+    def test_heterogeneous_dict_and_string_list(self):
+        """Transforms and summarize both accept list[dict | str] (explicit shape contract)."""
+        messages: list = [
+            {"level": "INFO", "text": "hi"},
+            "plain string 1",
+            "plain string 2",
+            {"event": "exit"},
+        ]
+        result, meta = _summarize_ws_messages(messages, run_threshold=10)
+        # Short run, no elision
+        assert result == messages
+        assert meta["original_count"] == 4
+
+
+class TestApplyResponseTransform:
+    """Tests for _apply_response_transform wrapper."""
+
+    def test_filter_list(self):
+        """A reassigning expression narrows a list."""
+        messages = [{"level": "INFO"}, {"level": "ERROR"}, {"level": "INFO"}]
+        result = _apply_response_transform(
+            messages,
+            "response = [m for m in response if m.get('level') == 'ERROR']",
+        )
+        assert result == [{"level": "ERROR"}]
+
+    def test_in_place_mutation(self):
+        """An in-place mutation is reflected in the return value."""
+        messages = [1, 2, 3]
+        result = _apply_response_transform(messages, "response.append(4)")
+        assert result == [1, 2, 3, 4]
+
+    def test_heterogeneous_shape(self):
+        """Mixed dict/string messages (WS shape) can be transformed."""
+        messages = [
+            {"level": "INFO", "msg": "start"},
+            "raw text",
+            {"level": "ERROR", "msg": "boom"},
+            "another raw",
+        ]
+        # Filter by stringified form — works uniformly on dicts and strings.
+        result = _apply_response_transform(
+            messages,
+            "response = [m for m in response if 'ERROR' in str(m) or 'raw' in str(m)]",
+        )
+        assert len(result) == 3
+        assert "raw text" in result
+        assert {"level": "ERROR", "msg": "boom"} in result
+
+    def test_invalid_expression_raises_tool_error(self):
+        """Forbidden operations raise ToolError with the validation-error
+        message produced by ``format_sandbox_error``."""
+        with pytest.raises(ToolError) as exc_info:
+            _apply_response_transform([1, 2, 3], "import os")
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "Expression validation failed" in result["error"]["message"]
+
+    def test_runtime_error_raises_tool_error(self):
+        """Runtime execution errors surface as ToolError with the
+        runtime-error message (distinct from validation failures)."""
+        with pytest.raises(ToolError) as exc_info:
+            _apply_response_transform({}, "response['missing']['key'] = 1")
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "Expression raised at runtime" in result["error"]["message"]
+
+
+class TestCallAddonWsNewParams:
+    """Integration tests for message_limit/offset/summarize/python_transform in _call_addon_ws."""
+
+    @pytest.mark.asyncio
+    async def test_message_limit_caps_collection(self, mock_ingress_session):
+        """message_limit lowers the collection cap so we stop early."""
+        client = _make_mock_client()
+
+        # Produce many messages, then a close
+        messages_to_send = [f"msg {i}" for i in range(100)]
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = messages_to_send + [
+                websockets.exceptions.ConnectionClosed(None, None)
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(
+                client,
+                "test_addon",
+                "/compile",
+                message_limit=5,
+                summarize=False,
+            )
+
+        assert result["success"] is True
+        assert result["closed_by"] == "message_limit"
+        assert result["message_count"] == 5
+        assert result["pagination"]["total_collected"] == 5
+        assert result["pagination"]["limit"] == 5
+
+    @pytest.mark.asyncio
+    async def test_safety_ceiling_distinct_from_message_limit(
+        self, mock_ingress_session
+    ):
+        """Hitting the global ceiling without a caller-set message_limit
+        reports closed_by="safety_ceiling", not "message_limit"."""
+        client = _make_mock_client()
+
+        messages_to_send = [f"msg {i}" for i in range(10)]
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._MAX_WS_MESSAGES",
+                5,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = messages_to_send + [
+                websockets.exceptions.ConnectionClosed(None, None)
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(
+                client,
+                "test_addon",
+                "/compile",
+                summarize=False,
+            )
+
+        assert result["success"] is True
+        assert result["closed_by"] == "safety_ceiling"
+        assert result["message_count"] == 5
+
+    @pytest.mark.asyncio
+    async def test_message_offset_skips_head(self, mock_ingress_session):
+        """message_offset drops the first N messages from the returned list."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = [
+                "msg 0",
+                "msg 1",
+                "msg 2",
+                "msg 3",
+                websockets.exceptions.ConnectionClosed(None, None),
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(
+                client,
+                "test_addon",
+                "/logs",
+                message_offset=2,
+                summarize=False,
+            )
+
+        assert result["success"] is True
+        assert result["messages"] == ["msg 2", "msg 3"]
+        assert result["pagination"]["offset"] == 2
+        assert result["pagination"]["total_collected"] == 4
+
+    @pytest.mark.asyncio
+    async def test_summarize_elides_yaml_dump(self, mock_ingress_session):
+        """The summarize pass collapses a long non-signal run from the WS stream."""
+        client = _make_mock_client()
+
+        # 30 plain YAML-ish lines with one surrounding INFO on each end
+        yaml_lines = [f"  key_{i}: value" for i in range(30)]
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = (
+                ["INFO Reading configuration..."]
+                + yaml_lines
+                + [
+                    "INFO Configuration is valid!",
+                    websockets.exceptions.ConnectionClosed(None, None),
+                ]
+            )
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(client, "test_addon", "/validate")
+
+        assert result["success"] is True
+        # 1 header + 2 context + 1 elision + 2 context + 1 footer = 7
+        assert result["message_count"] == 7
+        assert "summary" in result
+        assert result["summary"]["elided_count"] == 26
+        # Verify the elision marker is present
+        assert any(
+            isinstance(m, dict) and m.get("elided") == 26 for m in result["messages"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_summarize_false_returns_raw_stream(self, mock_ingress_session):
+        """With summarize=False, no elision happens."""
+        client = _make_mock_client()
+
+        yaml_lines = [f"  key_{i}: value" for i in range(30)]
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = yaml_lines + [
+                websockets.exceptions.ConnectionClosed(None, None)
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(
+                client, "test_addon", "/validate", summarize=False
+            )
+
+        assert result["success"] is True
+        assert result["message_count"] == 30
+        assert "summary" not in result
+
+    @pytest.mark.asyncio
+    async def test_python_transform_filters_messages(self, mock_ingress_session):
+        """python_transform post-processes the message list after summarize."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = [
+                '{"level": "INFO", "msg": "start"}',
+                '{"level": "ERROR", "msg": "boom"}',
+                '{"level": "INFO", "msg": "done"}',
+                websockets.exceptions.ConnectionClosed(None, None),
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(
+                client,
+                "test_addon",
+                "/validate",
+                summarize=False,
+                python_transform=(
+                    "response = [m for m in response if 'ERROR' in str(m)]"
+                ),
+            )
+
+        assert result["success"] is True
+        assert result["transformed"] is True
+        assert result["pre_transform_message_count"] == 3
+        assert result["message_count"] == 1
+        assert result["messages"][0]["level"] == "ERROR"
+
+    @pytest.mark.asyncio
+    async def test_python_transform_invalid_raises(self, mock_ingress_session):
+        """Invalid python_transform surfaces VALIDATION_FAILED as ToolError."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = [
+                "msg",
+                websockets.exceptions.ConnectionClosed(None, None),
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_ws(
+                    client,
+                    "test_addon",
+                    "/logs",
+                    python_transform="import os",
+                )
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "Expression validation failed" in result["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_size_limit_stops_collection(self, mock_ingress_session):
+        """Accumulating bytes ≥ _MAX_RESPONSE_SIZE closes with closed_by='size_limit'."""
+        client = _make_mock_client()
+
+        # Each message is ~1KB; patch the cap to 3KB so we hit it quickly.
+        big_msg = "x" * 1024
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._MAX_RESPONSE_SIZE",
+                3 * 1024,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = [big_msg] * 10 + [
+                websockets.exceptions.ConnectionClosed(None, None)
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(
+                client, "test_addon", "/logs", summarize=False
+            )
+
+        assert result["success"] is True
+        assert result["closed_by"] == "size_limit"
+        # Stopped after 3 messages (3 × 1024 bytes ≥ 3072-byte cap)
+        assert result["message_count"] == 3
+
+    @pytest.mark.asyncio
+    async def test_wait_for_close_timeout_reports_timeout(self, mock_ingress_session):
+        """When wait_for_close=True and recv times out, closed_by should be 'timeout', not 'silence'."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            # Raise TimeoutError from recv so asyncio.wait_for propagates it
+            # without leaving an uncollected coroutine.
+            mock_ws.recv.side_effect = TimeoutError
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(
+                client,
+                "test_addon",
+                "/logs",
+                wait_for_close=True,
+                summarize=False,
+            )
+
+        assert result["success"] is True
+        assert result["closed_by"] == "timeout"
+
+    @pytest.mark.asyncio
+    async def test_wait_for_close_false_timeout_reports_silence(
+        self, mock_ingress_session
+    ):
+        """When wait_for_close=False and recv times out, closed_by should be 'silence'."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = TimeoutError
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(
+                client,
+                "test_addon",
+                "/logs",
+                wait_for_close=False,
+                summarize=False,
+            )
+
+        assert result["success"] is True
+        assert result["closed_by"] == "silence"
+
+    @pytest.mark.asyncio
+    async def test_ws_response_too_large_returns_truncated_envelope(
+        self, mock_ingress_session
+    ):
+        """When the assembled result dict exceeds _MAX_RESPONSE_SIZE, return a RESPONSE_TOO_LARGE envelope."""
+        client = _make_mock_client()
+
+        # Patch the size cap to something tiny so a single message triggers it.
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._MAX_RESPONSE_SIZE",
+                10,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO_WS,
+            ),
+            patch(
+                "ha_mcp.tools.tools_addons.websockets.connect",
+            ) as mock_ws_connect,
+        ):
+            mock_ws = AsyncMock()
+            mock_ws.recv.side_effect = [
+                "some message",
+                websockets.exceptions.ConnectionClosed(None, None),
+            ]
+            mock_ws_connect.return_value.__aenter__ = AsyncMock(return_value=mock_ws)
+            mock_ws_connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_ws(
+                client, "test_addon", "/logs", summarize=False
+            )
+
+        assert result["success"] is True
+        assert result["error"] == "RESPONSE_TOO_LARGE"
+        assert result["truncated"] is True
+        assert "hint" in result
+        assert result["closed_by"] == "size_limit"
+        assert result["message_count"] == 1
+
+
+class TestValidateAddonAccessWithPort:
+    """Tests for _validate_addon_access port-override + stopped-addon interaction."""
+
+    @pytest.mark.asyncio
+    async def test_port_override_stopped_addon_raises(self):
+        """Port override bypasses the Ingress check but the state check still fires."""
+        client = _make_mock_client()
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "addon": {
+                        "name": "Test Addon",
+                        "slug": "test_addon",
+                        "ingress": False,
+                        "state": "stopped",
+                        "ip_address": "172.30.33.99",
+                    },
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _call_addon_ws(client, "test_addon", "/compile", port=6052)
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "not running" in result["error"]["message"].lower()
+
+
+class TestCallAddonApiPythonTransform:
+    """Tests for python_transform in HTTP mode (_call_addon_api)."""
+
+    @pytest.mark.asyncio
+    async def test_transform_applies_to_json_array(self, mock_ingress_session):
+        """Transform reshapes a JSON array response before return."""
+        client = _make_mock_client()
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch("ha_mcp.tools.tools_addons.httpx.AsyncClient") as mock_httpx,
+        ):
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.headers = {"content-type": "application/json"}
+            mock_response.json.return_value = [
+                {"id": 1, "name": "alice"},
+                {"id": 2, "name": "bob"},
+            ]
+            mock_client_ctx = AsyncMock()
+            mock_client_ctx.request = AsyncMock(return_value=mock_response)
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client_ctx)
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(
+                client,
+                "test_addon",
+                "/users",
+                python_transform="response = [u['id'] for u in response]",
+            )
+
+        assert result["success"] is True
+        assert result["transformed"] is True
+        assert result["response"] == [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_transform_applies_to_dict_body(self, mock_ingress_session):
+        """Transform on dict content-type."""
+        client = _make_mock_client()
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch("ha_mcp.tools.tools_addons.httpx.AsyncClient") as mock_httpx,
+        ):
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.headers = {"content-type": "application/json"}
+            mock_response.json.return_value = {"status": "ok", "details": "..." * 100}
+            mock_client_ctx = AsyncMock()
+            mock_client_ctx.request = AsyncMock(return_value=mock_response)
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client_ctx)
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await _call_addon_api(
+                client,
+                "test_addon",
+                "/status",
+                python_transform="del response['details']",
+            )
+
+        assert result["success"] is True
+        assert result["transformed"] is True
+        assert result["response"] == {"status": "ok"}
+
+    @pytest.mark.asyncio
+    async def test_transform_invalid_raises(self, mock_ingress_session):
+        """HTTP mode: invalid transform raises ToolError."""
+        client = _make_mock_client()
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                new_callable=AsyncMock,
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            patch("ha_mcp.tools.tools_addons.httpx.AsyncClient") as mock_httpx,
+        ):
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.headers = {"content-type": "application/json"}
+            mock_response.json.return_value = {"x": 1}
+            mock_client_ctx = AsyncMock()
+            mock_client_ctx.request = AsyncMock(return_value=mock_response)
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client_ctx)
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(ToolError) as exc_info:
+                await _call_addon_api(
+                    client,
+                    "test_addon",
+                    "/x",
+                    python_transform="open('/etc/passwd')",
+                )
+
+        result = _parse_tool_error(exc_info)
+        assert result["success"] is False
+        assert "Expression validation failed" in result["error"]["message"]
+
+
+# Mock Supervisor API responses for list_addons tests
+_ADDONS_LIST_RESPONSE = {
+    "success": True,
+    "result": {
+        "addons": [
+            {
+                "name": "Matter Server",
+                "slug": "core_matter_server",
+                "description": "Matter support",
+                "version": "8.3.0",
+                "state": "started",
+                "update_available": False,
+                "repository": "core",
+            },
+            {
+                "name": "Music Assistant",
+                "slug": "music_assistant",
+                "description": "Music player",
+                "version": "1.4.0",
+                "state": "started",
+                "update_available": False,
+                "repository": "community",
+            },
+            {
+                "name": "Stopped Addon",
+                "slug": "stopped_addon",
+                "description": "Not running",
+                "version": "1.0.0",
+                "state": "stopped",
+                "update_available": False,
+                "repository": "core",
+            },
+        ],
+    },
+}
+
+_MATTER_STATS_RESPONSE = {
+    "success": True,
+    "result": {
+        "cpu_percent": 0.5,
+        "memory_percent": 2.0,
+        "memory_usage": 163987456,
+        "memory_limit": 8312754176,
+    },
+}
+
+_MUSIC_STATS_RESPONSE = {
+    "success": True,
+    "result": {
+        "cpu_percent": 1.2,
+        "memory_percent": 10.8,
+        "memory_usage": 896094208,
+        "memory_limit": 8312754176,
+    },
+}
+
+
+class TestListAddonsStats:
+    """Tests for list_addons with include_stats=True."""
+
+    @pytest.mark.asyncio
+    async def test_include_stats_returns_real_data(self):
+        """Running addons should have real stats from /addons/{slug}/stats."""
+        client = _make_mock_client()
+
+        async def mock_supervisor_api(client, endpoint, **kwargs):
+            if endpoint == "/addons":
+                return _ADDONS_LIST_RESPONSE
+            if endpoint == "/addons/core_matter_server/stats":
+                return _MATTER_STATS_RESPONSE
+            if endpoint == "/addons/music_assistant/stats":
+                return _MUSIC_STATS_RESPONSE
+            return {"success": False}
+
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            side_effect=mock_supervisor_api,
+        ):
+            result = await list_addons(client, include_stats=True)
+
+        assert result["success"] is True
+        addons = {a["slug"]: a for a in result["addons"]}
+
+        # Running addons should have real stats
+        matter_stats = addons["core_matter_server"]["stats"]
+        assert matter_stats is not None
+        assert matter_stats["cpu_percent"] == 0.5
+        assert matter_stats["memory_usage"] == 163987456
+
+        music_stats = addons["music_assistant"]["stats"]
+        assert music_stats is not None
+        assert music_stats["memory_percent"] == 10.8
+
+    @pytest.mark.asyncio
+    async def test_stopped_addon_gets_none_stats(self):
+        """Stopped addons should get stats=None without making an API call."""
+        client = _make_mock_client()
+        stats_calls = []
+
+        async def mock_supervisor_api(client, endpoint, **kwargs):
+            if endpoint == "/addons":
+                return _ADDONS_LIST_RESPONSE
+            stats_calls.append(endpoint)
+            if endpoint == "/addons/core_matter_server/stats":
+                return _MATTER_STATS_RESPONSE
+            if endpoint == "/addons/music_assistant/stats":
+                return _MUSIC_STATS_RESPONSE
+            return {"success": False}
+
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            side_effect=mock_supervisor_api,
+        ):
+            result = await list_addons(client, include_stats=True)
+
+        addons = {a["slug"]: a for a in result["addons"]}
+
+        # Stopped addon should have None stats
+        assert addons["stopped_addon"]["stats"] is None
+
+        # Should NOT have made a stats call for the stopped addon
+        assert "/addons/stopped_addon/stats" not in stats_calls
+
+    @pytest.mark.asyncio
+    async def test_one_addon_stats_failure_does_not_break_others(self):
+        """If one addon's stats fetch fails, others should still return stats."""
+        client = _make_mock_client()
+
+        async def mock_supervisor_api(client, endpoint, **kwargs):
+            if endpoint == "/addons":
+                return _ADDONS_LIST_RESPONSE
+            if endpoint == "/addons/core_matter_server/stats":
+                raise Exception("Connection reset")
+            if endpoint == "/addons/music_assistant/stats":
+                return _MUSIC_STATS_RESPONSE
+            return {"success": False}
+
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            side_effect=mock_supervisor_api,
+        ):
+            result = await list_addons(client, include_stats=True)
+
+        assert result["success"] is True
+        addons = {a["slug"]: a for a in result["addons"]}
+
+        # Failed addon should have None stats
+        assert addons["core_matter_server"]["stats"] is None
+
+        # Other addon should still have real stats
+        music_stats = addons["music_assistant"]["stats"]
+        assert music_stats is not None
+        assert music_stats["memory_percent"] == 10.8
+
+    @pytest.mark.asyncio
+    async def test_no_stats_key_without_include_stats(self):
+        """When include_stats=False, addons should not have a stats key."""
+        client = _make_mock_client()
+
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            return_value=_ADDONS_LIST_RESPONSE,
+        ):
+            result = await list_addons(client, include_stats=False)
+
+        assert result["success"] is True
+        for addon in result["addons"]:
+            assert "stats" not in addon
+
+
+class TestManageAddon:
+    """Tests for ha_manage_addon tool (config mode and proxy mode)."""
+
+    @pytest.fixture
+    def mock_mcp(self):
+        """Create a mock MCP server that captures registered tools."""
+        mcp = MagicMock()
+        self.registered_tools = {}
+
+        def tool_decorator(*args, **kwargs):
+            def wrapper(func):
+                self.registered_tools[func.__name__] = func
+                return func
+
+            return wrapper
+
+        mcp.tool = tool_decorator
+        return mcp
+
+    @pytest.fixture
+    def mock_client(self):
+        """Create a mock HomeAssistantClient."""
+        return _make_mock_client()
+
+    @pytest.fixture
+    def manage_addon_tool(self, mock_mcp, mock_client):
+        """Register tools and return the ha_manage_addon function."""
+        from ha_mcp.tools.tools_addons import register_addon_tools
+
+        register_addon_tools(mock_mcp, mock_client)
+        return self.registered_tools["ha_manage_addon"]
+
+    # --- Config mode ---
+
+    @pytest.mark.asyncio
+    async def test_config_mode_options(self, manage_addon_tool):
+        """Config mode: options are merged with current values then POSTed."""
+
+        async def mock_supervisor_api(client, endpoint, **kwargs):
+            if endpoint == "/addons/test_addon/info":
+                return {
+                    "success": True,
+                    "result": {
+                        "options": {
+                            "FF_KIOSK": False,
+                            "FF_OPEN_URL": "https://old.example.com",
+                        },
+                        "schema": [
+                            {"name": "FF_KIOSK", "required": False, "type": "bool"},
+                            {"name": "FF_OPEN_URL", "required": False, "type": "str"},
+                        ],
+                    },
+                }
+            # POST /addons/test_addon/options
+            return {"success": True, "result": {}}
+
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            side_effect=mock_supervisor_api,
+        ):
+            result = await manage_addon_tool(
+                slug="test_addon",
+                options={"FF_OPEN_URL": "https://example.com"},
+            )
+
+        assert result["status"] == "pending_restart"
+        assert result["submitted_fields"] == ["options"]
+        # Caller only sent FF_OPEN_URL; FF_KIOSK is carried over from current options
+        assert "ignored_fields" not in result
+
+    @pytest.mark.asyncio
+    async def test_config_mode_options_merge_preserves_required_fields(
+        self, manage_addon_tool
+    ):
+        """Merge ensures required fields are present even when caller omits them (Bug A fix)."""
+
+        async def mock_supervisor_api(client, endpoint, **kwargs):
+            if endpoint == "/addons/test_addon/info":
+                return {
+                    "success": True,
+                    "result": {
+                        "options": {
+                            "required_key": "existing_value",
+                            "log_level": "info",
+                        },
+                        "schema": [
+                            {"name": "required_key", "required": True, "type": "str"},
+                            {"name": "log_level", "required": False, "type": "str"},
+                        ],
+                    },
+                }
+            return {"success": True, "result": {}}
+
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            side_effect=mock_supervisor_api,
+        ) as mock_sup:
+            result = await manage_addon_tool(
+                slug="test_addon", options={"log_level": "debug"}
+            )
+
+        assert result["status"] == "pending_restart"
+        # POST call should have included required_key from current options
+        post_call = [c for c in mock_sup.call_args_list if "method" in c[1]][-1]
+        assert post_call[1]["data"]["options"]["required_key"] == "existing_value"
+        assert post_call[1]["data"]["options"]["log_level"] == "debug"
+
+    @pytest.mark.asyncio
+    async def test_config_mode_options_nested_deep_merge(self, manage_addon_tool):
+        """Deep merge preserves sibling fields in nested option dicts (Bug C fix)."""
+
+        async def mock_supervisor_api(client, endpoint, **kwargs):
+            if endpoint == "/addons/test_addon/info":
+                return {
+                    "success": True,
+                    "result": {
+                        "options": {
+                            "ssh": {"sftp": False, "authorized_keys": ["key1"]},
+                            "log_level": "info",
+                        },
+                        "schema": [
+                            {"name": "ssh", "type": "schema"},
+                            {"name": "log_level", "required": False, "type": "str"},
+                        ],
+                    },
+                }
+            return {"success": True, "result": {}}
+
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            side_effect=mock_supervisor_api,
+        ) as mock_sup:
+            result = await manage_addon_tool(
+                slug="test_addon", options={"ssh": {"sftp": True}}
+            )
+
+        assert result["status"] == "pending_restart"
+        post_call = [c for c in mock_sup.call_args_list if "method" in c[1]][-1]
+        merged = post_call[1]["data"]["options"]
+        # sftp overridden, authorized_keys preserved, top-level log_level preserved
+        assert merged["ssh"]["sftp"] is True
+        assert merged["ssh"]["authorized_keys"] == ["key1"]
+        assert merged["log_level"] == "info"
+
+    @pytest.mark.asyncio
+    async def test_config_mode_options_unknown_fields_warned(self, manage_addon_tool):
+        """Unknown option fields are removed pre-write and reported in ignored_fields (Bug B fix)."""
+
+        async def mock_supervisor_api(client, endpoint, **kwargs):
+            if endpoint == "/addons/test_addon/info":
+                return {
+                    "success": True,
+                    "result": {
+                        "options": {"log_level": "info"},
+                        "schema": [
+                            {"name": "log_level", "required": False, "type": "str"}
+                        ],
+                    },
+                }
+            return {"success": True, "result": {}}
+
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            side_effect=mock_supervisor_api,
+        ):
+            result = await manage_addon_tool(
+                slug="test_addon",
+                options={"log_level": "debug", "zombie_field": "ghost"},
+            )
+
+        assert result["status"] == "pending_restart"
+        assert "ignored_fields" in result
+        assert "zombie_field" in result["ignored_fields"]
+        warnings = result.get("warnings")
+        assert isinstance(warnings, list) and warnings, (
+            f"Expected non-empty warnings list, got: {result}"
+        )
+        assert any("not in add-on schema were ignored" in w for w in warnings), (
+            f"Expected ignored-field warning content; got: {warnings!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_config_mode_boot(self, manage_addon_tool):
+        """Config mode: boot field is included in POST payload."""
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            return_value={"success": True, "result": {}},
+        ) as mock_sup:
+            result = await manage_addon_tool(slug="test_addon", boot="manual")
+
+        assert result["success"] is True
+        assert result["submitted_fields"] == ["boot"]
+        data = mock_sup.call_args[1]["data"]
+        assert data == {"boot": "manual"}
+
+    @pytest.mark.asyncio
+    async def test_config_mode_auto_update_and_watchdog(self, manage_addon_tool):
+        """Config mode: auto_update and watchdog are sent together in one call."""
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            return_value={"success": True, "result": {}},
+        ) as mock_sup:
+            result = await manage_addon_tool(
+                slug="test_addon", auto_update=False, watchdog=True
+            )
+
+        assert result["success"] is True
+        assert set(result["submitted_fields"]) == {"auto_update", "watchdog"}
+        data = mock_sup.call_args[1]["data"]
+        assert data == {"auto_update": False, "watchdog": True}
+
+    @pytest.mark.asyncio
+    async def test_config_mode_network(self, manage_addon_tool):
+        """Config mode: network port mapping is sent correctly."""
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            return_value={"success": True, "result": {}},
+        ) as mock_sup:
+            result = await manage_addon_tool(
+                slug="test_addon", network={"5800/tcp": 8082}
+            )
+
+        assert result["status"] == "pending_restart"
+        assert result["submitted_fields"] == ["network"]
+        assert mock_sup.call_args[1]["data"]["network"] == {"5800/tcp": 8082}
+
+    @pytest.mark.asyncio
+    async def test_config_mode_supervisor_schema_error_raises(self, manage_addon_tool):
+        """Config mode: Supervisor schema error on POST /options maps to VALIDATION_FAILED.
+
+        The real pipeline: ws_client.send_command raises
+        HomeAssistantCommandError → _supervisor_api_call funnels it
+        through exception_to_structured_error → _classify_by_message's
+        schema branch recognises the vol.Invalid markers and routes to
+        VALIDATION_FAILED (issue #993 fix).
+
+        This test mocks _supervisor_api_call directly and injects the
+        already-classified ToolError at the /options boundary. End-to-end
+        coverage of the classifier itself (HomeAssistantCommandError →
+        VALIDATION_FAILED) lives in TestSupervisorApiCall.
+        """
+        from ha_mcp.errors import create_validation_error
+        from ha_mcp.tools.helpers import raise_tool_error
+
+        async def mock_supervisor_api(client, endpoint, **kwargs):
+            if endpoint == "/addons/test_addon/info":
+                return {
+                    "success": True,
+                    "result": {
+                        "options": {"ssh": {"sftp": False}},
+                        "schema": [{"name": "ssh", "required": True, "type": "dict"}],
+                    },
+                }
+            # POST /addons/test_addon/options with a partial nested update:
+            # Supervisor rejects with vol.Invalid, classifier produces
+            # VALIDATION_FAILED.
+            raise_tool_error(
+                create_validation_error(
+                    "Command failed: Missing option 'authorized_keys' in ssh "
+                    "in SSH (core_ssh)",
+                )
+            )
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._supervisor_api_call",
+                side_effect=mock_supervisor_api,
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await manage_addon_tool(
+                slug="test_addon",
+                options={"ssh": {"sftp": True}},
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["success"] is False
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_config_mode_all_five_params(self, manage_addon_tool):
+        """Config mode: all five config params submitted in a single POST call."""
+        call_count = 0
+        calls = []
+
+        async def mock_supervisor_api(client, endpoint, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            calls.append((endpoint, kwargs))
+            if endpoint == "/addons/test_addon/info":
+                return {
+                    "success": True,
+                    "result": {
+                        "options": {},
+                        "schema": [
+                            {"name": "log_level", "required": False, "type": "str"}
+                        ],
+                    },
+                }
+            return {"success": True, "result": {}}
+
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            side_effect=mock_supervisor_api,
+        ):
+            result = await manage_addon_tool(
+                slug="test_addon",
+                options={"log_level": "debug"},
+                boot="manual",
+                auto_update=False,
+                watchdog=True,
+                network={"8080/tcp": 9090},
+            )
+
+        # GET /info + single POST (not five separate calls)
+        assert call_count == 2
+        post_call = calls[-1]
+        data = post_call[1]["data"]
+        assert set(data.keys()) == {
+            "options",
+            "boot",
+            "auto_update",
+            "watchdog",
+            "network",
+        }
+        assert set(result["submitted_fields"]) == {
+            "options",
+            "boot",
+            "auto_update",
+            "watchdog",
+            "network",
+        }
+
+    # --- Validation: mutual exclusion ---
+
+    @pytest.mark.asyncio
+    async def test_path_and_config_mutually_exclusive(self, manage_addon_tool):
+        """Providing both path and config params raises ToolError."""
+        with pytest.raises(ToolError) as exc_info:
+            await manage_addon_tool(
+                slug="test_addon",
+                path="/api/events",
+                options={"key": "value"},
+            )
+        error = _parse_tool_error(exc_info)
+        assert error["error"]["code"] == "VALIDATION_FAILED"
+        assert "Cannot combine" in error["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_no_path_no_config_raises(self, manage_addon_tool):
+        """Providing neither path nor config params raises ToolError."""
+        with pytest.raises(ToolError) as exc_info:
+            await manage_addon_tool(slug="test_addon")
+        error = _parse_tool_error(exc_info)
+        assert error["error"]["code"] == "VALIDATION_FAILED"
+        assert (
+            "path" in error["error"]["message"] or "config" in error["error"]["message"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_path_empty_string_raises(self, manage_addon_tool):
+        """Empty string path is explicitly rejected with VALIDATION_FAILED."""
+        with pytest.raises(ToolError) as exc_info:
+            await manage_addon_tool(slug="test_addon", path="")
+        error = _parse_tool_error(exc_info)
+        assert error["error"]["code"] == "VALIDATION_FAILED"
+        assert "path" in error["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_proxy_params_in_config_mode_raise(self, manage_addon_tool):
+        """Proxy-only params (e.g. method) combined with config params raise ToolError."""
+        with pytest.raises(ToolError) as exc_info:
+            await manage_addon_tool(
+                slug="test_addon",
+                options={"key": "val"},
+                method="DELETE",
+            )
+        error = _parse_tool_error(exc_info)
+        assert error["error"]["code"] == "VALIDATION_FAILED"
+        assert "method" in error["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_proxy_params_websocket_in_config_mode_raise(self, manage_addon_tool):
+        """websocket=True combined with config params raises ToolError."""
+        with pytest.raises(ToolError) as exc_info:
+            await manage_addon_tool(
+                slug="test_addon",
+                auto_update=False,
+                websocket=True,
+            )
+        error = _parse_tool_error(exc_info)
+        assert error["error"]["code"] == "VALIDATION_FAILED"
+        assert "websocket" in error["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_proxy_params_wait_for_close_in_config_mode_raise(
+        self, manage_addon_tool
+    ):
+        """wait_for_close=False combined with config params raises ToolError."""
+        with pytest.raises(ToolError) as exc_info:
+            await manage_addon_tool(
+                slug="test_addon",
+                auto_update=False,
+                wait_for_close=False,
+            )
+        error = _parse_tool_error(exc_info)
+        assert error["error"]["code"] == "VALIDATION_FAILED"
+        assert "wait_for_close" in error["error"]["message"]
+
+    # --- Proxy mode (backward compat) ---
+
+    @pytest.mark.asyncio
+    async def test_proxy_mode_http_delegates_to_call_addon_api(self, manage_addon_tool):
+        """Proxy mode: HTTP request is forwarded to _call_addon_api."""
+        with patch(
+            "ha_mcp.tools.tools_addons._call_addon_api",
+            return_value={"success": True, "status": 200, "data": []},
+        ) as mock_api:
+            result = await manage_addon_tool(slug="test_addon", path="/flows")
+
+        assert result["success"] is True
+        mock_api.assert_called_once()
+        assert mock_api.call_args[1]["path"] == "/flows"
+
+    @pytest.mark.asyncio
+    async def test_proxy_mode_websocket_delegates_to_call_addon_ws(
+        self, manage_addon_tool
+    ):
+        """Proxy mode: WebSocket request is forwarded to _call_addon_ws."""
+        with patch(
+            "ha_mcp.tools.tools_addons._call_addon_ws",
+            return_value={"success": True, "messages": []},
+        ) as mock_ws:
+            result = await manage_addon_tool(
+                slug="test_addon",
+                path="/validate",
+                websocket=True,
+            )
+
+        assert result["success"] is True
+        mock_ws.assert_called_once()
+        assert mock_ws.call_args[1]["path"] == "/validate"
+
+    @pytest.mark.asyncio
+    async def test_proxy_mode_invalid_http_method_raises(self, manage_addon_tool):
+        """Proxy mode: invalid HTTP method raises ToolError."""
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_addon_info",
+                return_value=_RUNNING_ADDON_INFO,
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await manage_addon_tool(slug="test_addon", path="/flows", method="INVALID")
+        error = _parse_tool_error(exc_info)
+        assert error["error"]["code"] == "VALIDATION_FAILED"
+        assert (
+            "method" in error["error"]["message"]
+            or "INVALID" in error["error"]["message"]
+        )
+
+    # --- New WS response-control params (issue #992) ---
+
+    @pytest.mark.asyncio
+    async def test_ws_params_forwarded_to_call_addon_ws(self, manage_addon_tool):
+        """message_limit/offset/summarize/python_transform reach _call_addon_ws."""
+        with patch(
+            "ha_mcp.tools.tools_addons._call_addon_ws",
+            return_value={"success": True, "messages": []},
+        ) as mock_ws:
+            await manage_addon_tool(
+                slug="test_addon",
+                path="/validate",
+                websocket=True,
+                message_limit=25,
+                message_offset=5,
+                summarize=False,
+                python_transform="response = response[:1]",
+            )
+
+        call_kwargs = mock_ws.call_args[1]
+        assert call_kwargs["message_limit"] == 25
+        assert call_kwargs["message_offset"] == 5
+        assert call_kwargs["summarize"] is False
+        assert call_kwargs["python_transform"] == "response = response[:1]"
+
+    @pytest.mark.asyncio
+    async def test_http_python_transform_forwarded(self, manage_addon_tool):
+        """python_transform reaches _call_addon_api in HTTP mode."""
+        with patch(
+            "ha_mcp.tools.tools_addons._call_addon_api",
+            return_value={"success": True, "response": []},
+        ) as mock_api:
+            await manage_addon_tool(
+                slug="test_addon",
+                path="/flows",
+                python_transform="response = [f['id'] for f in response]",
+            )
+        assert (
+            mock_api.call_args[1]["python_transform"]
+            == "response = [f['id'] for f in response]"
+        )
+
+    @pytest.mark.asyncio
+    async def test_ws_only_params_rejected_in_http_mode(self, manage_addon_tool):
+        """HTTP mode rejects message_limit/offset/summarize."""
+        with pytest.raises(ToolError) as exc_info:
+            await manage_addon_tool(
+                slug="test_addon",
+                path="/flows",
+                message_limit=10,
+            )
+        error = _parse_tool_error(exc_info)
+        assert error["error"]["code"] == "VALIDATION_FAILED"
+        assert "WebSocket" in error["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_ws_params_rejected_in_config_mode(self, manage_addon_tool):
+        """Config mode rejects the new WS-only params."""
+        with pytest.raises(ToolError) as exc_info:
+            await manage_addon_tool(
+                slug="test_addon",
+                auto_update=False,
+                message_limit=10,
+            )
+        error = _parse_tool_error(exc_info)
+        assert error["error"]["code"] == "VALIDATION_FAILED"
+        assert "message_limit" in error["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_python_transform_rejected_in_config_mode(self, manage_addon_tool):
+        """Config mode rejects python_transform."""
+        with pytest.raises(ToolError) as exc_info:
+            await manage_addon_tool(
+                slug="test_addon",
+                auto_update=False,
+                python_transform="response = []",
+            )
+        error = _parse_tool_error(exc_info)
+        assert error["error"]["code"] == "VALIDATION_FAILED"
+        assert "python_transform" in error["error"]["message"]
+
+
+class TestExtractAddonLogLevel:
+    """Tests for _extract_addon_log_level — surfaces add-on options.log_level."""
+
+    def test_user_configured_log_level_wins(self):
+        """A user-set options.log_level is returned verbatim."""
+        assert _extract_addon_log_level({"options": {"log_level": "debug"}}) == "debug"
+
+    def test_empty_user_value_falls_back_to_schema_default(self):
+        """An empty string in options falls through to the schema default marker."""
+        addon = {
+            "options": {"log_level": ""},
+            "schema": [{"name": "log_level", "type": "list(info|debug|...)"}],
+        }
+        assert _extract_addon_log_level(addon) == "default"
+
+    def test_schema_only_returns_default_marker(self):
+        """Add-on with log_level in schema but no option set reports 'default'."""
+        addon = {
+            "options": {},
+            "schema": [{"name": "log_level", "type": "list(info|debug|...)"}],
+        }
+        assert _extract_addon_log_level(addon) == "default"
+
+    def test_no_log_level_returns_none(self):
+        """Add-on with no log_level anywhere returns None (field omitted in response)."""
+        assert (
+            _extract_addon_log_level({"options": {"port": 8080}, "schema": []}) is None
+        )
+
+    def test_schema_without_log_level_returns_none(self):
+        """Schema list that doesn't include log_level returns None."""
+        addon = {
+            "options": {},
+            "schema": [{"name": "port", "type": "int"}],
+        }
+        assert _extract_addon_log_level(addon) is None
+
+    def test_malformed_options_ignored(self):
+        """Non-dict options don't crash the extractor."""
+        assert _extract_addon_log_level({"options": "not a dict"}) is None
+
+    def test_non_string_log_level_ignored(self):
+        """A non-string log_level is not surfaced (avoids leaking junk to users)."""
+        addon = {
+            "options": {"log_level": 42},
+            "schema": [{"name": "log_level", "type": "..."}],
+        }
+        # Falls through past options (non-string) and then uses schema → "default"
+        assert _extract_addon_log_level(addon) == "default"
+
+    def test_schema_dict_legacy_shape_returns_none(self):
+        """Legacy dict-shaped schema is no longer recognized (Supervisor returns a list)."""
+        addon = {
+            "options": {},
+            "schema": {"log_level": "list(info|debug|...)"},
+        }
+        assert _extract_addon_log_level(addon) is None
+
+
+class TestGetAddonInfoLogLevel:
+    """Tests for get_addon_info — verifies top-level log_level enrichment."""
+
+    @pytest.mark.asyncio
+    async def test_includes_log_level_when_option_set(self):
+        client = _make_mock_client()
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value={
+                "success": True,
+                "result": {
+                    "name": "Example",
+                    "slug": "example",
+                    "options": {"log_level": "debug"},
+                },
+            },
+        ):
+            result = await get_addon_info(client, "example")
+
+        assert result["success"] is True
+        assert result["log_level"] == "debug"
+        assert result["addon"]["slug"] == "example"
+
+    @pytest.mark.asyncio
+    async def test_omits_log_level_when_addon_has_none(self):
+        client = _make_mock_client()
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value={
+                "success": True,
+                "result": {
+                    "name": "NoLogLevel",
+                    "slug": "nll",
+                    "options": {"port": 1883},
+                },
+            },
+        ):
+            result = await get_addon_info(client, "nll")
+
+        assert result["success"] is True
+        assert "log_level" not in result
+
+    @pytest.mark.asyncio
+    async def test_passes_through_supervisor_error(self):
+        """Error responses shouldn't gain a synthetic log_level field."""
+        client = _make_mock_client()
+        error_response = {
+            "success": False,
+            "error": {"code": "RESOURCE_NOT_FOUND", "message": "no supervisor"},
+        }
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value=error_response,
+        ):
+            result = await get_addon_info(client, "whatever")
+
+        assert result == error_response
+
+
+class TestSupervisorApiCall:
+    """Tests for Supervisor schema error classification via _classify_by_message.
+
+    The generic classifier in helpers.py routes Supervisor vol.Invalid
+    errors to VALIDATION_FAILED regardless of endpoint (issue #993).
+    These tests pin that behaviour so the greedy "auth" substring bug
+    stays fixed at the source — not patched at a single call site.
+    """
+
+    @pytest.mark.asyncio
+    async def test_schema_error_on_options_endpoint_classified_as_validation_failed(
+        self,
+    ):
+        """POST /addons/*/options schema reject => VALIDATION_FAILED via classifier."""
+        from ha_mcp.client.rest_client import HomeAssistantCommandError
+        from ha_mcp.tools.tools_addons import _supervisor_api_call
+
+        mock_ws = MagicMock()
+        mock_ws.disconnect = AsyncMock()
+        mock_ws.send_command = AsyncMock(
+            side_effect=HomeAssistantCommandError(
+                "Command failed: Missing option 'authorized_keys' in ssh "
+                "in SSH (core_ssh)",
+            )
+        )
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_connected_ws_client",
+                return_value=(mock_ws, None),
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _supervisor_api_call(
+                _make_mock_client(),
+                "/addons/core_ssh/options",
+                method="POST",
+                data={"options": {"ssh": {"sftp": True}}},
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_schema_error_on_non_options_endpoint_also_classified(self):
+        """Same schema message on a non-/options endpoint => VALIDATION_FAILED.
+
+        Bidirectional assertion: fixes the root cause on every endpoint,
+        not just POST /options. The greedy "auth" substring bug at
+        helpers.py previously misclassified this as AUTH_INVALID_TOKEN
+        because "authorized_keys" contains "auth"; the phrase-list fix
+        in _classify_by_message closes that without endpoint gating.
+        """
+        from ha_mcp.client.rest_client import HomeAssistantCommandError
+        from ha_mcp.tools.tools_addons import _supervisor_api_call
+
+        mock_ws = MagicMock()
+        mock_ws.disconnect = AsyncMock()
+        mock_ws.send_command = AsyncMock(
+            side_effect=HomeAssistantCommandError(
+                "Command failed: Missing option 'authorized_keys' in ssh",
+            )
+        )
+
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons.get_connected_ws_client",
+                return_value=(mock_ws, None),
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await _supervisor_api_call(
+                _make_mock_client(),
+                "/addons/core_ssh/info",
+                method="GET",
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+
+class TestSupervisorApiCallTimeout:
+    """The client's local await must outlast the Supervisor-side timeout.
+
+    ``send_command`` defaults to a 30s local wait. A long Supervisor
+    operation (add-on install/update/rebuild gets ``timeout=1800``) needs
+    the local await raised in lockstep, or the client abandons a
+    still-running install after 30s even though the server keeps working.
+    """
+
+    @pytest.mark.asyncio
+    async def test_long_timeout_extends_local_wait(self):
+        """timeout=1800 forwards to Supervisor AND extends the local await."""
+        from ha_mcp.tools.tools_addons import _supervisor_api_call
+
+        mock_ws = MagicMock()
+        mock_ws.disconnect = AsyncMock()
+        mock_ws.send_command = AsyncMock(return_value={"success": True, "result": {}})
+
+        with patch(
+            "ha_mcp.tools.tools_addons.get_connected_ws_client",
+            return_value=(mock_ws, None),
+        ):
+            await _supervisor_api_call(
+                _make_mock_client(),
+                "/store/addons/local_ha_mcp_screenshot/install",
+                method="POST",
+                timeout=1800,
+            )
+
+        kwargs = mock_ws.send_command.call_args.kwargs
+        # Supervisor-side proxy timeout is forwarded as the command field...
+        assert kwargs["timeout"] == 1800
+        # ...and the client's own await outlasts it by a margin (the old
+        # hard-coded 30s default would have fired ~1770s too early). The
+        # control kwarg is underscored so it can't collide with a message field.
+        assert kwargs["_wait_timeout"] == 1815.0
+
+    @pytest.mark.asyncio
+    async def test_no_timeout_keeps_default_local_wait(self):
+        """Without a timeout override, the local wait stays at the 30s default
+        and no ``timeout`` field is forwarded to Supervisor."""
+        from ha_mcp.tools.tools_addons import _supervisor_api_call
+
+        mock_ws = MagicMock()
+        mock_ws.disconnect = AsyncMock()
+        mock_ws.send_command = AsyncMock(return_value={"success": True, "result": {}})
+
+        with patch(
+            "ha_mcp.tools.tools_addons.get_connected_ws_client",
+            return_value=(mock_ws, None),
+        ):
+            await _supervisor_api_call(_make_mock_client(), "/addons", method="GET")
+
+        kwargs = mock_ws.send_command.call_args.kwargs
+        assert kwargs["_wait_timeout"] == 30.0
+        assert "timeout" not in kwargs
+
+
+class TestManageAddonActionMode:
+    """Lifecycle (action) mode: install/start/stop/etc. via Supervisor."""
+
+    def _tools(self):
+        from ha_mcp.tools.tools_addons import AddOnTools
+
+        return AddOnTools(_make_mock_client())
+
+    @pytest.mark.asyncio
+    async def test_install_posts_to_store_endpoint(self):
+        tools = self._tools()
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value={"success": True, "result": {}},
+        ) as mock_call:
+            result = await tools._execute_action_mode(
+                "d6450bd1_ha_mcp_screenshot", "install"
+            )
+
+        assert result["success"] is True
+        assert result["action"] == "install"
+        assert result["slug"] == "d6450bd1_ha_mcp_screenshot"
+        endpoint = mock_call.call_args.args[1]
+        assert endpoint == "/store/addons/d6450bd1_ha_mcp_screenshot/install"
+        assert mock_call.call_args.kwargs["method"] == "POST"
+
+    @pytest.mark.asyncio
+    async def test_start_posts_to_addons_endpoint(self):
+        tools = self._tools()
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value={"success": True, "result": {}},
+        ) as mock_call:
+            result = await tools._execute_action_mode("core_ssh", "start")
+
+        assert result["action"] == "start"
+        assert mock_call.call_args.args[1] == "/addons/core_ssh/start"
+
+    @pytest.mark.asyncio
+    async def test_invalid_action_rejected(self):
+        tools = self._tools()
+        with pytest.raises(ToolError) as exc_info:
+            await tools._execute_action_mode("core_ssh", "frobnicate")
+        payload = _parse_tool_error(exc_info)
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_supervisor_failure_propagates(self):
+        tools = self._tools()
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._supervisor_api_call",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": False,
+                    "error": {"code": "SERVICE_CALL_FAILED", "message": "boom"},
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await tools._execute_action_mode("core_ssh", "start")
+        payload = _parse_tool_error(exc_info)
+        assert payload["success"] is False
+
+    @pytest.mark.asyncio
+    async def test_action_mutually_exclusive_with_path(self):
+        tools = self._tools()
+        with pytest.raises(ToolError) as exc_info:
+            await tools.manage_addon(
+                slug="core_ssh",
+                path="/info",
+                method="GET",
+                body=None,
+                debug=False,
+                port=None,
+                offset=0,
+                limit=None,
+                websocket=False,
+                wait_for_close=True,
+                message_limit=None,
+                message_offset=0,
+                summarize=True,
+                python_transform=None,
+                options=None,
+                network=None,
+                boot=None,
+                auto_update=None,
+                watchdog=None,
+                array_patch=None,
+                request_headers=None,
+                action="start",
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_action_mutually_exclusive_with_config_params(self):
+        """A lifecycle action plus a config-param write is an ambiguous mode."""
+        tools = self._tools()
+        with pytest.raises(ToolError) as exc_info:
+            await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    slug="core_ssh", action="start", options={"k": "v"}
+                )
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_action_mutually_exclusive_with_array_patch(self):
+        tools = self._tools()
+        with pytest.raises(ToolError) as exc_info:
+            await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    slug="core_ssh", action="start", array_patch={"ops": []}
+                )
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+
+def _manage_addon_kwargs(**overrides):
+    """Build the full ha_manage_addon kwargs with defaults, applying overrides.
+
+    manage_addon takes every operating-mode param positionally-by-keyword; a
+    helper keeps the store-repository tests focused on the few params that
+    matter instead of restating the whole signature each time.
+    """
+    base = {
+        "slug": "",
+        "path": None,
+        "method": "GET",
+        "body": None,
+        "debug": False,
+        "port": None,
+        "offset": 0,
+        "limit": None,
+        "websocket": False,
+        "wait_for_close": True,
+        "message_limit": None,
+        "message_offset": 0,
+        "summarize": True,
+        "python_transform": None,
+        "options": None,
+        "network": None,
+        "boot": None,
+        "auto_update": None,
+        "watchdog": None,
+        "array_patch": None,
+        "request_headers": None,
+        "action": None,
+        "repository": None,
+    }
+    base.update(overrides)
+    return base
+
+
+class TestManageAddonRepositoryAction:
+    """Store-repository mode: add_repository / remove_repository via Supervisor."""
+
+    def _tools(self):
+        from ha_mcp.tools.tools_addons import AddOnTools
+
+        return AddOnTools(_make_mock_client())
+
+    @pytest.mark.asyncio
+    async def test_add_repository_posts_to_store_repositories(self):
+        tools = self._tools()
+        url = "https://github.com/balloob/home-assistant-addons"
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value={"success": True, "result": {}},
+        ) as mock_call:
+            result = await tools.manage_addon(
+                **_manage_addon_kwargs(action="add_repository", repository=url)
+            )
+
+        assert result["success"] is True
+        assert result["action"] == "add_repository"
+        assert result["repository"] == url
+        assert mock_call.call_args.args[1] == "/store/repositories"
+        assert mock_call.call_args.kwargs["method"] == "POST"
+        assert mock_call.call_args.kwargs["data"] == {"repository": url}
+
+    @pytest.mark.asyncio
+    async def test_add_repository_idempotent_when_already_present(self):
+        """Re-adding a repo Supervisor already has returns success, not a
+        confusing error — the desired end state (repo registered) already holds,
+        so the 'add repo then install' flow can re-add freely."""
+        tools = self._tools()
+        url = "https://github.com/balloob/home-assistant-addons"
+        err = ToolError(
+            json.dumps(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "SERVICE_CALL_FAILED",
+                        "message": f"Command failed: Can't add {url}, "
+                        "already in the store",
+                    },
+                }
+            )
+        )
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            side_effect=err,
+        ):
+            result = await tools.manage_addon(
+                **_manage_addon_kwargs(action="add_repository", repository=url)
+            )
+        assert result["success"] is True
+        assert result["action"] == "add_repository"
+
+    @pytest.mark.asyncio
+    async def test_remove_repository_idempotent_when_not_present(self):
+        """Removing a repo Supervisor doesn't have returns success."""
+        tools = self._tools()
+        err = ToolError(
+            json.dumps(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "SERVICE_CALL_FAILED",
+                        "message": "Command failed: repository not found",
+                    },
+                }
+            )
+        )
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            side_effect=err,
+        ):
+            result = await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    action="remove_repository", repository="deadbeef"
+                )
+            )
+        assert result["success"] is True
+        assert result["action"] == "remove_repository"
+
+    @pytest.mark.asyncio
+    async def test_remove_repository_unrelated_not_found_still_raises(self):
+        """A failure that merely mentions 'not found' for a non-repository
+        reason (e.g. a dependent add-on) must NOT be reclassified as a
+        successful no-op — it still raises."""
+        tools = self._tools()
+        err = ToolError(
+            json.dumps(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "SERVICE_CALL_FAILED",
+                        "message": "Supervisor API call failed: /store/repositories/x",
+                        "details": "{'message': 'Add-on core_foo not found'}",
+                    },
+                }
+            )
+        )
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._supervisor_api_call",
+                new_callable=AsyncMock,
+                side_effect=err,
+            ),
+            pytest.raises(ToolError),
+        ):
+            await tools.manage_addon(
+                **_manage_addon_kwargs(action="remove_repository", repository="x")
+            )
+
+    @pytest.mark.asyncio
+    async def test_add_repository_other_error_gives_repo_specific_suggestion(self):
+        """A non-duplicate failure (e.g. invalid URL) still raises, but with a
+        repository-specific suggestion — not the generic 'check your HA
+        connection' one that _supervisor_api_call attaches."""
+        tools = self._tools()
+        err = ToolError(
+            json.dumps(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "SERVICE_CALL_FAILED",
+                        "message": "Command failed: invalid repository",
+                        "suggestions": [
+                            "Check Home Assistant connection and Supervisor availability"
+                        ],
+                    },
+                }
+            )
+        )
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._supervisor_api_call",
+                new_callable=AsyncMock,
+                side_effect=err,
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    action="add_repository", repository="https://example.com/bad"
+                )
+            )
+        payload = _parse_tool_error(exc_info)
+        err_obj = payload["error"]
+        suggestions = " ".join(
+            [err_obj.get("suggestion", "")] + err_obj.get("suggestions", [])
+        )
+        assert "add-on repository URL" in suggestions
+        assert "connection" not in suggestions.lower()
+
+    async def test_remove_repository_in_use_suggests_uninstall(self):
+        """Removing a repo still used by installed add-ons suggests uninstalling
+        them, not checking the connection."""
+        tools = self._tools()
+        err = ToolError(
+            json.dumps(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "SERVICE_CALL_FAILED",
+                        "message": "Command failed: Can't remove ... used by installed apps",
+                    },
+                }
+            )
+        )
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._supervisor_api_call",
+                new_callable=AsyncMock,
+                side_effect=err,
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await tools.manage_addon(
+                **_manage_addon_kwargs(action="remove_repository", repository="abc123")
+            )
+        payload = _parse_tool_error(exc_info)
+        err_obj = payload["error"]
+        suggestions = " ".join(
+            [err_obj.get("suggestion", "")] + err_obj.get("suggestions", [])
+        )
+        assert "uninstalled" in suggestions
+
+    @pytest.mark.asyncio
+    async def test_add_repository_uses_generous_timeout(self):
+        tools = self._tools()
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value={"success": True, "result": {}},
+        ) as mock_call:
+            await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    action="add_repository", repository="https://example.com/repo"
+                )
+            )
+
+        assert mock_call.call_args.kwargs["timeout"] == 120
+
+    @pytest.mark.asyncio
+    async def test_remove_repository_deletes_by_slug(self):
+        tools = self._tools()
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value={"success": True, "result": {}},
+        ) as mock_call:
+            result = await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    action="remove_repository", repository="0f1cc410"
+                )
+            )
+
+        assert result["success"] is True
+        assert result["action"] == "remove_repository"
+        assert result["repository"] == "0f1cc410"
+        assert mock_call.call_args.args[1] == "/store/repositories/0f1cc410"
+        assert mock_call.call_args.kwargs["method"] == "DELETE"
+        # DELETE carries no body
+        assert mock_call.call_args.kwargs["data"] is None
+
+    @pytest.mark.asyncio
+    async def test_repository_action_does_not_require_slug(self):
+        """Repo actions reach Supervisor with no slug supplied (slug defaults to '')."""
+        tools = self._tools()
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value={"success": True, "result": {}},
+        ) as mock_call:
+            result = await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    action="add_repository", repository="https://example.com/repo"
+                )
+            )
+
+        assert result["success"] is True
+        # Endpoint is the store collection, never an /addons/{slug}/... path.
+        assert mock_call.call_args.args[1] == "/store/repositories"
+
+    @pytest.mark.asyncio
+    async def test_add_repository_missing_repository_raises_validation(self):
+        tools = self._tools()
+        with pytest.raises(ToolError) as exc_info:
+            await tools.manage_addon(
+                **_manage_addon_kwargs(action="add_repository", repository=None)
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_remove_repository_blank_repository_raises_validation(self):
+        tools = self._tools()
+        with pytest.raises(ToolError) as exc_info:
+            await tools.manage_addon(
+                **_manage_addon_kwargs(action="remove_repository", repository="   ")
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_repository_action_rejects_slug(self):
+        """A slug alongside a repo action is an ambiguous-mode error."""
+        tools = self._tools()
+        with pytest.raises(ToolError) as exc_info:
+            await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    slug="core_ssh",
+                    action="add_repository",
+                    repository="https://example.com/repo",
+                )
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_repository_action_rejects_path(self):
+        tools = self._tools()
+        with pytest.raises(ToolError) as exc_info:
+            await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    action="add_repository",
+                    repository="https://example.com/repo",
+                    path="/info",
+                )
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["error"]["code"] == "VALIDATION_FAILED"
+
+    @pytest.mark.asyncio
+    async def test_add_repository_strips_whitespace(self):
+        tools = self._tools()
+        with patch(
+            "ha_mcp.tools.tools_addons._supervisor_api_call",
+            new_callable=AsyncMock,
+            return_value={"success": True, "result": {}},
+        ) as mock_call:
+            await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    action="add_repository",
+                    repository="  https://example.com/repo  ",
+                )
+            )
+
+        assert mock_call.call_args.kwargs["data"] == {
+            "repository": "https://example.com/repo"
+        }
+
+    @pytest.mark.asyncio
+    async def test_repository_action_supervisor_failure_propagates(self):
+        tools = self._tools()
+        with (
+            patch(
+                "ha_mcp.tools.tools_addons._supervisor_api_call",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": False,
+                    "error": {"code": "SERVICE_CALL_FAILED", "message": "boom"},
+                },
+            ),
+            pytest.raises(ToolError) as exc_info,
+        ):
+            await tools.manage_addon(
+                **_manage_addon_kwargs(
+                    action="add_repository", repository="https://example.com/repo"
+                )
+            )
+        payload = _parse_tool_error(exc_info)
+        assert payload["success"] is False

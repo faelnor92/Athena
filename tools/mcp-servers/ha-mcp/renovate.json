@@ -1,0 +1,101 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "timezone": "UTC",
+  "schedule": [
+    "after 3pm on tuesday"
+  ],
+  "enabledManagers": [
+    "custom.regex",
+    "dockerfile",
+    "git-submodules"
+  ],
+  "ignorePaths": [],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/tests/.*\\.py$/",
+        "/.github/workflows/.*\\.yml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+.*?\\S+:(?<currentValue>[\\d.]+)"
+      ],
+      "depNameTemplate": "{{{depName}}}",
+      "datasourceTemplate": "{{{datasource}}}"
+    },
+    {
+      "description": "Python-assignment version pins (e.g. HAOS_VERSION = \"17.3\" in build_image.py)",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/tests/.*\\.py$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+\\w+\\s*=\\s*[\"'](?<currentValue>[\\d.]+)[\"']"
+      ],
+      "depNameTemplate": "{{{depName}}}",
+      "datasourceTemplate": "{{{datasource}}}"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Python runtime images - managed by asdf postUpgradeTasks, not independently",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchPackageNames": [
+        "python"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Python version upgrades - wait 6 months after release",
+      "matchManagers": [
+        "asdf"
+      ],
+      "matchPackageNames": [
+        "python"
+      ],
+      "minimumReleaseAge": "180 days",
+      "postUpgradeTasks": {
+        "commands": [
+          "PYTHON_VERSION=$(cat .python-version)",
+          "PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)",
+          "PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)",
+          "PYTHON_NEXT=\"${PYTHON_MAJOR}.$((PYTHON_MINOR + 1))\"",
+          "sed -i \"s/requires-python = \\\">=3\\.[0-9]\\+,<3\\.[0-9]\\+\\\"/requires-python = \\\">=${PYTHON_VERSION},<${PYTHON_NEXT}\\\"/\" pyproject.toml",
+          "sed -i '/Programming Language :: Python :: 3\\.[0-9]\\+/d' pyproject.toml",
+          "sed -i \"/Programming Language :: Python :: 3\\\",/a\\\\    \\\"Programming Language :: Python :: ${PYTHON_VERSION}\\\",\" pyproject.toml",
+          "sed -i \"s/python3\\.[0-9]\\+\\(-[a-z]\\+-slim\\)/python${PYTHON_VERSION}\\1/\" Dockerfile homeassistant-addon/Dockerfile homeassistant-addon-dev/Dockerfile .github/workflows/pr.yml",
+          "sed -i \"s/python:3\\.[0-9]\\+-slim/python:${PYTHON_VERSION}-slim/\" Dockerfile homeassistant-addon/Dockerfile homeassistant-addon-dev/Dockerfile",
+          "sed -i \"s/Python 3\\.[0-9]\\+ - Security/Python ${PYTHON_VERSION} - Security/\" Dockerfile homeassistant-addon/Dockerfile homeassistant-addon-dev/Dockerfile",
+          "sed -i \"s/PYTHON_VERSION: \\\"3\\.[0-9]\\+\\\"/PYTHON_VERSION: \\\"${PYTHON_VERSION}\\\"/\" .github/workflows/pr.yml .github/workflows/test.yml .github/workflows/e2e-tests.yml .github/workflows/semver-release.yml .github/workflows/hotfix-release.yml .github/workflows/performance-tests.yml",
+          "sed -i \"s/python-version: '3\\.[0-9]\\+'/python-version: '${PYTHON_VERSION}'/\" .github/workflows/_build-and-release.yml .github/workflows/build-binary.yml",
+          "git add .python-version pyproject.toml Dockerfile homeassistant-addon/Dockerfile homeassistant-addon-dev/Dockerfile .github/workflows/pr.yml .github/workflows/test.yml .github/workflows/e2e-tests.yml .github/workflows/semver-release.yml .github/workflows/hotfix-release.yml .github/workflows/performance-tests.yml .github/workflows/_build-and-release.yml .github/workflows/build-binary.yml"
+        ],
+        "fileFilters": [
+          ".python-version",
+          "pyproject.toml",
+          "Dockerfile",
+          "homeassistant-addon/Dockerfile",
+          "homeassistant-addon-dev/Dockerfile",
+          ".github/workflows/pr.yml",
+          ".github/workflows/test.yml",
+          ".github/workflows/e2e-tests.yml",
+          ".github/workflows/semver-release.yml",
+          ".github/workflows/hotfix-release.yml",
+          ".github/workflows/performance-tests.yml",
+          ".github/workflows/_build-and-release.yml",
+          ".github/workflows/build-binary.yml"
+        ],
+        "executionMode": "branch"
+      }
+    }
+  ],
+  "labels": [
+    "dependencies",
+    "python-upgrade"
+  ]
+}

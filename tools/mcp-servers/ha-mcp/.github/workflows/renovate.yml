@@ -1,0 +1,53 @@
+name: Renovate
+
+on:
+  schedule:
+    # Run every Tuesday at 15:00 UTC (after Dependabot on Monday)
+    - cron: '0 15 * * 2'
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: false
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - info
+          - warn
+          - error
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    name: Renovate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # The default GITHUB_TOKEN cannot push commits that modify any file
+      # under .github/workflows/ — GitHub blocks workflow-file mutations
+      # from GITHUB_TOKEN for security reasons. Renovate needs to touch
+      # those files (the # renovate: annotations sit alongside image: pins
+      # in pr.yml, e2e-tests.yml, performance-tests.yml), so we mint a
+      # short-lived installation token from a dedicated GitHub App that
+      # has Workflows: write.
+      - name: Generate Renovate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RENOVATE_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+
+      - name: Self-hosted Renovate
+        uses: renovatebot/github-action@v46.1.14
+        with:
+          configurationFile: renovate.json
+          token: ${{ steps.app-token.outputs.token }}
+        env:
+          LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
+          RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS: '["^cat.*", "^echo.*", "^cut.*", "^sed.*", "^git add.*"]'
+          RENOVATE_REPOSITORIES: ${{ github.repository }}

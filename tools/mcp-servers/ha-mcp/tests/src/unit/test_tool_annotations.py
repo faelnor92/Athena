@@ -1,0 +1,305 @@
+"""Tests for tool annotations compliance with MCP Directory Policy.
+
+Every tool MUST have exactly one of:
+- readOnlyHint: true - For tools that only read data
+- destructiveHint: true - For tools that modify data or have side effects
+
+Additionally, every tool SHOULD have a title for UI display.
+"""
+
+import re
+from pathlib import Path
+
+
+def get_tools_dir() -> Path:
+    """Get the path to the tools directory."""
+    return Path(__file__).parent.parent.parent.parent / "src" / "ha_mcp" / "tools"
+
+
+def _parse_decorator_args(decorator_args: str, func_name: str, file_name: str) -> dict:
+    """Parse decorator arguments into a tool info dict."""
+    has_read_only = (
+        "readOnlyHint" in decorator_args
+        and "True" in decorator_args.split("readOnlyHint")[1][:20]
+    )
+    has_destructive = (
+        "destructiveHint" in decorator_args
+        and "True" in decorator_args.split("destructiveHint")[1][:20]
+    )
+    has_title = "title" in decorator_args
+    has_tags = "tags=" in decorator_args or "tags =" in decorator_args
+
+    return {
+        "file": file_name,
+        "function": func_name,
+        "has_read_only_hint": has_read_only,
+        "has_destructive_hint": has_destructive,
+        "has_title": has_title,
+        "has_tags": has_tags,
+        "decorator_args": decorator_args.strip(),
+    }
+
+
+def extract_tool_decorators(file_path: Path) -> list[dict]:
+    """Extract @mcp.tool and @tool decorator information from a Python file."""
+    content = file_path.read_text(encoding="utf-8")
+    # Pattern 1: @mcp.tool(...) — closure pattern
+    pattern = r"@mcp\.tool\(([^)]*)\)\s*(?:@\w+\s*)*async def (\w+)"
+    tools = [
+        _parse_decorator_args(m.group(1), m.group(2), file_path.name)
+        for m in re.finditer(pattern, content, re.DOTALL)
+    ]
+
+    # Pattern 2: @tool(name="ha_*", ...) — class method pattern
+    class_pattern = (
+        r'@tool\(\s*\n?\s*name="(ha_\w+)"[,\s]*([^)]*)\)\s*(?:@\w+\s*)*async def \w+'
+    )
+    tools.extend(
+        _parse_decorator_args(
+            f'name="{m.group(1)}", {m.group(2)}', m.group(1), file_path.name
+        )
+        for m in re.finditer(class_pattern, content, re.DOTALL)
+    )
+
+    # Also find bare @mcp.tool without arguments
+    bare_pattern = r"@mcp\.tool\s*\n\s*(?:@\w+\s*)*async def (\w+)"
+    for match in re.finditer(bare_pattern, content):
+        func_name = match.group(1)
+        tools.append(
+            {
+                "file": file_path.name,
+                "function": func_name,
+                "has_read_only_hint": False,
+                "has_destructive_hint": False,
+                "has_title": False,
+                "decorator_args": "",
+            }
+        )
+
+    return tools
+
+
+def get_all_tools() -> list[dict]:
+    """Get all tools from all tool files."""
+    tools_dir = get_tools_dir()
+    all_tools = []
+
+    for py_file in sorted(tools_dir.glob("*.py")):
+        if py_file.name.startswith("_"):
+            continue
+        tools = extract_tool_decorators(py_file)
+        all_tools.extend(tools)
+
+    return all_tools
+
+
+class TestToolAnnotations:
+    """Test suite for MCP tool annotation compliance."""
+
+    def test_all_tools_have_required_hint(self):
+        """Every tool must have exactly one of readOnlyHint or destructiveHint."""
+        tools = get_all_tools()
+
+        missing_hints = []
+        both_hints = []
+
+        for tool in tools:
+            has_read = tool["has_read_only_hint"]
+            has_destructive = tool["has_destructive_hint"]
+
+            if not has_read and not has_destructive:
+                missing_hints.append(f"{tool['file']}:{tool['function']}")
+            elif has_read and has_destructive:
+                both_hints.append(f"{tool['file']}:{tool['function']}")
+
+        error_msg = []
+        if missing_hints:
+            error_msg.append(
+                f"Tools missing readOnlyHint or destructiveHint ({len(missing_hints)}):\n  "
+                + "\n  ".join(missing_hints)
+            )
+        if both_hints:
+            error_msg.append(
+                f"Tools with BOTH hints (should have exactly one) ({len(both_hints)}):\n  "
+                + "\n  ".join(both_hints)
+            )
+
+        assert not error_msg, "\n\n".join(error_msg)
+
+    def test_all_tools_have_title(self):
+        """Every tool should have a title for UI display."""
+        tools = get_all_tools()
+
+        missing_titles = [
+            f"{tool['file']}:{tool['function']}"
+            for tool in tools
+            if not tool["has_title"]
+        ]
+
+        assert not missing_titles, (
+            f"Tools missing title annotation ({len(missing_titles)}):\n  "
+            + "\n  ".join(missing_titles)
+        )
+
+    def test_all_tools_have_tags(self):
+        """Every tool must have a tags= parameter for categorization."""
+        tools = get_all_tools()
+
+        missing_tags = [
+            f"{tool['file']}:{tool['function']}"
+            for tool in tools
+            if not tool["has_tags"]
+        ]
+
+        assert not missing_tags, (
+            f"Tools missing tags= parameter ({len(missing_tags)}):\n  "
+            + "\n  ".join(missing_tags)
+            + "\n\nAdd tags={'Category Name'} to each @mcp.tool() decorator."
+        )
+
+    def test_ha_check_config_removed_and_folded(self):
+        """ha_check_config was removed and folded into ha_get_system_health
+        (include='config_check'). Lock the removal at the source registration so
+        a bad merge that re-adds the @tool block fails CI. (Checks the source
+        string directly rather than get_all_tools(), whose regex can't parse
+        ha_get_system_health's paren-containing title.)"""
+        system_src = (get_tools_dir() / "tools_system.py").read_text(encoding="utf-8")
+        assert 'name="ha_check_config"' not in system_src, (
+            "ha_check_config was removed in favor of "
+            "ha_get_system_health(include='config_check'); it must not be "
+            "re-registered."
+        )
+        assert 'name="ha_get_system_health"' in system_src
+
+    def test_tool_count_sanity_check(self):
+        """Sanity check that we're finding a reasonable number of tools."""
+        tools = get_all_tools()
+
+        # We should have at least 50 tools (currently ~92)
+        assert len(tools) >= 50, f"Only found {len(tools)} tools, expected at least 50"
+
+        # We should have a mix of read-only and destructive tools
+        read_only_count = sum(1 for t in tools if t["has_read_only_hint"])
+        destructive_count = sum(1 for t in tools if t["has_destructive_hint"])
+
+        assert read_only_count >= 20, (
+            f"Only {read_only_count} read-only tools, expected at least 20"
+        )
+        assert destructive_count >= 19, (
+            f"Only {destructive_count} destructive tools, expected at least 19"
+        )
+
+    def test_total_tool_count_limit(self):
+        """Ensure total tool count doesn't exceed reasonable limits.
+
+        This test counts all @mcp.tool decorators in the codebase. The actual
+        registered tool count may be lower due to feature flags.
+
+        Current state (as of PR #423):
+        - Decorated tools in code: 105
+        - Registered tools at runtime: 100 (5 behind feature flags)
+        - Antigravity limit: 100 tools maximum
+
+        The limit is set to 105 to match the current codebase. If you need to add
+        more tools, you MUST first consolidate existing ones or move tools behind
+        feature flags to keep the runtime count at or below 100.
+        """
+        tools = get_all_tools()
+        tool_count = len(tools)
+
+        # Limit matches current decorated tool count
+        # Runtime count is lower (100) due to feature flags
+        MAX_TOOLS = 105
+
+        assert tool_count <= MAX_TOOLS, (
+            f"Tool count ({tool_count}) exceeds limit ({MAX_TOOLS})!\n"
+            f"Tools found: {tool_count}\n"
+            f"Limit: {MAX_TOOLS}\n"
+            f"Over by: {tool_count - MAX_TOOLS}\n\n"
+            f"Note: Antigravity has a 100 tool limit at runtime.\n"
+            f"Current registered tools: ~100 (some behind feature flags)\n\n"
+            f"To fix this, you MUST:\n"
+            f"1. Consolidate duplicate or similar tools (e.g., get/list patterns)\n"
+            f"2. Move specialized tools behind feature flags\n"
+            f"3. Remove rarely-used tools\n"
+            f"\nSee issue #420 for context."
+        )
+
+    def test_read_only_tools_are_actually_read_only(self):
+        """Tools with readOnlyHint should have read-only names (get, list, search, etc)."""
+        tools = get_all_tools()
+
+        read_only_tools = [t for t in tools if t["has_read_only_hint"]]
+
+        # These prefixes/patterns indicate read-only operations
+        read_only_patterns = ["get", "list", "search", "check", "eval", "render"]
+
+        suspicious = []
+        for tool in read_only_tools:
+            func = tool["function"].lower()
+            # If it starts with a modifying verb, it's suspicious
+            # Note: "list_updates" is OK (listing updates), "update_zone" is suspicious
+            modifying_prefixes = [
+                "create_",
+                "set_",
+                "delete_",
+                "update_",
+                "add_",
+                "remove_",
+                "assign_",
+                "restart",
+                "reload",
+            ]
+            if any(
+                func.startswith(f"ha_{prefix}") or func.startswith(prefix)
+                for prefix in modifying_prefixes
+            ):
+                suspicious.append(f"{tool['file']}:{tool['function']}")
+
+        assert not suspicious, (
+            f"Tools marked readOnlyHint but have modifying names ({len(suspicious)}):\n  "
+            + "\n  ".join(suspicious)
+        )
+
+    def test_destructive_tools_are_actually_destructive(self):
+        """Tools with destructiveHint should have modifying names."""
+        tools = get_all_tools()
+
+        destructive_tools = [t for t in tools if t["has_destructive_hint"]]
+
+        # These patterns indicate destructive/modifying operations
+        destructive_patterns = [
+            "create",
+            "set",
+            "delete",
+            "update",
+            "add",
+            "remove",
+            "assign",
+            "restart",
+            "reload",
+            "restore",
+            "import",
+            "rename",
+            "call",
+            "bulk",
+            "config_set",
+            "config_delete",
+        ]
+
+        suspicious = []
+        for tool in destructive_tools:
+            func = tool["function"].lower()
+            # If it has only get/list/search patterns and destructiveHint, that's suspicious
+            if not any(pattern in func for pattern in destructive_patterns):
+                # Exception: ha_call_service and ha_bulk_control are correctly destructive
+                if func not in ["ha_call_service", "ha_bulk_control"]:
+                    suspicious.append(f"{tool['file']}:{tool['function']}")
+
+        # This is a warning, not a hard failure - some tools might legitimately be destructive
+        # even without obvious naming
+        if suspicious:
+            print(
+                "\nNote: These destructive tools don't have typical modifying names:\n  "
+                + "\n  ".join(suspicious)
+            )

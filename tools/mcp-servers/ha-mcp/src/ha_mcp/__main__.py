@@ -1,0 +1,1022 @@
+"""Home Assistant MCP Server."""
+
+import sys
+
+if sys.version_info < (3, 13):  # noqa: UP036 — uvx can bypass requires-python and run on 3.12
+    print(
+        f"ERROR: ha-mcp requires Python 3.13+, but you are running Python "
+        f"{sys.version_info.major}.{sys.version_info.minor}.\n"
+        "If using uvx, add '--python 3.13' to your config args:\n"
+        '  "args": ["--python", "3.13", "--refresh", "ha-mcp@latest"]\n'
+        "Or install Python 3.13: brew install python@3.13 (macOS) / "
+        "sudo apt install python3.13 (Linux)",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+import truststore
+
+truststore.inject_into_ssl()
+
+import asyncio  # noqa: E402
+import copy  # noqa: E402
+import hashlib  # noqa: E402
+import logging  # noqa: E402
+import os  # noqa: E402
+import signal  # noqa: E402
+import stat  # noqa: E402
+import sys  # noqa: E402
+import threading  # noqa: E402
+from collections.abc import Coroutine  # noqa: E402
+from typing import TYPE_CHECKING, Any  # noqa: E402
+
+from fastmcp.exceptions import ToolError  # noqa: E402
+from pydantic import ValidationError as PydanticValidationError  # noqa: E402
+from starlette.requests import Request  # noqa: E402
+from starlette.responses import PlainTextResponse  # noqa: E402
+
+if TYPE_CHECKING:
+    from fastmcp import FastMCP
+
+    from ha_mcp.client.rest_client import HomeAssistantClient
+    from ha_mcp.config import Settings
+    from ha_mcp.server import HomeAssistantSmartMCPServer
+
+logger = logging.getLogger(__name__)
+
+
+class OAuthProxyClient:
+    """Proxy client that dynamically forwards to the correct OAuth-authenticated client.
+
+    This class is necessary because tools capture a reference to the client at registration time.
+    The proxy allows us to inject different credentials per-request based on OAuth token claims.
+
+    The Home Assistant URL is fixed server-side (HOMEASSISTANT_URL env var).
+    Only the access token varies per-user (from OAuth consent form).
+    """
+
+    def __init__(self, ha_url: str) -> None:
+        self._ha_url = ha_url.rstrip("/")
+        self._oauth_clients: dict[str, HomeAssistantClient] = {}
+        self._lock = threading.Lock()
+
+    def _get_oauth_client(self) -> "HomeAssistantClient":
+        """Get the OAuth client for the current request context."""
+        from fastmcp.server.dependencies import get_access_token
+
+        from ha_mcp.client.rest_client import (
+            HomeAssistantAuthError,
+            HomeAssistantClient,
+        )
+
+        # Get the access token from the current request context
+        token = get_access_token()
+
+        if not token:
+            logger.warning("No access token in context")
+            raise HomeAssistantAuthError("No OAuth token in request context")
+
+        # Extract HA token from claims (URL is server-side config)
+        claims = token.claims
+
+        if not claims or "ha_token" not in claims:
+            logger.error(
+                f"OAuth token missing HA credentials. Keys present: {list(claims.keys()) if claims else []}"
+            )
+            raise HomeAssistantAuthError(
+                "No Home Assistant credentials in OAuth token claims"
+            )
+
+        ha_token = claims["ha_token"]
+
+        # Hash token for cache key to avoid raw tokens appearing in dict keys
+        client_key = hashlib.sha256(ha_token.encode()).hexdigest()
+
+        with self._lock:
+            if client_key not in self._oauth_clients:
+                self._oauth_clients[client_key] = HomeAssistantClient(
+                    base_url=self._ha_url,
+                    token=ha_token,
+                )
+                logger.info(f"Created OAuth client for {self._ha_url}")
+
+            return self._oauth_clients[client_key]
+
+    async def close(self) -> None:
+        """Close all cached OAuth clients to release httpx connection pools."""
+        with self._lock:
+            clients = list(self._oauth_clients.values())
+            self._oauth_clients.clear()
+        for client in clients:
+            await client.close()
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward all attribute access to the OAuth client."""
+        client = self._get_oauth_client()
+        return getattr(client, name)
+
+
+# Shutdown configuration
+SHUTDOWN_TIMEOUT_SECONDS = 2.0
+
+# Global shutdown state
+_shutdown_event: asyncio.Event | None = None
+_shutdown_in_progress = False
+
+# Stdin error message for Docker without -i flag
+_STDIN_ERROR_MESSAGE = """
+==============================================================================
+                    Home Assistant MCP Server - Stdin Not Available
+==============================================================================
+
+The MCP server requires an interactive stdin for stdio transport mode.
+
+This typically happens when running Docker without the -i flag:
+  docker run ghcr.io/homeassistant-ai/ha-mcp:latest  # stdin is closed
+
+To fix this, use one of the following options:
+
+  1. Add the -i flag to enable interactive stdin:
+     docker run -i -e HOMEASSISTANT_URL=... -e HOMEASSISTANT_TOKEN=... \\
+       ghcr.io/homeassistant-ai/ha-mcp:latest
+
+  2. Use HTTP mode instead (recommended for servers/automation):
+     docker run -d -p 8086:8086 -e HOMEASSISTANT_URL=... -e HOMEASSISTANT_TOKEN=... \\
+       ghcr.io/homeassistant-ai/ha-mcp:latest ha-mcp-web
+
+For more information, see:
+  https://github.com/homeassistant-ai/ha-mcp#-docker
+
+==============================================================================
+"""
+
+# Configuration error message template
+_CONFIG_ERROR_MESSAGE = """
+==============================================================================
+                    Home Assistant MCP Server - Configuration Error
+==============================================================================
+
+Missing required environment variables:
+{missing_vars}
+
+To fix this, you need to provide your Home Assistant connection details:
+
+  1. HOMEASSISTANT_URL - Your Home Assistant instance URL
+     Example: http://homeassistant.local:8123
+
+  2. HOMEASSISTANT_TOKEN - A long-lived access token
+     Get one from: Home Assistant -> Profile -> Long-Lived Access Tokens
+
+Configuration options:
+  - Set environment variables directly:
+      export HOMEASSISTANT_URL=http://homeassistant.local:8123
+      export HOMEASSISTANT_TOKEN=your_token_here
+
+  - Or create a .env file in the project directory (copy from .env.example)
+
+For detailed setup instructions, see:
+  https://github.com/homeassistant-ai/ha-mcp#-installation
+
+==============================================================================
+"""
+
+
+def _check_stdin_available() -> bool:
+    """Check if stdin is available for reading.
+
+    Returns True if stdin is usable (terminal, pipe, or file).
+    Returns False if stdin is closed or not readable (e.g., Docker without -i).
+
+    When Docker runs without the -i flag, stdin is connected to /dev/null,
+    which immediately returns EOF. This causes the stdio transport to exit.
+    """
+    # Check if stdin is closed
+    if sys.stdin is None or sys.stdin.closed:
+        return False
+
+    try:
+        fd = sys.stdin.fileno()
+        mode = os.fstat(fd).st_mode
+    except (ValueError, OSError):
+        # fileno() or fstat() can raise if stdin is not a real file
+        return False
+
+    # Allow TTYs, pipes (how MCP clients communicate), and regular files (testing)
+    if os.isatty(fd) or stat.S_ISFIFO(mode) or stat.S_ISREG(mode):
+        return True
+
+    # Block character devices that aren't TTYs (like /dev/null in Docker without -i)
+    # Unknown type - allow it and let the server handle any issues
+    return not stat.S_ISCHR(mode)
+
+
+def _handle_config_error(error: Exception) -> None:
+    """Handle configuration errors with a user-friendly message and exit.
+
+    Always calls sys.exit(1) — never returns normally.
+    """
+    from pydantic import ValidationError
+
+    if isinstance(error, ValidationError):
+        # Extract missing field names from pydantic errors
+        missing_vars = []
+        for err in error.errors():
+            if err.get("type") == "missing":
+                # The field name is the alias (env var name)
+                field_loc = err.get("loc", ())
+                if field_loc:
+                    missing_vars.append(f"  - {field_loc[0]}")
+
+        if missing_vars:
+            print(
+                _CONFIG_ERROR_MESSAGE.format(missing_vars="\n".join(missing_vars)),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    # For other validation errors, show the original error with guidance
+    print(
+        f"""
+==============================================================================
+                    Home Assistant MCP Server - Configuration Error
+==============================================================================
+
+{error}
+
+For setup instructions, see:
+  https://github.com/homeassistant-ai/ha-mcp#-installation
+
+==============================================================================
+""",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def _validate_standard_credentials(settings: "Settings") -> None:
+    """Exit with error if HA credentials are OAuth sentinels in standard (non-OAuth) mode."""
+    from ha_mcp.config import OAUTH_MODE_TOKEN, OAUTH_MODE_URL
+
+    missing_vars = []
+    if settings.homeassistant_url == OAUTH_MODE_URL:
+        missing_vars.append("  - HOMEASSISTANT_URL")
+    if settings.homeassistant_token == OAUTH_MODE_TOKEN:
+        missing_vars.append("  - HOMEASSISTANT_TOKEN")
+
+    if missing_vars:
+        print(
+            _CONFIG_ERROR_MESSAGE.format(missing_vars="\n".join(missing_vars)),
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _get_show_banner() -> bool:
+    """Check if server banner should be shown (respects FASTMCP_SHOW_SERVER_BANNER env var)."""
+    import fastmcp
+
+    return fastmcp.settings.show_server_banner
+
+
+def _setup_standard_mode() -> None:
+    """Validate credentials and configure logging for standard (non-OAuth) modes."""
+    from ha_mcp.config import get_settings
+
+    settings = get_settings()
+    _validate_standard_credentials(settings)
+    _setup_logging(settings.log_level)
+    _log_startup_version()
+
+
+def _http_run_kwargs(transport: str, host: str, port: int, path: str) -> dict:
+    """Build common run_async kwargs for HTTP-based transports."""
+    return {
+        "transport": transport,
+        "host": host,
+        "port": port,
+        "path": path,
+        "show_banner": _get_show_banner(),
+        "stateless_http": True,
+        "uvicorn_config": {"log_config": _get_timestamped_uvicorn_log_config()},
+    }
+
+
+def _create_server() -> "HomeAssistantSmartMCPServer":
+    """Create server instance (deferred to avoid import during smoke test)."""
+    from pydantic import ValidationError
+
+    try:
+        from ha_mcp.server import HomeAssistantSmartMCPServer
+
+        return HomeAssistantSmartMCPServer()
+    except ValidationError as e:
+        _handle_config_error(e)
+        raise  # _handle_config_error calls sys.exit, but satisfy type checker
+
+
+# Lazy server creation - only create when needed
+_server: "HomeAssistantSmartMCPServer | None" = None
+
+
+def _get_mcp() -> "FastMCP":
+    """Get the MCP instance, creating server if needed."""
+    global _server
+    if _server is None:
+        _server = _create_server()
+    return _server.mcp
+
+
+def _get_server() -> "HomeAssistantSmartMCPServer":
+    """Get the server instance, creating if needed."""
+    global _server
+    if _server is None:
+        _server = _create_server()
+    return _server
+
+
+# For module-level access (e.g., fastmcp.json referencing ha_mcp.__main__:mcp)
+# This is accessed when the module is imported, so we need deferred creation
+class _DeferredMCP:
+    """Wrapper that defers MCP creation until actually accessed."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(_get_mcp(), name)
+
+
+mcp = _DeferredMCP()
+
+
+_LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+class StatelessSessionLogFilter(logging.Filter):
+    """Downgrade 'Terminating session: None' to DEBUG to reduce user confusion.
+
+    In stateless HTTP mode every request creates and tears down a temporary
+    session, producing an INFO log that looks alarming but is routine.
+    This filter lowers the level to DEBUG so the message only appears with
+    verbose logging enabled.
+
+    # TODO: remove when modelcontextprotocol/python-sdk#2329 is resolved
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if (
+            record.name == "mcp.server.streamable_http"
+            and "Terminating session: None" in record.getMessage()
+        ):
+            record.levelno = logging.DEBUG
+            record.levelname = "DEBUG"
+        return True
+
+
+class ToolValidationLogFilter(logging.Filter):
+    """Demote fastmcp tool-failure tracebacks to single-line warnings.
+
+    Pydantic ValidationError and tool-raised ToolError aren't server bugs,
+    so the traceback through fastmcp/pydantic internals is just noise. The
+    structured error detail is preserved in the WARNING message; stack is
+    intentionally dropped because these are user-input errors, not bugs.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "fastmcp.server.server" or not record.exc_info:
+            return True
+
+        msg = record.getMessage()
+        err = record.exc_info[1]
+        if "Error validating tool" in msg and isinstance(err, PydanticValidationError):
+            record.msg = f"{msg}: {err.errors(include_url=False)}"
+        elif "Error calling tool" in msg and isinstance(err, ToolError):
+            record.msg = f"{msg}: {err}"
+        else:
+            return True
+
+        record.args = ()
+        record.levelno = logging.WARNING
+        record.levelname = "WARNING"
+        record.exc_info = None
+        record.exc_text = None
+        return True
+
+
+def _setup_logging(log_level_str: str, force: bool = False) -> None:
+    """Configure root logger with consistent timestamp format."""
+    logging.basicConfig(
+        level=getattr(logging, log_level_str),
+        format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+        datefmt=_LOG_DATE_FORMAT,
+        force=force,
+    )
+    logging.getLogger("mcp.server.streamable_http").addFilter(
+        StatelessSessionLogFilter()
+    )
+    logging.getLogger("fastmcp.server.server").addFilter(ToolValidationLogFilter())
+
+
+def _log_startup_version() -> None:
+    """Log ha-mcp version at startup, plus a dev-channel banner when relevant.
+
+    The dev banner only fires for standalone dev installs (Docker ``:dev`` /
+    ``:latest``, or ``pip install ha-mcp-dev``). It is suppressed under the HA
+    Supervisor because add-on users already pick dev vs stable in the HAOS UI.
+    """
+    from ha_mcp._version import get_version, is_dev_version, is_running_in_addon
+
+    version = get_version()
+    logger.info(f"ha-mcp {version}")
+    if is_dev_version(version) and not is_running_in_addon():
+        logger.warning(
+            "This is the dev channel. For the stable release use the "
+            "'ghcr.io/homeassistant-ai/ha-mcp:stable' Docker tag "
+            "(or 'pip install ha-mcp' on PyPI)."
+        )
+
+
+def _get_timestamped_uvicorn_log_config() -> dict:
+    """Return a Uvicorn log config with human-readable timestamps added."""
+    from uvicorn.config import LOGGING_CONFIG
+
+    log_config = copy.deepcopy(LOGGING_CONFIG)
+    log_config["formatters"]["default"]["fmt"] = (
+        "%(asctime)s %(levelprefix)s %(message)s"
+    )
+    log_config["formatters"]["default"]["datefmt"] = _LOG_DATE_FORMAT
+    log_config["formatters"]["access"]["fmt"] = (
+        '%(asctime)s %(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+    )
+    log_config["formatters"]["access"]["datefmt"] = _LOG_DATE_FORMAT
+    return log_config
+
+
+async def _cleanup_resources() -> None:
+    """Clean up all server resources gracefully."""
+    global _server
+
+    logger.info("Cleaning up server resources...")
+
+    # Close WebSocket listener service if running
+    try:
+        from ha_mcp.client.websocket_listener import stop_websocket_listener
+
+        await stop_websocket_listener()
+        logger.debug("WebSocket listener stopped")
+    except ImportError:
+        logger.debug("WebSocket listener module not available")
+    except Exception as e:
+        logger.warning(f"WebSocket listener cleanup failed: {e}")
+
+    # Close WebSocket manager connections
+    try:
+        from ha_mcp.client.websocket_client import websocket_manager
+
+        await websocket_manager.disconnect()
+        logger.debug("WebSocket manager disconnected")
+    except ImportError:
+        logger.debug("WebSocket manager module not available")
+    except Exception as e:
+        logger.warning(f"WebSocket manager cleanup failed: {e}")
+
+    # Close the server's HTTP client
+    if _server is not None:
+        try:
+            await _server.close()
+            logger.debug("Server closed")
+        except Exception as e:
+            logger.warning(f"Server cleanup failed: {e}")
+
+    logger.info("Server resources cleaned up")
+
+
+async def _cancel_tasks(*tasks: asyncio.Task) -> None:
+    """Cancel tasks and wait for completion, swallowing CancelledError."""
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+
+async def _run_with_shutdown(server_coro: Coroutine[Any, Any, Any]) -> None:
+    """Run a server coroutine with graceful shutdown support.
+
+    Handles signal-based shutdown, resource cleanup, and task cancellation.
+    """
+    global _shutdown_event
+
+    _shutdown_event = asyncio.Event()
+
+    server_task = asyncio.create_task(server_coro)
+    shutdown_task = asyncio.create_task(_shutdown_event.wait())
+
+    try:
+        done, pending = await asyncio.wait(
+            [server_task, shutdown_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        if shutdown_task in done:
+            logger.info("Shutdown signal received, stopping server...")
+            server_task.cancel()
+            try:
+                await asyncio.wait_for(server_task, timeout=SHUTDOWN_TIMEOUT_SECONDS)
+            except TimeoutError:
+                logger.warning("Server did not stop within timeout")
+            except asyncio.CancelledError:
+                pass
+
+    except asyncio.CancelledError:
+        logger.info("Server task cancelled")
+    finally:
+        try:
+            await asyncio.wait_for(
+                _cleanup_resources(), timeout=SHUTDOWN_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            logger.warning("Resource cleanup timed out")
+
+        await _cancel_tasks(server_task, shutdown_task)
+
+
+def _run_entrypoint(coro: Coroutine[Any, Any, Any], label: str) -> None:
+    """Run an async entrypoint with standard exception handling."""
+    _setup_signal_handlers()
+
+    try:
+        asyncio.run(coro)
+    except KeyboardInterrupt:
+        logger.info("Interrupted, exiting")
+    except SystemExit:
+        raise
+    except Exception as e:
+        logger.error(f"{label} error: {e}")
+        sys.exit(1)
+
+    sys.exit(0)
+
+
+def _signal_handler(signum: int, frame: Any) -> None:
+    """Handle shutdown signals (SIGTERM, SIGINT).
+
+    This handler initiates graceful shutdown on first signal.
+    On second signal, forces immediate exit.
+    """
+    global _shutdown_in_progress, _shutdown_event
+
+    sig_name = signal.Signals(signum).name
+
+    if _shutdown_in_progress:
+        # Second signal - force exit
+        logger.warning(f"Received {sig_name} again, forcing exit")
+        sys.exit(1)
+
+    _shutdown_in_progress = True
+    logger.info(f"Received {sig_name}, initiating graceful shutdown...")
+
+    # Signal the shutdown event if we have an event loop
+    if _shutdown_event is not None:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.call_soon_threadsafe(_shutdown_event.set)
+        except RuntimeError:
+            # No running event loop, just exit
+            sys.exit(0)
+
+
+def _setup_signal_handlers() -> None:
+    """Set up signal handlers for graceful shutdown."""
+    # Register signal handlers
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
+
+
+async def _run_with_graceful_shutdown() -> None:
+    """Run the MCP server with graceful shutdown support."""
+    await _run_with_shutdown(_get_mcp().run_async(show_banner=_get_show_banner()))
+
+
+# CLI entry point (for pyproject.toml) - use FastMCP's built-in runner
+def main() -> None:
+    """Run server via CLI using FastMCP's stdio transport."""
+    # Handle --version flag early, before server creation requires config
+    if "--version" in sys.argv or "-V" in sys.argv:
+        from ha_mcp._version import get_version
+
+        print(f"ha-mcp {get_version()}")
+        sys.exit(0)
+
+    # Check for smoke test flag
+    if "--smoke-test" in sys.argv:
+        from ha_mcp.smoke_test import main as smoke_test_main
+
+        sys.exit(smoke_test_main())
+
+    # Configure logging before server creation
+    from ha_mcp.config import get_settings
+
+    settings = get_settings()
+
+    # Check config FIRST so users see helpful config errors before stdin errors
+    _validate_standard_credentials(settings)
+
+    # Check if stdin is available (fails in Docker without -i flag)
+    if not _check_stdin_available():
+        print(_STDIN_ERROR_MESSAGE, file=sys.stderr)
+        sys.exit(1)
+
+    _setup_logging(settings.log_level)
+    _log_startup_version()
+
+    # Spawn the persistent settings UI sidecar (issue #863). The sidecar
+    # is a detached subprocess so the settings page stays reachable even
+    # when this stdio process is SIGTERM'd or idle-killed by the client.
+    # Best-effort: failure logs a warning but doesn't block MCP startup.
+    _maybe_spawn_settings_sidecar()
+
+    _run_entrypoint(_run_with_graceful_shutdown(), "Server")
+
+
+def _maybe_spawn_settings_sidecar() -> None:
+    """Dump tool metadata cache + spawn the stdio settings UI sidecar.
+
+    Split out of ``main()`` to keep the entrypoint readable. The cache
+    dump uses a one-off ``asyncio.run`` because ``_get_tool_metadata``
+    is async; this happens before the main stdio loop so there's no
+    nested-loop conflict with ``_run_entrypoint``'s own ``asyncio.run``.
+
+    Performance: the dump constructs the full FastMCP server, which is
+    heavy. Skip it (and the server build) when there's nothing to spawn
+    for — sidecar disabled or already alive. Warm restarts that already
+    have a sidecar pay zero cold-start tax from this path.
+    """
+    from ha_mcp.settings_ui import (
+        _get_tool_metadata,
+        dump_tool_metadata_cache,
+    )
+    from ha_mcp.stdio_settings_sidecar import (
+        _existing_sidecar_alive,
+        _is_disabled,
+        maybe_spawn,
+    )
+
+    # Cheap gates first; skip the heavy metadata dump when the sidecar
+    # would be a no-op anyway. Any condition that makes maybe_spawn()
+    # short-circuit also makes the dump pointless (the running sidecar
+    # already has a cache from a prior parent startup; a disabled
+    # sidecar never reads one).
+    if _is_disabled() or _existing_sidecar_alive():
+        try:
+            maybe_spawn()
+        except Exception as e:
+            logger.warning(
+                "Failed to invoke maybe_spawn no-op path (%s)",
+                type(e).__name__,
+                exc_info=True,
+            )
+        return
+
+    try:
+        metadata = asyncio.run(_get_tool_metadata(_get_server()))
+        dumped = dump_tool_metadata_cache(metadata)
+        # Log a deliberate one-liner so users debugging an empty
+        # settings page can see whether the parent's dump succeeded
+        # by grepping the stdio process output (which Claude Desktop
+        # surfaces in its MCP server log panel).
+        logger.info(
+            "Tool metadata cache: %d tools dumped, write %s",
+            len(metadata),
+            "succeeded" if dumped else "FAILED",
+        )
+    except Exception as e:
+        # Cache dump is best-effort — the sidecar falls back to an empty
+        # tools list rather than blocking stdio startup. Include the
+        # exception class in the warning so ops can distinguish
+        # server-init failures (Pydantic ValidationError) from cache I/O
+        # (OSError) from event-loop issues (RuntimeError).
+        logger.warning(
+            "Failed to dump tool metadata cache (%s)",
+            type(e).__name__,
+            exc_info=True,
+        )
+
+    try:
+        maybe_spawn()
+    except Exception as e:
+        # Spawn failures already log inside maybe_spawn(); the bare
+        # except here is a defense-in-depth guard for any unexpected
+        # path (e.g. import error in the sidecar module). Settings UI
+        # is advisory — never let it block MCP startup.
+        logger.warning(
+            "Failed to spawn settings UI sidecar (%s)",
+            type(e).__name__,
+            exc_info=True,
+        )
+
+
+def main_dev() -> None:
+    """Run server with DEBUG logging enabled (for ha-mcp-dev package)."""
+    import os
+
+    os.environ["LOG_LEVEL"] = "DEBUG"
+    main()
+
+
+# HTTP entry point for web clients
+def _get_http_runtime(default_port: int = 8086) -> tuple[str, int, str]:
+    """Return runtime configuration shared by HTTP transports.
+
+    Args:
+        default_port: Default port to use if MCP_PORT env var is not set.
+
+    The bind host comes from ``MCP_HOST`` and defaults to ``0.0.0.0``. The
+    explicit literal default is load-bearing: FastMCP's own ``Settings.host``
+    defaults to ``127.0.0.1``, so dropping the fallback would silently flip
+    the default and break existing LAN deployments. Set ``MCP_HOST=127.0.0.1``
+    to bind to loopback on workstation deployments.
+
+    Note: FastMCP also honors a ``FASTMCP_HOST`` env var natively, but
+    because ``_http_run_kwargs`` passes ``host=`` explicitly to
+    ``run_async``, any ``FASTMCP_HOST`` value in the environment is
+    ignored — ``MCP_HOST`` is the only env var that affects bind host
+    for ha-mcp's CLI entry points.
+    """
+
+    host = os.getenv("MCP_HOST", "0.0.0.0")
+    port_str = os.getenv("MCP_PORT", str(default_port))
+    try:
+        port = int(port_str)
+    except ValueError:
+        logger.error(f"Invalid MCP_PORT value: {port_str!r}. Must be an integer.")
+        sys.exit(1)
+    path = os.getenv("MCP_SECRET_PATH", "/mcp")
+    return host, port, path
+
+
+async def _run_http_with_graceful_shutdown(
+    transport: str,
+    host: str,
+    port: int,
+    path: str,
+) -> None:
+    """Run HTTP server with graceful shutdown support."""
+    await _run_with_shutdown(
+        _get_mcp().run_async(**_http_run_kwargs(transport, host, port, path))
+    )
+
+
+_registered_landing_paths: set[str] = set()
+
+
+def register_browser_landing(mcp_instance: "FastMCP | _DeferredMCP", path: str) -> None:
+    """Register a GET handler that returns 405 with a helpful message.
+
+    Browsers and misconfigured clients that send GET instead of POST will see
+    a human-readable explanation instead of a bare "Method Not Allowed" error.
+    The 405 status and Allow header are set explicitly by this handler so
+    automated clients still get the correct HTTP semantics.
+
+    Args:
+        mcp_instance: The FastMCP server to register the route on.
+        path: The MCP endpoint path (e.g. "/mcp" or a secret path).
+    """
+    if path in _registered_landing_paths:
+        logger.warning(
+            "register_browser_landing: %r already registered, skipping", path
+        )
+        return
+    _registered_landing_paths.add(path)
+
+    _landing_message = (
+        "HA-MCP server is up and running!\n"
+        "\n"
+        "To connect, paste the full URL (including the /private_... key) into the\n"
+        "connector or MCP settings of your AI/LLM client. No username or password required.\n"
+        "Setup instructions: https://homeassistant-ai.github.io/ha-mcp/\n"
+        "\n"
+        "--- Cloudflare Users ---\n"
+        "\n"
+        'If your LLM cannot connect, Cloudflare\'s "Block AI training bots"\n'
+        "setting is the most common cause. To disable it:\n"
+        "\n"
+        "1. Log in to Cloudflare (https://dash.cloudflare.com)\n"
+        "2. In the left sidebar, click Domains, then click Overview\n"
+        "3. Click on the domain you use for connecting to Home Assistant\n"
+        '4. On the right side, find "Control AI Crawlers"\n'
+        '5. Under "Block AI training bots", open the dropdown\n'
+        '6. Select "do not block (allow crawlers)"\n'
+        "\n"
+        "Screenshot of the setting:\n"
+        "https://homeassistant-ai.github.io/ha-mcp/images/cloudflare-ai-crawlers-setting.jpg\n"
+    )
+
+    # Safe because FastMCP registers the MCP route with methods=["POST", "DELETE"]
+    # in stateless mode, so Starlette rejects GET requests before the MCP handler runs.
+    # Custom routes are registered at lowest precedence (after the MCP route).
+    @mcp_instance.custom_route(path, methods=["GET"])
+    async def _browser_landing(_: Request) -> PlainTextResponse:
+        return PlainTextResponse(
+            _landing_message,
+            status_code=405,
+            # DELETE is included per the MCP Streamable HTTP spec (used for
+            # session termination), even though this deployment uses stateless mode.
+            headers={"Allow": "POST, DELETE"},
+        )
+
+
+def _log_settings_url(host: str, port: int, path: str) -> None:
+    """Log the web settings-UI URL at HTTP startup.
+
+    Non-add-on operators (Docker / standalone) otherwise have no easy way to
+    discover the settings page or its secret-path URL (issue #1458). When the
+    bind host is the wildcard (``0.0.0.0`` / ``::``) the process can't know its
+    externally reachable address, so we log a ``<host>`` placeholder.
+    """
+    is_wildcard = host in ("0.0.0.0", "::")
+    if is_wildcard:
+        display_host = "<host>"
+    elif ":" in host:
+        # IPv6 literal (e.g. ::1, 2001:db8::1) needs brackets in a URL.
+        display_host = f"[{host}]"
+    else:
+        display_host = host
+    url = f"http://{display_host}:{port}{path.rstrip('/')}/settings"
+    note = "  (substitute this server's address for <host>)" if is_wildcard else ""
+    logger.info(f"Settings UI available at: {url}{note}")
+
+
+def _run_http_server(transport: str, default_port: int = 8086) -> None:
+    """Common runner for HTTP-based transports.
+
+    Args:
+        transport: Transport type (http or sse).
+        default_port: Default port to use if MCP_PORT env var is not set.
+    """
+    from ha_mcp.settings_ui import register_settings_routes
+
+    host, port, path = _get_http_runtime(default_port)
+    register_browser_landing(_get_mcp(), path)
+    register_settings_routes(_get_mcp(), _get_server(), secret_path=path)
+    _log_settings_url(host, port, path)
+
+    _run_entrypoint(
+        _run_http_with_graceful_shutdown(transport, host, port, path),
+        "HTTP server",
+    )
+
+
+def main_web() -> None:
+    """Run server over HTTP for web-capable MCP clients.
+
+    Environment:
+    - HOMEASSISTANT_URL (required)
+    - HOMEASSISTANT_TOKEN (required)
+    - MCP_HOST (optional, default: "0.0.0.0"; set 127.0.0.1 to restrict to loopback)
+    - MCP_PORT (optional, default: 8086)
+    - MCP_SECRET_PATH (optional, default: "/mcp")
+    """
+    _setup_standard_mode()
+    _run_http_server("http", default_port=8086)
+
+
+def main_sse() -> None:
+    """Run server using Server-Sent Events transport for MCP clients.
+
+    Environment:
+    - HOMEASSISTANT_URL (required)
+    - HOMEASSISTANT_TOKEN (required)
+    - MCP_HOST (optional, default: "0.0.0.0"; set 127.0.0.1 to restrict to loopback)
+    - MCP_PORT (optional, default: 8087)
+    - MCP_SECRET_PATH (optional, default: "/mcp")
+    """
+    _setup_standard_mode()
+    _run_http_server("sse", default_port=8087)
+
+
+def main_oauth() -> None:
+    """Run server with OAuth 2.1 authentication over HTTP.
+
+    This mode enables per-user authentication for MCP clients like Claude.ai.
+    Users authenticate via a consent form where they provide their
+    Long-Lived Access Token.
+
+    Environment:
+    - HOMEASSISTANT_URL (required): URL of the Home Assistant instance
+    - MCP_BASE_URL (required): Public URL where this server is accessible (e.g., https://your-tunnel.com)
+    - MCP_HOST (optional, default: "0.0.0.0"; set 127.0.0.1 to restrict to loopback)
+    - MCP_PORT (optional, default: 8086)
+    - MCP_SECRET_PATH (optional, default: "/mcp")
+    - LOG_LEVEL (optional, default: INFO)
+
+    Note: HOMEASSISTANT_TOKEN is NOT required in this mode.
+    Per-user tokens are collected via the OAuth consent form.
+    """
+    # In OAuth mode, per-user tokens come from the consent form — no
+    # server-level HOMEASSISTANT_TOKEN is needed.  Set the sentinel so
+    # Settings validation passes even when the env var is empty (e.g.
+    # Dockerfile sets HOMEASSISTANT_TOKEN="").  Fixes #886.
+    if not os.getenv("HOMEASSISTANT_TOKEN"):
+        from ha_mcp.config import OAUTH_MODE_TOKEN
+
+        os.environ["HOMEASSISTANT_TOKEN"] = OAUTH_MODE_TOKEN
+
+    # Configure logging for OAuth mode
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    _setup_logging(log_level, force=True)
+    # Also configure all ha_mcp loggers
+    for logger_name in ["ha_mcp", "ha_mcp.auth", "ha_mcp.auth.provider"]:
+        logging.getLogger(logger_name).setLevel(getattr(logging, log_level))
+    logger.info(f"OAuth mode logging configured at {log_level} level")
+    _log_startup_version()
+
+    host, port, path = _get_http_runtime(default_port=8086)
+    base_url = os.getenv("MCP_BASE_URL")
+    ha_url = os.getenv("HOMEASSISTANT_URL")
+
+    missing = []
+    if not base_url:
+        missing.append("  - MCP_BASE_URL (e.g., https://your-tunnel.trycloudflare.com)")
+    if not ha_url:
+        missing.append("  - HOMEASSISTANT_URL (e.g., http://homeassistant.local:8123)")
+
+    if missing:
+        missing_vars = "\n".join(missing)
+        print(
+            f"""
+==============================================================================
+                    Home Assistant MCP Server - Configuration Error
+==============================================================================
+
+Missing required environment variables for OAuth mode:
+{missing_vars}
+
+For setup instructions, see:
+  https://github.com/homeassistant-ai/ha-mcp/blob/master/docs/OAUTH.md
+
+==============================================================================
+""",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Type narrowing: ha_url and base_url are guaranteed non-None after the check above
+    assert ha_url is not None
+    assert base_url is not None
+    _run_entrypoint(
+        _run_oauth_server(ha_url, base_url, host, port, path), "OAuth server"
+    )
+
+
+async def _run_oauth_server(
+    ha_url: str, base_url: str, host: str, port: int, path: str
+) -> None:
+    """Run the OAuth-authenticated MCP server.
+
+    Args:
+        ha_url: Home Assistant instance URL (server-side config)
+        base_url: Public URL where this server is accessible (required)
+        host: Bind host (typically 0.0.0.0; override via MCP_HOST)
+        port: Port to listen on
+        path: MCP endpoint path
+    """
+    from ha_mcp.auth import HomeAssistantOAuthProvider
+    from ha_mcp.server import HomeAssistantSmartMCPServer
+
+    # Create OAuth provider
+    auth_provider = HomeAssistantOAuthProvider(
+        base_url=base_url,
+        service_documentation_url="https://github.com/homeassistant-ai/ha-mcp",
+    )
+
+    # In OAuth mode, the HA URL is fixed server-side. Per-user tokens come
+    # from the OAuth consent form and are extracted from token claims.
+    proxy_client = OAuthProxyClient(ha_url)
+
+    global _server
+    _server = HomeAssistantSmartMCPServer(
+        client=proxy_client,  # type: ignore[arg-type]  # OAuthProxyClient forwards all HomeAssistantClient attrs via __getattr__
+    )
+    mcp = _server.mcp
+    mcp.auth = auth_provider
+
+    logger.info("Server created with OAuthProxyClient")
+    register_browser_landing(mcp, path)
+
+    from ha_mcp.settings_ui import register_settings_routes
+
+    register_settings_routes(mcp, _server, secret_path=path)
+    _log_settings_url(host, port, path)
+
+    tools = await mcp.list_tools()
+    logger.info(
+        f"Starting OAuth-enabled MCP server with {len(tools)} tools on {base_url}{path}"
+    )
+
+    await _run_with_shutdown(
+        mcp.run_async(**_http_run_kwargs("http", host, port, path))
+    )
+
+
+if __name__ == "__main__":
+    main()

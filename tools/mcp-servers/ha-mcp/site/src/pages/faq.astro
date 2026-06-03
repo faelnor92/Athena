@@ -1,0 +1,599 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Nav from '../components/Nav.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const withBase = (path: string) => {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${cleanPath}`;
+};
+---
+
+<Layout title="FAQ & Troubleshooting - Home Assistant MCP">
+  <Nav active="faq" />
+
+  <div class="container mx-auto px-4 py-8 max-w-3xl">
+    <!-- Header -->
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-white mb-2">FAQ & Troubleshooting</h1>
+      <p class="text-slate-400">Common questions and solutions for ha-mcp setup.</p>
+    </header>
+
+    <!-- Table of Contents -->
+    <nav class="mb-10 bg-slate-800/30 rounded-xl border border-slate-700/50 p-6">
+      <h2 class="text-lg font-semibold text-white mb-4">On this page</h2>
+      <ul class="space-y-2 text-sm">
+        <li><a href="#general-questions" class="text-blue-400 hover:underline">General Questions</a></li>
+        <li class="ml-4"><a href="#tool-settings-page" class="text-blue-400 hover:underline">The Settings Page (Tools, Backups &amp; More)</a></li>
+        <li><a href="#demo" class="text-blue-400 hover:underline">Try Without Your Own Home Assistant</a></li>
+        <li><a href="#troubleshooting" class="text-blue-400 hover:underline">Troubleshooting</a></li>
+        <li class="ml-4"><a href="#macos-connection" class="text-blue-400 hover:underline">macOS Connection Issues</a></li>
+        <li class="ml-4"><a href="#uv-tls-interception" class="text-blue-400 hover:underline">uvx Certificate Errors (proxy / antivirus)</a></li>
+        <li class="ml-4"><a href="#webhook-proxy" class="text-blue-400 hover:underline">Webhook Proxy Alternative</a></li>
+        <li class="ml-4"><a href="#webhook-proxy-security" class="text-blue-400 hover:underline">Webhook Proxy: securing the URL</a></li>
+        <li class="ml-4"><a href="#antigravity-troubleshooting" class="text-blue-400 hover:underline">Antigravity Client Troubleshooting</a></li>
+        <li class="ml-4"><a href="#claude-ai-connection" class="text-blue-400 hover:underline">Claude.ai Connection Issues</a></li>
+        <li class="ml-4"><a href="#quick-test" class="text-blue-400 hover:underline">Test ha-mcp Without Configuring a Client</a></li>
+        <li class="ml-4"><a href="#uvx-background" class="text-blue-400 hover:underline">Keep ha-mcp-web Running in the Background</a></li>
+        <li class="ml-4"><a href="#docker-port" class="text-blue-400 hover:underline">Docker: Changing the Port</a></li>
+        <li><a href="#custom-component" class="text-blue-400 hover:underline">Custom Component (ha_mcp_tools)</a></li>
+        <li><a href="#configuration" class="text-blue-400 hover:underline">Configuration Options</a></li>
+        <li><a href="#feedback" class="text-blue-400 hover:underline">Feedback & Help</a></li>
+      </ul>
+    </nav>
+
+    <!-- General Questions -->
+    <section class="mb-12" id="general-questions">
+      <h2 class="text-2xl font-semibold text-white mb-6">General Questions</h2>
+
+      <div class="space-y-6">
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">Do I need a Claude Pro subscription?</h3>
+          <p class="text-slate-300"><strong class="text-green-400">No.</strong> Claude Desktop works with a free Claude account. The MCP integration is available to all users, though free accounts have usage limits.</p>
+          <p class="text-slate-400 text-sm mt-2">You can also use ha-mcp with other AI clients. See the <a href={withBase('/setup')} class="text-blue-400 hover:underline">Setup Wizard</a> for 15+ supported clients.</p>
+        </div>
+
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">Do I need the Home Assistant Add-on?</h3>
+          <p class="text-slate-300"><strong class="text-green-400">No.</strong> The HA add-on is just one installation method. Most users run ha-mcp directly on their computer using <code class="bg-slate-800 px-1 rounded">uvx</code> (recommended for Claude Desktop). The add-on is only needed if you want to run ha-mcp inside your Home Assistant OS environment.</p>
+          <p class="text-slate-400 text-sm mt-2">If you <em>do</em> run the add-on, you don't also need <code class="bg-slate-800 px-1 rounded">uvx</code> — that would be a second, separate instance. HTTP-native clients (Codex, Cursor, Windsurf, Claude Code) connect straight to the add-on's URL, no proxy needed. One caveat: as of early 2026, Codex's HTTP MCP support has a <a href="https://github.com/openai/codex/issues/11284" class="text-blue-400 hover:underline">known initialization bug</a> where it loads no tools; if you hit that, run ha-mcp locally over stdio with <code class="bg-slate-800 px-1 rounded">uvx</code> instead.</p>
+        </div>
+
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">What's the difference between ha-mcp and Home Assistant's built-in MCP?</h3>
+          <div class="overflow-x-auto mt-3">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-700">
+                  <th class="text-left py-2 text-slate-300">Feature</th>
+                  <th class="text-left py-2 text-slate-300">Built-in HA MCP</th>
+                  <th class="text-left py-2 text-slate-300">ha-mcp</th>
+                </tr>
+              </thead>
+              <tbody class="text-slate-400">
+                <tr class="border-b border-slate-800">
+                  <td class="py-2">Tools</td>
+                  <td class="py-2">~15 basic tools</td>
+                  <td class="py-2 text-brand">80+ comprehensive tools</td>
+                </tr>
+                <tr class="border-b border-slate-800">
+                  <td class="py-2">Focus</td>
+                  <td class="py-2">Device control</td>
+                  <td class="py-2 text-brand">Full system administration</td>
+                </tr>
+                <tr class="border-b border-slate-800">
+                  <td class="py-2">Automations</td>
+                  <td class="py-2">Limited</td>
+                  <td class="py-2 text-brand">Create, edit, debug, trace</td>
+                </tr>
+                <tr class="border-b border-slate-800">
+                  <td class="py-2">Dashboards</td>
+                  <td class="py-2">No</td>
+                  <td class="py-2 text-brand">Full dashboard management</td>
+                </tr>
+                <tr>
+                  <td class="py-2">Cameras</td>
+                  <td class="py-2">No</td>
+                  <td class="py-2 text-brand">Screenshot and analysis</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-slate-400 text-sm mt-3">Built-in = operate devices. ha-mcp = administer your system.</p>
+        </div>
+
+        <div class="faq-item" id="tool-settings-page">
+          <h3 class="text-lg font-medium text-white mb-2">How do I open the ha-mcp settings page?</h3>
+          <p class="text-slate-300">ha-mcp ships a web settings page where you can enable, disable, and pin individual MCP tools, toggle feature flags and advanced (beta) settings, manage automatic backups, and review tool-approval requests. How you reach it depends on how ha-mcp is running:</p>
+          <ul class="list-disc pl-6 text-slate-300 mt-3 space-y-2">
+            <li><strong>Claude Desktop / Claude Code / any stdio install (<code class="bg-slate-800 px-1 rounded">uvx ha-mcp</code>):</strong> a localhost settings server spawns automatically alongside the MCP process. The easiest way to find the URL is to <strong>ask the AI</strong> something like <em>"how do I open the ha-mcp settings page?"</em> — the URL is included in <code class="bg-slate-800 px-1 rounded">ha_get_overview</code>'s response. You can also read it directly from <code class="bg-slate-800 px-1 rounded">~/.ha-mcp/ui.url</code> (Windows: <code class="bg-slate-800 px-1 rounded">%USERPROFILE%\.ha-mcp\ui.url</code>). The URL is bound to <code class="bg-slate-800 px-1 rounded">127.0.0.1</code> only and gated by a random secret path generated when the settings server starts.</li>
+            <li><strong>HA Add-on:</strong> easiest is the <strong>"Open Web UI"</strong> button on the add-on page (served over Home Assistant ingress — no secret needed). For direct or remote access outside the HA UI, the page lives behind the add-on's secret path: <code class="bg-slate-800 px-1 rounded">http://&lt;home-assistant-ip&gt;:9583/&lt;secret-path&gt;/settings</code>. Find <code class="bg-slate-800 px-1 rounded">&lt;secret-path&gt;</code> in the add-on's <strong>Configuration</strong> tab ("Secret path override") or in <code class="bg-slate-800 px-1 rounded">/data/secret_path.txt</code>. The bare <code class="bg-slate-800 px-1 rounded">:9583/settings</code> without the secret path is rejected for non-ingress callers.</li>
+            <li><strong><code class="bg-slate-800 px-1 rounded">ha-mcp-web</code> / Docker (HTTP):</strong> append <code class="bg-slate-800 px-1 rounded">/settings</code> to your MCP secret-path URL. The default <code class="bg-slate-800 px-1 rounded">MCP_SECRET_PATH</code> is <code class="bg-slate-800 px-1 rounded">/mcp</code>, so the page is at <code class="bg-slate-800 px-1 rounded">http://&lt;host&gt;:8086/mcp/settings</code>; if you set a custom secret path, use that instead (e.g. <code class="bg-slate-800 px-1 rounded">http://&lt;host&gt;:8086/private_xxx/settings</code>).</li>
+            <li><strong>Remote (Cloudflare Tunnel / reverse proxy):</strong> same as Docker/HTTP — the page sits under your secret path wherever the MCP endpoint is reachable, e.g. <code class="bg-slate-800 px-1 rounded">https://&lt;your-host&gt;/&lt;secret-path&gt;/settings</code>.</li>
+          </ul>
+          <p class="text-slate-400 text-sm mt-3">Changes apply on the next MCP-server restart. To stop the stdio sidecar entirely, click the "Permanently disable settings server" button on the page, set <code class="bg-slate-800 px-1 rounded">HA_MCP_DISABLE_SETTINGS_UI=1</code> in your MCP client config, or create an empty <code class="bg-slate-800 px-1 rounded">~/.ha-mcp/settings_ui_disabled</code> file.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Try Without Your Own HA -->
+    <section class="mb-12" id="demo">
+      <h2 class="text-2xl font-semibold text-white mb-6">Try Without Your Own Home Assistant</h2>
+      <p class="text-slate-300 mb-4">Want to test before connecting to your own Home Assistant? Use our public demo:</p>
+
+      <div class="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+        <div class="space-y-3">
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400">URL</span>
+            <code class="bg-slate-900 px-2 py-1 rounded text-brand">https://ha-mcp-demo-server.qc-h.net</code>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400">Token</span>
+            <code class="bg-slate-900 px-2 py-1 rounded text-brand">demo</code>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400">Web UI</span>
+            <span class="text-slate-300">Login with <code class="bg-slate-900 px-1 rounded">mcp</code> / <code class="bg-slate-900 px-1 rounded">mcp</code></span>
+          </div>
+        </div>
+        <p class="text-slate-500 text-sm mt-4">The demo environment resets weekly. Your changes won't persist.</p>
+      </div>
+    </section>
+
+    <!-- Troubleshooting -->
+    <section class="mb-12" id="troubleshooting">
+      <h2 class="text-2xl font-semibold text-white mb-6">Troubleshooting</h2>
+
+      <div class="space-y-6">
+        <div class="faq-item" id="oauth-v7-migration">
+          <h3 class="text-lg font-medium text-white mb-2">OAuth stopped working after upgrading to v7.0.0</h3>
+          <p class="text-slate-300 mb-4">v7.0.0 removed the Home Assistant URL field from the OAuth consent form to fix security vulnerabilities (SSRF and XSS). Set <code class="bg-slate-800 px-1 rounded">HOMEASSISTANT_URL</code> as a server-side environment variable before starting ha-mcp.</p>
+          <pre class="code-block mt-2"><code># Docker
+docker run -d -p 8086:8086 \
+  -e HOMEASSISTANT_URL=https://your-ha-instance.example.com \
+  -e MCP_BASE_URL=https://your-mcp-server.example.com \
+  ghcr.io/homeassistant-ai/ha-mcp:latest ha-mcp-oauth
+
+# uvx
+HOMEASSISTANT_URL=https://your-ha-instance.example.com \
+MCP_BASE_URL=https://your-mcp-server.example.com \
+uvx --from=ha-mcp@latest ha-mcp-oauth</code></pre>
+          <p class="text-slate-400 text-sm mt-3">The consent form now accepts only the token. See the <a href="https://github.com/homeassistant-ai/ha-mcp/blob/master/docs/OAUTH.md#migrating-from-v6x" class="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">full migration guide</a> for details.</p>
+        </div>
+
+        <div class="faq-item" id="macos-connection">
+          <h3 class="text-lg font-medium text-white mb-2">macOS: "All connection attempts failed" to local Home Assistant</h3>
+          <p class="text-slate-300 mb-4">If ha-mcp connects to the demo server but fails to reach your local Home Assistant (<code class="bg-slate-800 px-1 rounded">192.168.x.x</code>, <code class="bg-slate-800 px-1 rounded">10.x.x.x</code>, etc.) on macOS, check the following. See <a href="https://github.com/homeassistant-ai/ha-mcp/issues/867" class="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#867</a> (Local Network Privacy), <a href="https://github.com/homeassistant-ai/ha-mcp/issues/630" class="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#630</a> (env vars), <a href="https://github.com/homeassistant-ai/ha-mcp/issues/773" class="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#773</a> (Python version) for related reports.</p>
+
+          <h4 class="font-medium text-white mt-4 mb-2">1. macOS Local Network Privacy (Sequoia 15+)</h4>
+          <p class="text-slate-300 mb-3">macOS Sequoia silently blocks subprocess connections to local network IPs. Claude Desktop spawns <code class="bg-slate-800 px-1 rounded">uvx</code> as a child process, and macOS may block its outbound LAN connections without showing a permission dialog.</p>
+          <ul class="text-slate-300 space-y-1 list-disc list-inside mb-3">
+            <li>Check <strong>System Settings &rarr; Privacy &amp; Security &rarr; Local Network</strong> for Claude Desktop</li>
+            <li>If Claude Desktop is not listed, try restarting it to trigger the permission prompt</li>
+          </ul>
+          <p class="text-slate-400 mb-2">Workaround &mdash; SSH tunnel to localhost:</p>
+          <p class="text-slate-300 mb-3">macOS does not restrict connections to <code class="bg-slate-800 px-1 rounded">localhost</code>, so an SSH port forward bypasses the restriction:</p>
+          <pre class="code-block"><code>ssh -N -L 8123:localhost:8123 user@your-ha-server-ip</code></pre>
+          <p class="text-slate-400 text-sm mt-2 mb-4">Then set <code class="bg-slate-800 px-1 rounded">HOMEASSISTANT_URL</code> to <code class="bg-slate-800 px-1 rounded">http://localhost:8123</code> in your config.</p>
+
+          <h4 class="font-medium text-white mt-4 mb-2">2. Firewall software (Little Snitch, Lulu, etc.)</h4>
+          <p class="text-slate-300 mb-3">Third-party firewalls may block <code class="bg-slate-800 px-1 rounded">python</code> or <code class="bg-slate-800 px-1 rounded">node</code> processes spawned by Claude Desktop. Check your firewall rules and allow connections for these processes. See <a href="https://github.com/homeassistant-ai/ha-mcp/issues/780" class="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#780</a> for an example resolution.</p>
+
+          <h4 class="font-medium text-white mt-4 mb-2">3. http:// vs https://</h4>
+          <p class="text-slate-300 mb-3">Home Assistant running in container mode (Docker, K3s) uses HTTP by default. Using <code class="bg-slate-800 px-1 rounded">https://</code> causes a TLS handshake error. Use <code class="bg-slate-800 px-1 rounded">http://</code> unless you have explicitly configured SSL/TLS or a reverse proxy.</p>
+
+          <h4 class="font-medium text-white mt-4 mb-2">4. Python version too old</h4>
+          <p class="text-slate-300 mb-3">ha-mcp requires Python 3.13+. If you are on Python 3.12 or older, <code class="bg-slate-800 px-1 rounded">uvx</code> installs an outdated version with known bugs (including read-only filesystem errors). Upgrade Python:</p>
+          <pre class="code-block mb-2"><code>brew install python@3.13</code></pre>
+          <p class="text-slate-400 text-sm mb-1">Then force a refresh:</p>
+          <pre class="code-block"><code>uvx --refresh ha-mcp@latest</code></pre>
+          <p class="text-slate-400 text-sm mt-3">If <code class="bg-slate-800 px-1 rounded">uvx</code> still uses the old Python after installing 3.13, explicitly pin it by adding <code class="bg-slate-800 px-1 rounded">--python 3.13</code> to your config args:</p>
+          <pre class="code-block mt-2"><code>"args": ["--python", "3.13", "ha-mcp@latest"]</code></pre>
+        </div>
+
+        <div class="faq-item" id="ssl-certificates">
+          <h3 class="text-lg font-medium text-white mb-2">SSL certificate errors (self-signed certificates)</h3>
+          <p class="text-slate-300 mb-4">If your Home Assistant uses HTTPS with a self-signed certificate or custom CA, you may see SSL verification errors.</p>
+          <p class="text-slate-400 mb-2">Docker solution:</p>
+          <ol class="text-slate-300 space-y-3 list-decimal list-inside">
+            <li>Create a combined CA bundle:
+              <pre class="code-block mt-2"><code>cat $(python3 -m certifi) /path/to/your-ca.crt > combined-ca-bundle.crt</code></pre>
+            </li>
+            <li>Mount it and set <code class="bg-slate-800 px-1 rounded">SSL_CERT_FILE</code>:
+              <pre class="code-block mt-2"><code>docker run --rm \
+  -e SSL_CERT_FILE=/certs/ca-bundle.crt \
+  -v ./combined-ca-bundle.crt:/certs/ca-bundle.crt:ro \
+  ...</code></pre>
+            </li>
+          </ol>
+        </div>
+
+        <div class="faq-item" id="uv-tls-interception">
+          <h3 class="text-lg font-medium text-white mb-2">uvx fails with <code class="bg-slate-800 px-1 rounded">invalid peer certificate: UnknownIssuer</code></h3>
+          <p class="text-slate-300 mb-3">If <code class="bg-slate-800 px-1 rounded">uvx</code> can't download ha-mcp (or <code class="bg-slate-800 px-1 rounded">mcp-proxy</code>, if you connect to the add-on through it) and the log shows a certificate error fetching from PyPI, the failure is in <code class="bg-slate-800 px-1 rounded">uv</code>'s package download — it never reaches Home Assistant:</p>
+          <pre class="code-block mb-3"><code>Failed to fetch: https://pypi.org/simple/ha-mcp/
+  invalid peer certificate: UnknownIssuer</code></pre>
+          <p class="text-slate-300 mb-3">In Claude Desktop this often shows up as the server briefly connecting, then "transport closed unexpectedly" — <code class="bg-slate-800 px-1 rounded">uvx</code> exits when it can't fetch the package.</p>
+          <p class="text-slate-300 mb-3"><strong class="text-white">Cause:</strong> <code class="bg-slate-800 px-1 rounded">uv</code> (which backs <code class="bg-slate-800 px-1 rounded">uvx</code>) ships its own bundled root-certificate store and ignores the operating-system certificate store by default. If anything on your machine intercepts HTTPS — a corporate proxy, Zscaler, or antivirus with HTTPS/SSL scanning (Kaspersky, ESET, Bitdefender, etc.) — it presents a certificate chained to a root your OS trusts but <code class="bg-slate-800 px-1 rounded">uv</code>'s bundled store does not, producing <code class="bg-slate-800 px-1 rounded">UnknownIssuer</code>. This is most common on Windows.</p>
+          <p class="text-slate-300 mb-2"><strong class="text-white">Fix:</strong> point <code class="bg-slate-800 px-1 rounded">uv</code> at the OS native certificate store by adding <code class="bg-slate-800 px-1 rounded">UV_NATIVE_TLS=1</code> to the server's <code class="bg-slate-800 px-1 rounded">env</code> block:</p>
+          <pre class="code-block"><code>{`{
+  "mcpServers": {
+    "Home Assistant": {
+      "command": "uvx",
+      "args": ["ha-mcp@latest"],
+      "env": {
+        "HOMEASSISTANT_URL": "http://homeassistant.local:8123",
+        "HOMEASSISTANT_TOKEN": "your_long_lived_token",
+        "UV_NATIVE_TLS": "1"
+      }
+    }
+  }
+}`}</code></pre>
+          <p class="text-slate-400 text-sm mt-3">Connecting to the HA add-on through <code class="bg-slate-800 px-1 rounded">uvx mcp-proxy</code> instead? Add the same <code class="bg-slate-800 px-1 rounded">UV_NATIVE_TLS=1</code> entry to that config's <code class="bg-slate-800 px-1 rounded">env</code> block. The equivalent <code class="bg-slate-800 px-1 rounded">--native-tls</code> flag also works, but it is a global <code class="bg-slate-800 px-1 rounded">uv</code> option, so it must come before the package name. See <a href="https://github.com/homeassistant-ai/ha-mcp/issues/1506" class="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#1506</a>.</p>
+        </div>
+
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">"uvx not found" error</h3>
+          <p class="text-slate-300 mb-3">After installing uv, <strong>restart your terminal</strong> (or Claude Desktop) for the PATH changes to take effect.</p>
+          <div class="space-y-4">
+            <div>
+              <p class="text-slate-400 mb-2">Mac:</p>
+              <pre class="code-block"><code># Reload shell or restart terminal
+source ~/.zshrc
+# Or verify with full path
+~/.local/bin/uvx --version</code></pre>
+            </div>
+            <div>
+              <p class="text-slate-400 mb-2">Windows:</p>
+              <pre class="code-block"><code># Restart PowerShell/cmd after installing uv
+# Or use full path
+%USERPROFILE%\.local\bin\uvx.exe --version</code></pre>
+            </div>
+          </div>
+          <div class="mt-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700/50">
+            <p class="text-slate-300 text-sm"><strong class="text-white">Claude Desktop note:</strong> Claude Desktop does <strong>not</strong> inherit your shell's PATH. If <code class="bg-slate-800 px-1 rounded">uvx</code> is not found even after restarting, use the absolute path in your config instead of <code class="bg-slate-800 px-1 rounded">uvx</code>. Find it with <code class="bg-slate-800 px-1 rounded">which uvx</code> in your terminal, then set <code class="bg-slate-800 px-1 rounded">"command": "/Users/&lt;you&gt;/.local/bin/uvx"</code> (macOS/Linux) or the equivalent Windows path.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">MCP server not showing in Claude Desktop</h3>
+          <ol class="text-slate-300 space-y-2 list-decimal list-inside">
+            <li><strong>Restart Claude completely</strong> - Use Cmd+Q (Mac) or Alt+F4 (Windows), not just close the window</li>
+            <li><strong>Check config file location:</strong>
+              <ul class="ml-6 mt-1 text-slate-400 list-disc list-inside">
+                <li>Mac: <code class="bg-slate-800 px-1 rounded text-xs">~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+                <li>Windows (traditional installer): <code class="bg-slate-800 px-1 rounded text-xs">%APPDATA%\Claude\claude_desktop_config.json</code></li>
+                <li>Windows (Microsoft Store): path varies by package — see the <a href={withBase('/guide-windows')} class="text-blue-400 hover:underline">Windows setup guide</a> for a detection snippet</li>
+              </ul>
+            </li>
+            <li><strong>Verify JSON syntax</strong> - No trailing commas, proper quotes</li>
+            <li><strong>Check the MCP icon</strong> - Bottom left of Claude Desktop shows connected servers</li>
+          </ol>
+        </div>
+
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">"Token invalid" or authentication errors</h3>
+          <ol class="text-slate-300 space-y-2 list-decimal list-inside">
+            <li><strong>Generate a new token:</strong>
+              <ul class="ml-6 mt-1 text-slate-400 list-disc list-inside">
+                <li>Home Assistant &rarr; Click your username (bottom left)</li>
+                <li>Security tab &rarr; Long-lived access tokens</li>
+                <li>Create Token &rarr; Copy immediately (shown only once)</li>
+              </ul>
+            </li>
+            <li><strong>Check token format</strong> - Don't wrap the token in quotes in your config</li>
+            <li><strong>Token expiration</strong> - Tokens don't expire by default, but can be revoked</li>
+          </ol>
+        </div>
+
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">Claude says it can't see Home Assistant</h3>
+          <ol class="text-slate-300 space-y-2 list-decimal list-inside">
+            <li>Open Claude Desktop <strong>Settings</strong> (gear icon)</li>
+            <li>Go to the <strong>Developer</strong> tab</li>
+            <li>Check <strong>Local MCP Servers</strong> for any errors</li>
+            <li>If "Home Assistant" is not listed, check your config file syntax</li>
+            <li>Try asking Claude: "Can you list your available tools?"</li>
+          </ol>
+        </div>
+
+        <div class="faq-item" id="webhook-proxy">
+          <h3 class="text-lg font-medium text-white mb-2">Can't connect remotely? Try the Webhook Proxy add-on</h3>
+          <p class="text-slate-300 mb-3">If you're having trouble setting up remote access — TLS errors, Cloudflare configuration issues, or port forwarding problems — the <strong>Webhook Proxy add-on</strong> may be a simpler alternative.</p>
+          <p class="text-slate-300 mb-3">Instead of requiring a dedicated tunnel to port 9583, the Webhook Proxy routes MCP traffic through Home Assistant's main port (8123) via a webhook. If you already have <strong>Nabu Casa</strong> or any reverse proxy pointing at your HA instance, this can be the easiest remote setup.</p>
+          <ol class="text-slate-300 space-y-2 list-decimal list-inside mb-3">
+            <li>Install the <strong>MCP Server add-on</strong> and the <strong>Webhook Proxy add-on</strong> from the add-on store</li>
+            <li>Start the webhook proxy and restart Home Assistant when prompted</li>
+            <li>Copy the webhook URL from the add-on logs</li>
+            <li>Use that URL in your MCP client configuration</li>
+          </ol>
+          <p class="text-slate-400 text-sm">See <a href="https://github.com/homeassistant-ai/ha-mcp/issues/784" class="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">#784</a> for an example where this resolved a TLS connection issue.</p>
+        </div>
+
+        <div class="faq-item" id="webhook-proxy-security">
+          <h3 class="text-lg font-medium text-white mb-2">Webhook Proxy: securing the URL</h3>
+          <p class="text-slate-300 mb-3">By default the Webhook Proxy add-on registers an <strong>unauthenticated</strong> webhook endpoint. The webhook URL itself is the shared secret — anyone with the full URL can reach your MCP server, which exposes powerful Home Assistant control. Treat the URL like a password.</p>
+          <p class="text-slate-300 font-medium mb-1">Don't share the URL</p>
+          <ul class="text-slate-300 space-y-1 list-disc list-inside mb-3">
+            <li>Avoid pasting it into screenshots, log paste-bins, public configs, or chat transcripts.</li>
+            <li>Mask the part after <code class="bg-slate-800 px-1 rounded">/api/webhook/</code> if you have to share anything.</li>
+            <li>Anyone with the full URL can call your MCP tools.</li>
+          </ul>
+          <p class="text-slate-300 font-medium mb-1">Rotating the URL if it leaks</p>
+          <ol class="text-slate-300 space-y-1 list-decimal list-inside mb-3">
+            <li>Stop the Webhook Proxy add-on.</li>
+            <li>Delete <code class="bg-slate-800 px-1 rounded">/data/webhook_id.txt</code> from the add-on's filesystem (e.g. via SSH/Terminal add-on).</li>
+            <li>Start the add-on. A new webhook ID and URL are generated on first launch.</li>
+            <li>Copy the new URL from the add-on logs into your MCP client(s). The old URL stops working immediately.</li>
+          </ol>
+          <p class="text-slate-300 font-medium mb-1">Optional: Enable OAuth (Beta)</p>
+          <p class="text-slate-300 mb-3">For a real auth layer on top of the URL secret, the Webhook Proxy add-on (v1.1.0 and later) ships an optional OAuth 2.1 mode. Toggle <strong>Show unused optional configuration options</strong>, turn <strong>Enable OAuth (Beta)</strong> on, leave Client ID and Client Secret blank, and restart the add-on. The add-on generates a strong Client ID and Client Secret on first start, persists them at <code class="bg-slate-800 px-1 rounded">/data/oauth_creds.json</code>, and prints them in the add-on log.</p>
+          <p class="text-slate-300 mb-3">In Claude.ai, expand the connector's <strong>Advanced settings</strong> when adding it and paste the Client ID and Client Secret from the add-on log into the OAuth fields. Claude.ai handles the rest of the OAuth handshake automatically. When the toggle is off, the webhook URL behaves exactly as before with no auth check.</p>
+          <p class="text-slate-300 font-medium mb-1">OAuth flow end-to-end</p>
+          <ol class="text-slate-300 space-y-1 list-decimal list-inside mb-3">
+            <li>Claude.ai redirects your browser to <code class="bg-slate-800 px-1 rounded">https://&lt;host&gt;/authorize?...</code> with PKCE parameters.</li>
+            <li>The add-on serves a consent page showing the redirect destination — verify it's Claude.ai's callback URL.</li>
+            <li>Click <strong>Allow</strong>. The add-on issues a one-time auth code and redirects back to Claude.ai.</li>
+            <li>Claude.ai exchanges the code at <code class="bg-slate-800 px-1 rounded">https://&lt;host&gt;/token</code> using your Client ID + Client Secret + the PKCE verifier. The add-on returns a 1-hour access token and a 30-day refresh token, both HMAC-signed.</li>
+            <li>From then on Claude.ai sends every MCP request with <code class="bg-slate-800 px-1 rounded">Authorization: Bearer &lt;token&gt;</code>; expired access tokens are refreshed automatically.</li>
+          </ol>
+          <p class="text-slate-300 font-medium mb-1">The Client Secret is the real security boundary</p>
+          <p class="text-slate-300 mb-3">The <code class="bg-slate-800 px-1 rounded">/authorize</code> consent page is reachable without being logged into Home Assistant or Nabu Casa — that's how OAuth works (the consent page must be reachable from the OAuth client's browser session). What stops an attacker who clicks "Allow" on a phishing authorize URL: the resulting auth code is bound to PKCE and useless without your <strong>OAuth Client Secret</strong> at the token endpoint. So the Client Secret is the actual gate, not the consent page.</p>
+          <p class="text-slate-300 mb-3"><strong>Treat the Client Secret like a password.</strong> Don't paste it into screenshots, support threads, or public configs. If you suspect it has leaked — or want a clean slate after sharing logs for debugging — rotate it immediately. After rotation, any tokens issued under the old credentials stop refreshing, forcing the client to redo OAuth.</p>
+          <p class="text-slate-300 font-medium mb-1">Rotating OAuth credentials</p>
+          <ul class="text-slate-300 space-y-1 list-disc list-inside mb-3">
+            <li><strong>From the addon UI (recommended):</strong> turn on <strong>Regenerate OAuth Credentials on Next Start</strong>, save, restart the add-on. The add-on wipes the stored credentials, generates fresh ones, prints them in the log, and auto-clears the regenerate toggle. Update your MCP client to match. Takes ~30 seconds.</li>
+            <li><strong>Custom values:</strong> type new strings into the Client ID and Client Secret fields and restart — your values override the stored file.</li>
+            <li><strong>Filesystem:</strong> stop the addon, delete <code class="bg-slate-800 px-1 rounded">/data/oauth_creds.json</code>, start the addon. Equivalent to the UI option but requires SSH/Terminal access.</li>
+          </ul>
+          <p class="text-slate-400 text-sm">Beta status: the OAuth flow is built against the MCP 2025-06-18 spec and tested with Claude.ai. Other clients' OAuth coverage may vary. Report issues on GitHub.</p>
+        </div>
+
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">Server works but responses are slow</h3>
+          <ol class="text-slate-300 space-y-2 list-decimal list-inside">
+            <li><strong>First request is slow</strong> - <code class="bg-slate-800 px-1 rounded">uvx</code> downloads packages on first run</li>
+            <li><strong>Subsequent requests</strong> - Should be faster (packages cached)</li>
+            <li><strong>Alternative</strong> - Use Docker for consistent performance</li>
+          </ol>
+        </div>
+
+        <div class="faq-item" id="antigravity-troubleshooting">
+          <h3 class="text-lg font-medium text-white mb-2">Antigravity client troubleshooting</h3>
+          <ul class="text-slate-300 space-y-3 list-disc list-inside">
+            <li>
+              <strong>"Unexpected server output" error:</strong> Add <code class="bg-slate-800 px-1 rounded">FASTMCP_SHOW_SERVER_BANNER=false</code> to your stdio env config. This disables the startup banner that Antigravity misinterprets as unexpected output.
+            </li>
+            <li>
+              <strong>"EOF" errors:</strong> Use absolute paths for the command, not relative paths.
+            </li>
+            <li>
+              <strong>First run timeout:</strong> Run <code class="bg-slate-800 px-1 rounded">uvx ha-mcp@latest --version</code> in your terminal first to download and cache the package before Antigravity tries to start it.
+            </li>
+            <li>
+              <strong>Tools load but fail when called:</strong> Try switching to stdio mode instead of HTTP. HTTP mode can experience "connection closed" or reconnection errors with this client.
+            </li>
+            <li>
+              <strong>Connection issues after config changes:</strong> Restart the Agent session in Antigravity after saving any config changes.
+            </li>
+          </ul>
+        </div>
+
+        <div class="faq-item" id="claude-ai-connection">
+          <h3 class="text-lg font-medium text-white mb-2">Claude.ai connection issues</h3>
+          <p class="text-slate-300 mb-3">If tools stop responding or the connector appears disconnected in Claude.ai:</p>
+          <ol class="text-slate-300 space-y-2 list-decimal list-inside">
+            <li><strong>Restart both Claude.ai and the MCP server.</strong> Refresh the Claude.ai page in your browser and restart the ha-mcp process (or Docker container). Either side can hold stale connection state.</li>
+            <li>Check that your tunnel (Cloudflare, ngrok, etc.) is still running and the URL has not changed.</li>
+            <li>Verify the server is reachable by visiting the MCP URL directly in your browser — you should see a response from the server.</li>
+          </ol>
+        </div>
+
+        <div class="faq-item" id="quick-test">
+          <h3 class="text-lg font-medium text-white mb-2">Test ha-mcp without configuring a client</h3>
+          <p class="text-slate-300 mb-3">Before setting up a client, you can run a quick smoke test against the public demo server to confirm <code class="bg-slate-800 px-1 rounded">uvx</code> is installed and ha-mcp launches correctly:</p>
+          <pre class="code-block"><code>HOMEASSISTANT_URL=https://ha-mcp-demo-server.qc-h.net HOMEASSISTANT_TOKEN=demo uvx ha-mcp@latest</code></pre>
+          <p class="text-slate-400 text-sm mt-3">This starts ha-mcp in stdio mode connected to the public demo Home Assistant instance. Press <strong>Ctrl+C</strong> to stop. If it launches without errors, your environment is ready — replace the URL and token with your own values to connect to your Home Assistant.</p>
+        </div>
+
+        <div class="faq-item" id="uvx-background">
+          <h3 class="text-lg font-medium text-white mb-2">Keep ha-mcp-web running in the background</h3>
+          <p class="text-slate-300 mb-3">To run the ha-mcp HTTP server detached from the terminal so it survives logout:</p>
+          <pre class="code-block"><code>nohup uvx --from ha-mcp@latest ha-mcp-web &gt; /dev/null 2&gt;&amp;1 &amp;</code></pre>
+          <p class="text-slate-400 text-sm mt-3"><code class="bg-slate-800 px-1 rounded">nohup</code> detaches the process from the terminal and redirects output to <code class="bg-slate-800 px-1 rounded">/dev/null</code>. The trailing <code class="bg-slate-800 px-1 rounded">&amp;</code> sends it to the background. For more robust setups (auto-restart on crash, start on boot), use <strong>systemd</strong> or the <strong>Home Assistant add-on</strong> instead.</p>
+        </div>
+
+        <div class="faq-item" id="docker-port">
+          <h3 class="text-lg font-medium text-white mb-2">Docker: changing the port requires updating both places</h3>
+          <p class="text-slate-300 mb-3">When running ha-mcp-web in Docker, the port is set in <em>two</em> independent places and they must match:</p>
+          <ul class="text-slate-300 space-y-2 list-disc list-inside mb-3">
+            <li>The <strong>second</strong> number in <code class="bg-slate-800 px-1 rounded">-p HOST:CONTAINER</code> — this is the container-side port Docker listens on</li>
+            <li>The <code class="bg-slate-800 px-1 rounded">MCP_PORT</code> environment variable — this is the port ha-mcp binds inside the container</li>
+          </ul>
+          <p class="text-slate-400 mb-2">If these differ, the container starts but requests never reach the server. Example using port 9000:</p>
+          <pre class="code-block"><code>docker run -d --name ha-mcp \
+  -p 9000:9000 \
+  -e HOMEASSISTANT_URL=http://homeassistant.local:8123 \
+  -e HOMEASSISTANT_TOKEN=your_token \
+  -e MCP_PORT=9000 \
+  ghcr.io/homeassistant-ai/ha-mcp:latest \
+  ha-mcp-web</code></pre>
+          <p class="text-slate-400 text-sm mt-3">The first number in <code class="bg-slate-800 px-1 rounded">-p</code> (the host port) can be anything — only the second number must match <code class="bg-slate-800 px-1 rounded">MCP_PORT</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Custom Component -->
+    <section class="mb-12" id="custom-component">
+      <h2 class="text-2xl font-semibold text-white mb-6">Custom Component (ha_mcp_tools)</h2>
+
+      <div class="space-y-6">
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">What is the custom component and why do I need it?</h3>
+          <p class="text-slate-300 mb-3">Some tools require a companion custom component installed in Home Assistant. Standard HA APIs do not expose file system access or YAML config editing. This component provides both.</p>
+          <p class="text-slate-300 mb-2"><strong class="text-white">Tools that require the component:</strong></p>
+          <ul class="list-disc list-inside text-slate-300 space-y-1 ml-2">
+            <li><code class="bg-slate-800 px-1 rounded">ha_config_set_yaml</code> — Safely add, replace, or remove top-level YAML keys in configuration.yaml and package files (automatic backup, validation, and config check)</li>
+            <li><code class="bg-slate-800 px-1 rounded">ha_list_files</code> — List files in allowed directories (www/, themes/, custom_templates/)</li>
+            <li><code class="bg-slate-800 px-1 rounded">ha_read_file</code> — Read files from allowed paths (config YAML, logs, www/, themes/, custom_templates/, custom_components/)</li>
+            <li><code class="bg-slate-800 px-1 rounded">ha_write_file</code> — Write files to allowed directories</li>
+            <li><code class="bg-slate-800 px-1 rounded">ha_delete_file</code> — Delete files from allowed directories</li>
+          </ul>
+          <p class="text-slate-400 text-sm mt-3">All other tools work without the component. These five return an error with installation instructions if the component is missing.</p>
+        </div>
+
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">How do I install it?</h3>
+          <p class="text-slate-300 mb-3"><strong class="text-white">Using HACS (recommended):</strong></p>
+          <p class="text-slate-300 mb-3">
+            <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=homeassistant-ai&repository=ha-mcp&category=integration" class="inline-block" target="_blank" rel="noopener">
+              <img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open your Home Assistant instance and open a repository inside the Home Assistant Community Store." />
+            </a>
+          </p>
+          <p class="text-slate-300 mb-3">To add manually: open <strong class="text-white">HACS</strong> &gt; <strong class="text-white">Integrations</strong> &gt; three-dot menu &gt; <strong class="text-white">Custom repositories</strong> &gt; add <code class="bg-slate-800 px-1 rounded">https://github.com/homeassistant-ai/ha-mcp</code> (category: Integration) &gt; <strong class="text-white">Download</strong>.</p>
+          <p class="text-slate-300 mb-3">After installing, restart Home Assistant. Then open <strong class="text-white">Settings</strong> &gt; <strong class="text-white">Devices &amp; Services</strong> &gt; <strong class="text-white">Add Integration</strong> and search for <strong class="text-white">HA MCP Tools</strong>.</p>
+          <p class="text-slate-300"><strong class="text-white">Manual install:</strong> Copy <code class="bg-slate-800 px-1 rounded">custom_components/ha_mcp_tools/</code> from the <a href="https://github.com/homeassistant-ai/ha-mcp" class="text-blue-400 hover:underline" target="_blank">repository</a> into your HA config's <code class="bg-slate-800 px-1 rounded">custom_components/</code> directory. Restart Home Assistant, then add the integration as described above.</p>
+        </div>
+
+        <div class="faq-item">
+          <h3 class="text-lg font-medium text-white mb-2">Do I also need to enable feature flags?</h3>
+          <p class="text-slate-300">Yes. The component is required, but the tools are also gated by feature flags for safety:</p>
+          <div class="overflow-x-auto mt-3">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-700">
+                  <th class="text-left py-2 text-slate-300">Variable</th>
+                  <th class="text-left py-2 text-slate-300">Enables</th>
+                </tr>
+              </thead>
+              <tbody class="text-slate-400">
+                <tr class="border-b border-slate-800">
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">HAMCP_ENABLE_FILESYSTEM_TOOLS=true</code></td>
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">ha_list_files</code>, <code class="bg-slate-800 px-1 rounded">ha_read_file</code>, <code class="bg-slate-800 px-1 rounded">ha_write_file</code>, <code class="bg-slate-800 px-1 rounded">ha_delete_file</code></td>
+                </tr>
+                <tr class="border-b border-slate-800">
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">ENABLE_YAML_CONFIG_EDITING=true</code></td>
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">ha_config_set_yaml</code></td>
+                </tr>
+                <tr>
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">HAMCP_ENABLE_CUSTOM_COMPONENT_INTEGRATION=true</code></td>
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">ha_install_mcp_tools</code> (automated installer)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Configuration Options -->
+    <section class="mb-12" id="configuration">
+      <h2 class="text-2xl font-semibold text-white mb-6">Configuration Options</h2>
+
+      <div class="space-y-6">
+        <div>
+          <h3 class="text-lg font-medium text-white mb-3">Environment Variables</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-700">
+                  <th class="text-left py-2 text-slate-300">Variable</th>
+                  <th class="text-left py-2 text-slate-300">Description</th>
+                  <th class="text-left py-2 text-slate-300">Required</th>
+                </tr>
+              </thead>
+              <tbody class="text-slate-400">
+                <tr class="border-b border-slate-800">
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">HOMEASSISTANT_URL</code></td>
+                  <td class="py-2">Your Home Assistant URL</td>
+                  <td class="py-2 text-amber-400">Yes</td>
+                </tr>
+                <tr class="border-b border-slate-800">
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">HOMEASSISTANT_TOKEN</code></td>
+                  <td class="py-2">Long-lived access token (or <code class="bg-slate-800 px-1 rounded">demo</code>)</td>
+                  <td class="py-2 text-amber-400">Yes</td>
+                </tr>
+                <tr class="border-b border-slate-800">
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">BACKUP_HINT</code></td>
+                  <td class="py-2">Backup recommendation level</td>
+                  <td class="py-2 text-slate-500">No</td>
+                </tr>
+                <tr>
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">HA_MCP_DISABLE_SETTINGS_UI</code></td>
+                  <td class="py-2">Set to <code class="bg-slate-800 px-1 rounded">1</code> to skip the localhost settings-page sidecar that stdio installs spawn by default (<a href="#tool-settings-page" class="text-blue-400 hover:underline">details</a>).</td>
+                  <td class="py-2 text-slate-500">No</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="text-lg font-medium text-white mb-3">Backup Hint Modes</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-700">
+                  <th class="text-left py-2 text-slate-300">Mode</th>
+                  <th class="text-left py-2 text-slate-300">Behavior</th>
+                </tr>
+              </thead>
+              <tbody class="text-slate-400">
+                <tr class="border-b border-slate-800">
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">strong</code></td>
+                  <td class="py-2">Suggests backup before first modification each day/session</td>
+                </tr>
+                <tr class="border-b border-slate-800">
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">normal</code></td>
+                  <td class="py-2">Suggests backup only before irreversible operations (recommended)</td>
+                </tr>
+                <tr class="border-b border-slate-800">
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">weak</code></td>
+                  <td class="py-2">Rarely suggests backups</td>
+                </tr>
+                <tr>
+                  <td class="py-2"><code class="bg-slate-800 px-1 rounded">auto</code></td>
+                  <td class="py-2">Same as normal (future: auto-detection)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Feedback & Help -->
+    <section class="mb-8" id="feedback">
+      <h2 class="text-2xl font-semibold text-white mb-6">Feedback & Help</h2>
+      <p class="text-slate-300 mb-4">We'd love to hear how you're using ha-mcp!</p>
+      <ul class="space-y-3">
+        <li>
+          <a href="https://github.com/homeassistant-ai/ha-mcp/discussions" class="text-blue-400 hover:underline" target="_blank">GitHub Discussions</a>
+          <span class="text-slate-400"> — Share how you use it, ask questions, show off your automations</span>
+        </li>
+        <li>
+          <a href="https://github.com/homeassistant-ai/ha-mcp/issues" class="text-blue-400 hover:underline" target="_blank">GitHub Issues</a>
+          <span class="text-slate-400"> — Report bugs or request features</span>
+        </li>
+        <li>
+          <a href="https://community.home-assistant.io/t/brand-new-claude-ai-chatgpt-integration-ha-mcp/937847" class="text-blue-400 hover:underline" target="_blank">Home Assistant Forum</a>
+          <span class="text-slate-400"> — Community discussion thread</span>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Footer -->
+    <div class="mt-12 pt-8 border-t border-slate-800">
+      <p class="text-slate-400 text-center">
+        Ready to get started? <a href={withBase('/setup')} class="text-blue-400 hover:underline">Go to Setup Wizard</a>
+      </p>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .faq-item {
+    @apply bg-slate-800/30 rounded-xl border border-slate-700/50 p-6;
+  }
+</style>

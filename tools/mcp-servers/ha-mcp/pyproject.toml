@@ -1,0 +1,242 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ha-mcp"
+version = "7.6.0"
+description = "Home Assistant MCP Server - Complete control of Home Assistant through MCP"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = {text = "MIT"}
+authors = [
+    {name = "Julien", email = "github@qc-h.net"}
+]
+keywords = ["mcp", "home-assistant", "ai", "automation", "smart-home"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Home Automation",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "fastmcp==3.3.1",
+    "httpx[socks]==0.28.1",
+    "pydantic==2.13.4",
+    "python-dotenv==1.2.2",
+    "truststore==0.10.4",
+    "websockets==16.0",
+    "cryptography==48.0.0",
+    "pydantic-monty==0.0.18",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/homeassistant-ai/ha-mcp"
+"Bug Tracker" = "https://github.com/homeassistant-ai/ha-mcp/issues"
+"Repository" = "https://github.com/homeassistant-ai/ha-mcp"
+
+[project.scripts]
+ha-mcp = "ha_mcp.__main__:main"
+ha-mcp-smoke-test = "ha_mcp.smoke_test:main"
+hamcp-test-env = "tests.test_env_manager:main"
+ha-mcp-web = "ha_mcp.__main__:main_web"
+ha-mcp-sse = "ha_mcp.__main__:main_sse"
+ha-mcp-oauth = "ha_mcp.__main__:main_oauth"
+
+[tool.setuptools]
+package-dir = {"" = "src", "tests" = "tests"}
+packages = { find = { where = ["src", "."], include = ["ha_mcp*", "tests"] } }
+
+[tool.setuptools.package-data]
+ha_mcp = ["py.typed", "_pypi_marker", "settings.js", "settings.css", "resources/skills-vendor/**/*"]
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "src"
+# /tmp keeps the cache on Linux tmpfs — avoids the slow Windows FS in WSL2.
+# Windows-native contributors can remove this line or override with MYPY_CACHE_DIR.
+cache_dir = "/tmp/.mypy_cache"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+namespace_packages = true
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = [
+    "fastmcp.*",
+    "jq",
+    "pydantic_monty",
+    "pydantic_monty.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "homeassistant.*",
+    "aiohttp",
+    "voluptuous",
+    "jsonschema",
+    "requests",
+    "requests.*",
+]
+ignore_missing_imports = true
+
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+extend-exclude = [
+    "tests/initial_test_state",
+    # HA integration manifests must be strict JSON (no trailing commas);
+    # ruff 0.15+ formats .json files as JSONC and inserts trailing commas
+    # which makes Python's json.load() reject the file at HA startup.
+    "custom_components/**/*.json",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "UP",    # pyupgrade
+    "RUF",   # ruff-specific rules
+    "PIE",   # misc lints
+    "PERF",  # performance anti-patterns
+    "ASYNC", # async best practices
+    "A",     # builtin shadowing
+    "LOG",   # logging best practices
+    "SIM",   # simplify
+]
+ignore = [
+    "E501",    # line too long — formatter handles this
+    "B008",    # function calls in defaults — FastMCP pattern
+    "SIM102",  # collapsible-if — sometimes less readable
+    "SIM108",  # ternary — sometimes less readable
+    "SIM105",  # contextlib.suppress — style preference
+    "ASYNC109",# timeout params are standard in HA API patterns
+    "RUF001",  # ambiguous unicode — HA entity names use degree symbols etc
+    "RUF003",  # ambiguous unicode in comments
+    "RUF010",  # explicit f-string type conversion — str(x) is clearer than !s
+    "F841",    # unused variable — too many to fix now
+    "RUF059",  # unused unpacked variable
+    "SIM118",  # in-dict-keys — style preference
+    "PIE810",  # multiple-starts-ends-with — style preference
+    "RUF005",  # collection-literal-concatenation
+    "RUF022",  # unsorted-dunder-all
+    "RUF013",  # implicit-optional
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**/*" = ["E501", "B011"]
+# C901 ignores for tools files with complex methods (see #925).
+# Remove lines as individual methods are simplified below threshold.
+"src/ha_mcp/tools/tools_config_dashboards.py" = ["C901"]
+"src/ha_mcp/tools/tools_entities.py" = ["C901"]
+"src/ha_mcp/tools/tools_registry.py" = ["C901"]
+"src/ha_mcp/tools/tools_search.py" = ["C901"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--verbose",
+    "--tb=short",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "automation: automation lifecycle tests",
+    "calendar: calendar event management tests",
+    "device: device control tests",
+    "script: script orchestration tests",
+    "helper: helper integration tests",
+    "convenience: convenience tools tests (scene, weather, energy, docs)",
+    "error_handling: error handling and edge case tests",
+    "cleanup: tests that create entities needing cleanup",
+    "performance: performance measurement and regression tests",
+    "external_only: skips on HAOS inaddon tier (server runs in a separate addon container, so in-process env monkeypatching doesn't reach it)",
+    "inaddon_only: only runs on HAOS inaddon tier",
+]
+asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "build>=1.2.2",
+    "docker>=7.1.0",
+    "mypy>=1.17.0",
+    "openai>=1.0.0",
+    "psutil>=7.0.0",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.1.0",
+    "pytest-cov>=5.0.0",
+    "pytest-rerunfailures>=15.0",
+    "pytest-xdist>=3.8.0",
+    "requests>=2.25.0",
+    "lefthook>=1.10.0",
+    "ruamel.yaml>=0.18.0",
+    "ruff>=0.12.12",
+    "testcontainers>=4.13.0",
+    "ast-grep-cli>=0.42.0",
+]
+
+# Semantic versioning configuration
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+version_variables = [
+    "src/ha_mcp/__init__.py:__version__",
+]
+build_command = """
+pip install uv && uv lock
+git add uv.lock
+"""
+dist_path = "dist/"
+upload_to_PyPI = true
+upload_to_release = true
+remove_dist = false
+
+# Commit message parsing
+commit_parser = "angular"
+commit_parser_options = { major_tags = ["BREAKING", "!"], minor_tags = ["feat"], patch_tags = ["fix", "perf", "refactor"] }
+
+# Changelog configuration
+[tool.semantic_release.changelog]
+template_dir = "templates"
+exclude_commit_patterns = [
+    "^.*\\(site\\).*$",           # Commits with (site) scope
+    '''chore\(addon\): [Ss]ync changelog.*''',  # Changelog sync commits
+]
+
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "CHANGELOG.md"
+
+# Version scheme
+major_on_zero = true
+allow_zero_version = false
+
+# Branch and tag configuration
+branch = "master"
+
+# Publish configuration (v10 syntax)
+[tool.semantic_release.publish]
+# GitHub release is created by build-binary.yml workflow to include binaries
+upload_to_vcs_release = false
