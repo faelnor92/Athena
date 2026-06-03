@@ -6883,10 +6883,15 @@ async function loadProjects() {
         sel.appendChild(base);
         (d.projects || []).forEach(p => {
             const o = document.createElement("option");
-            o.value = p.id; o.textContent = "🗂️ " + p.name;
+            o.value = p.id; o.textContent = (p.shared ? "👥 " : "🗂️ ") + p.name + (p.shared ? ` (${p.role})` : "");
             if (p.id === activeId) o.selected = true;
             sel.appendChild(o);
         });
+        // Bouton « Partager » : visible seulement si le projet actif est POSSÉDÉ.
+        const shareBtn = document.getElementById("btn-share-project");
+        if (shareBtn) shareBtn.style.display = (d.active && d.active.role === "owner") ? "" : "none";
+        const sp = document.getElementById("share-panel");
+        if (sp) sp.style.display = "none";
     } catch (e) { /* silencieux */ }
 }
 
@@ -6896,6 +6901,7 @@ async function _selectProject(id) {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id: id || "" }),
         });
+        await loadProjects();  // met à jour le bouton Partager selon le nouveau projet
         // Le projet actif change le workspace → recharger l'explorateur.
         if (typeof loadWorkspaceFiles === "function") loadWorkspaceFiles();
     } catch (e) { /* silencieux */ }
@@ -6923,5 +6929,68 @@ async function _selectProject(id) {
         const rmFiles = confirm("Supprimer AUSSI les fichiers du projet sur le disque ?\n\nOK = supprimer les fichiers · Annuler = ne retirer que de la liste");
         const r = await apiFetch(`/api/projects/${encodeURIComponent(id)}?remove_files=${rmFiles}`, { method: "DELETE" });
         if (r.ok) { await loadProjects(); if (typeof loadWorkspaceFiles === "function") loadWorkspaceFiles(); }
+    });
+})();
+
+
+/* ===== Partage de projet (collaboration : membres + rôles) ===== */
+function _activeProjectId() {
+    const sel = document.getElementById("project-select");
+    return sel ? sel.value : "";
+}
+
+async function loadShareMembers() {
+    const box = document.getElementById("share-members");
+    const pid = _activeProjectId();
+    if (!box || !pid) return;
+    try {
+        const r = await apiFetch(`/api/projects/${encodeURIComponent(pid)}/members`);
+        if (!r.ok) { box.innerHTML = "<span style='opacity:0.6;'>Réservé au propriétaire.</span>"; return; }
+        const members = (await r.json()).members || {};
+        const names = Object.keys(members);
+        box.innerHTML = "";
+        if (!names.length) { box.innerHTML = "<span style='opacity:0.55;'>Aucun membre — projet privé.</span>"; return; }
+        names.forEach(u => {
+            const row = document.createElement("div");
+            row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+            const lbl = document.createElement("span");
+            lbl.innerHTML = `<strong>${u}</strong> <span style="opacity:0.6;">· ${members[u] === "editor" ? "✏️ éditeur" : "👁️ lecteur"}</span>`;
+            const rm = document.createElement("button");
+            rm.type = "button"; rm.textContent = "✕";
+            rm.style.cssText = "background:rgba(255,0,80,0.12);border:1px solid rgba(255,0,80,0.4);color:#ff5b89;border-radius:4px;padding:0 7px;cursor:pointer;";
+            rm.addEventListener("click", async () => {
+                await apiFetch(`/api/projects/${encodeURIComponent(pid)}/share/${encodeURIComponent(u)}`, { method: "DELETE" });
+                loadShareMembers();
+            });
+            row.append(lbl, rm);
+            box.appendChild(row);
+        });
+    } catch (e) { /* silencieux */ }
+}
+
+(function bindShareControls() {
+    const btn = document.getElementById("btn-share-project");
+    if (btn) btn.addEventListener("click", () => {
+        const sp = document.getElementById("share-panel");
+        if (!sp) return;
+        const show = sp.style.display === "none";
+        sp.style.display = show ? "flex" : "none";
+        if (show) loadShareMembers();
+    });
+    const add = document.getElementById("btn-share-add");
+    if (add) add.addEventListener("click", async () => {
+        const pid = _activeProjectId();
+        const u = document.getElementById("share-user").value.trim();
+        const role = document.getElementById("share-role").value;
+        const st = document.getElementById("share-status");
+        st.textContent = "";
+        if (!pid || !u) { st.textContent = "Indique un nom d'utilisateur."; return; }
+        const r = await apiFetch(`/api/projects/${encodeURIComponent(pid)}/share`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: u, role }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) { document.getElementById("share-user").value = ""; st.textContent = "✅ Partagé."; loadShareMembers(); }
+        else st.textContent = "❌ " + (d.detail || "Échec du partage.");
     });
 })();
