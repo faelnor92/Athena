@@ -2,6 +2,19 @@
 let sessionToken = localStorage.getItem("jarvis_session_token") || "";
 let chatClientId = localStorage.getItem("jarvis_client_id") || "web";
 
+// SSO OIDC : récupère le jeton renvoyé par le callback (?sso_token=) puis nettoie l'URL.
+try {
+    const _p = new URLSearchParams(window.location.search);
+    const _sso = _p.get("sso_token");
+    if (_sso) {
+        sessionToken = _sso;
+        localStorage.setItem("jarvis_session_token", _sso);
+        _p.delete("sso_token");
+        const _q = _p.toString();
+        window.history.replaceState({}, "", window.location.pathname + (_q ? "?" + _q : ""));
+    }
+} catch (e) { /* ignore */ }
+
 // Wrapper de fetch sécurisé avec injecteur de jeton d'autorisation Bearer
 function setServerReachable(ok) {
     const banner = document.getElementById("server-down-banner");
@@ -453,6 +466,21 @@ async function reloadSwarmConfig() {
         if (badgeOffice) {
             badgeOffice.textContent = agentsConfig.length;
             badgeOffice.style.display = agentsConfig.length > 0 ? "flex" : "none";
+        }
+        
+        // Peupler dynamiquement le sélecteur d'agent pour la console
+        const agentSelect = document.getElementById("terminal-agent-select");
+        if (agentSelect && Array.isArray(agentsConfig)) {
+            agentSelect.innerHTML = "";
+            agentsConfig.forEach(a => {
+                const opt = document.createElement("option");
+                opt.value = a.name;
+                opt.textContent = a.name;
+                agentSelect.appendChild(opt);
+            });
+            // Sélectionner Codeur par défaut, sinon l'orchestrateur
+            const hasCodeur = agentsConfig.some(a => a.name === "Codeur");
+            agentSelect.value = hasCodeur ? "Codeur" : (orchestratorAgent()?.name || agentsConfig[0].name);
         }
         
         rebuildGraphView();
@@ -1251,9 +1279,15 @@ async function playAgentSteps(steps, immediate = false) {
                     const bubble = document.getElementById(`bubble-${step.agent}`);
                     if (bubble) bubble.textContent = `Utilise l'outil : ${step.tool}... ⚙️`;
                     
-                    // Support spécialisé pour la consultation d'agent en arrière-plan (query_agent)
+                    // Support spécialisé pour la consultation d'agent en arrière-plan (query_agent ou delegate_to_)
+                    let targetAgent = null;
                     if (step.tool === "query_agent" && step.args && step.args.agent_name) {
-                        const targetAgent = step.args.agent_name;
+                        targetAgent = step.args.agent_name;
+                    } else if (step.tool.startsWith("delegate_to_")) {
+                        targetAgent = step.tool.replace("delegate_to_", "");
+                    }
+                    
+                    if (targetAgent) {
                         // Activer le spécialiste visuellement pour montrer qu'il travaille
                         setActiveAgentVisual(targetAgent);
                         
@@ -1266,8 +1300,8 @@ async function playAgentSteps(steps, immediate = false) {
                     }
                     
                     // Allumer la ligne du graphe s'il s'agit d'un transfert
-                    if (step.tool.startsWith("transfer_to_")) {
-                        const target = step.tool.replace("transfer_to_", "");
+                    if (step.tool.startsWith("transfer_to_") || step.tool.startsWith("delegate_to_")) {
+                        const target = step.tool.startsWith("transfer_to_") ? step.tool.replace("transfer_to_", "") : step.tool.replace("delegate_to_", "");
                         const link = document.getElementById(`link-${step.agent}-${target}`) || 
                                      document.getElementById(`link-${target}-${step.agent}`);
                         if (link) {
@@ -1282,13 +1316,21 @@ async function playAgentSteps(steps, immediate = false) {
                     
                     // Support spécialisé pour la fin de consultation d'agent en arrière-plan
                     const prevStep = steps.slice(0, idx).reverse().find(s => s.type === "tool_call");
-                    if (prevStep && prevStep.tool === "query_agent" && prevStep.args && prevStep.args.agent_name) {
-                        const targetAgent = prevStep.args.agent_name;
-                        const targetBubble = document.getElementById(`bubble-${targetAgent}`);
-                        if (targetBubble) {
-                            targetBubble.textContent = "A terminé son travail et renvoie ses résultats ! ✅";
+                    if (prevStep) {
+                        let targetAgentOut = null;
+                        if (prevStep.tool === "query_agent" && prevStep.args && prevStep.args.agent_name) {
+                            targetAgentOut = prevStep.args.agent_name;
+                        } else if (prevStep.tool.startsWith("delegate_to_")) {
+                            targetAgentOut = prevStep.tool.replace("delegate_to_", "");
                         }
-                        logToOrchestrator(`[Coopération] ${targetAgent} a renvoyé ses résultats avec succès !`, "success");
+                        
+                        if (targetAgentOut) {
+                            const targetBubble = document.getElementById(`bubble-${targetAgentOut}`);
+                            if (targetBubble) {
+                                targetBubble.textContent = "A terminé son travail et renvoie ses résultats ! ✅";
+                            }
+                            logToOrchestrator(`[Coopération] ${targetAgentOut} a renvoyé ses résultats avec succès !`, "success");
+                        }
                     }
                     
                     // Jarvis vient de créer/mettre à jour un agent → rafraîchir l'effectif
@@ -2292,56 +2334,211 @@ if (_btnBackupImport && _backupFileInput) {
 // -------------------------------------------------------------------------
 // ONGLET : SERVEURS MCP
 // -------------------------------------------------------------------------
-function renderMcpStatus(status) {
-    const el = document.getElementById("mcp-status");
-    if (!el || !status) return;
-    const servers = status.connected_servers || [];
-    if (servers.length === 0) {
-        el.innerHTML = `<span style="opacity:0.6;">Aucun serveur MCP connecté.</span>`;
-        return;
-    }
-    let html = `<strong style="color:var(--accent-cyan);">${servers.length} serveur(s) connecté(s)</strong> · ${status.tool_count} outil(s) :`;
-    const byServer = status.tools_by_server || {};
-    Object.keys(byServer).forEach(srv => {
-        html += `<div style="margin-top:6px;"><span style="color:#7CFC9A;">● ${srv}</span> — ${byServer[srv].map(t => `<code style="font-size:0.72rem;">${t.name}</code>`).join(", ")}</div>`;
-    });
-    el.innerHTML = html;
-}
+// -------------------------------------------------------------------------
+// ONGLET : SERVEURS MCP (Interface Graphique)
+// -------------------------------------------------------------------------
+let currentMcpPresets = [];
+let mcpMarketplaceCatalogs = [];
 
 async function loadConfigMcpPane() {
-    const ta = document.getElementById("mcp-config");
+    const listEl = document.getElementById("mcp-servers-list");
+    if (!listEl) return;
+    
     try {
-        const r = await apiFetch("/api/config/mcp");
+        const r = await apiFetch("/api/config/mcp/servers");
         if (r.ok) {
             const d = await r.json();
-            if (ta) ta.value = (d.config && d.config.trim()) ? d.config : JSON.stringify({ mcpServers: {} }, null, 2);
-            renderMcpStatus(d.status);
+            currentMcpPresets = d.presets || [];
+            renderMcpPresetsDropdown();
+            renderMcpServersList(d.servers || [], d.tool_count || 0);
+            loadMcpMarketplace();
         }
     } catch (e) {
-        const st = document.getElementById("mcp-save-status");
-        if (st) st.textContent = "❌ " + e;
+        listEl.innerHTML = `<div style="color: #ff5555; padding: 10px;">❌ Erreur : ${e}</div>`;
     }
 }
 
-async function saveConfigMcpPane() {
-    const ta = document.getElementById("mcp-config");
+function renderMcpPresetsDropdown() {
+    const sel = document.getElementById("mcp-presets");
+    if (!sel) return;
+    sel.innerHTML = `<option value="">-- Personnalisé --</option>`;
+    currentMcpPresets.forEach((p, idx) => {
+        sel.innerHTML += `<option value="${idx}">${p.label}</option>`;
+    });
+}
+
+function renderMcpServersList(servers, totalTools) {
+    const listEl = document.getElementById("mcp-servers-list");
+    if (!listEl) return;
+    
+    if (servers.length === 0) {
+        listEl.innerHTML = `<div style="text-align: center; opacity: 0.5; padding: 20px; font-size: 0.85rem;">Aucun serveur configuré. Ajoutez-en un !</div>`;
+        return;
+    }
+    
+    let html = `<div style="font-size: 0.8rem; margin-bottom: 8px; color: var(--accent-cyan);">${servers.length} serveur(s) configuré(s) - ${totalTools} outil(s) disponibles</div>`;
+    
+    servers.forEach(srv => {
+        const statusClass = srv.disabled ? "mcp-status-disabled" : (srv.connected ? "mcp-status-online" : "mcp-status-offline");
+        const statusText = srv.disabled ? "Désactivé" : (srv.connected ? "Connecté" : "Hors ligne / Erreur");
+        
+        html += `
+            <div class="mcp-card">
+                <div class="mcp-card-info">
+                    <div class="mcp-card-title">
+                        <span class="mcp-status-dot ${statusClass}" title="${statusText}"></span>
+                        ${srv.name}
+                    </div>
+                    <div class="mcp-card-cmd">${srv.command} ${srv.args.join(" ")}</div>
+                    ${srv.tools && srv.tools.length > 0 ? `<div class="mcp-card-tools">${srv.tools.length} outil(s) (ex: ${srv.tools.slice(0, 3).map(t => t.name).join(", ")}${srv.tools.length > 3 ? '...' : ''})</div>` : ''}
+                </div>
+                <button class="btn btn-secondary btn-mcp-edit" data-name="${srv.name}" style="padding: 4px 10px; font-size: 0.75rem;">⚙️ Modifier</button>
+            </div>
+        `;
+    });
+    
+    listEl.innerHTML = html;
+    
+    document.querySelectorAll(".btn-mcp-edit").forEach(btn => {
+        btn.onclick = () => {
+            const srvName = btn.getAttribute("data-name");
+            const srv = servers.find(s => s.name === srvName);
+            if (srv) showMcpForm(srv);
+        };
+    });
+}
+
+function showMcpForm(serverData = null) {
+    document.getElementById("mcp-form-container").style.display = "block";
+    document.getElementById("mcp-save-status").textContent = "";
+    
+    const envList = document.getElementById("mcp-env-list");
+    envList.innerHTML = "";
+    
+    if (serverData) {
+        document.getElementById("mcp-form-title").textContent = "Modifier " + serverData.name;
+        document.getElementById("mcp-name").value = serverData.name;
+        document.getElementById("mcp-name").disabled = true; // Can't change name once created
+        document.getElementById("mcp-command").value = serverData.command;
+        document.getElementById("mcp-args").value = serverData.args.join(" ");
+        document.getElementById("mcp-disabled").checked = serverData.disabled;
+        
+        document.getElementById("btn-mcp-delete").style.display = "block";
+        document.getElementById("btn-mcp-delete").onclick = () => deleteMcpServer(serverData.name);
+        
+        Object.entries(serverData.env || {}).forEach(([k, v]) => addMcpEnvRow(k, v));
+    } else {
+        document.getElementById("mcp-form-title").textContent = "Ajouter un serveur";
+        document.getElementById("mcp-name").value = "";
+        document.getElementById("mcp-name").disabled = false;
+        document.getElementById("mcp-command").value = "";
+        document.getElementById("mcp-args").value = "";
+        document.getElementById("mcp-disabled").checked = false;
+        
+        document.getElementById("btn-mcp-delete").style.display = "none";
+        addMcpEnvRow("", ""); // Add one empty row
+    }
+}
+
+function hideMcpForm() {
+    document.getElementById("mcp-form-container").style.display = "none";
+}
+
+function addMcpEnvRow(key = "", val = "") {
+    const list = document.getElementById("mcp-env-list");
+    const div = document.createElement("div");
+    div.className = "mcp-env-row";
+    div.innerHTML = `
+        <input type="text" class="env-k" placeholder="Clé (ex: TOKEN)" value="${key}" autocomplete="off">
+        <input type="text" class="env-v" placeholder="Valeur" value="${val}" autocomplete="off">
+        <button type="button" class="mcp-env-remove">✕</button>
+    `;
+    div.querySelector(".mcp-env-remove").onclick = () => div.remove();
+    list.appendChild(div);
+}
+
+document.getElementById("btn-mcp-add-env")?.addEventListener("click", () => addMcpEnvRow("", ""));
+document.getElementById("btn-mcp-add-new")?.addEventListener("click", () => {
+    document.getElementById("mcp-presets").value = "";
+    showMcpForm();
+});
+document.getElementById("btn-mcp-cancel")?.addEventListener("click", hideMcpForm);
+
+document.getElementById("mcp-presets")?.addEventListener("change", (e) => {
+    const preset = currentMcpPresets[e.target.value];
+    if (preset) {
+        document.getElementById("mcp-name").value = preset.name;
+        document.getElementById("mcp-command").value = preset.command;
+        document.getElementById("mcp-args").value = preset.args.join(" ");
+        
+        const envList = document.getElementById("mcp-env-list");
+        envList.innerHTML = "";
+        if (Object.keys(preset.env).length === 0) {
+            addMcpEnvRow("", "");
+        } else {
+            Object.entries(preset.env).forEach(([k, v]) => addMcpEnvRow(k, v));
+        }
+    }
+});
+
+document.getElementById("btn-mcp-save")?.addEventListener("click", async () => {
     const st = document.getElementById("mcp-save-status");
-    if (st) st.textContent = "⏳ Sauvegarde & reconnexion en cours…";
+    const name = document.getElementById("mcp-name").value.trim();
+    if (!name) {
+        st.innerHTML = `<span style="color:#ff5555">❌ Le nom est requis</span>`;
+        return;
+    }
+    
+    st.innerHTML = `⏳ Sauvegarde & reconnexion en cours…`;
+    
+    const envObj = {};
+    document.querySelectorAll("#mcp-env-list .mcp-env-row").forEach(row => {
+        const k = row.querySelector(".env-k").value.trim();
+        const v = row.querySelector(".env-v").value.trim();
+        if (k) envObj[k] = v;
+    });
+    
+    const payload = {
+        name: name,
+        command: document.getElementById("mcp-command").value.trim(),
+        args: document.getElementById("mcp-args").value.trim().split(" ").filter(s => s),
+        env: envObj,
+        disabled: document.getElementById("mcp-disabled").checked
+    };
+    
     try {
-        const r = await apiFetch("/api/config/mcp", {
+        const r = await apiFetch("/api/config/mcp/servers", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ config: ta ? ta.value : "" })
+            body: JSON.stringify(payload)
         });
         const d = await r.json().catch(() => ({}));
         if (r.ok) {
-            if (st) st.textContent = "✅ Reconnecté.";
-            renderMcpStatus(d.mcp);
+            st.innerHTML = `✅ Sauvegardé`;
+            setTimeout(() => { hideMcpForm(); loadConfigMcpPane(); }, 1000);
         } else {
-            if (st) st.textContent = "❌ " + (d.detail || "Erreur");
+            st.innerHTML = `<span style="color:#ff5555">❌ ${d.detail || "Erreur"}</span>`;
         }
     } catch (e) {
-        if (st) st.textContent = "❌ " + e;
+        st.innerHTML = `<span style="color:#ff5555">❌ ${e}</span>`;
+    }
+});
+
+async function deleteMcpServer(name) {
+    if (!confirm(`Supprimer définitivement le serveur MCP '${name}' ?`)) return;
+    const st = document.getElementById("mcp-save-status");
+    st.innerHTML = `⏳ Suppression en cours…`;
+    
+    try {
+        const r = await apiFetch(`/api/config/mcp/servers/${name}`, { method: "DELETE" });
+        if (r.ok) {
+            hideMcpForm();
+            loadConfigMcpPane();
+        } else {
+            st.innerHTML = `<span style="color:#ff5555">❌ Erreur lors de la suppression</span>`;
+        }
+    } catch (e) {
+        st.innerHTML = `<span style="color:#ff5555">❌ ${e}</span>`;
     }
 }
 
@@ -2351,8 +2548,6 @@ if (modalTabMcp && paneMcp) {
         loadConfigMcpPane();
     }));
 }
-const _btnSaveMcp = document.getElementById("btn-save-mcp");
-if (_btnSaveMcp) _btnSaveMcp.addEventListener("click", saveConfigMcpPane);
 
 // -------------------------------------------------------------------------
 // ONGLET : SATELLITES VOCAUX ESP32-S3 (ESPHome direct)
@@ -2488,6 +2683,22 @@ if (_btnWakeSave) _btnWakeSave.addEventListener("click", async () => {
     } catch (e) { if (st) st.textContent = "❌ " + e; }
 });
 
+const _btnTtsRestart = document.getElementById("btn-tts-restart");
+if (_btnTtsRestart) _btnTtsRestart.addEventListener("click", async () => {
+    const st = document.getElementById("tts-restart-status");
+    if (st) st.textContent = "⏳ Redémarrage du conteneur en cours...";
+    try {
+        const r = await apiFetch("/api/system/tts/restart", { method: "POST" });
+        const d = await r.json();
+        if (r.ok) {
+            if (st) st.textContent = "✅ " + (d.message || "Redémarré avec succès.");
+        } else {
+            if (st) st.textContent = "❌ " + (d.detail || "Erreur de redémarrage.");
+        }
+    } catch (e) {
+        if (st) st.textContent = "❌ " + e;
+    }
+});
 if (modalTabSatellites && paneSatellites) {
     modalTabSatellites.addEventListener("click", () => switchModalTab(modalTabSatellites, () => {
         paneSatellites.style.display = "block";
@@ -4704,13 +4915,15 @@ async function executeTerminalCommand() {
     terminalCoderInput.value = "";
     
     // Afficher la commande tapée dans la console avec style
-    logToTerminal(`$ jarvis-coder > ${command}`, "transition");
+    const agentSelect = document.getElementById("terminal-agent-select");
+    const selectedAgent = agentSelect ? agentSelect.value : "Codeur";
+    logToTerminal(`$ jarvis-${selectedAgent.toLowerCase()} > ${command}`, "transition");
     
     try {
         const response = await apiFetch("/api/terminal/coder", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command: command })
+            body: JSON.stringify({ command: command, agent: selectedAgent })
         });
         
         const data = await response.json();
@@ -5474,6 +5687,7 @@ if (btnDeleteChat) {
                 try {
                     const response = await apiFetch("/api/reset", { method: "POST" });
                     if (response.ok) {
+                        await loadConversations();
                         await reloadChatHistory(true);
                         pushNotification("Conversation", "Discussion réinitialisée", "success");
                     }
@@ -5502,12 +5716,15 @@ if (btnDeleteChat) {
 // Charger l'historique au démarrage
 loadConversations();
 
-// Boucle de rafraîchissement automatique du cockpit en tâche de fond (toutes les 4 secondes)
-// Ne s'exécute activement que si l'onglet Cockpit est au premier plan
+// Boucle de rafraîchissement automatique (toutes les 4 secondes)
 setInterval(() => {
+    // Les statistiques (tokens, coût) sont globales et toujours visibles en haut,
+    // on doit donc toujours les rafraîchir.
+    if (typeof loadCockpitData === "function") loadCockpitData();
+    
+    // La galerie ne se rafraîchit que si on est sur l'onglet cockpit
     const tabCockpit = document.getElementById("tab-cockpit");
     if (tabCockpit && tabCockpit.classList.contains("active")) {
-        if (typeof loadCockpitData === "function") loadCockpitData();
         if (typeof loadGalleryMedia === "function") loadGalleryMedia();
     }
 }, 4000);
@@ -6367,3 +6584,132 @@ function _initLogPanel() {
 }
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", _initLogPanel);
 else _initLogPanel();
+
+
+// --- MCP MARKETPLACE LOGIC ---
+async function loadMcpMarketplace() {
+    try {
+        const r = await apiFetch("/api/config/mcp/marketplace");
+        if (r.ok) {
+            mcpMarketplaceCatalogs = await r.json();
+            renderMcpMarketplaceCategories();
+            renderMcpMarketplaceGrid();
+        }
+    } catch (e) {
+        console.error("Erreur chargement marketplace MCP", e);
+    }
+}
+
+function renderMcpMarketplaceCategories() {
+    const sel = document.getElementById("mcp-market-category");
+    if (!sel) return;
+    sel.innerHTML = `<option value="all">Tous les catalogues</option>`;
+    mcpMarketplaceCatalogs.forEach((cat, idx) => {
+        sel.innerHTML += `<option value="${idx}">${cat.category}</option>`;
+    });
+    sel.onchange = renderMcpMarketplaceGrid;
+}
+
+function renderMcpMarketplaceGrid() {
+    const grid = document.getElementById("mcp-market-grid");
+    const sel = document.getElementById("mcp-market-category");
+    if (!grid || !sel) return;
+    
+    const catIdx = sel.value;
+    grid.innerHTML = "";
+    
+    let serversToShow = [];
+    if (catIdx === "all") {
+        mcpMarketplaceCatalogs.forEach(cat => serversToShow.push(...cat.servers));
+    } else {
+        serversToShow = mcpMarketplaceCatalogs[catIdx]?.servers || [];
+    }
+    
+    serversToShow.forEach(srv => {
+        const card = document.createElement("div");
+        card.className = "mcp-market-card";
+        
+        // stringify for onclick handler safely
+        const payload = encodeURIComponent(JSON.stringify(srv));
+        
+        card.innerHTML = `
+            <div>
+                <div class="mcp-market-card-header">
+                    <span style="font-size: 1.5rem;">${srv.icon || '🧩'}</span>
+                    <div class="mcp-market-card-title">${srv.label}</div>
+                </div>
+                <div class="mcp-market-card-desc">${srv.note}</div>
+                <div style="font-size: 0.7rem; color: #888; margin-bottom: 12px; font-family: monospace;">${srv.command} ${srv.args[0] || ''}...</div>
+            </div>
+            <button class="mcp-market-card-btn" onclick="installMarketplaceServer('${payload}')">Installer</button>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function installMarketplaceServer(payloadStr) {
+    const srv = JSON.parse(decodeURIComponent(payloadStr));
+    
+    // Switch to 'Mes Serveurs' tab
+    document.getElementById("tab-mcp-mine").click();
+    
+    // Open Add form
+    document.getElementById("btn-mcp-add-new").click();
+    
+    // Fill form
+    document.getElementById("mcp-name").value = srv.name;
+    document.getElementById("mcp-command").value = srv.command;
+    document.getElementById("mcp-args").value = (srv.args || []).join(" ");
+    
+    // renderMcpEnv if exists (needs to be adapted if the function expects obj)
+    // Actually we just need to re-render the env html list
+    const envList = document.getElementById("mcp-env-list");
+    if (envList) {
+        envList.innerHTML = "";
+        for (const [k, v] of Object.entries(srv.env || {})) {
+            const row = document.createElement("div");
+            row.className = "mcp-env-row form-group";
+            row.style.flexDirection = "row";
+            row.innerHTML = `
+                <input type="text" class="env-k" value="${k}" placeholder="Clé (ex: API_KEY)" style="flex:1;">
+                <input type="text" class="env-v" value="${v}" placeholder="Valeur" style="flex:2;">
+                <button type="button" class="btn btn-remove-env" style="padding:4px 8px;">✕</button>
+            `;
+            row.querySelector(".btn-remove-env").onclick = () => row.remove();
+            envList.appendChild(row);
+        }
+    }
+    
+    document.getElementById("mcp-disabled").checked = false;
+    
+    const noteEl = document.getElementById("mcp-preset-note");
+    if (noteEl) {
+        noteEl.innerHTML = `<b>ℹ️ ${srv.label}</b> : Remplissez les variables d'environnement si nécessaire, puis Enregistrez.`;
+        noteEl.style.display = "block";
+    }
+}
+
+// --- TABS LOGIC ---
+const tabMine = document.getElementById("tab-mcp-mine");
+const tabMarket = document.getElementById("tab-mcp-market");
+const viewMine = document.getElementById("mcp-view-mine");
+const viewMarket = document.getElementById("mcp-view-market");
+
+if (tabMine && tabMarket) {
+    tabMine.onclick = () => {
+        tabMine.classList.add("active");
+        tabMarket.classList.remove("active");
+        viewMine.style.display = "block";
+        viewMarket.style.display = "none";
+    };
+    tabMarket.onclick = () => {
+        tabMarket.classList.add("active");
+        tabMine.classList.remove("active");
+        viewMarket.style.display = "block";
+        viewMine.style.display = "none";
+        
+        // Hide form if open
+        const formContainer = document.getElementById("mcp-form-container");
+        if (formContainer) formContainer.style.display = "none";
+    };
+}

@@ -122,6 +122,49 @@ async def auth_middleware(request: Request, call_next):
     return response
 
 
+@router.get("/api/auth/oidc/status")
+async def oidc_status():
+    """Indique si le SSO OIDC est configuré (pour afficher le bouton dans l'UI)."""
+    from core import oidc
+    return {"enabled": oidc.enabled()}
+
+
+@router.get("/api/auth/oidc/login")
+async def oidc_login(request: Request):
+    """Démarre le flux SSO : redirige vers l'IdP."""
+    from core import oidc
+    from fastapi.responses import RedirectResponse
+    if not oidc.enabled():
+        raise HTTPException(status_code=400, detail="SSO OIDC non configuré.")
+    try:
+        base = str(request.base_url)
+        return RedirectResponse(oidc.authorization_url(base), status_code=302)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"OIDC indisponible : {e}")
+
+
+@router.get("/api/auth/oidc/callback")
+async def oidc_callback(request: Request, code: str = "", state: str = ""):
+    """Retour de l'IdP : vérifie, provisionne le compte, ouvre une session, renvoie au SPA."""
+    from core import oidc
+    from fastapi.responses import RedirectResponse
+    if not oidc.enabled():
+        raise HTTPException(status_code=400, detail="SSO OIDC non configuré.")
+    if not code or not oidc.check_state(state):
+        raise HTTPException(status_code=403, detail="État OIDC invalide ou expiré (CSRF).")
+    try:
+        claims = oidc.exchange_and_verify(code, str(request.base_url))
+    except Exception as e:
+        raise HTTPException(status_code=403, detail=f"Échec de la vérification OIDC : {e}")
+    username, role = oidc.resolve_account(claims)
+    # Provisionne le compte s'il n'existe pas (mot de passe aléatoire inutilisable : login via SSO).
+    if not any(u["username"] == username for u in user_store.list()):
+        user_store.create(username, secrets.token_urlsafe(24), role)
+    token = _new_session(username, role)
+    # Renvoie au SPA avec le jeton (le frontend le stocke puis nettoie l'URL).
+    return RedirectResponse(f"/?sso_token={token}", status_code=302)
+
+
 @router.post("/api/login")
 async def login(req: LoginRequest, request: Request):
     admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
