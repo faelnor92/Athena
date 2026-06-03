@@ -94,6 +94,8 @@ from routers import plan as _plan_router
 app.include_router(_plan_router.router)
 from routers import logs as _logs_router
 app.include_router(_logs_router.router)
+from routers import user_settings as _user_settings_router
+app.include_router(_user_settings_router.router)
 # Sert les fichiers statiques de l'interface Web
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 

@@ -625,18 +625,36 @@ class Swarm:
         Si on_delta est fourni et STREAM_TOKENS actif, diffuse les tokens au fil
         de l'eau (latence minimale) et reconstruit une réponse compatible.
         En cas d'échec du modèle (après retries), bascule sur FALLBACK_MODELS."""
+        # Config LLM PAR UTILISATEUR : clés/modèle propres au compte courant si définis
+        # dans user_config (mêmes noms que les variables d'env), sinon repli sur le global.
+        _ucfg = {}
+        try:
+            from core import user_config
+            _ucfg = user_config.get_all()
+        except Exception:
+            _ucfg = {}
+
+        def _u(name):
+            v = _ucfg.get(name)
+            return (str(v).strip() if v else os.environ.get(name, "").strip())
+
+        # Modèle préféré de l'utilisateur (optionnel) : remplace le modèle par défaut.
+        if _ucfg.get("LLM_MODEL"):
+            model = str(_ucfg["LLM_MODEL"]).strip()
+
         completion_kwargs = {"model": model, "messages": messages, "tools": tools_schema}
-        custom_base = os.environ.get("CUSTOM_LLM_API_BASE", "").strip()
-        custom_key = os.environ.get("CUSTOM_LLM_API_KEY", "").strip()
+        custom_base = _u("CUSTOM_LLM_API_BASE")
+        custom_key = _u("CUSTOM_LLM_API_KEY")
         model_l = (model or "").lower()
         is_standard = any(p in model_l for p in ["gpt-", "claude-", "gemini-", "groq/", "openrouter/", "ollama/", "mistral/"])
         has_official_key = False
+        official_key = ""
         if "gpt-" in model_l:
-            has_official_key = bool(os.environ.get("OPENAI_API_KEY"))
+            official_key = _u("OPENAI_API_KEY"); has_official_key = bool(official_key)
         elif "claude-" in model_l:
-            has_official_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+            official_key = _u("ANTHROPIC_API_KEY"); has_official_key = bool(official_key)
         elif "gemini-" in model_l:
-            has_official_key = bool(os.environ.get("GEMINI_API_KEY"))
+            official_key = _u("GEMINI_API_KEY"); has_official_key = bool(official_key)
 
         use_custom = custom_base and (
             not is_standard or not has_official_key
@@ -651,6 +669,9 @@ class Swarm:
             local_model = model or "qwen3"
             completion_kwargs["model"] = local_model if "/" in local_model else f"openai/{local_model}"
         else:
+            # Clé officielle résolue (par-utilisateur ou globale) passée explicitement à litellm.
+            if official_key:
+                completion_kwargs["api_key"] = official_key
             # Prompt caching (Anthropic) hors endpoint custom uniquement — sûr pour qwen3.
             completion_kwargs["messages"] = self._apply_prompt_cache(messages, model)
 
