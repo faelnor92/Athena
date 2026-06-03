@@ -91,6 +91,37 @@ async def security_headers(request, call_next):
         if proto == "https":
             resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return resp
+
+
+# --- Rate-limiting général par IP (anti-abus / boucles emballées) -------------
+# Fenêtre fixe d'une minute, en mémoire par-process (rapide, sans contention DB) :
+# avec N workers la limite effective est ~N×, ce qui reste un garde-fou utile. 0 = off.
+_RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "300") or 0)
+_rl_state = {}
+_rl_lock = threading.Lock()
+
+
+@app.middleware("http")
+async def rate_limit(request, call_next):
+    if _RATE_LIMIT_PER_MIN > 0 and request.method != "OPTIONS" and request.url.path.startswith("/api/"):
+        xff = request.headers.get("x-forwarded-for", "")
+        ip = (xff.split(",")[0].strip() if xff else (request.client.host if request.client else "?"))
+        bucket = int(time.time() // 60)
+        with _rl_lock:
+            st = _rl_state.get(ip)
+            if not st or st[0] != bucket:
+                # Changement de minute → purge des entrées d'une autre minute (anti-fuite mémoire).
+                if len(_rl_state) > 5000:
+                    for k in [k for k, v in _rl_state.items() if v[0] != bucket]:
+                        _rl_state.pop(k, None)
+                st = [bucket, 0]
+                _rl_state[ip] = st
+            st[1] += 1
+            count = st[1]
+        if count > _RATE_LIMIT_PER_MIN:
+            return JSONResponse(status_code=429,
+                                content={"detail": "Trop de requêtes, réessayez dans une minute."})
+    return await call_next(request)
 from core.state import swarm, _orch_name, _app_name, _orch_agent, ConversationManager, _session_file, ChatSession, SessionManager, sessions, session, TELEMETRY, CODER_CWD, get_coder_cwd, set_coder_cwd, get_model_cost
 
 from routers import config_agents as _config_agents_router
