@@ -1034,7 +1034,8 @@ class Swarm:
             print(f"[\033[91mAuto-compétence erreur\033[0m] {e}")
 
     def run(self, starting_agent: Agent, messages: list, max_turns: int = 10,
-            max_seconds: float = None, max_tokens: int = None, locked: bool = False) -> Tuple[Agent, list, list]:
+            max_seconds: float = None, max_tokens: int = None, locked: bool = False,
+            lock_delegation: bool = False) -> Tuple[Agent, list, list]:
         """
         Boucle principale de l'orchestrateur.
         Retourne l'agent final actif, les messages mis à jour, et l'historique des étapes (steps).
@@ -1042,7 +1043,11 @@ class Swarm:
         max_turns   : nombre maximum d'itérations (appels LLM) avant arrêt forcé.
         max_seconds : budget temps mur (défaut env SWARM_MAX_SECONDS, 0 = illimité).
         max_tokens  : budget tokens cumulés (défaut env SWARM_MAX_TOKENS, 0 = illimité).
-        locked      : Si True, retire l'outil 'transfer_to_' et force l'utilisation de 'delegate_to_'
+        locked      : Si True, retire les handoffs 'transfer_to_' (on reste sur l'agent
+                      verrouillé). La DÉLÉGATION 'delegate_to_' reste autorisée — c'est le
+                      mode CLI / console de code, où l'agent doit pouvoir déléguer des sous-tâches.
+        lock_delegation : Si True (en plus de locked), retire AUSSI 'delegate_to_' → aucune
+                      bascule possible vers un autre agent. Réservé au pipeline rigide.
         """
         if max_seconds is None:
             max_seconds = float(os.getenv("SWARM_MAX_SECONDS", "0") or 0)
@@ -1137,10 +1142,15 @@ class Swarm:
                 elif strategy == "delegate":
                     effective_tools = [f for f in effective_tools if not f.__name__.startswith("transfer_to_")]
 
-            # Mode "Console Verrouillée" : Interdit formellement les transferts définitifs (Handoffs)
-            # (Prioritaire sur la stratégie globale)
+            # Mode "Console Verrouillée" (CLI / console de code) : interdit les handoffs
+            # définitifs (transfer_to_) ; la délégation (delegate_to_) reste permise pour
+            # que l'agent verrouillé puisse confier une sous-tâche. (Prioritaire sur la
+            # stratégie globale.)
             if locked:
                 effective_tools = [f for f in effective_tools if not f.__name__.startswith("transfer_to_")]
+            # Pipeline rigide uniquement : on retire AUSSI la délégation → aucune déviation.
+            if lock_delegation:
+                effective_tools = [f for f in effective_tools if not f.__name__.startswith("delegate_to_")]
 
             # Garde-fou anti sur-délégation : pour une question triviale/générale adressée
             # à l'orchestrateur, on RETIRE les outils de délégation pour ce tour → il répond

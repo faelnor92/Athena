@@ -30,13 +30,15 @@ def run_rigid_pipeline(agents_list: str, task: str) -> str:
         
         history_report.append(f"--- [Étape {i+1}/{len(names)}] Tâche envoyée à l'agent '{name}' ---")
         try:
-            # On exécute l'agent en mode isolé (locked=True empêche théoriquement le handoff si le prompt s'y prête)
-            # max_turns=3 pour éviter qu'un agent ne boucle dans son coin trop longtemps
+            # Pipeline rigide : locked + lock_delegation retirent TOUTE bascule vers un autre
+            # agent (transfer_to_ ET delegate_to_), donc l'agent ne peut pas dévier de la
+            # chaîne. max_turns=3 pour éviter qu'un agent ne boucle dans son coin trop longtemps.
             res_agent, res_messages, res_steps = swarm.run(
-                starting_agent=agent, 
-                messages=[{"role": "user", "content": current_input}], 
-                max_turns=3, 
-                locked=True
+                starting_agent=agent,
+                messages=[{"role": "user", "content": current_input}],
+                max_turns=3,
+                locked=True,
+                lock_delegation=True
             )
             
             # On récupère la dernière réponse de l'agent
