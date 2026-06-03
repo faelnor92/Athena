@@ -214,6 +214,13 @@ async def approve_routine(rid: str, request: Request) -> Dict[str, str]:
         raise HTTPException(status_code=404, detail="Routine introuvable.")
     r["approved"] = True
     routine_store.upsert(r)
+    try:
+        from core import audit
+        u = getattr(request.state, "user", None) or {}
+        audit.log("routine_approve", actor=u.get("username", "local"), role="admin",
+                  target=rid, ip=audit.client_ip(request))
+    except Exception:
+        pass
     return {"status": "success"}
 
 @router.api_route("/api/hooks/{rid}", methods=["GET", "POST"])

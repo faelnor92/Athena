@@ -94,4 +94,11 @@ async def approve_pipeline(pid: str, request: Request) -> Dict[str, str]:
         raise HTTPException(status_code=403, detail="Réservé à l'administrateur.")
     if not pipeline_store.set_approved(pid, True):
         raise HTTPException(status_code=404, detail="Pipeline introuvable.")
+    try:
+        from core import audit
+        u = getattr(request.state, "user", None) or {}
+        audit.log("pipeline_approve", actor=u.get("username", "local"), role="admin",
+                  target=pid, ip=audit.client_ip(request))
+    except Exception:
+        pass
     return {"status": "success"}

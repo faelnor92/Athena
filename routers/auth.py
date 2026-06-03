@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from core.users import user_store
 from core.state import ACTIVE_SESSIONS, _current_username, _scope_cid
+from core import audit
 
 router = APIRouter(tags=["Auth"])
 
@@ -101,6 +102,8 @@ _ADMIN_EXACT = {
     ("POST", "/api/pricing"), ("POST", "/api/pricing/reset"),
     ("GET", "/api/logs"), ("POST", "/api/logs/level"),
     ("GET", "/api/usage"),
+    ("GET", "/api/audit"),
+    ("GET", "/api/pipelines/pending"), ("GET", "/api/routines/pending"),
 }
 _ADMIN_PREFIX = (
     ("POST", "/api/config/satellites"),
@@ -198,8 +201,9 @@ async def login(req: LoginRequest, request: Request):
 
     # Anti-brute-force : throttle par IP au-delà de N échecs dans la fenêtre (partagé
     # entre workers via le store SQLite).
-    client_ip = request.client.host if request.client else "?"
+    client_ip = audit.client_ip(request)
     if len(_recent_fails(client_ip)) >= _LOGIN_MAX_FAILS:
+        audit.log("login_blocked", actor=req.username or "?", ip=client_ip, detail="throttle brute-force")
         raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
 
     def _ok(username, role):
@@ -208,6 +212,7 @@ async def login(req: LoginRequest, request: Request):
             ACTIVE_SESSIONS.purge_expired()  # hygiène opportuniste du store de sessions
         except Exception:
             pass
+        audit.log("login", actor=username, role=role, ip=client_ip)
         return {"status": "success", "token": _new_session(username, role),
                 "username": username, "role": role}
 
@@ -226,6 +231,7 @@ async def login(req: LoginRequest, request: Request):
         return {"status": "success", "token": "no-auth-required", "username": "local", "role": "admin"}
 
     _record_login_fail(client_ip)
+    audit.log("login_failed", actor=req.username or "?", ip=client_ip)
     raise HTTPException(status_code=401, detail="Identifiants incorrects")
 
 
@@ -265,6 +271,7 @@ async def change_my_password(request: Request, req: PasswordChangeRequest):
     if not user_store.set_password(username, req.new_password):
         raise HTTPException(status_code=400, detail="Changement impossible.")
     ACTIVE_SESSIONS.revoke_user(username, keep_token=_bearer_token(request))
+    audit.log("password_change", actor=username, ip=audit.client_ip(request))
     return {"status": "success"}
 
 
@@ -274,7 +281,15 @@ async def logout(request: Request):
     tok = _bearer_token(request)
     if tok:
         ACTIVE_SESSIONS.pop(tok, None)
+    audit.log("logout", actor=_current_user(request).get("username"), ip=audit.client_ip(request))
     return {"status": "success"}
+
+
+@router.get("/api/audit")
+async def get_audit(request: Request, limit: int = 200, action: str = None):
+    """Journal d'audit des événements de sécurité (ADMIN)."""
+    _require_admin(request)
+    return {"events": audit.recent(limit=min(int(limit or 200), 1000), action=action)}
 
 
 class InviteRequest(BaseModel):
@@ -315,7 +330,7 @@ class RegisterRequest(BaseModel):
 
 
 @router.post("/api/register")
-async def register(req: RegisterRequest):
+async def register(req: RegisterRequest, request: Request):
     """Inscription PUBLIQUE via un code d'invitation valide → crée le compte + connecte."""
     from core.invites import invite_store
     username = (req.username or "").strip()
@@ -332,6 +347,8 @@ async def register(req: RegisterRequest):
     if not user_store.create(username, req.password, inv["role"]):
         raise HTTPException(status_code=400, detail="Création du compte impossible.")
     token = _new_session(username, inv["role"])
+    audit.log("register", actor=username, role=inv["role"], ip=audit.client_ip(request),
+              detail=f"invitation de {inv.get('created_by', '?')}")
     return {"status": "success", "token": token, "username": username, "role": inv["role"]}
 
 
@@ -349,6 +366,8 @@ async def admin_reset_password(request: Request, username: str, req: AdminPasswo
         raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
     # Reset admin → on déconnecte l'utilisateur de TOUTES ses sessions.
     ACTIVE_SESSIONS.revoke_user(username)
+    audit.log("password_reset", actor=_current_user(request).get("username"),
+              role="admin", target=username, ip=audit.client_ip(request))
     return {"status": "success"}
 
 
@@ -371,6 +390,8 @@ async def create_user(request: Request, req: UserCreateRequest):
         raise HTTPException(status_code=400, detail=f"Mot de passe trop court (min. {_MIN_PASSWORD_LEN} caractères).")
     if not user_store.create(req.username, req.password, req.role):
         raise HTTPException(status_code=400, detail="username/password requis.")
+    audit.log("user_create", actor=_current_user(request).get("username"), role="admin",
+              target=req.username, ip=audit.client_ip(request), detail=f"rôle={req.role}")
     return {"status": "success"}
 
 
@@ -385,6 +406,7 @@ async def delete_user(request: Request, username: str, purge: bool = True):
         raise HTTPException(status_code=400, detail="Impossible de supprimer le dernier administrateur.")
     if not user_store.delete(username):
         raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+    ACTIVE_SESSIONS.revoke_user(username)  # invalide ses sessions immédiatement
     report = None
     if purge:
         # RGPD : efface toutes les données propres au compte (best-effort).
@@ -394,5 +416,7 @@ async def delete_user(request: Request, username: str, purge: bool = True):
         except Exception:
             import logging
             logging.exception("Purge des données utilisateur échouée")
+    audit.log("user_delete", actor=_current_user(request).get("username"), role="admin",
+              target=username, ip=audit.client_ip(request), detail=f"purge={purge}")
     return {"status": "success", "purged": report}
 
