@@ -86,6 +86,14 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 > [!NOTE]
 > **Caveat RAG.** La base vectorielle (ChromaDB `PersistentClient`) n'est pas conçue pour des écritures multi-process concurrentes. En multi-worker, faites tourner **ChromaDB en mode serveur** (client/serveur) ou réservez l'indexation RAG à un worker dédié. Tout le reste de l'état est multi-worker-safe.
 
+### 🔒 Sécurité en production
+- **TLS obligatoire** : placez Athena derrière un reverse-proxy HTTPS (Caddy, Nginx, Traefik). Le serveur émet automatiquement **HSTS** quand il détecte HTTPS (`X-Forwarded-Proto: https`).
+- **Clé de chiffrement hors `.env`** : pour résister au vol de disque/backup, injectez `DB_ENCRYPTION_KEY` via une variable d'environnement / un secret-manager plutôt que de la laisser dans le fichier `.env` à côté des bases.
+- **En-têtes de sécurité** (CSP, X-Frame-Options, nosniff, Referrer/Permissions-Policy) actifs par défaut — `SECURITY_HEADERS=false` pour désactiver, `CONTENT_SECURITY_POLICY` pour personnaliser.
+- **Garde-fous** : throttle anti-brute-force (`LOGIN_MAX_FAILS`/`LOGIN_WINDOW_SECONDS`), rate-limiting (`RATE_LIMIT_PER_MIN`, défaut 300/IP/min), politique de mot de passe (`MIN_PASSWORD_LENGTH`, défaut 8), **journal d'audit** (`GET /api/audit`, admin), et **validation admin** des automatisations créées par des comptes « user ».
+- **RBAC par outil** : `ADMIN_ONLY_TOOLS="execute_bash_command,run_ssh_command,..."` réserve l'exécution de code/commandes aux admins.
+- **Conteneur** : l'image tourne en utilisateur **non-root** avec un `HEALTHCHECK`. Audit de l'installation : `bash scripts/security_scan.sh` (pip-audit + bandit + secrets).
+
 ---
 
 ## 🛡️ Tableau Comparatif : Athena vs Marché
