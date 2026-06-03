@@ -53,3 +53,29 @@ async def set_my_llm(req: MyLlmRequest):
     if updates:
         user_config.set_many(updates)
     return {"status": "success"}
+
+
+@router.get("/api/me/usage")
+async def my_usage():
+    """Usage (requêtes, tokens, coût) du compte courant : aujourd'hui, 30 j, total."""
+    import time
+    from core.tracing import run_store
+    from core.user_config import current_user_key
+    u = current_user_key()
+    day = time.time() - 86400
+    month = time.time() - 30 * 86400
+    return {
+        "user": u,
+        "today": run_store.usage_for(u, day),
+        "month": run_store.usage_for(u, month),
+        "total": run_store.usage_for(u),
+    }
+
+
+@router.get("/api/usage")
+async def all_usage():
+    """Usage agrégé PAR UTILISATEUR (admin) : 30 j et total."""
+    import time
+    from core.tracing import run_store
+    return {"month": run_store.usage_by_user(time.time() - 30 * 86400),
+            "total": run_store.usage_by_user()}

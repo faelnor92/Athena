@@ -45,6 +45,11 @@ class RunStore:
                 )
                 """
             )
+            # Migration : colonne `user` (usage par utilisateur). Idempotent.
+            try:
+                conn.execute("ALTER TABLE runs ADD COLUMN user TEXT")
+            except Exception:
+                pass  # colonne déjà présente
 
     @staticmethod
     def new_run_id() -> str:
@@ -67,13 +72,19 @@ class RunStore:
         try:
             from core.redaction import redact_secrets
             steps_json = redact_secrets(json.dumps(steps or [], ensure_ascii=False))
+            # Utilisateur courant (usage par compte), résolu sans changer les appelants.
+            try:
+                from core.user_config import current_user_key
+                user = current_user_key()
+            except Exception:
+                user = "local"
             with self._lock, self._connect() as conn:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO runs
                     (run_id, created_at, agent, status, user_message, final_response,
-                     duration_ms, total_tokens, total_cost, error, steps_json)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                     duration_ms, total_tokens, total_cost, error, steps_json, user)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         run_id,
@@ -87,11 +98,36 @@ class RunStore:
                         float(total_cost),
                         redact_secrets(error),
                         steps_json,
+                        user,
                     ),
                 )
         except Exception:
             # L'observabilité ne doit jamais casser le chemin principal.
             pass
+
+    def usage_by_user(self, since: float = None) -> list:
+        """Agrège l'usage (requêtes, tokens, coût) par utilisateur depuis `since` (epoch)."""
+        q = ("SELECT COALESCE(user,'local') AS u, COUNT(*) AS runs, "
+             "COALESCE(SUM(total_tokens),0) AS tokens, COALESCE(SUM(total_cost),0) AS cost "
+             "FROM runs")
+        params = []
+        if since:
+            q += " WHERE created_at >= ?"
+            params.append(since)
+        q += " GROUP BY u ORDER BY cost DESC"
+        try:
+            with self._lock, self._connect() as conn:
+                return [dict(r) for r in conn.execute(q, params).fetchall()]
+        except Exception:
+            return []
+
+    def usage_for(self, user: str, since: float = None) -> dict:
+        """Usage d'UN utilisateur (requêtes, tokens, coût) depuis `since`."""
+        rows = self.usage_by_user(since)
+        for r in rows:
+            if r["u"] == user:
+                return r
+        return {"u": user, "runs": 0, "tokens": 0, "cost": 0.0}
 
     def get(self, run_id: str) -> Optional[Dict[str, Any]]:
         with self._lock, self._connect() as conn:

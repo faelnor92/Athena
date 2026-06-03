@@ -3402,6 +3402,7 @@ if (modalTabUsers && paneUsers) {
         loadUsersPane();
         loadInvitesPane();
         loadMyLlm();
+        loadMyUsage();
     }));
 }
 
@@ -7038,3 +7039,15 @@ if (_btnSaveMyLlm) _btnSaveMyLlm.addEventListener("click", async () => {
     st.textContent = r.ok ? "✅ Config LLM enregistrée." : "❌ Échec.";
     if (r.ok) { ["myllm-openai","myllm-anthropic","myllm-gemini","myllm-custom-key"].forEach(i => document.getElementById(i).value = ""); loadMyLlm(); }
 });
+
+
+/* ===== Mon usage (requêtes / tokens / coût) ===== */
+async function loadMyUsage() {
+    const box = document.getElementById("myusage");
+    if (!box) return;
+    try {
+        const d = await (await apiFetch("/api/me/usage")).json();
+        const fmt = x => `${x.runs} req · ${x.tokens} tokens · ${Number(x.cost).toFixed(4)} €`;
+        box.innerHTML = `Aujourd'hui : ${fmt(d.today)}<br>30 jours : ${fmt(d.month)}<br>Total : ${fmt(d.total)}`;
+    } catch (e) { box.textContent = "—"; }
+}

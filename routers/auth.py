@@ -75,6 +75,7 @@ _ADMIN_EXACT = {
     ("POST", "/api/telegram/pairing/revoke"),
     ("POST", "/api/pricing"), ("POST", "/api/pricing/reset"),
     ("GET", "/api/logs"), ("POST", "/api/logs/level"),
+    ("GET", "/api/usage"),
 }
 _ADMIN_PREFIX = (
     ("POST", "/api/config/satellites"),
