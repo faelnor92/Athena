@@ -51,6 +51,58 @@ async def get_system_version():
     from core.platform_info import get_version
     return {"version": get_version()}
 
+@router.get("/api/system/update_check")
+async def check_system_update():
+    """Vérifie si une nouvelle version est disponible sur GitHub."""
+    import urllib.request
+    from core.platform_info import get_version
+    try:
+        url = "https://raw.githubusercontent.com/faelnor92/athena/main/VERSION"
+        req = urllib.request.Request(url, headers={'Cache-Control': 'no-cache'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            latest_version = response.read().decode('utf-8').strip()
+        current_version = get_version().strip()
+        has_update = (latest_version != current_version and latest_version != "")
+        return {
+            "update_available": has_update,
+            "current_version": current_version,
+            "latest_version": latest_version
+        }
+    except Exception as e:
+        return {"update_available": False, "error": str(e)}
+
+@router.post("/api/system/update_run")
+async def run_system_update():
+    """Lance le script de mise à jour en arrière-plan."""
+    import subprocess
+    import os
+    from core.platform_info import get_platform_info
+    info = get_platform_info()
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    try:
+        if info.get("is_windows"):
+            script_path = os.path.join(root_dir, "update.ps1")
+            kwargs = {}
+            if hasattr(subprocess, 'CREATE_NEW_PROCESS_GROUP'):
+                kwargs['creationflags'] = getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP')
+            subprocess.Popen(
+                ["powershell", "-ExecutionPolicy", "Bypass", "-File", script_path],
+                cwd=root_dir,
+                start_new_session=True,
+                **kwargs
+            )
+        else:
+            script_path = os.path.join(root_dir, "update.sh")
+            subprocess.Popen(
+                ["bash", script_path],
+                cwd=root_dir,
+                start_new_session=True,
+                preexec_fn=os.setsid
+            )
+        return {"status": "success", "message": "Mise à jour lancée, redémarrage imminent."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur de lancement de la maj : {str(e)}")
 
 # --- Pairing Telegram -------------------------------------------------------
 class PairingActionRequest(BaseModel):

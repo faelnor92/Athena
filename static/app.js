@@ -81,6 +81,56 @@ async function loadSystemVersion() {
     }
 }
 
+async function checkSystemUpdate() {
+    try {
+        const r = await fetch("/api/system/update_check", { cache: "no-store" });
+        if (r.ok) {
+            const data = await r.json();
+            const btnDock = document.getElementById("btn-system-update");
+            const btnDoctor = document.getElementById("btn-force-update");
+            const statusText = document.getElementById("update-status-text");
+            
+            if (data.update_available) {
+                if (btnDock) btnDock.style.display = "inline-flex";
+                if (btnDoctor) {
+                    btnDoctor.style.display = "inline-block";
+                    btnDoctor.textContent = "Mettre à jour (v" + data.latest_version + ")";
+                }
+                if (statusText) statusText.innerHTML = `Nouvelle version disponible : <strong style="color:#28a745;">v${data.latest_version}</strong> (actuelle: v${data.current_version})`;
+            } else {
+                if (btnDock) btnDock.style.display = "none";
+                if (btnDoctor) btnDoctor.style.display = "none";
+                if (statusText) {
+                    if (data.current_version) {
+                        statusText.innerHTML = `Athena est à jour (v${data.current_version}).`;
+                    } else if (data.error) {
+                        statusText.innerHTML = `Erreur de vérification : ${data.error}`;
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Failed to check system update:", e);
+        const statusText = document.getElementById("update-status-text");
+        if (statusText) statusText.textContent = "Impossible de vérifier les mises à jour.";
+    }
+}
+
+async function triggerSystemUpdate() {
+    const overlay = document.getElementById("update-loading-overlay");
+    if (overlay) overlay.style.display = "flex";
+    
+    try {
+        await apiFetch("/api/system/update_run", { method: "POST" });
+    } catch (e) {
+        console.error("Failed to trigger update:", e);
+    }
+    
+    setTimeout(() => {
+        window.location.reload();
+    }, 20000);
+}
+
 // Sonde de disponibilité : ping léger pour afficher/masquer le bandeau même au repos.
 async function _pingServer() {
     try {
@@ -94,6 +144,12 @@ setInterval(_pingServer, 15000);
 window.addEventListener("DOMContentLoaded", () => {
     applyBranding();
     loadSystemVersion();
+    checkSystemUpdate();
+    
+    const btnDock = document.getElementById("btn-system-update");
+    if (btnDock) btnDock.addEventListener("click", triggerSystemUpdate);
+    const btnDoctor = document.getElementById("btn-force-update");
+    if (btnDoctor) btnDoctor.addEventListener("click", triggerSystemUpdate);
 });
 
 function showLoginOverlay() {

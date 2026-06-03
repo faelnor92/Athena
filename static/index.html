@@ -20,6 +20,14 @@
     <div id="server-down-banner" style="display:none; position:fixed; top:0; left:0; right:0; z-index:99999; background:#b91c1c; color:#fff; text-align:center; padding:8px 12px; font-size:0.85rem; box-shadow:0 2px 10px rgba(0,0,0,0.4);">
         ⚠️ Serveur injoignable — vérifie qu'il est bien lancé (<code style="background:rgba(0,0,0,0.25);padding:1px 5px;border-radius:4px;">python server.py</code>). Reconnexion automatique…
     </div>
+
+    <!-- Overlay de mise à jour bloquant -->
+    <div id="update-loading-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:100000; flex-direction:column; justify-content:center; align-items:center; color:#fff; backdrop-filter:blur(5px);">
+        <div class="neon-spinner" style="width: 60px; height: 60px; border: 4px solid rgba(255,255,255,0.1); border-top-color: #28a745; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
+        <h2 style="margin:0 0 10px 0; color: #28a745;">Mise à jour en cours...</h2>
+        <p style="opacity:0.8; font-size:0.9rem; text-align:center; max-width:400px;">Athena télécharge la dernière version et redémarre.<br>La page va se recharger automatiquement dans quelques secondes.</p>
+    </div>
+
     <div class="app-container">
         
         <!-- 1. LEFT NARROW ICON SIDEBAR DOCK -->
@@ -68,6 +76,9 @@
 
             <div class="dock-footer">
                 <div id="app-version-display" style="font-size: 0.6rem; opacity: 0.5; text-align: center; margin-bottom: 8px; font-weight: bold; font-family: monospace;">v0.0.0</div>
+                <button id="btn-system-update" class="dock-action-btn" title="Mise à jour disponible !" style="display: none; background-color: rgba(40, 167, 69, 0.2); border: 1px solid #28a745; margin-bottom: 8px;">
+                    <span style="color: #28a745;">🚀</span>
+                </button>
                 <button id="btn-settings" class="dock-action-btn" title="Configuration de l'essaim">
                     <span>⚙️</span>
                 </button>
@@ -835,6 +846,17 @@
                 <div class="modal-pane" id="pane-doctor" style="display: none;">
                     <h3>🩺 Diagnostic du système</h3>
                     <p class="section-desc">Vérifie la configuration, les dépendances et les services.</p>
+                    
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h4 style="margin: 0 0 4px 0;">Mise à jour d'Athena</h4>
+                                <div id="update-status-text" style="font-size: 0.8rem; opacity: 0.7;">Vérification de la version...</div>
+                            </div>
+                            <button type="button" id="btn-force-update" class="btn" style="display: none; background: rgba(40, 167, 69, 0.2); border: 1px solid #28a745; color: #28a745; padding: 4px 10px; font-weight: bold;">Mettre à jour</button>
+                        </div>
+                    </div>
+
                     <button type="button" id="btn-doctor-run" class="btn btn-primary" style="margin-bottom: 10px;">▶ Lancer le diagnostic</button>
                     <div id="doctor-results" style="display: flex; flex-direction: column; gap: 4px;"></div>
 
