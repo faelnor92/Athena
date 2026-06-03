@@ -72,12 +72,7 @@ Athena n'attend pas que vous lui parliez. Demandez-lui : *"Fais-moi un résumé 
 
 En cliquant sur l'icône d'engrenage (⚙️) dans la barre latérale, vous accédez aux réglages de votre profil. **Chaque paramètre est strictement isolé pour votre utilisateur.**
 
-### Onglet "Profil & Espace de Travail"
-- **Prénom & Email** : C'est ici que l'IA va chercher comment vous appeler.
-- **Changement de mot de passe** : Permet de modifier le mot de passe de votre compte.
-- **Projets Partagés** : Permet d'inviter d'autres utilisateurs du serveur dans votre dossier de travail en mode "Lecteur" ou "Éditeur".
-
-### Onglet "Mon Modèle & Clés LLM"
+### Onglet "🔑 Clés API" (Mon Modèle & Clés LLM)
 - **Fournisseur IA (Ex: OpenAI, Anthropic, Ollama)** et **Nom du Modèle** : Choisissez la version de l'IA que vous souhaitez utiliser.
 - **Clé API Personnelle** : Si ce champ est rempli, Athena utilisera VOTRE clé pour fonctionner, et vous serez facturé sur votre propre compte développeur. Cela permet de surcharger le modèle par défaut du serveur.
 
