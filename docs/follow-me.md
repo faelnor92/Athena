@@ -1,4 +1,4 @@
-# Conscience spatiale & follow-me (optionnel)
+# Conscience spatiale (optionnel)
 
 Athena peut agir sur **la pièce où tu te trouves** (suivre ta voix, régler le chauffage
 de la bonne pièce, déclencher le transfert de musique). C'est **désactivé par défaut** :
@@ -57,9 +57,5 @@ Puis, pour chaque satellite vocal (⚙️ Réglages → Satellites), renseigne s
 - **Savoir où tu es** : l'outil `get_current_room` lit l'entité de présence.
 - **Agir sur la bonne pièce** : « augmente le chauffage » → Athena cible la clim de ta
   pièce actuelle via `call_ha_service`.
-- **Follow-me voix** *(à venir)* : router sa réponse vocale vers le satellite de la
-  pièce où tu es.
-- **Follow-me musique** : déclencher le transfert de lecture (le streaming lui-même est
-  géré par HA / Music Assistant / Snapcast).
 
 Coche l'outil **📍 Présence : Pièce actuelle** sur les agents concernés.
