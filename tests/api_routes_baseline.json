@@ -72,6 +72,7 @@
  "GET /api/workspace/dirs",
  "GET /api/workspace/download",
  "GET /api/workspace/file",
+ "GET /api/workspace/file/meta",
  "GET /api/workspace/files",
  "POST /api/agenda",
  "POST /api/agenda/sync",
@@ -139,6 +140,7 @@
  "POST /api/users/{username}/mfa/reset",
  "POST /api/users/{username}/password",
  "POST /api/workspace/config",
+ "POST /api/workspace/presence",
  "POST /api/workspace/upload",
  "PUT /api/lists/{list_name}/{item_id}/toggle"
 ]

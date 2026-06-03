@@ -104,11 +104,56 @@ async def get_workspace_file(path: str):
         with open(clean_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
 
-        return {"path": path, "content": content}
+        # mtime = "version" du fichier : permet au front de détecter une modif (ex. l'agent).
+        return {"path": path, "content": content, "mtime": os.path.getmtime(clean_path)}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _safe_workspace_path(path: str) -> str:
+    """Résout `path` sous le workspace actif, refuse toute évasion (403)."""
+    base_dir = get_workspace_dir()
+    clean = os.path.abspath(os.path.join(base_dir, path))
+    if os.path.commonpath([clean, base_dir]) != base_dir:
+        raise HTTPException(status_code=403, detail="Accès interdit.")
+    return clean
+
+
+@router.get("/api/workspace/file/meta")
+async def get_workspace_file_meta(path: str):
+    """Métadonnées légères (mtime) pour détecter qu'un fichier ouvert a changé sur disque
+    — ex. l'agent vient de l'éditer → le front propose/effectue un rechargement."""
+    clean = _safe_workspace_path(path)
+    if not os.path.exists(clean) or os.path.isdir(clean):
+        return {"path": path, "exists": False, "mtime": 0}
+    return {"path": path, "exists": True, "mtime": os.path.getmtime(clean)}
+
+
+class PresenceRequest(BaseModel):
+    path: str
+
+
+@router.post("/api/workspace/presence")
+async def workspace_presence(req: PresenceRequest):
+    """Présence collaborative : signale que l'utilisateur courant consulte ce fichier et
+    renvoie la liste des AUTRES personnes qui le consultent (fenêtre glissante ~20 s)."""
+    import time
+    from core import shared_store
+    from core.user_config import current_user_key
+    clean = _safe_workspace_path(req.path)
+    user = current_user_key()
+    key = clean  # présence par chemin réel (donc par projet/workspace)
+    now = time.time()
+
+    def _touch(d):
+        d = {u: t for u, t in (d or {}).items() if now - t < 20}  # purge des inactifs
+        d[user] = now
+        return d
+    d = shared_store.update("presence", key, _touch)
+    others = [u for u in (d or {}) if u != user]
+    return {"viewers": others}
 
 @router.get("/api/workspace/download")
 async def download_workspace_file(path: str):
