@@ -118,6 +118,15 @@ def execute_bash_command(command: str, user_confirmed: bool = False) -> str:
     Returns:
         str: La sortie de la console.
     """
+    # 0. Projet en LECTURE SEULE (membre « viewer ») : aucune commande (elle pourrait
+    #    écrire dans le projet partagé).
+    try:
+        from core import projects
+        if not projects.can_write():
+            return "Erreur : projet en LECTURE SEULE (rôle lecteur) — exécution de commandes refusée."
+    except Exception:
+        pass
+
     # 1. Application des gardes-fous absolus renforcés (couche partagée)
     rejection = check_command_blacklist(command)
     if rejection:

@@ -55,6 +55,15 @@ def execute_python_code(code: str) -> str:
     Returns:
         str: Le résultat de l'exécution (stdout ou les erreurs stderr).
     """
+    # Projet en LECTURE SEULE (membre « viewer ») : le workspace est monté en écriture
+    # dans la sandbox → on refuse l'exécution de code pour préserver la lecture seule.
+    try:
+        from core import projects
+        if not projects.can_write():
+            return "Erreur : projet en LECTURE SEULE (rôle lecteur) — exécution de code refusée."
+    except Exception:
+        pass
+
     if sandbox_runner.sandbox_mode() == "off":
         return _run_local_unsandboxed(code)
 
