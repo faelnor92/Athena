@@ -3237,6 +3237,15 @@ async function loadRoutinesPane() {
     if (agentSel && Array.isArray(agentsConfig)) {
         agentSel.innerHTML = agentsConfig.map(a => `<option value="${a.name}">${a.display_name || a.name}</option>`).join("");
     }
+    // Peupler le sélecteur de workflow (optionnel) : une routine peut déclencher un pipeline.
+    const pipeSel = document.getElementById("routine-pipeline");
+    if (pipeSel) {
+        try {
+            const pd = await (await apiFetch("/api/pipelines")).json();
+            pipeSel.innerHTML = `<option value="">— aucun —</option>` +
+                (pd.pipelines || []).map(p => `<option value="${p.id}">${(p.name || p.id)}</option>`).join("");
+        } catch (e) { /* ignore */ }
+    }
     _syncRoutineScheduleRows();
 
     const list = document.getElementById("routines-list");
@@ -3326,15 +3335,20 @@ function saveNewRoutineFromForm() {
     if (type === "weekly") schedule.weekday = parseInt(document.getElementById("routine-weekday").value || "0", 10);
     const name = document.getElementById("routine-name").value.trim();
     const prompt = document.getElementById("routine-prompt").value.trim();
-    if (!name || !prompt) { const st = document.getElementById("routine-save-status"); if (st) st.textContent = "❌ Nom et tâche requis."; return; }
+    const pipeSel = document.getElementById("routine-pipeline");
+    const pipeline_id = pipeSel ? (pipeSel.value || null) : null;
+    // Une routine doit avoir au moins une tâche OU un workflow.
+    if (!name || (!prompt && !pipeline_id)) { const st = document.getElementById("routine-save-status"); if (st) st.textContent = "❌ Nom et (tâche ou workflow) requis."; return; }
     saveRoutine({
         name, prompt,
         agent: document.getElementById("routine-agent").value || orchestratorName(),
         schedule,
-        notify: document.getElementById("routine-notify").checked
+        notify: document.getElementById("routine-notify").checked,
+        pipeline_id
     });
     document.getElementById("routine-name").value = "";
     document.getElementById("routine-prompt").value = "";
+    if (pipeSel) pipeSel.value = "";
 }
 
 if (modalTabRoutines && paneRoutines) {
@@ -3467,12 +3481,37 @@ async function loadUsersPane() {
                 });
                 if (st) st.textContent = rr.ok ? `✅ Mot de passe de ${u.username} réinitialisé.` : "❌ Échec.";
             });
-            row.append(info, reset, del);
+            const mfa = document.createElement("button");
+            mfa.type = "button"; mfa.textContent = "🔐"; mfa.title = "Réinitialiser la 2FA (appareil perdu)";
+            mfa.style.cssText = "background:rgba(255,200,0,0.1);border:1px solid rgba(255,200,0,0.4);color:#fb3;border-radius:4px;padding:1px 7px;cursor:pointer;font-size:0.72rem;";
+            mfa.addEventListener("click", async () => {
+                if (!confirm(`Réinitialiser (désactiver) la 2FA de « ${u.username} » ?`)) return;
+                const rr = await apiFetch(`/api/users/${encodeURIComponent(u.username)}/mfa/reset`, { method: "POST" });
+                if (st) st.textContent = rr.ok ? `✅ 2FA de ${u.username} réinitialisée.` : "❌ Échec.";
+            });
+            row.append(info, mfa, reset, del);
             list.appendChild(row);
         });
+        loadAllUsage();
     } catch (e) {
         list.innerHTML = `<div style="color:#ff5b89;font-size:0.78rem;">Erreur : ${e}</div>`;
     }
+}
+
+async function loadAllUsage() {
+    const sec = document.getElementById("allusage-section");
+    const box = document.getElementById("allusage");
+    if (!sec || !box) return;
+    try {
+        const r = await apiFetch("/api/usage");
+        if (!r.ok) { sec.style.display = "none"; return; }  // non-admin → section masquée
+        const d = await r.json();
+        const rows = d.month || [];
+        sec.style.display = "block";
+        box.innerHTML = rows.length
+            ? rows.map(u => `<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>${u.u}</span><span style="opacity:0.85;">${u.runs} req · ${u.tokens} tok · ${Number(u.cost).toFixed(4)} €</span></div>`).join("")
+            : "<span style='opacity:0.6;'>Aucune activité sur 30 jours.</span>";
+    } catch (e) { sec.style.display = "none"; }
 }
 
 if (modalTabUsers && paneUsers) {

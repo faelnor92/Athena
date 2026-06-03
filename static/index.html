@@ -1144,6 +1144,7 @@
                     <div class="form-group"><label>Nom</label><input id="routine-name" type="text" placeholder="Briefing du matin"></div>
                     <div class="form-group"><label>Tâche (prompt)</label><textarea id="routine-prompt" style="min-height: 60px;" placeholder="Fais-moi un résumé de mon agenda et des actus IA importantes."></textarea></div>
                     <div class="form-group"><label>Agent de départ</label><select id="routine-agent"></select></div>
+                    <div class="form-group"><label>Workflow déterministe (optionnel — exécute un pipeline au lieu de la tâche)</label><select id="routine-pipeline"><option value="">— aucun —</option></select></div>
                     <div class="form-group"><label>Déclencheur</label><select id="routine-sched-type"><option value="daily">Chaque jour</option><option value="weekly">Chaque semaine</option><option value="interval">Toutes les N minutes</option><option value="webhook">Webhook (événement externe)</option></select></div>
                     <div class="form-group" id="routine-time-row"><label>Heure (HH:MM)</label><input id="routine-time" type="time" value="08:00"></div>
                     <div class="form-group" id="routine-weekday-row" style="display: none;"><label>Jour</label><select id="routine-weekday"><option value="0">Lundi</option><option value="1">Mardi</option><option value="2">Mercredi</option><option value="3">Jeudi</option><option value="4">Vendredi</option><option value="5">Samedi</option><option value="6">Dimanche</option></select></div>
@@ -1164,6 +1165,11 @@
                     <div class="form-group"><label>Rôle</label><select id="user-role"><option value="user">Utilisateur</option><option value="admin">Administrateur</option></select></div>
                     <button type="button" id="btn-add-user" class="btn btn-primary" style="width: 100%;">➕ Créer le compte</button>
                     <div id="users-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
+
+                    <div id="allusage-section" style="display: none; margin-top: 12px;">
+                        <h5 style="color: var(--accent-cyan); margin: 8px 0;">📊 Usage de tous les comptes (30 jours)</h5>
+                        <div id="allusage" style="font-size: 0.8rem; opacity: 0.9;">…</div>
+                    </div>
 
                     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
                     <h5 style="color: var(--accent-cyan); margin: 8px 0;">✉️ Invitations</h5>
