@@ -17,14 +17,24 @@ def _root() -> str:
 def _file_targets() -> list:
     root = _root()
     patterns = [
-        "conversations.sqlite3", "users.json", "core_memory.json",
-        "routines.json", "runs.sqlite3", "mcp_servers.json",
-        "channel_policies.json", "workspace/pricing_config.json",
+        # Bases SQLite
+        "conversations.sqlite3", "runs.sqlite3",
+        # État partagé multi-worker : comptes, quotas, sessions, routines, invitations,
+        # projets partagés, config par-utilisateur, pipelines (+ WAL/SHM par sécurité).
+        "athena_state.sqlite3", "athena_state.sqlite3-wal", "athena_state.sqlite3-shm",
+        # Données PAR UTILISATEUR (suffixées par <user>) + bases legacy/local.
+        "core_memory*.json", "user_profile*.md",
+        "graph_memory*.db", "graph_memory*.db-wal", "graph_memory*.db-shm",
+        "workspace/lists_*.json", "workspace/agenda_*.json",
+        # Compat héritée (si encore présents avant migration) + configs serveur.
+        "users.json", "routines.json", "invites.json", "shared_projects.json",
+        "user_configs.json", "mcp_servers.json", "channel_policies.json",
+        "workspace/pricing_config.json",
     ]
     out = []
     for pat in patterns:
         out += glob.glob(os.path.join(root, pat))
-    return out
+    return sorted(set(out))
 
 
 def _dir_targets() -> list:
@@ -40,6 +50,12 @@ def _dir_targets() -> list:
 
 def make_backup() -> bytes:
     root = _root()
+    # Rapatrie le WAL de l'état partagé dans le fichier principal pour une copie cohérente.
+    try:
+        from core import shared_store
+        shared_store.checkpoint()
+    except Exception:
+        pass
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for f in _file_targets():

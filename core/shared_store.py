@@ -140,6 +140,19 @@ def update(ns: str, k: str, fn, default=None):
         raise
 
 
+def db_path() -> str:
+    return _DB_PATH
+
+
+def checkpoint() -> None:
+    """Rapatrie le WAL dans le fichier principal (cohérence pour une sauvegarde à froid)."""
+    try:
+        _conn().execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        _conn().commit()
+    except Exception:
+        pass
+
+
 def migrate_json_dict(path: str, ns: str) -> bool:
     """Importe une fois un fichier JSON hérité {k: v} dans le namespace `ns`.
 
