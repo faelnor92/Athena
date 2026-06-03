@@ -96,7 +96,33 @@ from routers import logs as _logs_router
 app.include_router(_logs_router.router)
 from routers import user_settings as _user_settings_router
 app.include_router(_user_settings_router.router)
-# Sert les fichiers statiques de l'interface Web
+
+
+# Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Jarvis →
+# Athena » au rafraîchissement : le HTML statique contenait le nom en dur).
+def _render_index():
+    from fastapi.responses import HTMLResponse
+    name = (os.getenv("APP_NAME", "").strip() or "Jarvis")
+    try:
+        with open("static/index.html", "r", encoding="utf-8") as f:
+            html = f.read()
+    except Exception:
+        return HTMLResponse("<h1>Interface introuvable</h1>", status_code=500)
+    html = html.replace("__APP_NAME_UPPER__", name.upper()).replace("__APP_NAME__", name)
+    return HTMLResponse(html)
+
+
+@app.get("/", include_in_schema=False)
+async def _index():
+    return _render_index()
+
+
+@app.get("/index.html", include_in_schema=False)
+async def _index_html():
+    return _render_index()
+
+
+# Sert les fichiers statiques de l'interface Web (le reste : assets, app.js, /index.html…)
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 

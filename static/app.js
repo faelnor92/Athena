@@ -99,6 +99,54 @@ function showLoginOverlay() {
         overlay.style.display = "flex";
         document.getElementById("btn-logout").style.display = "none";
         document.getElementById("login-password").focus();
+        // Affiche le bouton SSO uniquement si l'OIDC est configuré côté serveur.
+        fetch("/api/auth/oidc/status").then(r => r.json()).then(d => {
+            const b = document.getElementById("btn-sso-login");
+            if (b) b.style.display = d && d.enabled ? "block" : "none";
+        }).catch(() => {});
+    }
+}
+
+function ssoLogin() {
+    // Redirection vers l'IdP ; le callback renvoie au SPA avec ?sso_token=.
+    window.location.href = "/api/auth/oidc/login";
+}
+
+function toggleRegister() {
+    const box = document.getElementById("register-box");
+    if (box) box.style.display = box.style.display === "none" ? "flex" : "none";
+}
+
+async function submitRegister() {
+    const code = document.getElementById("reg-code").value.trim();
+    const username = document.getElementById("reg-username").value.trim();
+    const password = document.getElementById("reg-password").value;
+    const err = document.getElementById("register-error");
+    err.style.display = "none";
+    if (!code || !username || (password || "").length < 4) {
+        err.textContent = "Code, nom d'utilisateur et mot de passe (min. 4) requis.";
+        err.style.display = "block";
+        return;
+    }
+    try {
+        const r = await fetch("/api/register", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code, username, password }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+            err.textContent = "❌ " + (data.detail || "Inscription refusée.");
+            err.style.display = "block";
+            return;
+        }
+        // Compte créé + session ouverte : on stocke le jeton et on entre.
+        sessionToken = data.token;
+        localStorage.setItem("jarvis_session_token", data.token);
+        hideLoginOverlay();
+        window.location.reload();
+    } catch (e) {
+        err.textContent = "❌ Erreur réseau.";
+        err.style.display = "block";
     }
 }
 

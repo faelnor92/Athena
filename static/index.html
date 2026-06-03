@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Jarvis - Dashboard Multi-Agent & Bureau Virtuel</title>
+    <title>__APP_NAME__ - Dashboard Multi-Agent & Bureau Virtuel</title>
     <!-- PWA (installable sur mobile/desktop) -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#0a0f1e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Jarvis">
+    <meta name="apple-mobile-web-app-title" content="__APP_NAME__">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <link rel="stylesheet" href="style.css?v=20260528_v2">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
@@ -92,7 +92,7 @@
                         </svg>
                     </span>
                     <div class="logo-text">
-                        <h1 class="logo-title">JARVIS</h1>
+                        <h1 class="logo-title">__APP_NAME_UPPER__</h1>
                         <span class="logo-subtitle">OPEN SPACE • <span id="top-agent-count">5</span> AGENTS</span>
                     </div>
                 </div>
@@ -353,10 +353,13 @@
                             <div class="log-line system">[Système] Console interactive Codeur démarrée. Prête.</div>
                         </div>
                         
-                        <div class="terminal-input-wrapper">
-                            <span class="terminal-prompt-symbol">$</span>
-                            <input type="text" id="terminal-coder-input" placeholder="Refactorer un fichier, exécuter bash..." autocomplete="off">
-                            <button id="btn-send-terminal" class="btn btn-primary" style="padding: 2px 12px; font-size: 0.75rem; border-radius: 4px; font-weight: bold; height: 28px; margin: 0;">Run</button>
+                        <div class="terminal-input-wrapper" style="display: flex; gap: 8px; align-items: center;">
+                            <select id="terminal-agent-select" class="terminal-agent-select" style="background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; height: 28px;">
+                                <!-- Options peuplées dynamiquement par JS -->
+                            </select>
+                            <span class="terminal-prompt-symbol" style="color: #4CAF50; font-weight: bold; margin-left: 4px;">$</span>
+                            <input type="text" id="terminal-coder-input" placeholder="Refactorer un fichier, exécuter bash..." autocomplete="off" style="flex: 1; min-width: 0;">
+                            <button id="btn-send-terminal" class="btn btn-primary" style="padding: 2px 12px; font-size: 0.75rem; border-radius: 4px; font-weight: bold; height: 28px; margin: 0; flex-shrink: 0;">Run</button>
                         </div>
                     </div>
                 </div>
@@ -826,13 +829,88 @@
                 </div>
 
                 <div class="modal-pane" id="pane-mcp" style="display: none;">
-                    <h3>🧩 Serveurs MCP (Model Context Protocol)</h3>
-                    <p class="section-desc">Connecte des serveurs MCP (filesystem, GitHub, Postgres, HTTP/SSE…) : leurs outils deviennent disponibles pour Jarvis et le Codeur. Format compatible Claude Desktop — voir <code>mcp_servers.json.example</code>. Les serveurs « sensibles » (FS/shell) ne démarrent pas si aucun mot de passe admin n'est défini.</p>
-                    <div id="mcp-status" style="margin: 10px 0; font-size: 0.8rem;"></div>
-                    <label style="font-size: 0.8rem; display: block; margin-bottom: 4px;">Configuration (JSON)</label>
-                    <textarea id="mcp-config" spellcheck="false" style="width: 100%; min-height: 220px; font-family: monospace; font-size: 0.78rem; background: rgba(0,0,0,0.3); color: #cfe; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px; box-sizing: border-box;"></textarea>
-                    <button type="button" id="btn-save-mcp" class="btn btn-primary" style="width: 100%; margin-top: 10px;">💾 Sauvegarder & reconnecter</button>
-                    <div id="mcp-save-status" style="text-align: center; margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h3 style="margin: 0;">🧩 Serveurs MCP (Model Context Protocol)</h3>
+                    </div>
+                    <p class="section-desc" style="margin-bottom: 12px;">Connecte des outils externes compatibles MCP (comme GitHub, Home Assistant, Filesystem). L'assistant pourra les utiliser dynamiquement.</p>
+                    
+                    <!-- Onglets MCP -->
+                    <div class="mcp-tabs" style="display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 16px;">
+                        <button type="button" id="tab-mcp-mine" class="mcp-tab active">Mes Serveurs</button>
+                        <button type="button" id="tab-mcp-market" class="mcp-tab">Marketplace 🛒</button>
+                    </div>
+
+                    <!-- VUE 1 : Mes Serveurs -->
+                    <div id="mcp-view-mine">
+                        <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                            <button type="button" id="btn-mcp-add-new" class="btn btn-primary" style="padding: 4px 10px; font-size: 0.8rem;">+ Ajouter Manuellement</button>
+                        </div>
+                        <div id="mcp-servers-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 250px; overflow-y: auto; padding-right: 4px;">
+                            <div style="text-align: center; opacity: 0.5; padding: 20px; font-size: 0.85rem;">Chargement des serveurs...</div>
+                        </div>
+                    </div>
+
+                    <!-- VUE 2 : Marketplace -->
+                    <div id="mcp-view-market" style="display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <span style="font-size: 0.85rem; color: #aaa;">Sélectionne un catalogue :</span>
+                            <select id="mcp-market-category" style="background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); color: #fff; padding: 6px; border-radius: 4px; font-size: 0.85rem;">
+                                <!-- Rempli en JS -->
+                            </select>
+                        </div>
+                        <div id="mcp-market-grid" class="mcp-marketplace-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; max-height: 280px; overflow-y: auto; padding-right: 4px;">
+                            <!-- Cartes remplies en JS -->
+                        </div>
+                    </div>
+
+                    <!-- Formulaire Ajout/Édition -->
+                    <div id="mcp-form-container" style="display: none; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-top: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h4 id="mcp-form-title" style="margin: 0; color: var(--accent-cyan);">Ajouter un serveur</h4>
+                            <button type="button" id="btn-mcp-cancel" style="background: none; border: none; color: #fff; opacity: 0.6; cursor: pointer;">✕</button>
+                        </div>
+                        
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label style="font-size: 0.75rem;">Modèles prédéfinis (Presets)</label>
+                            <select id="mcp-presets" style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); border-radius: 6px; color: #fff; padding: 8px;">
+                                <option value="">-- Personnalisé --</option>
+                            </select>
+                        </div>
+
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Nom du serveur (unique, ex: github)</label>
+                                <input type="text" id="mcp-name" placeholder="Ex: my_server" autocomplete="off">
+                            </div>
+                            <div class="form-group">
+                                <label>Commande (ex: npx, uvx)</label>
+                                <input type="text" id="mcp-command" placeholder="Ex: npx" autocomplete="off">
+                            </div>
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label>Arguments (séparés par un espace)</label>
+                                <input type="text" id="mcp-args" placeholder="Ex: -y @modelcontextprotocol/server-github" autocomplete="off">
+                            </div>
+                            
+                            <div class="form-group" style="grid-column: span 2;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <label style="margin: 0;">Variables d'Environnement (Env)</label>
+                                    <button type="button" id="btn-mcp-add-env" class="btn" style="padding: 2px 6px; font-size: 0.7rem;">+ Env</button>
+                                </div>
+                                <div id="mcp-env-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
+                            </div>
+                            
+                            <div class="form-group" style="grid-column: span 2; display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+                                <input type="checkbox" id="mcp-disabled" style="width: 16px; height: 16px;">
+                                <label for="mcp-disabled" style="margin: 0;">Désactiver temporairement ce serveur</label>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 16px;">
+                            <button type="button" id="btn-mcp-save" class="btn btn-primary" style="flex: 2;">💾 Enregistrer</button>
+                            <button type="button" id="btn-mcp-delete" class="btn" style="flex: 1; border-color: rgba(255,85,85,0.4); color: #ff5555; display: none;">🗑️ Supprimer</button>
+                        </div>
+                        <div id="mcp-save-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
+                    </div>
                 </div>
 
                 <!-- ONGLET : MESSAGERIES & NOTIFICATIONS (canaux de livraison) -->
@@ -901,6 +979,15 @@
                         <button type="button" id="btn-wake-save" class="btn btn-primary" style="margin-bottom:14px;">💾</button>
                     </div>
                     <div id="wake-save-status" style="font-size:0.76rem;opacity:0.75;margin-bottom:6px;"></div>
+
+                    <div style="margin: 8px 0 12px; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
+                        <div>
+                            <div style="font-weight: 500; margin-bottom: 4px;">Moteur de Synthèse Vocale (Kokoro)</div>
+                            <div style="font-size: 0.8rem; opacity: 0.7;">Redémarre le serveur Docker s'il est bloqué.</div>
+                        </div>
+                        <button type="button" id="btn-tts-restart" class="btn" style="background: rgba(255,255,255,0.1);">🔄 Relancer</button>
+                    </div>
+                    <div id="tts-restart-status" style="font-size:0.76rem;opacity:0.75;margin-bottom:6px;text-align:right;"></div>
 
                     <details style="margin: 6px 0 12px; font-size: 0.8rem; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px;">
                         <summary style="cursor: pointer; color: var(--accent-cyan);">Comment connecter un ESP (et obtenir la clé) ?</summary>
@@ -1183,6 +1270,22 @@
             <button onclick="submitLogin()" class="btn btn-primary" style="width: 100%; padding: 11px; font-size: 0.9rem; border-radius: 6px; font-weight: 600;">
                 Se connecter
             </button>
+
+            <button id="btn-sso-login" onclick="ssoLogin()" style="display: none; width: 100%; padding: 10px; font-size: 0.85rem; border-radius: 6px; margin-top: 6px; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.2); cursor: pointer;">
+                🔐 Se connecter avec le SSO
+            </button>
+
+            <div style="text-align: center; font-size: 0.78rem; margin-top: 10px;">
+                <a href="#" onclick="toggleRegister(); return false;" style="color: rgba(255,255,255,0.55); text-decoration: none;">J'ai un code d'invitation →</a>
+            </div>
+
+            <div id="register-box" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+                <input type="text" id="reg-code" placeholder="Code d'invitation" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.9rem; outline: none;">
+                <input type="text" id="reg-username" placeholder="Nom d'utilisateur souhaité" autocomplete="username" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.9rem; outline: none;">
+                <input type="password" id="reg-password" placeholder="Mot de passe (min. 4)" autocomplete="new-password" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.9rem; outline: none;">
+                <div id="register-error" style="display: none; color: #ff5555; font-size: 0.8rem; text-align: center;"></div>
+                <button onclick="submitRegister()" class="btn btn-primary" style="width: 100%; padding: 9px; font-size: 0.85rem; border-radius: 6px;">Créer mon compte</button>
+            </div>
         </div>
     </div>
     
