@@ -1,5 +1,23 @@
 # Historique des Versions (Changelog)
 
+## v0.9.39 (Qualité & multi-worker)
+Fiabilisation (tests/CI), finalisation du multi-worker et compléments d'UI.
+
+### ✅ Qualité
+- **Tests d'intégration HTTP** (TestClient) couvrant les vrais flux : en-têtes de sécurité, exigence d'authentification, login, **RBAC** (user → 403 sur endpoint admin), déconnexion qui invalide le jeton, politique de mot de passe.
+- **CI GitHub Actions** : toute la suite (unit + intégration + smoke) à chaque push/PR, + job de scan de sécurité (pip-audit/bandit) informatif.
+
+### ⚙️ Multi-worker (finalisation)
+- **Listes** par-utilisateur déplacées vers le store SQLite partagé (mutations atomiques) + migration douce.
+- **Agenda** : écritures atomiques (temp + `os.replace`) → plus de fichier corrompu en multi-worker.
+- **RAG / ChromaDB en mode serveur** optionnel (`CHROMA_SERVER_HOST`) : tous les workers partagent la même base vectorielle. `docker-compose.yml` : service `chroma` câblé + `STATE_DB_PATH` persistant sur le volume.
+
+### 🖥️ UI
+- **Routines** : sélecteur de **workflow** (une routine planifiée/webhook peut déclencher un pipeline déterministe).
+- **Admin** : vue « usage de tous les comptes » (30 j) et bouton de **réinitialisation 2FA** par compte (récupération appareil perdu).
+
+---
+
 ## v0.9.38 (Sécurité durcie)
 Durcissement de sécurité « béton » : surface d'authentification, en-têtes HTTP, audit,
 limitation de débit, RBAC par outil, 2FA, et corrections.

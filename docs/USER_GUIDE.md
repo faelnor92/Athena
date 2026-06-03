@@ -138,7 +138,7 @@ C'est la section la plus importante pour ajuster le comportement global et les s
 En plus de "Comportement", la barre latérale des réglages vous donne accès à d'autres menus spécialisés :
 
 * **Onglet "Connaissances (RAG)"** : C'est ici que vous pouvez demander à l'IA d'analyser (ou de purger) les documents que vous avez placés dans l'Explorateur de fichiers.
-* **Onglet "Routines"** : Permet de programmer des tâches automatiques (ex: "Fais le résumé de la maison tous les jours à 7h00"). Vous pouvez aussi y récupérer les adresses "Webhooks" de ces routines.
+* **Onglet "Routines"** : Permet de programmer des tâches automatiques (ex: "Fais le résumé de la maison tous les jours à 7h00"). Vous pouvez aussi y récupérer les adresses "Webhooks" de ces routines, ou faire en sorte qu'une routine **déclenche un Workflow** déterministe (champ « Workflow » du formulaire) au lieu d'une simple tâche.
 * **Onglet "Satellites Vocaux"** : Permet de configurer les enceintes ESP32 connectées à Athena.
 * **Onglet "Extensions MCP"** : Permet de brancher des plugins externes standards (ex: connecteur GitHub, connecteur Home Assistant) à l'IA.
 * **Onglet "Diagnostics & Système"** : Vérifie la santé de l'installation (base de données, STT, TTS). C'est ici que se trouve le bouton d'urgence **Redémarrer le moteur Vocal (Kokoro)** en cas de bug sonore, ainsi que les options de **Sauvegarde & Restauration** de votre environnement complet.
