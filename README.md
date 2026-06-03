@@ -38,7 +38,8 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 * **Traitement Média & Réunions** : Capacité à résumer et transcrire des fichiers audios ou des réunions entières.
 
 ### 🏠 Domotique & Automatisations
-* **Home Assistant & Contexte** : Lecture d'état et exécution d'actions domotiques. Conscience spatiale (sait dans quelle pièce vous êtes).
+* **Domotique Native (Home Assistant)** : Lecture d'état et exécution d'actions domotiques (lumières, volets, capteurs) de façon instantanée.
+* **Conscience Spatiale** : Sait dans quelle pièce vous êtes pour diriger ses actions sur votre environnement physique.
 * **Routines Proactives & Workflows** : Planification de tâches (CRON) isolées par utilisateur, déclenchements webhooks, intégrations poussées avec **n8n**.
 * **Agenda & Listes** : Synchronisation bidirectionnelle Google Calendar, iCal et CalDAV. Gestion de vos Todos et listes de courses.
 * **Notifications Actives** : Alertes autonomes de la part d'Athena vers Telegram, Discord, Slack, Email et Webhooks.

@@ -49,7 +49,8 @@ C'est le cœur du système. Athena peut remplacer un administrateur système ou 
 - **Maintenance autonome** : Un agent nocturne peut vérifier et réparer le code source automatiquement.
 
 ### 🏠 Domotique, Contexte & Quotidien
-- **Domotique (Home Assistant)** : Grâce au protocole MCP, Athena interagit avec votre maison. Demandez-lui *"Éteins la lumière du salon"*.
+- **Domotique Native (Home Assistant)** : L'IA se connecte directement à votre domotique. Demandez-lui *"Éteins la lumière du salon"* ou *"Ferme les volets"* et elle le fait instantanément.
+- **Extensions MCP (Avancé)** : Athena supporte le protocole MCP. Cela lui permet de brancher des plugins complexes (comme un accès profond à la base de données de Home Assistant pour créer des automatisations, ou tout autre serveur MCP existant).
 - **Conscience Spatiale** : L'IA peut savoir dans quelle pièce vous vous trouvez (si vous avez des capteurs) pour adapter ses actions (ex: *"Allume la lumière"* allumera celle de la pièce où vous êtes).
 - **Météo & Temps** : Prévisions météorologiques sur plusieurs jours et synchronisation temporelle.
 - **Listes & Courses** : Demandez-lui de rajouter du lait sur votre liste de courses ou de créer une Todo-list.
