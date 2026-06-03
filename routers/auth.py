@@ -97,9 +97,12 @@ class LoginRequest(BaseModel):
 
 
 async def auth_middleware(request: Request, call_next):
-    # Webhooks entrants exemptés (protégés par leur propre secret).
-    is_hook = request.url.path.startswith("/api/hooks/")
-    if _auth_active() and request.url.path.startswith("/api/") and request.url.path != "/api/login" and not is_hook:
+    # Endpoints PUBLICS (pas de session requise) : login, inscription par invitation,
+    # flux OIDC, et webhooks entrants (protégés par leur propre secret).
+    path = request.url.path
+    public = (path == "/api/login" or path == "/api/register"
+              or path.startswith("/api/auth/oidc/") or path.startswith("/api/hooks/"))
+    if _auth_active() and path.startswith("/api/") and not public:
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             return JSONResponse(status_code=401, content={"detail": "Non autorisé. Jeton de session manquant."})
@@ -192,6 +195,64 @@ async def change_my_password(request: Request, req: PasswordChangeRequest):
     if not user_store.set_password(username, req.new_password):
         raise HTTPException(status_code=400, detail="Changement impossible.")
     return {"status": "success"}
+
+
+class InviteRequest(BaseModel):
+    role: str = "user"
+    expires_hours: int = 168
+
+
+@router.post("/api/users/invites")
+async def create_invite(request: Request, req: InviteRequest):
+    """Génère une invitation d'inscription (ADMIN). Renvoie le code à partager."""
+    _require_admin(request)
+    from core.invites import invite_store
+    inv = invite_store.create(role=req.role, expires_hours=req.expires_hours,
+                              created_by=_current_user(request).get("username", ""))
+    return {"status": "success", "invite": inv}
+
+
+@router.get("/api/users/invites")
+async def list_invites(request: Request):
+    _require_admin(request)
+    from core.invites import invite_store
+    return {"invites": invite_store.list()}
+
+
+@router.delete("/api/users/invites/{code}")
+async def revoke_invite(request: Request, code: str):
+    _require_admin(request)
+    from core.invites import invite_store
+    if not invite_store.revoke(code):
+        raise HTTPException(status_code=404, detail="Invitation introuvable.")
+    return {"status": "success"}
+
+
+class RegisterRequest(BaseModel):
+    code: str
+    username: str
+    password: str
+
+
+@router.post("/api/register")
+async def register(req: RegisterRequest):
+    """Inscription PUBLIQUE via un code d'invitation valide → crée le compte + connecte."""
+    from core.invites import invite_store
+    username = (req.username or "").strip()
+    if not username or len((req.password or "")) < 4:
+        raise HTTPException(status_code=400, detail="username requis et mot de passe d'au moins 4 caractères.")
+    inv = invite_store.check(req.code)
+    if not inv:
+        raise HTTPException(status_code=403, detail="Invitation invalide, expirée ou déjà utilisée.")
+    if user_store.verify(username, "") is not None or any(u["username"] == username for u in user_store.list()):
+        raise HTTPException(status_code=409, detail="Ce nom d'utilisateur existe déjà.")
+    # Consommer l'invitation AVANT de créer (atomique : évite la double-utilisation).
+    if not invite_store.consume(req.code, username):
+        raise HTTPException(status_code=403, detail="Invitation déjà utilisée.")
+    if not user_store.create(username, req.password, inv["role"]):
+        raise HTTPException(status_code=400, detail="Création du compte impossible.")
+    token = _new_session(username, inv["role"])
+    return {"status": "success", "token": token, "username": username, "role": inv["role"]}
 
 
 class AdminPasswordResetRequest(BaseModel):
