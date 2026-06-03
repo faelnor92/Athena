@@ -1204,6 +1204,9 @@
                     <p class="section-desc" style="margin-bottom: 8px;">Mode <strong>chaîne de montage</strong> (type CrewAI), optionnel : une suite ordonnée d'étapes (agent + instruction). Les étapes s'exécutent séquentiellement, la sortie de l'une devient l'entrée de la suivante, et aucun agent ne peut dévier de la chaîne. Reproductible et auditable — le swarm organique reste le mode par défaut.</p>
                     <div id="workflows-list" style="display: flex; flex-direction: column; gap: 8px; margin: 10px 0; max-height: 200px; overflow-y: auto;"></div>
 
+                    <!-- Admin uniquement : automatisations en attente de validation (tous comptes) -->
+                    <div id="workflow-admin-pending" style="display: none;"></div>
+
                     <h5 style="color: var(--accent-cyan); margin: 8px 0;">Nouveau / éditer un workflow</h5>
                     <input type="hidden" id="workflow-id">
                     <div class="form-group"><label>Nom</label><input id="workflow-name" type="text" placeholder="Ex: Qualité du code"></div>

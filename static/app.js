@@ -7163,7 +7163,7 @@ async function loadWorkflowsPane() {
         const ps = d.pipelines || [];
         box.innerHTML = ps.length ? ps.map(p => `
             <div class="glass" style="padding:8px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;display:flex;align-items:center;gap:8px;">
-              <div style="flex:1;"><strong>${_esc(p.name)}</strong><br><span style="opacity:0.6;font-size:0.75rem;">${(p.steps || []).length} étape(s) : ${(p.steps || []).map(s => _esc(s.agent)).join(" → ")}</span></div>
+              <div style="flex:1;"><strong>${_esc(p.name)}</strong> ${p.approved === false ? "<span style='color:#fb3;font-size:0.7rem;'>⏳ à valider</span>" : ""}<br><span style="opacity:0.6;font-size:0.75rem;">${(p.steps || []).length} étape(s) : ${(p.steps || []).map(s => _esc(s.agent)).join(" → ")}</span></div>
               <button type="button" class="btn" data-act="run" data-id="${p.id}" style="padding:2px 8px;" title="Exécuter">▶</button>
               <button type="button" class="btn" data-act="edit" data-id="${p.id}" style="padding:2px 8px;" title="Éditer">✏️</button>
               <button type="button" class="btn" data-act="del" data-id="${p.id}" style="padding:2px 8px;" title="Supprimer">🗑️</button>
@@ -7172,6 +7172,7 @@ async function loadWorkflowsPane() {
             const id = el.dataset.id, act = el.dataset.act, p = ps.find(x => x.id === id);
             el.onclick = () => { if (act === "run") runWorkflow(id); else if (act === "edit") editWorkflow(p); else deleteWorkflow(id); };
         });
+        await loadAdminPending();
     } catch (e) { box.innerHTML = "<p style='opacity:0.6;'>Erreur de chargement.</p>"; }
 }
 function editWorkflow(p) {
@@ -7222,3 +7223,38 @@ async function deleteWorkflow(id) {
     if (save) save.addEventListener("click", saveWorkflow);
     if (clr) clr.addEventListener("click", clearWorkflowForm);
 })();
+
+
+/* ===== Validation admin des automatisations (pipelines + routines) ===== */
+async function loadAdminPending() {
+    const box = document.getElementById("workflow-admin-pending");
+    if (!box) return;
+    let isAdmin = false;
+    try { const me = await (await apiFetch("/api/me")).json(); isAdmin = me && me.role === "admin"; } catch (e) {}
+    if (!isAdmin) { box.style.display = "none"; box.innerHTML = ""; return; }
+    let pipes = [], routs = [];
+    try { pipes = (await (await apiFetch("/api/pipelines/pending")).json()).pending || []; } catch (e) {}
+    try { routs = (await (await apiFetch("/api/routines/pending")).json()).pending || []; } catch (e) {}
+    if (!pipes.length && !routs.length) { box.style.display = "none"; box.innerHTML = ""; return; }
+    box.style.display = "block";
+    const row = (label, sub, kind, id) => `
+        <div class="glass" style="padding:8px;border:1px solid rgba(251,179,51,0.4);border-radius:8px;display:flex;align-items:center;gap:8px;margin:4px 0;">
+          <div style="flex:1;">${label}<br><span style="opacity:0.6;font-size:0.74rem;">${sub}</span></div>
+          <button type="button" class="btn btn-primary" data-pk="${kind}" data-pi="${id}" style="padding:2px 10px;">✅ Valider</button>
+        </div>`;
+    box.innerHTML = `<h5 style="color:#fb3;margin:8px 0;">🔐 En attente de validation (admin)</h5>` +
+        pipes.map(p => row(`🛠️ <strong>${_esc(p.name)}</strong> <span style="opacity:0.6;font-size:0.72rem;">· ${_esc(p.owner || "")}</span>`,
+                           `${(p.steps || []).length} étape(s) : ${(p.steps || []).map(s => _esc(s.agent)).join(" → ")}`, "pipeline", p.id)).join("") +
+        routs.map(r => row(`🗓️ <strong>${_esc(r.name)}</strong> <span style="opacity:0.6;font-size:0.72rem;">· ${_esc(r.owner || "")}</span>`,
+                           _esc(r.pipeline_id ? "déclenche un workflow" : (r.prompt || "")).slice(0, 80), "routine", r.id)).join("");
+    box.querySelectorAll("[data-pk]").forEach(el => {
+        el.onclick = async () => {
+            const kind = el.dataset.pk, id = el.dataset.pi;
+            el.disabled = true; el.textContent = "…";
+            try {
+                await apiFetch(`/api/${kind === "pipeline" ? "pipelines" : "routines"}/${id}/approve`, { method: "POST" });
+                loadWorkflowsPane();
+            } catch (e) { el.disabled = false; el.textContent = "✅ Valider"; }
+        };
+    });
+}
