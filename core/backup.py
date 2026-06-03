@@ -17,7 +17,7 @@ def _root() -> str:
 def _file_targets() -> list:
     root = _root()
     patterns = [
-        "conversations.json", "conversations_*.json", "core_memory.json",
+        "conversations.sqlite3", "users.json", "core_memory.json",
         "routines.json", "runs.sqlite3", "mcp_servers.json",
         "channel_policies.json", "workspace/pricing_config.json",
     ]

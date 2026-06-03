@@ -1,5 +1,23 @@
 # Historique des Versions (Changelog)
 
+## v0.9.36 (Sécurité & Optimisation)
+Cette mise à jour mineure se concentre sur le durcissement de la sécurité des données et la protection des budgets API.
+
+### 🔐 Sécurité & E2EE
+- **Chiffrement au repos (E2EE)** : Les historiques de conversations stockés dans SQLite sont désormais chiffrés de bout en bout en AES-256 (Fernet). Une clé secrète est auto-générée dans le `.env`.
+- **Rétrocompatibilité** : Migration douce automatique des anciens historiques non chiffrés.
+- **Backup** : Ajout explicite de `conversations.sqlite3` et `users.json` à la boucle de sauvegarde (sans inclure le `.env`).
+
+### 🪙 Quotas & Contrôle des Coûts
+- **Limites Utilisateurs** : Introduction d'un quota strict de tokens LLM journalier par utilisateur, administrable via `users.json`.
+- **Interception Active** : Suivi rigoureux de la consommation (prompt+completion) via `response.usage` ou estimation heuristique.
+- **Plafonnement** : Réduction automatique de la taille du contexte envoyé à l'API (`_maybe_compact` rendu plus agressif à 15 messages) et plafonnement matériel à 4000 tokens maximum en réponse.
+
+### ⚙️ Orchestration
+- **Pipeline Rigide** : Ajout d'un nouvel outil expérimental `run_rigid_pipeline` permettant de forcer un travail à la chaîne séquentiel (ex: Agent A -> Agent B -> Agent C) en ignorant les transferts naturels du Swarm.
+
+---
+
 ## v0.9.35 (Dernière version majeure)
 *Nom de code officiel : Athena*
 
