@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Point d'entrée : backend vocal ESPHome (satellites ESP32-S3 → Jarvis, sans HA).
+"""Point d'entrée : backend vocal ESPHome (satellites ESP32-S3 → Athena, sans HA).
 
 Prérequis :
-  - le serveur Jarvis tourne (python3 server.py) ;
+  - le serveur Athena tourne (python3 server.py) ;
   - pip install -r requirements-voice.txt (faster-whisper, aioesphomeapi…) + Piper ;
   - satellites.json (cf. .example) ;
   - ESPHome flashé avec le composant voice_assistant (cf. docs/esphome-satellite.yaml).

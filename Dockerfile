@@ -1,4 +1,4 @@
-# Image de l'application Jarvis v2
+# Image de l'application Athena v2
 FROM python:3.11-slim
 
 # Client Docker (pour piloter la sandbox via le socket hôte) + libs utiles.

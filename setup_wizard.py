@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assistant d'installation interactif de Jarvis (cross-platform).
+"""Assistant d'installation interactif de Athena (cross-platform).
 
 Appelé par install.sh / install.ps1 APRÈS la création du venv et l'installation du
 cœur (requirements.txt). Il propose :
@@ -183,12 +183,12 @@ def step_env_essentials():
 
 def step_starting_team():
     """Par défaut, l'app démarre avec l'orchestrateur SEUL ; l'utilisateur ajoute ses
-    agents ensuite (UI / création par Jarvis). Option : démarrer avec l'équipe d'exemple."""
+    agents ensuite (UI / création par Athena). Option : démarrer avec l'équipe d'exemple."""
     if os.path.exists("agents.yaml"):
         return  # config déjà présente : on n'y touche pas
     say("\n— Agents au démarrage —", "bold")
     say("Par défaut, l'application démarre avec l'orchestrateur SEUL ; tu ajoutes tes")
-    say("propres agents ensuite (bouton « Créer un agent » ou en le demandant à Jarvis).")
+    say("propres agents ensuite (bouton « Créer un agent » ou en le demandant à Athena).")
     if os.path.exists("agents.example.yaml") and ask_yes_no(
             "Préférer démarrer avec une ÉQUIPE d'exemple (Codeur, Auteur, Traducteur…) ?", default=False):
         shutil.copy("agents.example.yaml", "agents.yaml")
@@ -198,7 +198,7 @@ def step_starting_team():
 
 
 def main():
-    say(f"\n{C['bold']}🔧 Assistant de configuration Jarvis{C['nc']}")
+    say(f"\n{C['bold']}🔧 Assistant de configuration Athena{C['nc']}")
     if AUTO:
         say("(mode --auto : tout l'optionnel est installé sans question)", "yellow")
     elif not INTERACTIVE:

@@ -18,7 +18,7 @@ COLOR_MAGENTA = "\033[95m"
 COLOR_BOLD = "\033[1m"
 
 def main():
-    print(f"{COLOR_BOLD}{COLOR_CYAN}🌿 Jarvis Coder CLI (Claude Code Style) | Swarm Engine{COLOR_RESET}\n")
+    print(f"{COLOR_BOLD}{COLOR_CYAN}🌿 Athena Coder CLI (Claude Code Style) | Swarm Engine{COLOR_RESET}\n")
     
     # Vérification du dossier de travail
     active_workspace = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
@@ -37,7 +37,7 @@ def main():
         sys.exit(1)
         
     # Analyse des arguments pour lancer une seule instruction ou démarrer la boucle interactive
-    parser = argparse.ArgumentParser(description="Jarvis Coder CLI Console")
+    parser = argparse.ArgumentParser(description="Athena Coder CLI Console")
     parser.add_argument("instruction", nargs="*", help="Instruction de code directe à exécuter")
     args = parser.parse_args()
     
@@ -55,7 +55,7 @@ def main():
         
         while True:
             try:
-                prompt_str = f"{COLOR_BOLD}{COLOR_GREEN}jarvis-coder > {COLOR_RESET}"
+                prompt_str = f"{COLOR_BOLD}{COLOR_GREEN}athena-coder > {COLOR_RESET}"
                 cmd = input(prompt_str).strip()
                 if not cmd:
                     continue
@@ -73,7 +73,7 @@ def main():
 def run_command(swarm, agent, messages, command_text):
     messages.append({"role": "user", "content": command_text})
     
-    print(f"\n{COLOR_CYAN}⏳ Jarvis réfléchit et exécute les outils...{COLOR_RESET}")
+    print(f"\n{COLOR_CYAN}⏳ Athena réfléchit et exécute les outils...{COLOR_RESET}")
     
     try:
         # Exécution de l'agent Codeur

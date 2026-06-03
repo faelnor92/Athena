@@ -1,7 +1,7 @@
 from core.notifications import notify
 
 
-def send_notification(message: str, title: str = "Jarvis", channel: str = "") -> str:
+def send_notification(message: str, title: str = "Athena", channel: str = "") -> str:
     """
     Envoie un message/résultat à l'utilisateur sur ses messageries configurées.
     Idéal quand l'utilisateur demande de RECEVOIR une réponse (ex: « envoie-moi ça par

@@ -1,6 +1,6 @@
-// Service worker minimal pour rendre Jarvis installable (PWA).
+// Service worker minimal pour rendre Athena installable (PWA).
 // Stratégie réseau d'abord (pas de cache agressif : évite une UI/API périmée).
-const CACHE = "jarvis-shell-v1";
+const CACHE = "athena-shell-v1";
 const SHELL = ["/", "/index.html", "/app.js", "/style.css", "/manifest.json"];
 
 self.addEventListener("install", (e) => {

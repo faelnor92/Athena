@@ -30,9 +30,9 @@ def _final_response(steps: List[dict]) -> str:
     return ""
 
 
-def _run_once(swarm, message: str, start_agent: str = "Jarvis"):
+def _run_once(swarm, message: str, start_agent: str = "Athena"):
     """Exécute un message dans un run isolé et renvoie (agent, steps, response)."""
-    starting = swarm.agents.get(start_agent) or swarm.agents.get("Jarvis") \
+    starting = swarm.agents.get(start_agent) or swarm.agents.get("Athena") \
         or next(iter(swarm.agents.values()))
     rid = run_store.new_run_id()
     started = time.time()
@@ -93,7 +93,7 @@ def run_eval(swarm, cases: List[dict]) -> Dict[str, Any]:
     results = []
     for case in cases:
         message = case.get("message", "")
-        start_agent = case.get("start_agent", "Jarvis")
+        start_agent = case.get("start_agent", "Athena")
         try:
             _rid, _started, agent, steps, resp = _run_once(swarm, message, start_agent)
             tools_used = {s.get("tool") for s in steps if s.get("type") == "tool_call"}

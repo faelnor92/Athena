@@ -1,8 +1,8 @@
 agents:
-- name: Jarvis
+- name: Athena
   orchestrator: true
-  display_name: Jarvis
-  welcome_message: Bonjour, je suis Jarvis. Comment puis-je vous aider aujourd'hui
+  display_name: Athena
+  welcome_message: Bonjour, je suis Athena. Comment puis-je vous aider aujourd'hui
     ?
   avatar_type: athena
   model: qwen3
@@ -46,7 +46,8 @@ agents:
   - delete_list_item
   - generate_artistic_image
   - generate_artistic_video
-  - get_daily_briefing
+  - get_time
+  - get_weather
   - manage_conversations
   - query_agent
   - debate_between_agents

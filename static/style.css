@@ -12,7 +12,7 @@
     --text-glow: #e2e8f0;
     
     /* Couleurs thématiques des agents */
-    --color-Jarvis: #00f0ff;
+    --color-Athena: #00f0ff;
     --color-Codeur: #00ff66;
     --color-Auteur: #d600ff;
     --color-Redacteur: #d600ff;
@@ -115,13 +115,13 @@ body {
 
 .dock-logo-box {
     font-size: 1.65rem;
-    filter: drop-shadow(0 0 10px var(--color-Jarvis));
+    filter: drop-shadow(0 0 10px var(--color-Athena));
     animation: pulseGlow 3s infinite alternate;
 }
 
 @keyframes pulseGlow {
-    from { filter: drop-shadow(0 0 4px var(--color-Jarvis)); }
-    to { filter: drop-shadow(0 0 12px var(--color-Jarvis)); }
+    from { filter: drop-shadow(0 0 4px var(--color-Athena)); }
+    to { filter: drop-shadow(0 0 12px var(--color-Athena)); }
 }
 
 .dock-icons {
@@ -156,7 +156,7 @@ body {
 }
 
 .dock-btn.active {
-    color: var(--color-Jarvis);
+    color: var(--color-Athena);
     background: rgba(0, 240, 255, 0.08);
     border-color: rgba(0, 240, 255, 0.3);
     box-shadow: 0 0 15px rgba(0, 240, 255, 0.15);
@@ -170,9 +170,9 @@ body {
     top: 14px;
     height: 20px;
     width: 3px;
-    background: var(--color-Jarvis);
+    background: var(--color-Athena);
     border-radius: 0 4px 4px 0;
-    box-shadow: 0 0 8px var(--color-Jarvis);
+    box-shadow: 0 0 8px var(--color-Athena);
 }
 
 .dock-icon {
@@ -287,9 +287,9 @@ body {
     transform: translate(-50%, -50%);
     width: 6px;
     height: 6px;
-    background: var(--color-Jarvis);
+    background: var(--color-Athena);
     border-radius: 50%;
-    box-shadow: 0 0 10px var(--color-Jarvis);
+    box-shadow: 0 0 10px var(--color-Athena);
 }
 
 .dock-footer {
@@ -379,7 +379,7 @@ body {
     letter-spacing: 0.15em;
     color: #fff;
     text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
-    background: linear-gradient(135deg, #fff 0%, var(--color-Jarvis) 100%);
+    background: linear-gradient(135deg, #fff 0%, var(--color-Athena) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -452,7 +452,7 @@ body {
 }
 
 .tokens-badge {
-    color: var(--color-Jarvis);
+    color: var(--color-Athena);
     border-color: rgba(0, 240, 255, 0.2);
     box-shadow: inset 0 0 6px rgba(0, 240, 255, 0.08);
 }
@@ -550,8 +550,8 @@ body {
 }
 
 .floating-control-btn:hover {
-    background: var(--color-Jarvis);
-    border-color: var(--color-Jarvis);
+    background: var(--color-Athena);
+    border-color: var(--color-Athena);
     color: #000;
     transform: scale(1.08);
 }
@@ -850,7 +850,7 @@ code[class*="language-"] {
 }
 
 .path-input:focus {
-    border-color: var(--color-Jarvis);
+    border-color: var(--color-Athena);
 }
 
 .suggestions-dropdown {
@@ -903,7 +903,7 @@ code[class*="language-"] {
 }
 
 .upload-dropzone:hover {
-    border-color: var(--color-Jarvis);
+    border-color: var(--color-Athena);
     background: rgba(0, 240, 255, 0.02);
     color: #fff;
 }
@@ -936,7 +936,7 @@ code[class*="language-"] {
 
 .file-item-card.active {
     background: rgba(0, 240, 255, 0.06);
-    border-color: var(--color-Jarvis);
+    border-color: var(--color-Athena);
     color: #fff;
 }
 
@@ -1027,7 +1027,7 @@ code[class*="language-"] {
 }
 
 .active-list-dropdown:focus {
-    border-color: var(--color-Jarvis);
+    border-color: var(--color-Athena);
 }
 
 .list-item-textbox {
@@ -1163,7 +1163,7 @@ code[class*="language-"] {
 }
 
 .agent-node.active .node-avatar {
-    border-color: var(--color-Jarvis);
+    border-color: var(--color-Athena);
     box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
 }
 
@@ -1290,7 +1290,7 @@ code[class*="language-"] {
 
 .memory-key {
     font-weight: 700;
-    color: var(--color-Jarvis);
+    color: var(--color-Athena);
     text-transform: uppercase;
     font-size: 0.64rem;
     letter-spacing: 0.05em;
@@ -1503,7 +1503,7 @@ code[class*="language-"] {
 }
 
 /* Color-coded borders based on active agent */
-.message.agent-Jarvis { border-left: 3px solid var(--color-Jarvis); box-shadow: inset 2px 0 6px rgba(0, 240, 255, 0.05); }
+.message.agent-Athena { border-left: 3px solid var(--color-Athena); box-shadow: inset 2px 0 6px rgba(0, 240, 255, 0.05); }
 .message.agent-Codeur { border-left: 3px solid var(--color-Codeur); box-shadow: inset 2px 0 6px rgba(0, 255, 102, 0.05); }
 .message.agent-Auteur { border-left: 3px solid var(--color-Auteur); box-shadow: inset 2px 0 6px rgba(214, 0, 255, 0.05); }
 .message.agent-Chef { border-left: 3px solid var(--color-Chef); box-shadow: inset 2px 0 6px rgba(255, 183, 0, 0.05); }
@@ -1621,7 +1621,7 @@ code[class*="language-"] {
 }
 
 .chat-mic-btn:hover {
-    color: var(--color-Jarvis);
+    color: var(--color-Athena);
 }
 
 #chat-input {
@@ -1647,7 +1647,7 @@ code[class*="language-"] {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: var(--color-Jarvis);
+    background: var(--color-Athena);
     border: none;
     color: #000;
     cursor: pointer;
@@ -1656,7 +1656,7 @@ code[class*="language-"] {
 
 .chat-send-btn:hover {
     transform: scale(1.08) rotate(5deg);
-    box-shadow: 0 0 8px var(--color-Jarvis);
+    box-shadow: 0 0 8px var(--color-Athena);
 }
 
 .send-icon-svg {
@@ -2399,7 +2399,7 @@ code[class*="language-"] {
 }
 .mcp-card-title {
     font-weight: bold;
-    color: var(--color-Jarvis);
+    color: var(--color-Athena);
     display: flex;
     align-items: center;
     gap: 8px;

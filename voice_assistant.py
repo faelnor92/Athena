@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Point d'entrée de l'assistant vocal local Jarvis.
+"""Point d'entrée de l'assistant vocal local Athena.
 
 Prérequis :
-  - le serveur Jarvis tourne (python3 server.py) ;
+  - le serveur Athena tourne (python3 server.py) ;
   - dépendances vocales installées : pip install -r requirements-voice.txt ;
   - pour Piper : binaire `piper` + un modèle .onnx (VOICE_PIPER_MODEL) ;
   - configuration via .env (variables VOICE_*).

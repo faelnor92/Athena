@@ -349,7 +349,7 @@ def add_caldav_calendar_event(title: str, datetime_str: str, duration_minutes: i
         # Construire un fichier ICS valide minimaliste
         ics_data = f"""BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//Jarvis Swarm//Calendar Client//FR
+PRODID:-//Athena Swarm//Calendar Client//FR
 BEGIN:VEVENT
 UID:{event_uid}
 DTSTAMP:{stamp}

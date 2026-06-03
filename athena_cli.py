@@ -29,12 +29,12 @@ def print_system_msg(msg: str):
     print(f"{Colors.WARNING}[Système] {msg}{Colors.ENDC}")
 
 async def main():
-    parser = argparse.ArgumentParser(description="Jarvis CLI - Terminal pur")
+    parser = argparse.ArgumentParser(description="Athena CLI - Terminal pur")
     parser.add_argument("--agent", type=str, default="Codeur", help="L'agent à verrouiller pour la session")
     args = parser.parse_args()
 
     print(f"{Colors.HEADER}{Colors.BOLD}===================================={Colors.ENDC}")
-    print(f"{Colors.HEADER}{Colors.BOLD}      JARVIS CLI - Mode Terminal    {Colors.ENDC}")
+    print(f"{Colors.HEADER}{Colors.BOLD}      ATHENA CLI - Mode Terminal    {Colors.ENDC}")
     print(f"{Colors.HEADER}{Colors.BOLD}===================================={Colors.ENDC}")
     print(f"Agent ciblé : {Colors.OKGREEN}{args.agent}{Colors.ENDC}")
     print(f"Les transferts (Handoffs) sont bloqués. L'agent utilisera uniquement la sous-traitance (Délégation).")

@@ -35,7 +35,7 @@ def manage_conversations(action: str, name: str = None) -> str:
 def query_agent(agent_name: str, prompt: str) -> str:
     """
     Exécute un autre agent de l'essaim en arrière-plan avec une requête spécifique et renvoie sa réponse finale.
-    Utile pour déléguer des sous-tâches en parallèle ou obtenir des expertises croisées dans un seul rapport de Jarvis.
+    Utile pour déléguer des sous-tâches en parallèle ou obtenir des expertises croisées dans un seul rapport de Athena.
     agent_name: Le nom de l'agent à interroger (ex: 'Codeur', 'Auteur', 'Traducteur', 'CommunityManager', 'Correcteur').
     prompt: La question ou tâche spécifique à confier à cet agent.
     """
@@ -67,7 +67,7 @@ def query_agent(agent_name: str, prompt: str) -> str:
 def debate_between_agents(agents: str, subject: str, turns: str = "2") -> str:
     """
     Lance un débat collaboratif (table ronde) entre plusieurs agents pour confronter leurs idées sur un sujet et génère une synthèse.
-    agents: Les noms des agents participants séparés par des virgules (ex: 'Jarvis,Codeur,Auteur' ou 'Codeur,Auteur').
+    agents: Les noms des agents participants séparés par des virgules (ex: 'Athena,Codeur,Auteur' ou 'Codeur,Auteur').
     subject: Le sujet, problème ou question sur lequel ils doivent débattre.
     turns: Le nombre de tours de table complets (ex: '2').
     """
@@ -144,9 +144,9 @@ def debate_between_agents(agents: str, subject: str, turns: str = "2") -> str:
     
     def call_agent_directly(agent, user_content):
         """Appelle directement le LLM de l'agent sans passer par le Swarm (évite la récursion)."""
-        if agent.name == "Jarvis":
+        if agent.name == "Athena":
             sys_prompt = (
-                "Tu es Jarvis, le conseiller principal. Tu participes à une table ronde collaborative en coulisses. "
+                "Tu es Athena, le conseiller principal. Tu participes à une table ronde collaborative en coulisses. "
                 "Réponds avec tes meilleures suggestions et arguments. Sois concis."
             )
         else:

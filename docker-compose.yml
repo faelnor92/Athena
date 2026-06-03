@@ -1,40 +1,40 @@
-# Déploiement auto-hébergé de Jarvis v2.
+# Déploiement auto-hébergé de Athena v2.
 #
 # Prérequis :
 #   1. Copier .env.example -> .env et définir au minimum ADMIN_PASSWORD
 #      (obligatoire car le conteneur écoute sur 0.0.0.0) et tes clés LLM.
-#   2. Définir JARVIS_DATA = chemin ABSOLU sur l'hôte pour l'état persistant.
+#   2. Définir ATHENA_DATA = chemin ABSOLU sur l'hôte pour l'état persistant.
 #      (Il est monté au MÊME chemin dans le conteneur : indispensable pour que
 #       la sandbox Docker — pilotée via le socket hôte — puisse monter le
 #       workspace dans ses conteneurs jetables.)
-#      Exemple dans .env :  JARVIS_DATA=/opt/jarvis/data
+#      Exemple dans .env :  ATHENA_DATA=/opt/athena/data
 #
 # Lancement :  docker compose up -d --build
 # Accès :      http://localhost:8000  (ou derrière un reverse-proxy HTTPS)
 
 services:
-  jarvis:
+  athena:
     build: .
-    container_name: jarvis
+    container_name: athena
     restart: unless-stopped
     ports:
       - "8000:8000"
     env_file: .env
     environment:
       HOST: "0.0.0.0"
-      JARVIS_DATA: "${JARVIS_DATA:?Définis JARVIS_DATA=/chemin/absolu dans .env}"
-      # Tout l'état persistant vit sous JARVIS_DATA (chemin identique hôte/conteneur).
-      CONVERSATIONS_PATH: "${JARVIS_DATA}/conversations.json"
-      CORE_MEMORY_PATH: "${JARVIS_DATA}/core_memory.json"
-      CHROMA_DB_PATH: "${JARVIS_DATA}/chroma"
-      RUNS_DB_PATH: "${JARVIS_DATA}/runs.sqlite3"
-      ROUTINES_PATH: "${JARVIS_DATA}/routines.json"
-      ACTIVE_WORKSPACE_DIR: "${JARVIS_DATA}/workspace"
-      LOG_DIR: "${JARVIS_DATA}/logs"
-      MCP_CONFIG_PATH: "${JARVIS_DATA}/mcp_servers.json"
-      CHANNEL_POLICIES_PATH: "${JARVIS_DATA}/channel_policies.json"
+      ATHENA_DATA: "${ATHENA_DATA:?Définis ATHENA_DATA=/chemin/absolu dans .env}"
+      # Tout l'état persistant vit sous ATHENA_DATA (chemin identique hôte/conteneur).
+      CONVERSATIONS_PATH: "${ATHENA_DATA}/conversations.json"
+      CORE_MEMORY_PATH: "${ATHENA_DATA}/core_memory.json"
+      CHROMA_DB_PATH: "${ATHENA_DATA}/chroma"
+      RUNS_DB_PATH: "${ATHENA_DATA}/runs.sqlite3"
+      ROUTINES_PATH: "${ATHENA_DATA}/routines.json"
+      ACTIVE_WORKSPACE_DIR: "${ATHENA_DATA}/workspace"
+      LOG_DIR: "${ATHENA_DATA}/logs"
+      MCP_CONFIG_PATH: "${ATHENA_DATA}/mcp_servers.json"
+      CHANNEL_POLICIES_PATH: "${ATHENA_DATA}/channel_policies.json"
     volumes:
       # Même chemin hôte/conteneur => la sandbox (socket hôte) peut monter le workspace.
-      - "${JARVIS_DATA}:${JARVIS_DATA}"
+      - "${ATHENA_DATA}:${ATHENA_DATA}"
       # Socket Docker : exécution de la sandbox en conteneurs frères sur l'hôte.
       - "/var/run/docker.sock:/var/run/docker.sock"

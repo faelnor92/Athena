@@ -59,7 +59,7 @@ def _handle_command(text, swarm, current_agent, messages):
             channel, msg = sub[0].lower(), (sub[1] if len(sub) > 1 else "")
         else:
             channel, msg = "", arg
-        print(send_notification(msg or "Test depuis le CLI Jarvis.", channel=channel))
+        print(send_notification(msg or "Test depuis le CLI Athena.", channel=channel))
     elif cmd == "/profile":
         from core.user_profile import user_profile
         print(user_profile.get() or "(profil vide)")
@@ -110,10 +110,10 @@ def main():
     except Exception as e:
         print(f"[MCP] Démarrage ignoré : {e}")
 
-    # On démarre toujours avec Jarvis
-    current_agent = swarm.agents.get("Jarvis")
+    # On démarre toujours avec Athena
+    current_agent = swarm.agents.get("Athena")
     if not current_agent:
-        print("Erreur : Agent 'Jarvis' introuvable dans agents.yaml.")
+        print("Erreur : Agent 'Athena' introuvable dans agents.yaml.")
         return
 
     messages = []

@@ -1,4 +1,4 @@
-"""Sauvegarde / restauration de l'état de Jarvis (archive ZIP).
+"""Sauvegarde / restauration de l'état de Athena (archive ZIP).
 
 Sauvegarde l'état local (conversations, mémoire core + vectorielle, runs,
 routines, compétences, configs MCP/canaux/pricing) dans un seul .zip

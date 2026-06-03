@@ -332,17 +332,17 @@ def transcribe_and_summarize_meeting(audio_file_path: str) -> str:
             print("🎙️ [Tool Meeting] Aucun fournisseur configuré. Lancement d'une simulation...")
             result_json = {
                 "transcript": [
-                    {"speaker": "Marc (Président)", "text": "Bonjour à tous. Merci d'être venus pour ce point d'avancement Jarvis-Swarm."},
+                    {"speaker": "Marc (Président)", "text": "Bonjour à tous. Merci d'être venus pour ce point d'avancement Athena-Swarm."},
                     {"speaker": "Sophie (R&D)", "text": "Bonjour Marc. De notre côté, l'intégration du double-moteur vidéo Hunyuan et Stable Video Diffusion est terminée."},
                     {"speaker": "Lucas (UX)", "text": "Super! J'ai testé l'interface, les modals de réglages s'affichent maintenant parfaitement par-dessus les autres."},
                     {"speaker": "Marc (Président)", "text": "Excellent travail de toute l'équipe. Validons cette release pour aujourd'hui !"},
                 ],
                 "summary": (
-                    "### 📝 Compte-rendu de Réunion - Jarvis-Swarm Release\n\n"
+                    "### 📝 Compte-rendu de Réunion - Athena-Swarm Release\n\n"
                     "**Date :** 28 Mai 2026\n"
                     "**Président de séance :** Marc\n\n"
                     "#### 1. Résumé exécutif\n"
-                    "La réunion a permis de valider les dernières fonctionnalités de production de médias d'art IA de la release Jarvis-Swarm. Les fonctionnalités d'animation vidéo cloud (Fal & Replicate) et les corrections de couches graphiques (z-index modals) sont officiellement validées.\n\n"
+                    "La réunion a permis de valider les dernières fonctionnalités de production de médias d'art IA de la release Athena-Swarm. Les fonctionnalités d'animation vidéo cloud (Fal & Replicate) et les corrections de couches graphiques (z-index modals) sont officiellement validées.\n\n"
                     "#### 2. Points clés abordés\n"
                     "- Intégration du double-moteur vidéo Hunyuan Video sur Fal.ai et Replicate.\n"
                     "- Correction du chevauchement des fenêtres modales de réglages d'agents.\n"

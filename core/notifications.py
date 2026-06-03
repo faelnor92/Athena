@@ -51,7 +51,7 @@ def _send_email(host, to_list, subject, body):
     port = int(os.getenv("SMTP_PORT", "587"))
     user = os.getenv("SMTP_USER", "").strip()
     pwd = os.getenv("SMTP_PASSWORD", "")
-    sender = os.getenv("SMTP_FROM", "").strip() or user or "jarvis@localhost"
+    sender = os.getenv("SMTP_FROM", "").strip() or user or "athena@localhost"
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
     msg["From"] = sender
@@ -103,7 +103,7 @@ def notify(message: str, title: str = None, channel: str = None) -> list:
     url = os.getenv("NOTIFY_WEBHOOK_URL", "").strip()
     if url and _wanted("webhook"):
         try:
-            requests.post(url, json={"title": title or "Jarvis", "message": message}, timeout=8)
+            requests.post(url, json={"title": title or "Athena", "message": message}, timeout=8)
             sent.append("webhook")
         except Exception as e:
             print(f"[notif webhook] {e}")
@@ -126,7 +126,7 @@ def notify(message: str, title: str = None, channel: str = None) -> list:
     to_list = _csv_user("NOTIFY_EMAIL_TO")
     if host and to_list and _wanted("email"):
         try:
-            _send_email(host, to_list, title or "Notification Jarvis", message)
+            _send_email(host, to_list, title or "Notification Athena", message)
             sent.append("email")
         except Exception as e:
             print(f"[notif email] {e}")

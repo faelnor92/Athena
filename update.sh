@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =========================================================================
-# UPDATE SCRIPT - JARVIS SWARM
+# UPDATE SCRIPT - ATHENA SWARM
 # =========================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
@@ -17,12 +17,12 @@ echo -e "\033[0;33m🔄 Installation des éventuelles nouvelles dépendances...\
 source venv/bin/activate
 pip install -r requirements.txt --quiet
 
-echo -e "\033[0;36m🚀 Redémarrage du serveur Jarvis...\033[0m"
-if command -v jarvis &> /dev/null; then
-    jarvis restart
+echo -e "\033[0;36m🚀 Redémarrage du serveur Athena...\033[0m"
+if command -v athena &> /dev/null; then
+    athena restart
 else
-    if [ -f "$HOME/.local/bin/jarvis" ]; then
-        "$HOME/.local/bin/jarvis" restart
+    if [ -f "$HOME/.local/bin/athena" ]; then
+        "$HOME/.local/bin/athena" restart
     else
         echo -e "\033[0;33m⚠️ Relance manuelle du serveur...\033[0m"
         pkill -f "python.*server.py" || true

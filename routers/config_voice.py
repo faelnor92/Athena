@@ -52,7 +52,7 @@ class SaveSatelliteRequest(BaseModel):
     encryption_key: str = ""
     password: str = ""
     wake_mode: str = "embedded"
-    wake_word: str = "hey_jarvis"
+    wake_word: str = "hey_athena"
 
 @router.get("/api/config/satellites")
 async def get_config_satellites() -> Dict[str, Any]:
@@ -66,7 +66,7 @@ async def get_config_satellites() -> Dict[str, Any]:
             "port": int(s.get("port", 6053)),
             "key_set": bool(s.get("encryption_key") or s.get("password")),
             "wake_mode": s.get("wake_mode", "embedded"),
-            "wake_word": s.get("wake_word", "hey_jarvis"),
+            "wake_word": s.get("wake_word", "hey_athena"),
         } for s in sats]
         return {"satellites": safe, "status": es.manager.status()}
     except Exception as e:
@@ -154,7 +154,7 @@ async def gen_satellite_yaml(req: SatelliteYamlRequest) -> Dict[str, str]:
             i2c_sda=req.i2c_sda, i2c_scl=req.i2c_scl, audio=req.audio,
             activation=req.activation, custom_yaml=req.custom_yaml,
         )
-        return {"yaml": yaml_text, "filename": f"jarvis-satellite-{es._slug(name)}.yaml"}
+        return {"yaml": yaml_text, "filename": f"athena-satellite-{es._slug(name)}.yaml"}
     except Exception as e:
         import logging
         logging.exception("Erreur lors de la génération du YAML satellite")

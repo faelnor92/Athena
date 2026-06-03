@@ -1,7 +1,7 @@
 agents:
-- name: Jarvis
-  display_name: Jarvis
-  welcome_message: Bonjour, je suis Jarvis. Comment puis-je vous aider aujourd'hui
+- name: Athena
+  display_name: Athena
+  welcome_message: Bonjour, je suis Athena. Comment puis-je vous aider aujourd'hui
     ?
   avatar_type: athena
   model: qwen3
@@ -46,7 +46,8 @@ agents:
   - delete_list_item
   - generate_artistic_image
   - generate_artistic_video
-  - get_daily_briefing
+  - get_time
+  - get_weather
   - manage_conversations
   - query_agent
   - debate_between_agents
@@ -91,7 +92,7 @@ agents:
   - web_scrape
   - render_page
   handoffs:
-  - Jarvis
+  - Athena
   - Auteur
   - Correcteur
   - Traducteur
@@ -116,7 +117,7 @@ agents:
   - ingest_file
   - analyze_document
   handoffs:
-  - Jarvis
+  - Athena
   - Correcteur
   - Traducteur
   - CommunityManager
@@ -142,7 +143,7 @@ agents:
   - search_memory
   - analyze_document
   handoffs:
-  - Jarvis
+  - Athena
   - Auteur
   - Traducteur
   - CommunityManager
@@ -161,7 +162,7 @@ agents:
     repasse la main à l''orchestrateur.'
   tools: []
   handoffs:
-  - Jarvis
+  - Athena
   - CommunityManager
   - Auteur
   - Correcteur
@@ -189,7 +190,7 @@ agents:
   - generate_image
   - ingest_file
   handoffs:
-  - Jarvis
+  - Athena
   - Codeur
   - Auteur
   - Correcteur
@@ -211,7 +212,7 @@ agents:
   tools:
   - transcribe_and_summarize_meeting
   handoffs:
-  - Jarvis
+  - Athena
   - Codeur
 - name: AuditeurSecurite
   display_name: Agent Sécurité

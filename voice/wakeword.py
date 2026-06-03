@@ -37,7 +37,7 @@ def phrase_in_text(text: str, phrase: str) -> bool:
 
 
 class WakeWord:
-    def __init__(self, engine="openwakeword", wake_word="hey jarvis",
+    def __init__(self, engine="openwakeword", wake_word="hey athena",
                  porcupine_key="", sample_rate=16000):
         self.engine = engine
         self.wake_word = wake_word

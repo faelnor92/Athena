@@ -9,8 +9,8 @@ ne le sont pas** (cf. `.gitignore`). Voici comment repartir d'un poste neuf.
 
 ## 2. Cloner
 ```bash
-git clone <URL_DU_DEPOT> jarvis
-cd jarvis
+git clone <URL_DU_DEPOT> athena
+cd athena
 ```
 
 ## 3. Dépendances

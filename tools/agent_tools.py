@@ -1,6 +1,6 @@
-"""Outils d'auto-extension : permettre à Jarvis de créer/configurer des agents.
+"""Outils d'auto-extension : permettre à Athena de créer/configurer des agents.
 
-Garde-fous : on ne touche jamais à l'orchestrateur 'Jarvis', les outils sont
+Garde-fous : on ne touche jamais à l'orchestrateur 'Athena', les outils sont
 whitelistés contre AVAILABLE_TOOLS (+ compétences dynamiques), l'avatar est
 validé, et le swarm est rechargé à chaud après écriture de agents.yaml.
 """
@@ -39,10 +39,10 @@ def create_agent(name: str, system_prompt: str, model: str = "", tools: str = ""
                  welcome_message: str = "") -> str:
     """
     Crée un nouvel agent dans l'essaim (ou met à jour un agent existant), puis recharge l'essaim à chaud.
-    L'agent devient immédiatement utilisable et Jarvis peut lui déléguer des tâches (handoff automatique).
-    name: Nom unique de l'agent (lettres/chiffres/underscore, ex: 'Analyste'). Le nom 'Jarvis' est protégé et refusé.
+    L'agent devient immédiatement utilisable et Athena peut lui déléguer des tâches (handoff automatique).
+    name: Nom unique de l'agent (lettres/chiffres/underscore, ex: 'Analyste'). Le nom 'Athena' est protégé et refusé.
     system_prompt: Instruction système décrivant le rôle, le ton et la mission de l'agent.
-    model: Identifiant du modèle LLM (ex: 'gpt-4o'). Vide = réutilise le modèle de Jarvis.
+    model: Identifiant du modèle LLM (ex: 'gpt-4o'). Vide = réutilise le modèle de Athena.
     tools: Noms d'outils à accorder, séparés par des virgules (ex: 'web_search,execute_python_code'). Les outils inconnus sont ignorés.
     avatar_type: Apparence parmi robot_neon, dev_purple, writer_orange, manager_gold, artist_pink, support_green, scientist_blue, agent_dark, wizard_purple, cyber_neko, astronaut_white, cyber_ninja.
     display_name: Nom affiché optionnel (sinon = name).
@@ -53,7 +53,7 @@ def create_agent(name: str, system_prompt: str, model: str = "", tools: str = ""
     if swarm is None:
         return "Erreur : moteur d'essaim non initialisé."
 
-    orch_name = getattr(swarm, "orchestrator_name", None) or "Jarvis"
+    orch_name = getattr(swarm, "orchestrator_name", None) or "Athena"
     name = (name or "").strip()
     if not name:
         return "Erreur : le nom de l'agent est requis."
@@ -67,8 +67,8 @@ def create_agent(name: str, system_prompt: str, model: str = "", tools: str = ""
 
     # Modèle : par défaut, on reprend celui de l'orchestrateur pour rester cohérent.
     if not (model or "").strip():
-        jarvis = swarm.agents.get(orch_name)
-        model = getattr(jarvis, "model", None) or "gpt-4o"
+        athena = swarm.agents.get(orch_name)
+        model = getattr(athena, "model", None) or "gpt-4o"
 
     # Outils : whitelist stricte.
     known = _known_tool_names()
@@ -138,5 +138,5 @@ def create_agent(name: str, system_prompt: str, model: str = "", tools: str = ""
         msg += " Aucun outil accordé (agent conversationnel)."
     if ignored:
         msg += f" Outils ignorés (inconnus) : {', '.join(ignored)}."
-    msg += " Jarvis peut désormais lui déléguer des tâches via un transfert."
+    msg += " Athena peut désormais lui déléguer des tâches via un transfert."
     return msg

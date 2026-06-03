@@ -137,7 +137,7 @@ def _scope_cid(client_id: str) -> str:
 swarm = Swarm("agents.yaml")
 
 def _orch_name() -> str:
-    return getattr(swarm, "orchestrator_name", None) or "Jarvis"
+    return getattr(swarm, "orchestrator_name", None) or "Athena"
 
 def _app_name() -> str:
     return os.getenv("APP_NAME", "").strip() or _orch_name()

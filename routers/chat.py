@@ -70,7 +70,7 @@ def _resolve_starting_agent(sess, req):
                 mentioned_agent = agent
     if mentioned_agent:
         return mentioned_agent
-    if any(last_user_content.startswith(x) for x in ["bonjour jarvis", "jarvis,", "dis jarvis", "hey jarvis", "salut jarvis"]):
+    if any(last_user_content.startswith(x) for x in ["bonjour athena", "athena,", "dis athena", "hey athena", "salut athena"]):
         return _orch_agent()
     return starting_agent
 
@@ -581,8 +581,8 @@ async def chat_attach(file: UploadFile = File(...)):
             import base64
             mime = file.content_type or "image/png"
             data_url = f"data:{mime};base64,{base64.b64encode(content).decode()}"
-            jarvis = _orch_agent()
-            vmodel = os.getenv("VISION_MODEL", "").strip() or (jarvis.model if jarvis else "gpt-4o")
+            athena = _orch_agent()
+            vmodel = os.getenv("VISION_MODEL", "").strip() or (athena.model if athena else "gpt-4o")
             vmsg = [{"role": "user", "content": [
                 {"type": "text", "text": "Décris cette image en détail et retranscris tout texte visible."},
                 {"type": "image_url", "image_url": {"url": data_url}},

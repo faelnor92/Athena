@@ -18,7 +18,7 @@ async def backup_download():
     import datetime
     from core.backup import make_backup
     data = await asyncio.to_thread(make_backup)
-    fname = f"jarvis-backup-{datetime.date.today().isoformat()}.zip"
+    fname = f"athena-backup-{datetime.date.today().isoformat()}.zip"
     return Response(content=data, media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
@@ -42,7 +42,7 @@ async def get_platform():
     from core.platform_info import get_platform_info, sandbox_active, get_version
     info = get_platform_info()
     info["sandbox_active"] = sandbox_active()
-    info["app_name"] = os.getenv("APP_NAME", "Jarvis").strip() or "Jarvis"
+    info["app_name"] = os.getenv("APP_NAME", "Athena").strip() or "Athena"
     return info
 
 @router.get("/api/system/version")

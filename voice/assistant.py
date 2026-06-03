@@ -1,7 +1,7 @@
 """Boucle de l'assistant vocal local.
 
 Flux : (wake word) → enregistrement (VAD par énergie) → STT → envoi au serveur
-Jarvis via /api/chat/stream (canal 'voice') → TTS des réponses au fil de l'eau.
+Athena via /api/chat/stream (canal 'voice') → TTS des réponses au fil de l'eau.
 
 Réutilise l'API HTTP du serveur : il bénéficie donc des sessions par canal, des
 permissions (canal 'voice' = auto-approuvé) et du streaming SSE déjà en place.
@@ -113,7 +113,7 @@ class VoiceAssistant:
 
     # ------------------------------------------------------------- barge-in
     def _barge_in_monitor(self, interrupted: threading.Event, stop: threading.Event):
-        """Écoute le micro pendant que Jarvis parle ; déclenche `interrupted`
+        """Écoute le micro pendant que Athena parle ; déclenche `interrupted`
         si le wake word est redétecté (l'utilisateur reprend la parole)."""
         try:
             import sounddevice as sd
@@ -227,7 +227,7 @@ class VoiceAssistant:
 
     # ------------------------------------------------------------------- run
     def run(self):
-        print("🟢 Assistant vocal Jarvis démarré. Ctrl+C pour quitter.")
+        print("🟢 Assistant vocal Athena démarré. Ctrl+C pour quitter.")
         while True:
             try:
                 self.wait_for_wake()

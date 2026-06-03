@@ -1,4 +1,4 @@
-"""Pipeline vocal local pour Jarvis (STT faster-whisper, TTS Piper, wake word).
+"""Pipeline vocal local pour Athena (STT faster-whisper, TTS Piper, wake word).
 
 Tous les imports lourds (faster_whisper, piper, sounddevice, openwakeword) sont
 PARESSEUX : importer ce package ne nécessite aucune de ces dépendances. Elles ne

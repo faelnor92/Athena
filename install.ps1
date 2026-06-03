@@ -1,5 +1,5 @@
 # =========================================================================
-# NATIVE WINDOWS POWERSHELL INSTALLER - JARVIS v2
+# NATIVE WINDOWS POWERSHELL INSTALLER - ATHENA v2
 # =========================================================================
 
 # Clear console for neat rendering
@@ -25,15 +25,15 @@ Write-Host ""
 
 # Support de l'installation distante via iex (One-Liner)
 if (-not (Test-Path "server.py")) {
-    Write-Host "🔄 Installation distante détectée. Clonage du dépôt dans 'jarvis'..." -ForegroundColor $Yellow
+    Write-Host "🔄 Installation distante détectée. Clonage du dépôt dans 'athena'..." -ForegroundColor $Yellow
     $GitCheck = Get-Command git -ErrorAction SilentlyContinue
     if (-not $GitCheck) {
         Write-Host "❌ Erreur : git est requis pour cloner le dépôt." -ForegroundColor $Red
         Exit 1
     }
-    git clone https://github.com/faelnor92/jarvis.git jarvis
+    git clone https://github.com/faelnor92/athena.git athena
     if ($LASTEXITCODE -ne 0) { Exit 1 }
-    Set-Location jarvis
+    Set-Location athena
     & .\install.ps1
     Exit 0
 }
@@ -131,9 +131,9 @@ Write-Host "🔄 Étape 5 : Génération des scripts de lancement rapide Windows
 $RunBatPath = Join-Path $ScriptDir "run.bat"
 $BatContent = @"
 @echo off
-title Jarvis Swarm Server v2
+title Athena Swarm Server v2
 cd /d "%~dp0"
-echo 🚀 Demarrage du serveur d'orchestration Jarvis v2...
+echo 🚀 Demarrage du serveur d'orchestration Athena v2...
 echo 👉 Connectez-vous sur votre navigateur a : http://localhost:8000/
 start http://localhost:8000/
 .venv\Scripts\python.exe server.py
@@ -142,27 +142,27 @@ pause
 Set-Content -Path $RunBatPath -Value $BatContent
 Write-Host "✔ Script de lancement rapide run.bat généré !" -ForegroundColor $Green
 
-# Commande de contrôle 'jarvis.bat' (parité avec 'jarvis start' sous Linux/macOS)
-$JarvisBatPath = Join-Path $ScriptDir "jarvis.bat"
-$JarvisBat = @"
+# Commande de contrôle 'athena.bat' (parité avec 'athena start' sous Linux/macOS)
+$AthenaBatPath = Join-Path $ScriptDir "athena.bat"
+$AthenaBat = @"
 @echo off
 cd /d "%~dp0"
 if "%1"=="start" (
-    echo Demarrage de Jarvis... ^| http://localhost:8000/
+    echo Demarrage de Athena... ^| http://localhost:8000/
     start "" http://localhost:8000/
     start "" /min .venv\Scripts\python.exe server.py
     goto :eof
 )
 if "%1"=="stop" (
     taskkill /F /IM python.exe /FI "WINDOWTITLE eq *server.py*" 2>nul
-    echo Jarvis arrete.
+    echo Athena arrete.
     goto :eof
 )
 if "%1"=="cli" ( .venv\Scripts\python.exe main.py & goto :eof )
-echo Usage: jarvis {start^|stop^|cli}
+echo Usage: athena {start^|stop^|cli}
 "@
-Set-Content -Path $JarvisBatPath -Value $JarvisBat
-Write-Host "✔ Commande 'jarvis.bat' créée (jarvis start / stop / cli)." -ForegroundColor $Green
+Set-Content -Path $AthenaBatPath -Value $AthenaBat
+Write-Host "✔ Commande 'athena.bat' créée (athena start / stop / cli)." -ForegroundColor $Green
 
 # Création du lanceur silencieux en VBS (évite de garder une invite CMD ouverte !)
 $LaunchVbsPath = Join-Path $ScriptDir "launch.vbs"
@@ -182,25 +182,25 @@ Write-Host "🔄 Étape 6 : Création du raccourci d'application sur le Bureau..
 try {
     $WshShell = New-Object -ComObject WScript.Shell
     $DesktopPath = [System.Environment]::GetFolderPath("Desktop")
-    $ShortcutPath = Join-Path $DesktopPath "Jarvis.lnk"
+    $ShortcutPath = Join-Path $DesktopPath "Athena.lnk"
     
     $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
     $Shortcut.TargetPath = "cmd.exe"
     $Shortcut.Arguments = "/c start /min """" `"$RunBatPath`""
     $Shortcut.WorkingDirectory = $ScriptDir
-    $Shortcut.Description = "Bureau Virtuel Multi-Agent & Cockpit Jarvis"
+    $Shortcut.Description = "Bureau Virtuel Multi-Agent & Cockpit Athena"
     # Utilisation d'une jolie icône système Windows par défaut (globe terrestre ou engrenage)
     $Shortcut.IconLocation = "shell32.dll, 13" # Index 13 = Icône réseau/globe dans shell32.dll
     $Shortcut.Save()
     
-    Write-Host "✔ Raccourci d'application 'Jarvis' créé sur votre Bureau !" -ForegroundColor $Green
+    Write-Host "✔ Raccourci d'application 'Athena' créé sur votre Bureau !" -ForegroundColor $Green
     
     # Intégration Service d'Arrière-plan permanent sur Windows (via Task Scheduler)
     Write-Host ""
     Write-Host "💡 Option de Lancement automatique au démarrage (Service Windows) :" -ForegroundColor $Cyan
-    Write-Host "   Pour que Jarvis s'exécute en arrière-plan silencieux dès le démarrage de votre ordinateur,"
+    Write-Host "   Pour que Athena s'exécute en arrière-plan silencieux dès le démarrage de votre ordinateur,"
     Write-Host "   exécutez cette commande dans un terminal PowerShell Administrateur :" -ForegroundColor $Yellow
-    Write-Host "   👉 Register-ScheduledTask -TaskName 'JarvisSwarmService' -Trigger (New-ScheduledTaskTrigger -AtLogOn) -Action (New-ScheduledTaskAction -Execute 'wscript.exe' -Argument '`\"$LaunchVbsPath`\"') -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries)" -ForegroundColor $Magenta
+    Write-Host "   👉 Register-ScheduledTask -TaskName 'AthenaSwarmService' -Trigger (New-ScheduledTaskTrigger -AtLogOn) -Action (New-ScheduledTaskAction -Execute 'wscript.exe' -Argument '`\"$LaunchVbsPath`\"') -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries)" -ForegroundColor $Magenta
 } catch {
     Write-Host "⚠ Impossible de générer le raccourci sur le Bureau automatiquement." -ForegroundColor $Yellow
 }
@@ -257,7 +257,7 @@ Write-Host "====================================================================
 Write-Host " 🎉 INSTALLATION WINDOWS TERMINÉE AVEC SUCCÈS !" -ForegroundColor $Green -BackgroundColor Black
 Write-Host "=========================================================================" -ForegroundColor $Cyan -BackgroundColor Black
 Write-Host "Pour démarrer votre bureau virtuel multi-agent, vous pouvez :"
-Write-Host " 1. Double-cliquer sur le magnifique raccourci 'Jarvis' sur votre Bureau."
+Write-Host " 1. Double-cliquer sur le magnifique raccourci 'Athena' sur votre Bureau."
 Write-Host " 2. Ou double-cliquer directement sur 'run.bat' dans ce dossier."
 Write-Host ""
 Write-Host "Ouvrez ensuite votre navigateur sur : http://localhost:8000/" -ForegroundColor $Cyan

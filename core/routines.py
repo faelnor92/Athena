@@ -52,7 +52,7 @@ class RoutineStore:
             routine["id"] = rid
             routine.setdefault("enabled", True)
             routine.setdefault("notify", True)
-            routine.setdefault("agent", "Jarvis")
+            routine.setdefault("agent", "Athena")
             # Propriétaire (multi-tenant) : la routine s'exécutera dans SON contexte.
             if not routine.get("owner"):
                 try:

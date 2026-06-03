@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =========================================================================
-# INSTALLATEUR DE DÉPLOIEMENT PROFESSIONNEL - JARVIS v2
+# INSTALLATEUR DE DÉPLOIEMENT PROFESSIONNEL - ATHENA v2
 # Compatible : Linux & macOS (Darwin)
 # =========================================================================
 
@@ -35,13 +35,13 @@ echo ""
 
 # Support pour l'installation en 1 ligne (curl | bash)
 if [ ! -f "server.py" ]; then
-    echo -e "${YELLOW}🔄 Installation distante détectée. Clonage du dépôt dans 'jarvis'...${NC}"
+    echo -e "${YELLOW}🔄 Installation distante détectée. Clonage du dépôt dans 'athena'...${NC}"
     if ! command -v git &> /dev/null; then
         echo -e "${RED}❌ Erreur : git est requis pour cloner le dépôt.${NC}"
         exit 1
     fi
-    git clone https://github.com/faelnor92/jarvis.git jarvis
-    cd jarvis || exit 1
+    git clone https://github.com/faelnor92/athena.git athena
+    cd athena || exit 1
     chmod +x install.sh
     exec ./install.sh
 fi
@@ -119,18 +119,18 @@ echo -e "${YELLOW}🔄 Étape 4b : Choix des composants optionnels & configurati
 python3 "$SCRIPT_DIR/setup_wizard.py"
 
 # -------------------------------------------------------------------------
-# ÉTAPE 5 : Génération du CLI Exécutable Global ("jarvis")
+# ÉTAPE 5 : Génération du CLI Exécutable Global ("athena")
 # -------------------------------------------------------------------------
 echo ""
-echo -e "${YELLOW}🔄 Étape 5 : Création de la commande CLI globale 'jarvis'...${NC}"
+echo -e "${YELLOW}🔄 Étape 5 : Création de la commande CLI globale 'athena'...${NC}"
 BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR"
 
-CLI_FILE="$BIN_DIR/jarvis"
+CLI_FILE="$BIN_DIR/athena"
 cat << EOF > "$CLI_FILE"
 #!/usr/bin/env bash
 # =========================================================================
-# COMMANDE DE CONTROLE JARVIS MULTI-AGENT
+# COMMANDE DE CONTROLE ATHENA MULTI-AGENT
 # =========================================================================
 APP_DIR="$SCRIPT_DIR"
 
@@ -138,12 +138,12 @@ cd "\$APP_DIR" || exit 1
 
 case "\$1" in
     start)
-        echo -e "\033[0;36m🚀 Démarrage de l'orchestrateur Jarvis v2...\033[0m"
+        echo -e "\033[0;36m🚀 Démarrage de l'orchestrateur Athena v2...\033[0m"
         source .venv/bin/activate
         nohup python3 server.py > server.log 2>&1 &
         PID=\$!
         echo \$PID > server.pid
-        echo -e "\033[0;32m✔ Jarvis démarré en tâche de fond ! (PID: \$PID)\033[0m"
+        echo -e "\033[0;32m✔ Athena démarré en tâche de fond ! (PID: \$PID)\033[0m"
         echo -e "\033[0;35m👉 Console d'administration disponible sur : http://localhost:8000/\033[0m"
         # Ouvre l'UI dans le navigateur (best-effort, après un court délai de démarrage).
         ( sleep 2; (command -v xdg-open >/dev/null && xdg-open http://localhost:8000/ >/dev/null 2>&1) || (command -v open >/dev/null && open http://localhost:8000/ >/dev/null 2>&1) ) &
@@ -151,29 +151,29 @@ case "\$1" in
     stop)
         if [ -f server.pid ]; then
             PID=\$(cat server.pid)
-            echo -e "\033[0;33m🛑 Arrêt du serveur Jarvis (PID: \$PID)...\033[0m"
+            echo -e "\033[0;33m🛑 Arrêt du serveur Athena (PID: \$PID)...\033[0m"
             kill \$PID &> /dev/null
             rm -f server.pid
-            echo -e "\033[0;32m✔ Jarvis arrêté avec succès.\033[0m"
+            echo -e "\033[0;32m✔ Athena arrêté avec succès.\033[0m"
         else
             # Tenter de tuer par nom de processus au cas où
             PIDS=\$(pgrep -f "server.py")
             if [ -n "\$PIDS" ]; then
-                echo -e "\033[0;33m🛑 Arrêt des processus Jarvis en cours...\033[0m"
+                echo -e "\033[0;33m🛑 Arrêt des processus Athena en cours...\033[0m"
                 kill \$PIDS &> /dev/null
-                echo -e "\033[0;32m✔ Jarvis arrêté.\033[0m"
+                echo -e "\033[0;32m✔ Athena arrêté.\033[0m"
             else
-                echo -e "\033[0;31m❌ Aucun serveur Jarvis en cours d'exécution.\033[0m"
+                echo -e "\033[0;31m❌ Aucun serveur Athena en cours d'exécution.\033[0m"
             fi
         fi
         ;;
     status)
         if pgrep -f "server.py" > /dev/null; then
             PID=\$(pgrep -f "server.py" | head -n 1)
-            echo -e "\033[0;32m● Jarvis est ACTIF et en cours d'exécution (PID: \$PID)\033[0m"
+            echo -e "\033[0;32m● Athena est ACTIF et en cours d'exécution (PID: \$PID)\033[0m"
             echo -e "👉 Visitez : http://localhost:8000/"
         else
-            echo -e "\033[0;31m● Jarvis est INACTIF (Arrêté)\033[0m"
+            echo -e "\033[0;31m● Athena est INACTIF (Arrêté)\033[0m"
         fi
         ;;
     restart)
@@ -189,8 +189,8 @@ case "\$1" in
         fi
         ;;
     *)
-        echo -e "\033[1;36mOutil de gestion Jarvis Swarm v2\033[0m"
-        echo -e "Usage: jarvis {start|stop|restart|status|logs}"
+        echo -e "\033[1;36mOutil de gestion Athena Swarm v2\033[0m"
+        echo -e "Usage: athena {start|stop|restart|status|logs}"
         ;;
 esac
 EOF
@@ -200,7 +200,7 @@ echo -e "${GREEN}✔ Commande installée dans : ${BOLD}$CLI_FILE${NC}"
 
 # Suggestion PATH
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-    echo -e "${YELLOW}👉 Note : Pour utiliser la commande 'jarvis' directement de n'importe où,${NC}"
+    echo -e "${YELLOW}👉 Note : Pour utiliser la commande 'athena' directement de n'importe où,${NC}"
     echo -e "   ajoutez cette ligne à votre fichier ${BOLD}~/.bashrc${NC} ou ${BOLD}~/.zshrc${NC} :"
     echo -e "   ${MAGENTA}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
 fi
@@ -224,14 +224,14 @@ if [ "$OS_TYPE" == "Darwin" ]; then
     echo -e "Configuration macOS détectée..."
     
     # launchd plist configuration
-    PLIST_FILE="$HOME/Library/LaunchAgents/fr.unistra.jarvis.plist"
+    PLIST_FILE="$HOME/Library/LaunchAgents/fr.unistra.athena.plist"
     cat << EOF > "$PLIST_FILE"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>fr.unistra.jarvis</string>
+    <string>fr.unistra.athena</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
@@ -250,19 +250,19 @@ if [ "$OS_TYPE" == "Darwin" ]; then
 </dict>
 </plist>
 EOF
-    echo -e "${GREEN}✔ Agent de démarrage automatique créé : ${BOLD}~/Library/LaunchAgents/fr.unistra.jarvis.plist${NC}"
+    echo -e "${GREEN}✔ Agent de démarrage automatique créé : ${BOLD}~/Library/LaunchAgents/fr.unistra.athena.plist${NC}"
     echo -e "   Pour activer le lancement automatique au démarrage de session :"
     echo -e "   ${CYAN}launchctl load $PLIST_FILE${NC}"
 
     # macOS .app Shortcut Bundle wrapper
-    APP_DIR="$HOME/Desktop/Jarvis.app"
+    APP_DIR="$HOME/Desktop/Athena.app"
     mkdir -p "$APP_DIR/Contents/MacOS"
-    cat << EOF > "$APP_DIR/Contents/MacOS/Jarvis"
+    cat << EOF > "$APP_DIR/Contents/MacOS/Athena"
 #!/usr/bin/env bash
 open "http://localhost:8000/"
-$BIN_DIR/jarvis start
+$BIN_DIR/athena start
 EOF
-    chmod +x "$APP_DIR/Contents/MacOS/Jarvis"
+    chmod +x "$APP_DIR/Contents/MacOS/Athena"
     echo -e "${GREEN}✔ Lanceur d'application généré sur votre Bureau : ${BOLD}$APP_DIR${NC}"
 
 else
@@ -270,14 +270,14 @@ else
     echo -e "Configuration Linux détectée..."
     
     # Desktop Entry (.desktop)
-    DESKTOP_FILE="$HOME/.local/share/applications/jarvis.desktop"
+    DESKTOP_FILE="$HOME/.local/share/applications/athena.desktop"
     mkdir -p "$(dirname "$DESKTOP_FILE")"
     cat << EOF > "$DESKTOP_FILE"
 [Desktop Entry]
 Version=2.0
-Name=Jarvis Multi-Agent Swarm
+Name=Athena Multi-Agent Swarm
 Comment=Bureau Virtuel Multi-Agent & Cockpit No-Code
-Exec=bash -c "$BIN_DIR/jarvis start && xdg-open http://localhost:8000/"
+Exec=bash -c "$BIN_DIR/athena start && xdg-open http://localhost:8000/"
 Icon=system-run
 Terminal=false
 Type=Application
@@ -288,16 +288,16 @@ EOF
     # Copie sur le bureau si existant
     if [ -d "$HOME/Desktop" ]; then
         cp "$DESKTOP_FILE" "$HOME/Desktop/"
-        chmod +x "$HOME/Desktop/jarvis.desktop"
-        echo -e "${GREEN}✔ Raccourci d'application de bureau créé : ${BOLD}~/Desktop/jarvis.desktop${NC}"
+        chmod +x "$HOME/Desktop/athena.desktop"
+        echo -e "${GREEN}✔ Raccourci d'application de bureau créé : ${BOLD}~/Desktop/athena.desktop${NC}"
     fi
     echo -e "${GREEN}✔ Raccourci d'application système enregistré !${NC}"
 
     # Suggestion Service Systemd
     echo -e "${CYAN}💡 Option Service d'arrière-plan (Systemd) :${NC}"
-    echo -e "   Pour exécuter Jarvis en arrière-plan permanent sur votre serveur Linux, tapez :"
-    echo -e "   ${MAGENTA}sudo cp $SCRIPT_DIR/jarvis-swarm.service /etc/systemd/system/${NC}"
-    echo -e "   ${MAGENTA}sudo systemctl enable --now jarvis-swarm.service${NC}"
+    echo -e "   Pour exécuter Athena en arrière-plan permanent sur votre serveur Linux, tapez :"
+    echo -e "   ${MAGENTA}sudo cp $SCRIPT_DIR/athena-swarm.service /etc/systemd/system/${NC}"
+    echo -e "   ${MAGENTA}sudo systemctl enable --now athena-swarm.service${NC}"
 fi
 
 # -------------------------------------------------------------------------
@@ -340,9 +340,9 @@ echo -e "${CYAN}${BOLD}=========================================================
 echo " 🎉 INSTALLATION TERMINÉE AVEC SUCCÈS !"
 echo "=========================================================================${NC}"
 echo -e "Pour démarrer votre bureau virtuel multi-agent, vous pouvez :"
-echo -e " 1. Double-cliquer sur le raccourci ${GREEN}Jarvis${NC} créé sur votre Bureau."
+echo -e " 1. Double-cliquer sur le raccourci ${GREEN}Athena${NC} créé sur votre Bureau."
 echo -e " 2. Ou démarrer dans votre terminal en tapant :"
-echo -e "    👉 ${GREEN}${BOLD}jarvis start${NC}"
+echo -e "    👉 ${GREEN}${BOLD}athena start${NC}"
 echo ""
 echo -e "Ouvrez ensuite votre navigateur sur : ${CYAN}${BOLD}http://localhost:8000/${NC}"
 echo ""

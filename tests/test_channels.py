@@ -54,9 +54,9 @@ def test_swarm_filtre_les_outils_par_canal():
 
     swarm_mod.Swarm._complete = fake_complete
     s = Swarm.__new__(Swarm)
-    agent = Agent(name="Jarvis", system_prompt="t", model="gpt-4o")
+    agent = Agent(name="Athena", system_prompt="t", model="gpt-4o")
     agent.tools = [interdit, permis]
-    s.agents = {"Jarvis": agent}
+    s.agents = {"Athena": agent}
 
     token = channels.current_channel.set("salon")
     # Politique runtime : interdire 'interdit' sur le canal 'salon'.

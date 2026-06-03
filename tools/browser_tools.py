@@ -51,7 +51,7 @@ def render_page(url: str) -> str:
     if not chrome:
         return ("Erreur : aucun navigateur Chromium trouvé. Installe chromium (ou définis "
                 "CHROMIUM_BIN), ou utilise web_scrape pour les pages statiques.")
-    profile = tempfile.mkdtemp(prefix="jarvis-chrome-")
+    profile = tempfile.mkdtemp(prefix="athena-chrome-")
     try:
         out = subprocess.run(
             [chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run",

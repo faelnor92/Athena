@@ -74,7 +74,7 @@ class CoreMemory:
         return False
 
     def get_as_prompt(self) -> str:
-        """Formate les informations mémorisées pour les injecter dans le prompt de Jarvis."""
+        """Formate les informations mémorisées pour les injecter dans le prompt de Athena."""
         if not self.data:
             return ""
         prompt = "\n=== COMPÉTENCES/FAITS APPRIS SUR L'UTILISATEUR (COUCHES DE PREFERENCES) ===\n"

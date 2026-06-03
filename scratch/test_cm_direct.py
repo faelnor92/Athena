@@ -21,13 +21,13 @@ print("🔍 Modèle de CommunityManager :", cm.model)
 # Reconstruire le scénario
 prompt = "peux-tu me faire un post facebook de présentation d'auteur"
 messages = [
-    {"role": "assistant", "content": "Bonjour, je suis Jarvis. Comment puis-je vous aider aujourd'hui ?", "name": "Jarvis"},
+    {"role": "assistant", "content": "Bonjour, je suis Athena. Comment puis-je vous aider aujourd'hui ?", "name": "Athena"},
     {"role": "user", "content": prompt}
 ]
 
-print("💬 Envoi du prompt au Swarm ( starting with Jarvis ) ...")
-jarvis = swarm.agents["Jarvis"]
-final_agent, new_messages, steps = swarm.run(jarvis, messages)
+print("💬 Envoi du prompt au Swarm ( starting with Athena ) ...")
+athena = swarm.agents["Athena"]
+final_agent, new_messages, steps = swarm.run(athena, messages)
 
 print("\n--- RÉSULTATS DU RUN ---")
 print(f"Agent final actif : {final_agent.name}")

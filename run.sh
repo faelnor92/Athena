@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =========================================================================
-# JARVIS SWARM - LANCEUR INTERACTIF EN DIRECT
+# ATHENA SWARM - LANCEUR INTERACTIF EN DIRECT
 # =========================================================================
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
@@ -10,7 +10,7 @@ NC='\033[0m'
 clear
 echo -e "${CYAN}${BOLD}"
 echo "========================================================================="
-echo "   🚀 DEMARRAGE EN DIRECT DE L'ORCHESTRATEUR JARVIS SWARM v2"
+echo "   🚀 DEMARRAGE EN DIRECT DE L'ORCHESTRATEUR ATHENA SWARM v2"
 echo "========================================================================="
 echo -e "${NC}"
 

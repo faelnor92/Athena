@@ -1,5 +1,5 @@
 # =========================================================================
-# NATIVE WINDOWS POWERSHELL UPDATER - JARVIS v2
+# NATIVE WINDOWS POWERSHELL UPDATER - ATHENA v2
 # =========================================================================
 
 Clear-Host
@@ -42,10 +42,10 @@ if (Test-Path ".venv\Scripts\Activate.ps1") {
 
 python -m pip install -r requirements.txt --quiet
 
-Write-Host "🚀 Redémarrage du serveur Jarvis..." -ForegroundColor $Cyan
-$JarvisCli = Get-Command jarvis -ErrorAction SilentlyContinue
-if ($JarvisCli) {
-    jarvis restart
+Write-Host "🚀 Redémarrage du serveur Athena..." -ForegroundColor $Cyan
+$AthenaCli = Get-Command athena -ErrorAction SilentlyContinue
+if ($AthenaCli) {
+    athena restart
 } else {
     Write-Host "⚠️ Relance manuelle du serveur..." -ForegroundColor $Yellow
     Stop-Process -Name "python" -ErrorAction SilentlyContinue

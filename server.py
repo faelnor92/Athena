@@ -30,7 +30,7 @@ if not os.environ.get("ACTIVE_WORKSPACE_DIR", "").strip():
 
 from core.logging_config import setup_logging, get_logger
 setup_logging()
-logger = get_logger("jarvis.server")
+logger = get_logger("athena.server")
 
 from core.swarm import Swarm
 from core.tracing import run_store
@@ -40,7 +40,7 @@ from core.routines import routine_store, start_scheduler as start_routine_schedu
 from core.users import user_store
 from tools.memory_tools import core_mem
 
-app = FastAPI(title="Jarvis Multi-Agent Dashboard")
+app = FastAPI(title="Athena Multi-Agent Dashboard")
 
 # Restriction stricte du CORS (sécurité VPS / CSRF)
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000")
@@ -100,11 +100,11 @@ from routers import projects as _projects_router
 app.include_router(_projects_router.router)
 
 
-# Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Jarvis →
+# Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Athena →
 # Athena » au rafraîchissement : le HTML statique contenait le nom en dur).
 def _render_index():
     from fastapi.responses import HTMLResponse
-    name = (os.getenv("APP_NAME", "").strip() or "Jarvis")
+    name = (os.getenv("APP_NAME", "").strip() or "Athena")
     try:
         with open("static/index.html", "r", encoding="utf-8") as f:
             html = f.read()

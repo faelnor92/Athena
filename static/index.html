@@ -341,7 +341,7 @@
                 <div class="viewport-panel" id="view-memory" style="display: none;">
                     <div class="memory-container">
                         <h4 class="view-panel-title">🧠 Mémoire à Long Terme</h4>
-                        <p class="section-desc" style="margin-top: -6px; opacity: 0.6; font-size: 0.8rem;">Faits mémorisés dans la base de connaissances JSON de Jarvis</p>
+                        <p class="section-desc" style="margin-top: -6px; opacity: 0.6; font-size: 0.8rem;">Faits mémorisés dans la base de connaissances JSON de Athena</p>
                         <div class="memory-grid" id="memory-grid">
                             <div class="empty-memory">Aucun fait mémorisé.</div>
                         </div>
@@ -396,7 +396,7 @@
                         <div class="meeting-layout" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1; min-height: 0;">
                             <!-- Colonne Gauche : Upload & Audio & Dialogue diarisé -->
                             <div class="meeting-left glass" style="display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 12px; min-height: 0; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08);">
-                                <h5 style="margin: 0; font-size: 0.95rem; color: var(--color-Jarvis); text-transform: uppercase;">1. Audio & Transcription</h5>
+                                <h5 style="margin: 0; font-size: 0.95rem; color: var(--color-Athena); text-transform: uppercase;">1. Audio & Transcription</h5>
                                 
                                 <!-- Zone de Drop / File Upload -->
                                 <div id="meeting-dropzone" style="border: 2px dashed rgba(255,255,255,0.15); border-radius: 10px; padding: 30px 20px; text-align: center; cursor: pointer; background: rgba(0,0,0,0.2); transition: all 0.3s ease;">
@@ -438,7 +438,7 @@
                             <!-- Colonne Droite : Compte-rendu & Actions -->
                             <div class="meeting-right glass" style="display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 12px; min-height: 0; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08);">
                                 <div style="display: flex; align-items: center; justify-content: space-between;">
-                                    <h5 style="margin: 0; font-size: 0.95rem; color: var(--color-Jarvis); text-transform: uppercase;">2. Compte-rendu & Résumé exécutif</h5>
+                                    <h5 style="margin: 0; font-size: 0.95rem; color: var(--color-Athena); text-transform: uppercase;">2. Compte-rendu & Résumé exécutif</h5>
                                     <button id="btn-download-meeting" class="btn btn-secondary" style="margin: 0; padding: 4px 10px; font-size: 0.75rem; font-weight: bold; display: none;">📥 Exporter MD</button>
                                 </div>
                                 
@@ -511,7 +511,7 @@
                 
                 <div id="notification-dropdown" class="glass shadow notification-dropdown" style="display: none;">
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 8px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 6px;">
-                        <span style="font-size: 0.75rem; font-weight: bold; color: var(--color-Jarvis); text-transform: uppercase;">🔔 Notifications</span>
+                        <span style="font-size: 0.75rem; font-weight: bold; color: var(--color-Athena); text-transform: uppercase;">🔔 Notifications</span>
                         <button id="btn-clear-notifications" style="background: none; border: none; color: #ff5555; font-size: 0.7rem; cursor: pointer;">Tout effacer</button>
                     </div>
                     <div id="notification-items-list">
@@ -649,7 +649,7 @@
                             </div>
                             <!-- MOTEUR DE GÉNÉRATION D'IMAGES -->
                             <div class="form-group" style="grid-column: span 2; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
-                                <h4 style="margin: 0 0 8px 0; font-size: 0.85rem; color: var(--color-Jarvis); text-transform: uppercase; letter-spacing: 0.5px;">🎨 Moteur de Génération d'Images & Vidéos</h4>
+                                <h4 style="margin: 0 0 8px 0; font-size: 0.85rem; color: var(--color-Athena); text-transform: uppercase; letter-spacing: 0.5px;">🎨 Moteur de Génération d'Images & Vidéos</h4>
                             </div>
                             <div class="form-group">
                                 <label for="key-img-provider">API de Génération (IMAGE_GENERATOR_PROVIDER)</label>
@@ -753,7 +753,7 @@
                     <p class="section-desc">Connecte ton assistant à ton agenda Google, Apple, Outlook ou Nextcloud (CalDAV).</p>
                     
                     <form id="agenda-sync-form" class="config-form">
-                        <div style="font-weight: bold; font-size: 0.9rem; color: var(--color-Jarvis); margin: 16px 0 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">🔗 1. Flux iCal / ICS (Lecture seule - Google/Apple/Outlook)</div>
+                        <div style="font-weight: bold; font-size: 0.9rem; color: var(--color-Athena); margin: 16px 0 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">🔗 1. Flux iCal / ICS (Lecture seule - Google/Apple/Outlook)</div>
                         <div class="form-grid">
                             <div class="form-group" style="grid-column: span 2;">
                                 <label for="agenda-ical-url">Adresse privée iCal / Lien URL .ics</label>
@@ -761,7 +761,7 @@
                             </div>
                         </div>
                         
-                        <div style="font-weight: bold; font-size: 0.9rem; color: var(--color-Jarvis); margin: 20px 0 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">🤖 2. Google Calendar API (Lecture/Écriture - via Compte de Service)</div>
+                        <div style="font-weight: bold; font-size: 0.9rem; color: var(--color-Athena); margin: 20px 0 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">🤖 2. Google Calendar API (Lecture/Écriture - via Compte de Service)</div>
                         <div class="form-grid">
                             <div class="form-group">
                                 <label for="agenda-google-id">Google Calendar ID (ex: ton adresse gmail)</label>
@@ -777,7 +777,7 @@
                             </div>
                         </div>
                         
-                        <div style="font-weight: bold; font-size: 0.9rem; color: var(--color-Jarvis); margin: 20px 0 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">☁️ 3. Serveur CalDAV (Lecture/Écriture - Nextcloud/Synology)</div>
+                        <div style="font-weight: bold; font-size: 0.9rem; color: var(--color-Athena); margin: 20px 0 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">☁️ 3. Serveur CalDAV (Lecture/Écriture - Nextcloud/Synology)</div>
                         <div class="form-grid">
                             <div class="form-group" style="grid-column: span 2;">
                                 <label for="agenda-caldav-url">URL du Calendrier CalDAV</label>
@@ -960,7 +960,7 @@
                     </div>
                     <div class="form-group"><label>Utilisateur SMTP</label><input type="text" id="msg-smtp-user" placeholder="moi@gmail.com"></div>
                     <div class="form-group"><label>Mot de passe SMTP</label><input type="password" id="msg-smtp-pass" placeholder="Laisser vide si inchangé"></div>
-                    <div class="form-group"><label>Expéditeur (From)</label><input type="text" id="msg-smtp-from" placeholder="jarvis@maison.local"></div>
+                    <div class="form-group"><label>Expéditeur (From)</label><input type="text" id="msg-smtp-from" placeholder="athena@maison.local"></div>
                     <div class="form-group"><label>Destinataire(s) — séparés par des virgules</label><input type="text" id="msg-email-to" placeholder="moi@gmail.com"></div>
 
                     <button type="button" id="btn-msg-save" class="btn btn-primary" style="width:100%; margin-top:10px;">💾 Enregistrer les messageries</button>
@@ -981,7 +981,7 @@
                 <!-- ONGLET : SATELLITES VOCAUX ESP32-S3 (ESPHome direct) -->
                 <div class="modal-pane" id="pane-satellites" style="display: none;">
                     <h3>🛰️ Satellites vocaux ESP32-S3</h3>
-                    <p class="section-desc">Connecte des enceintes ESP32-S3 sous <strong>ESPHome</strong> directement à ton assistant (sans Home Assistant) pour une latence minimale. Jarvis reçoit l'audio, transcrit, répond et renvoie la voix au satellite concerné.</p>
+                    <p class="section-desc">Connecte des enceintes ESP32-S3 sous <strong>ESPHome</strong> directement à ton assistant (sans Home Assistant) pour une latence minimale. Athena reçoit l'audio, transcrit, répond et renvoie la voix au satellite concerné.</p>
 
                     <h5 style="color: var(--accent-cyan); margin: 6px 0 4px;">🎙️ Mot d'activation vocal</h5>
                     <p class="section-desc" style="font-size:0.74rem;">Le mot qui réveille l'assistant (vocal local + satellites en mode serveur). « stt » accepte n'importe quel mot, sans entraînement.</p>
@@ -1042,11 +1042,11 @@
                         <select id="sat-activation-mode" style="flex: 1.4; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 6px; color: #fff; padding: 8px;"></select>
                         <select id="sat-wakeword" style="flex: 1; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 6px; color: #fff; padding: 8px;"></select>
                     </div>
-                    <p class="section-desc" style="font-size: 0.72rem; margin-top: 4px;"><strong>Embarqué</strong> : microWakeWord tourne sur l'ESP (latence mini, PSRAM requise). <strong>Serveur</strong> : l'ESP streame en continu, Jarvis détecte via openWakeWord (utile si microWakeWord déçoit). Aucun bouton.</p>
+                    <p class="section-desc" style="font-size: 0.72rem; margin-top: 4px;"><strong>Embarqué</strong> : microWakeWord tourne sur l'ESP (latence mini, PSRAM requise). <strong>Serveur</strong> : l'ESP streame en continu, Athena détecte via openWakeWord (utile si microWakeWord déçoit). Aucun bouton.</p>
 
                     <!-- Composition du firmware : capteurs présents sur l'ESP -->
                     <h5 style="color: var(--accent-cyan); margin: 14px 0 4px;">Capteurs / sorties sur cet ESP (firmware)</h5>
-                    <p class="section-desc" style="font-size: 0.74rem;">Choisis dans la liste ce qui est câblé sur l'ESP pour ne pas le perdre au flash. Ces entités restent visibles par <strong>HA et Jarvis</strong> en parallèle.</p>
+                    <p class="section-desc" style="font-size: 0.74rem;">Choisis dans la liste ce qui est câblé sur l'ESP pour ne pas le perdre au flash. Ces entités restent visibles par <strong>HA et Athena</strong> en parallèle.</p>
                     <div id="sat-sensors-list" style="display: flex; flex-direction: column; gap: 6px; margin: 6px 0;"></div>
                     <button type="button" id="btn-sat-sensor-add" class="btn" style="width: 100%; margin-top: 4px;">＋ Ajouter un capteur</button>
 
@@ -1276,7 +1276,7 @@
     <div class="modal-overlay" id="explorer-modal" style="display: none; z-index: 6010;">
         <div class="modal-card glass animate-zoom-in" style="max-width: 500px; max-height: 80vh; display: flex; flex-direction: column; gap: 16px;">
             <header class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
-                <h3 style="margin: 0; color: var(--color-Jarvis); font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">📂 Sélectionner un Dossier</h3>
+                <h3 style="margin: 0; color: var(--color-Athena); font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">📂 Sélectionner un Dossier</h3>
                 <button class="btn-close" id="btn-close-explorer-modal">×</button>
             </header>
             

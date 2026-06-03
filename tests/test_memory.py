@@ -48,9 +48,9 @@ def test_compaction_historique_long():
     swarm_mod.Swarm._complete = fake_complete
 
     s = Swarm.__new__(Swarm)
-    agent = Agent(name="Jarvis", system_prompt="t", model="gpt-4o")
+    agent = Agent(name="Athena", system_prompt="t", model="gpt-4o")
     agent.tools = []
-    s.agents = {"Jarvis": agent}
+    s.agents = {"Athena": agent}
 
     # 50 messages d'historique (alternance user/assistant, tous avec contenu).
     history = []

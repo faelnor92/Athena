@@ -1,10 +1,10 @@
-# Documentation de l'API REST - Jarvis Swarm
+# Documentation de l'API REST - Athena Swarm
 
-Jarvis est bâti sur **FastAPI**, offrant des routeurs REST complets, asynchrones et sécurisés pour interagir avec l'Essaim (Swarm) de l'extérieur.
+Athena est bâti sur **FastAPI**, offrant des routeurs REST complets, asynchrones et sécurisés pour interagir avec l'Essaim (Swarm) de l'extérieur.
 
 ## Authentification
-Toutes les requêtes (sauf exceptions publiques comme les Webhooks) nécessitent une authentification par Token Bearer ou Cookie.
-**En-tête requis :** `Authorization: Bearer <votre_token_ou_mot_de_passe>`
+Toutes les requêtes (sauf exceptions publiques comme les Webhooks ou les liens d'invitation) nécessitent une authentification par Token Bearer ou Cookie (Architecture Multi-Tenant).
+**En-tête requis :** `Authorization: Bearer <votre_token_sso_ou_mot_de_passe>`
 
 ---
 
@@ -16,25 +16,34 @@ Envoie un message à l'essaim et récupère la réponse (Streaming ou JSON).
   * `message` (string) : Le message de l'utilisateur.
   * `agent` (string, optionnel) : Forcer l'utilisation d'un agent spécifique. Par défaut: Orchestrateur.
   * `stream` (boolean) : `true` pour recevoir du Server-Sent Events (SSE).
-* **Réponse (si stream=false)** :
-  ```json
-  {
-    "status": "success",
-    "response": "Voici la réponse de l'agent",
-    "agent": "Orchestrateur"
-  }
-  ```
 
 ### `GET /api/history`
-Récupère l'historique de la session conversationnelle en cours (depuis `conversations.sqlite3`).
-* **Réponse** : Liste des messages (rôles `user`, `assistant`, `tool`).
-
-### `POST /api/clear`
-Efface l'historique conversationnel de la session active.
+Récupère l'historique de la session conversationnelle de l'utilisateur.
 
 ---
 
-## 2. Routines & Planification (`routers/config.py`)
+## 2. Authentification & Profil (`routers/auth.py` / `system.py`)
+
+### `POST /api/login`
+Authentification standard ou OIDC/SSO (si configuré).
+* Retourne un token JWT de session.
+
+### `GET /api/users/me`
+Retourne les données profil (rôle, budget, tokens consommés).
+
+---
+
+## 3. Voix & TTS/STT (`routers/config_voice.py`)
+
+### `POST /api/system/tts/restart`
+Redémarre le conteneur Docker `kokoro-fastapi-cpu` à chaud (nécessite des droits admin ou accès socket Docker).
+
+### `GET /api/voice/ws`
+Websocket pour le streaming audio temps réel (Satellites ESP32-S3 ou UI web). Gère le VAD, STT (Whisper) et la synthèse (Kokoro).
+
+---
+
+## 4. Routines & Planification (`routers/config_routines.py`)
 
 ### `GET /api/routines`
 Liste toutes les routines programmées et webhooks.
@@ -42,43 +51,34 @@ Liste toutes les routines programmées et webhooks.
 ### `POST /api/routines`
 Crée ou met à jour une routine.
 * **Payload (JSON)** :
-  * `id` (string, optionnel)
-  * `name` (string)
-  * `prompt` (string) : La tâche que l'agent doit accomplir.
-  * `schedule` (object) : ex: `{"type": "daily", "time": "03:00"}`
-  * `agent` (string) : Nom de l'agent à invoquer (ou `_nightly_agent` pour la maintenance).
+  * `name`, `prompt`, `schedule` (type cron ou daily), `agent`.
 
 ### `POST /api/hooks/{rid}`
-Déclenche un webhook d'entrée (sans authentification si le secret est valide). Utile pour **Home Assistant**, **n8n** ou des capteurs externes.
+Déclenche un webhook d'entrée (sans auth si le secret est valide). Utile pour **Home Assistant**, **n8n** ou des capteurs externes.
 
 ---
 
-## 3. Système & Télémétrie (`routers/system.py`)
+## 5. Système & Télémétrie (`routers/system.py`)
 
 ### `GET /api/system/telemetry`
-Retourne les métriques en direct (CPU, RAM, Tokens consommés, Coût financier généré). Les données sont tirées de `runs.sqlite3`.
+Retourne les métriques en direct (CPU, RAM, Coût financier généré par utilisateur).
 
-### `GET /api/system/runs`
-Liste l'historique de toutes les exécutions d'agents (tâches accomplies, erreurs, requêtes d'outils).
+### `GET /api/system/logs`
+Récupère les derniers logs centralisés du système et des outils.
 
 ---
 
-## 4. Espace de Travail (`routers/workspace.py`)
+## 6. Projets & Espace de Travail (`routers/workspace.py` & `projects.py`)
+
+### `GET /api/projects`
+Liste les projets accessibles (personnels ou partagés avec l'utilisateur).
 
 ### `GET /api/fs/list`
-Liste les fichiers dans le dossier de travail courant de l'agent.
-* **Query Params** : `path` (chemin relatif).
-
-### `GET /api/fs/read`
-Lit le contenu d'un fichier textuel.
+Liste les fichiers dans le projet actif (scopé par utilisateur).
 
 ---
 
-## Modèles de Données & Code de Retour
+## Modèles de Données & Erreurs
 
-- L'API utilise les standards **HTTP (200, 400, 403, 404, 500)**.
-- Les erreurs renvoient systématiquement un JSON au format :
-  ```json
-  {"detail": "Description claire de l'erreur"}
-  ```
-- Les CORS sont strictement limités aux origines de confiance (cf. `server.py`).
+- L'API utilise les standards **HTTP (200, 401, 403, 404, 500)**.
+- Les erreurs renvoient systématiquement un JSON au format : `{"detail": "Description claire de l'erreur"}`

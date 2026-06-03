@@ -41,12 +41,12 @@ def _check_budget():
         _budget_alert_date = today
         broadcast_notification(
             f"⚠️ Budget quotidien dépassé : {cost:.2f} € / {limit:.2f} € (les requêtes continuent).",
-            title="Alerte Budget Jarvis"
+            title="Alerte Budget Athena"
         )
 
 def _run_routine(routine: dict):
     import logging
-    logger = logging.getLogger("jarvis.routines")
+    logger = logging.getLogger("athena.routines")
     prompt = (routine.get("prompt") or "").strip()
     if not prompt:
         return
@@ -58,7 +58,7 @@ def _run_routine(routine: dict):
         starting = Agent(
             name="NightlyAgent",
             model="ollama/qwen2.5:0.5b",
-            instructions="Tu es le concierge nocturne de Jarvis. Ta seule mission est d'exécuter l'outil cleanup_skills.",
+            instructions="Tu es le concierge nocturne de Athena. Ta seule mission est d'exécuter l'outil cleanup_skills.",
             tools=[cleanup_skills]
         )
     else:
@@ -391,7 +391,7 @@ async def transcribe_meeting(file: UploadFile = File(...)) -> Dict[str, Any]:
         else:
             await asyncio.sleep(2)
             return {
-                "transcript": [{"speaker": "Jarvis", "text": "Ceci est une simulation locale car aucune API Key n'est présente."}],
+                "transcript": [{"speaker": "Athena", "text": "Ceci est une simulation locale car aucune API Key n'est présente."}],
                 "summary": "### Simulation Locale\n\nAucune API configurée pour la transcription."
             }
     except Exception as e:

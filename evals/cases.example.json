@@ -1,5 +1,5 @@
 {
-  "_comment": "Copiez en evals/cases.json et adaptez. Assertions possibles par cas : expect_contains (sous-chaîne dans la réponse), expect_agent (agent final), expect_tool (outil appelé). start_agent optionnel (défaut Jarvis).",
+  "_comment": "Copiez en evals/cases.json et adaptez. Assertions possibles par cas : expect_contains (sous-chaîne dans la réponse), expect_agent (agent final), expect_tool (outil appelé). start_agent optionnel (défaut Athena).",
   "cases": [
     {
       "name": "Routage vers le Codeur",
@@ -13,7 +13,7 @@
     },
     {
       "name": "Réponse de salutation",
-      "message": "Bonjour Jarvis",
+      "message": "Bonjour Athena",
       "expect_contains": "bonjour"
     }
   ]

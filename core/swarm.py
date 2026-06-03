@@ -11,7 +11,7 @@ import concurrent.futures
 from typing import Callable, Tuple, List, Dict, Any, Optional, Set
 import logging
 
-logger = logging.getLogger("jarvis.swarm")
+logger = logging.getLogger("athena.swarm")
 from litellm import completion
 from .agent import Agent, Result
 from . import approvals
@@ -29,6 +29,7 @@ import tools.agenda_tools
 import tools.list_tools
 import tools.image_generator
 import tools.briefing_tools
+import tools.basic_tools
 import tools.meeting_summarizer
 import tools.conversation_tools
 import tools.mcp_manager
@@ -73,6 +74,8 @@ AVAILABLE_TOOLS = {
     "generate_artistic_image": tools.image_generator.generate_artistic_image,
     "generate_artistic_video": tools.image_generator.generate_artistic_video,
     "get_daily_briefing": tools.briefing_tools.get_daily_briefing,
+    "get_time": tools.basic_tools.get_time,
+    "get_weather": tools.basic_tools.get_weather,
     "transcribe_and_summarize_meeting": tools.meeting_summarizer.transcribe_and_summarize_meeting,
     "manage_conversations": tools.conversation_tools.manage_conversations,
     "query_agent": tools.conversation_tools.query_agent,
@@ -346,15 +349,15 @@ class Swarm:
             self.agents[agent.name] = agent
 
         # Détermination de l'ORCHESTRATEUR (renommable) : agent marqué
-        # `orchestrator: true`, sinon "Jarvis" s'il existe (compat.), sinon le 1er agent.
+        # `orchestrator: true`, sinon "Athena" s'il existe (compat.), sinon le 1er agent.
         self.orchestrator_name = None
         for agent_data in data.get("agents", []):
             if agent_data.get("orchestrator") is True:
                 self.orchestrator_name = agent_data["name"]
                 break
         if not self.orchestrator_name:
-            if "Jarvis" in self.agents:
-                self.orchestrator_name = "Jarvis"
+            if "Athena" in self.agents:
+                self.orchestrator_name = "Athena"
             elif self.agents:
                 self.orchestrator_name = next(iter(self.agents))
         orch = self.orchestrator_name
@@ -572,7 +575,7 @@ class Swarm:
         lui-même) ; None (routeur désactivé/indisponible → ne rien restreindre)."""
         if os.getenv("DELEGATION_ROUTER", "true").lower() not in ("true", "1", "yes"):
             return None
-        orch = getattr(self, "orchestrator_name", "Jarvis")
+        orch = getattr(self, "orchestrator_name", "Athena")
         specialists = []
         for name, a in self.agents.items():
             if name == orch:
@@ -1103,7 +1106,7 @@ class Swarm:
             # 1. Outils effectifs du tour, calculés LOCALEMENT (on ne mute pas
             #    l'objet Agent partagé : indispensable pour la concurrence).
             effective_tools = list(current_agent.tools)
-            if current_agent.name in (getattr(self, "orchestrator_name", "Jarvis"), "Codeur"):
+            if current_agent.name in (getattr(self, "orchestrator_name", "Athena"), "Codeur"):
                 existing = {f.__name__ for f in effective_tools}
                 # Compétences dynamiques (auto-amélioration) rechargées à chaque tour.
                 for skill_name, func in load_dynamic_skills().items():
@@ -1143,7 +1146,7 @@ class Swarm:
             # on retire les outils de délégation → l'orchestrateur répond lui-même (qwen3 a
             # tendance à sur-déléguer). Le LLM comprend toutes les langues et utilise la liste
             # DYNAMIQUE des agents, donc tout nouvel agent est pris en compte automatiquement.
-            if current_agent.name == getattr(self, "orchestrator_name", "Jarvis") and len(self.agents) > 1:
+            if current_agent.name == getattr(self, "orchestrator_name", "Athena") and len(self.agents) > 1:
                 if not _route_done:
                     _route_done = True
                     _route_target = self._route_target(current_agent, messages)
@@ -1177,7 +1180,7 @@ class Swarm:
 
             tools_schema = [function_to_schema(f) for f in effective_tools] if (effective_tools and current_agent.supports_tools) else None
             
-            # Injection dynamique des informations mémorisées (Core Memory) dans Jarvis
+            # Injection dynamique des informations mémorisées (Core Memory) dans Athena
             system_prompt = current_agent.system_prompt
             
             # Renforcement strict de l'identité de l'agent pour éviter les hallucinations (usurpation d'identité)
@@ -1191,11 +1194,11 @@ class Swarm:
 
             # Ne forcer la présentation que si aucun message de cet agent n'est déjà présent dans l'historique
             has_agent_spoken = any(msg.get("role") == "assistant" and msg.get("name") == current_agent.name for msg in messages)
-            if getattr(current_agent, "welcome_message", None) and not has_agent_spoken and current_agent.name != getattr(self, "orchestrator_name", "Jarvis"):
+            if getattr(current_agent, "welcome_message", None) and not has_agent_spoken and current_agent.name != getattr(self, "orchestrator_name", "Athena"):
                 system_prompt += f"\n\n⚠️ INSTRUCTION DE PRÉSENTATION OBLIGATOIRE :\n"
                 system_prompt += f"Tu DOIS commencer ta toute première réponse par la phrase d'introduction suivante exactement : \"{current_agent.welcome_message}\". Ne change pas un seul mot de cette phrase de présentation, commence directement par elle, puis poursuis naturellement pour répondre à l'utilisateur.\n"
                 
-            if current_agent.name == getattr(self, "orchestrator_name", "Jarvis"):
+            if current_agent.name == getattr(self, "orchestrator_name", "Athena"):
                 # Date/heure courantes (l'orchestrateur peut répondre « quelle heure ? »).
                 try:
                     import datetime as _dt
@@ -1264,13 +1267,13 @@ class Swarm:
                     "sérieux, empathique, fâché, chuchoté). Elle est invisible pour l'utilisateur "
                     "et sert à colorer la voix. N'en mets qu'UNE, au tout début.\n")
 
-            # Chargement en cascade des fichiers de prompt locaux (custom Jarvis Swarm)
+            # Chargement en cascade des fichiers de prompt locaux (custom Athena Swarm)
             local_instructions = ""
             current_dir = os.getcwd()
             while True:
                 system_md = os.path.join(current_dir, "SYSTEM.md")
                 append_system_md = os.path.join(current_dir, "APPEND_SYSTEM.md")
-                jarvis_md = os.path.join(current_dir, "JARVIS.md")
+                athena_md = os.path.join(current_dir, "ATHENA.md")
                 
                 if os.path.exists(system_md):
                     try:
@@ -1287,12 +1290,12 @@ class Swarm:
                     except Exception as e:
                         print(f"[\033[91mErreur APPEND_SYSTEM.md\033[0m] {e}")
                         
-                if os.path.exists(jarvis_md):
+                if os.path.exists(athena_md):
                     try:
-                        with open(jarvis_md, "r", encoding="utf-8") as f:
+                        with open(athena_md, "r", encoding="utf-8") as f:
                             local_instructions = f.read() + "\n" + local_instructions
                     except Exception as e:
-                        print(f"[\033[91mErreur JARVIS.md\033[0m] {e}")
+                        print(f"[\033[91mErreur ATHENA.md\033[0m] {e}")
                         
                 parent_dir = os.path.dirname(current_dir)
                 if parent_dir == current_dir:
@@ -1313,7 +1316,7 @@ class Swarm:
 
             # Règle d'or sur les mentions @agent
             system_prompt += "\n\n⚠️ INSTRUCTIONS SUR LES MENTIONS @AGENT :\n"
-            system_prompt += "L'utilisateur peut cibler un ou plusieurs agents dans son message en écrivant `@NomDeLAgent` ou `@NomAmical` (ex: `@Auteur` ou `@Emilie`, `@CommunityManager` ou `@Lucas` ou `@CM`, `@Traducteur` ou `@Sofia`, `@Codeur` ou `@Robert`, `@Correcteur` ou `@Marc`, `@Jarvis`).\n"
+            system_prompt += "L'utilisateur peut cibler un ou plusieurs agents dans son message en écrivant `@NomDeLAgent` ou `@NomAmical` (ex: `@Auteur` ou `@Emilie`, `@CommunityManager` ou `@Lucas` ou `@CM`, `@Traducteur` ou `@Sofia`, `@Codeur` ou `@Robert`, `@Correcteur` ou `@Marc`, `@Athena`).\n"
             system_prompt += "Si tu vois une mention `@` ciblant un AUTRE agent dans le message ou dans la suite d'instructions de l'utilisateur, tu as l'obligation absolue d'effectuer ton propre travail (ex: traduire si tu es la traductrice Sofia, rédiger si tu es l'auteur Émilie), PUIS de transférer immédiatement la main à cet autre agent via ta fonction de transfert appropriée pour qu'il exécute sa partie du travail.\n"
 
             
@@ -1335,7 +1338,7 @@ class Swarm:
             # Renforcer les consignes de transfert pour le superviseur — UNIQUEMENT s'il
             # existe d'autres agents à qui déléguer (sinon l'orchestrateur seul doit
             # répondre directement, pas refuser le travail).
-            _orch = getattr(self, "orchestrator_name", "Jarvis")
+            _orch = getattr(self, "orchestrator_name", "Athena")
             if current_agent.name == _orch and len(self.agents) > 1:
                 system_prompt += "\n\n⚙️ ROUTAGE DE L'ESSAIM (délègue UNIQUEMENT si nécessaire) :\n"
                 system_prompt += f"Tu es {current_agent.name}, l'orchestrateur. Tu réponds TOI-MÊME, sans déléguer, à : "
@@ -1524,7 +1527,7 @@ class Swarm:
             # (contenu substantiel) dans ce tour, on ignore les transferts émis en même temps
             # (qwen3 ajoute parfois un transfer_to_ superflu après avoir répondu → il passe la
             # main sans raison, ex. vers l'Auteur non sollicité).
-            if (current_agent.name == getattr(self, "orchestrator_name", "Jarvis")
+            if (current_agent.name == getattr(self, "orchestrator_name", "Athena")
                     and message.content and len(message.content.strip()) >= 200):
                 _kept = [tc for tc in tool_calls if not tc.function.name.startswith("transfer_to_")]
                 if len(_kept) != len(tool_calls):

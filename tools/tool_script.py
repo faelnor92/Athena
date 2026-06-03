@@ -19,6 +19,7 @@ SCRIPT_SAFE_TOOLS = {
     "web_search", "web_scrape", "search_memory", "memorize_fact", "store_document",
     "get_list_items", "add_list_item", "toggle_list_item",
     "list_calendar_events", "add_calendar_event", "get_ha_state", "get_daily_briefing",
+    "get_time", "get_weather"
 }
 
 _SAFE_IMPORTS = {"math", "json", "re", "datetime", "statistics", "itertools",

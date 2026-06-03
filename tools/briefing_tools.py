@@ -73,7 +73,7 @@ def get_daily_briefing(city: str = "Paris") -> str:
         from core.state import _app_name
         app_name = _app_name()
     except Exception:
-        app_name = os.getenv("APP_NAME", "").strip() or "Jarvis"
+        app_name = os.getenv("APP_NAME", "").strip() or "Athena"
     briefing += f"\n*Passez une excellente journée ! {app_name} reste à votre entière disposition.* 🚀"
 
     return briefing

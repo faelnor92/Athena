@@ -1,4 +1,4 @@
-"""Backend vocal « compatible ESPHome » : Jarvis se connecte aux satellites
+"""Backend vocal « compatible ESPHome » : Athena se connecte aux satellites
 ESP32-S3 (ESPHome, composant voice_assistant) via l'API native ESPHome
 (aioesphomeapi) et joue le rôle d'assistant — SANS Home Assistant dans la boucle.
 
@@ -75,9 +75,9 @@ def upsert_satellite(cfg: dict) -> list:
     if pwd:
         entry["password"] = pwd
     # Mode de réveil : 'embedded' (microWakeWord sur l'ESP) ou 'server' (openWakeWord
-    # dans Jarvis). En mode serveur, le manager fait tourner la détection.
+    # dans Athena). En mode serveur, le manager fait tourner la détection.
     entry["wake_mode"] = (cfg.get("wake_mode") or (existing.get("wake_mode") if existing else "") or "embedded")
-    entry["wake_word"] = (cfg.get("wake_word") or (existing.get("wake_word") if existing else "") or "hey_jarvis")
+    entry["wake_word"] = (cfg.get("wake_word") or (existing.get("wake_word") if existing else "") or "hey_athena")
     if existing:
         sats = [entry if s.get("name") == name else s for s in sats]
     else:
@@ -259,11 +259,11 @@ SPEAKER_TYPES = [
 # Modes de réveil (tous mains-libres). Plus de push-to-talk.
 ACTIVATION_MODES = [
     {"id": "embedded", "label": "🎤 Embarqué (microWakeWord, sur l'ESP32-S3)"},
-    {"id": "server", "label": "🛰️ Serveur (openWakeWord, dans Jarvis)"},
+    {"id": "server", "label": "🛰️ Serveur (openWakeWord, dans Athena)"},
 ]
 # Wake words embarqués (modèles microWakeWord intégrés à ESPHome).
 WAKE_WORDS = [
-    {"id": "hey_jarvis", "label": "Hey Jarvis"},
+    {"id": "hey_athena", "label": "Hey Athena"},
     {"id": "okay_nabu", "label": "Okay Nabu"},
     {"id": "hey_mycroft", "label": "Hey Mycroft"},
     {"id": "alexa", "label": "Alexa"},
@@ -305,17 +305,17 @@ def _audio_block(audio: dict) -> str:
 def generate_yaml(name: str, encryption_key: str = "", modules=None,
                   i2c_sda: str = "GPIO8", i2c_scl: str = "GPIO9",
                   audio: dict = None, activation: dict = None, custom_yaml: str = "") -> str:
-    """Construit un YAML ESPHome prêt à compiler : base + voix (→ Jarvis) + capteurs
+    """Construit un YAML ESPHome prêt à compiler : base + voix (→ Athena) + capteurs
     choisis dans le catalogue (+ YAML perso optionnel). Injecte automatiquement le
     bus I2C / one_wire si des capteurs en ont besoin. Broches à adapter à la carte.
 
-    activation = {mode: 'embedded'|'server', wake_word: 'hey_jarvis'}. Tous mains-libres.
+    activation = {mode: 'embedded'|'server', wake_word: 'hey_athena'}. Tous mains-libres.
     """
-    node = f"jarvis-satellite-{_slug(name)}"
+    node = f"athena-satellite-{_slug(name)}"
     key = (encryption_key or "").strip() or generate_encryption_key()
     modules = modules or []
 
-    act = {"mode": "embedded", "wake_word": "hey_jarvis"}
+    act = {"mode": "embedded", "wake_word": "hey_athena"}
     act.update({k: v for k, v in (activation or {}).items() if v})
     mode = act["mode"]
 
@@ -354,21 +354,21 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     audio_block = _audio_block(a)
 
     # Bloc d'activation (mains-libres) : wake word embarqué (microWakeWord, sur l'ESP)
-    # ou serveur (openWakeWord, dans Jarvis ; l'ESP streame en continu).
+    # ou serveur (openWakeWord, dans Athena ; l'ESP streame en continu).
     esphome_extra = ""
     if mode == "server":
-        # L'ESP streame en continu vers Jarvis dès que l'API (Jarvis) est connectée ;
-        # c'est Jarvis qui détecte le wake word (openWakeWord) puis traite la commande.
+        # L'ESP streame en continu vers Athena dès que l'API (Athena) est connectée ;
+        # c'est Athena qui détecte le wake word (openWakeWord) puis traite la commande.
         esphome_extra = (
             "\n  on_boot:\n    - wait_until:\n        condition:\n          api.connected:\n"
             "    - voice_assistant.start_continuous:\n"
         )
         voice_block = (
-            "# --- Wake word SERVEUR : Jarvis (openWakeWord) écoute le flux continu ---\n"
+            "# --- Wake word SERVEUR : Athena (openWakeWord) écoute le flux continu ---\n"
             "voice_assistant:\n  microphone: mic\n  speaker: spk\n  use_wake_word: false\n"
         )
     else:
-        ww = act.get("wake_word") or "hey_jarvis"
+        ww = act.get("wake_word") or "hey_athena"
         voice_block = (
             "# --- PSRAM requise pour le wake word embarqué (adapte au besoin) ---\n"
             "psram:\n\n"
@@ -376,17 +376,17 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
             "micro_wake_word:\n"
             f"  models:\n    - model: {ww}\n"
             "  on_wake_word_detected:\n    - voice_assistant.start\n\n"
-            "# --- Assistant vocal géré par Jarvis ---\n"
+            "# --- Assistant vocal géré par Athena ---\n"
             "voice_assistant:\n  microphone: mic\n  speaker: spk\n"
         )
 
-    return f"""# Satellite ESP32-S3 piloté DIRECTEMENT par Jarvis (voix), capteurs visibles aussi par HA.
-# Généré par Jarvis pour « {name} ». Adapte les broches (I2S + capteurs) à ta carte.
+    return f"""# Satellite ESP32-S3 piloté DIRECTEMENT par Athena (voix), capteurs visibles aussi par HA.
+# Généré par Athena pour « {name} ». Adapte les broches (I2S + capteurs) à ta carte.
 #
 # Compiler + flasher (USB la 1re fois, OTA WiFi ensuite) :
 #   pip install esphome
 #   esphome run {node}.yaml
-# Les capteurs restent diffusés à TOUS les clients API (HA ET Jarvis en parallèle).
+# Les capteurs restent diffusés à TOUS les clients API (HA ET Athena en parallèle).
 
 esphome:
   name: {node}{esphome_extra}
@@ -421,7 +421,7 @@ class Satellite:
         self.client = None
         self._buf = bytearray()
         self._in_sr = 16000
-        # Mode de réveil : 'server' => Jarvis détecte le wake word (openWakeWord) ;
+        # Mode de réveil : 'server' => Athena détecte le wake word (openWakeWord) ;
         # 'embedded' => l'ESP a déjà déclenché (microWakeWord), on traite directement.
         self.wake_mode = cfg.get("wake_mode", "embedded")
         self._wake = None
@@ -480,7 +480,7 @@ class Satellite:
         try:
             import numpy as np
             engine = self.vc.get("wake_engine", "openwakeword")
-            phrase = self.vc.get("wake_word", "hey jarvis")
+            phrase = self.vc.get("wake_word", "hey athena")
             # STT : on transcrit le segment et on cherche le mot d'activation.
             if engine == "stt":
                 from .wakeword import phrase_in_text

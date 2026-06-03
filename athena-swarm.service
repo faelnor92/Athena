@@ -1,5 +1,5 @@
 [Unit]
-Description=Jarvis Multi-Agent Swarm Orchestration Service
+Description=Athena Multi-Agent Swarm Orchestration Service
 After=network.target
 
 [Service]

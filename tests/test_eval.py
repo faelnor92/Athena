@@ -32,9 +32,9 @@ def _fixed_completion(text):
 
 def _make_swarm():
     s = Swarm.__new__(Swarm)
-    agent = Agent(name="Jarvis", system_prompt="t", model="gpt-4o")
+    agent = Agent(name="Athena", system_prompt="t", model="gpt-4o")
     agent.tools = []
-    s.agents = {"Jarvis": agent}
+    s.agents = {"Athena": agent}
     return s
 
 
@@ -45,7 +45,7 @@ def test_run_eval_contains():
     s = _make_swarm()
     report = run_eval(s, [
         {"name": "salutation", "message": "salut", "expect_contains": "bonjour"},
-        {"name": "agent final", "message": "salut", "expect_agent": "Jarvis"},
+        {"name": "agent final", "message": "salut", "expect_agent": "Athena"},
         {"name": "doit échouer", "message": "salut", "expect_contains": "au revoir"},
     ])
     assert report["total"] == 3 and report["passed"] == 2 and report["failed"] == 1, report
@@ -58,7 +58,7 @@ def test_replay_run():
     from core.eval import replay_run
 
     rid = run_store.new_run_id()
-    run_store.save(run_id=rid, agent="Jarvis", status="success",
+    run_store.save(run_id=rid, agent="Athena", status="success",
                    user_message="quelle heure est-il ?", final_response="ancienne réponse")
 
     swarm_mod.completion = _fixed_completion("nouvelle réponse rejouée")

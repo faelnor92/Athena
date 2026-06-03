@@ -81,7 +81,7 @@ def setup_logging():
     fmt = logging.Formatter("%(asctime)s %(levelname)-7s [%(name)s] %(message)s")
 
     file_handler = RotatingFileHandler(
-        os.path.join(log_dir, "jarvis.log"),
+        os.path.join(log_dir, "athena.log"),
         maxBytes=5_000_000,
         backupCount=5,
         encoding="utf-8",

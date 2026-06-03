@@ -23,7 +23,7 @@ import os
 import threading
 from typing import Any, Callable, Dict, Optional
 
-logger = logging.getLogger("jarvis.mcp")
+logger = logging.getLogger("athena.mcp")
 
 # Mots-clés identifiant un serveur à fort pouvoir (FS / shell) à ne pas activer
 # quand l'auth est désactivée.

@@ -1,19 +1,19 @@
-# Exemple ESPHome pour un satellite vocal ESP32-S3 piloté DIRECTEMENT par Jarvis
+# Exemple ESPHome pour un satellite vocal ESP32-S3 piloté DIRECTEMENT par Athena
 # (sans Home Assistant). À adapter aux broches de ta carte (micro I2S, HP).
 #
 # Idée : on évite le wake word embarqué (microWakeWord, souvent capricieux) en
-# déclenchant l'écoute par un BOUTON (push-to-talk). Jarvis se connecte à l'ESP
+# déclenchant l'écoute par un BOUTON (push-to-talk). Athena se connecte à l'ESP
 # via l'API native et joue le rôle d'assistant.
 #
-# Le plus simple : Réglages ⚙️ → onglet « 🛰️ Satellites vocaux » dans l'UI Jarvis.
+# Le plus simple : Réglages ⚙️ → onglet « 🛰️ Satellites vocaux » dans l'UI Athena.
 #   1) clique « Générer une clé » et recopie-la ci-dessous (api.encryption.key) ;
 #   2) flashe l'ESP ;
-#   3) renseigne nom + IP + la même clé dans l'UI → Jarvis se connecte tout seul
+#   3) renseigne nom + IP + la même clé dans l'UI → Athena se connecte tout seul
 #      (le listener tourne dans le serveur, plus besoin de script séparé).
 # (Alternative manuelle : clé dans satellites.json puis `python3 esphome_satellites.py`.)
 
 esphome:
-  name: jarvis-satellite-salon
+  name: athena-satellite-salon
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -58,7 +58,7 @@ voice_assistant:
   microphone: mic
   speaker: spk
   use_wake_word: false          # on évite microWakeWord (peu fiable chez toi)
-  # Jarvis (client API) reçoit l'audio et renvoie la TTS.
+  # Athena (client API) reçoit l'audio et renvoie la TTS.
 
 binary_sensor:
   - platform: gpio

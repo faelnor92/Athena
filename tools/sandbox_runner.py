@@ -76,7 +76,7 @@ def _docker_run_args(name: str) -> List[str]:
 
 def _execute(extra_args: List[str], stdin_data: str, timeout: int) -> Tuple[str, str, int]:
     """Lance le conteneur, renvoie (stdout, stderr, returncode)."""
-    name = f"jarvis-sbx-{uuid.uuid4().hex[:12]}"
+    name = f"athena-sbx-{uuid.uuid4().hex[:12]}"
     image = os.getenv("SANDBOX_DOCKER_IMAGE", DEFAULT_IMAGE)
     cmd = _docker_run_args(name) + [image] + extra_args
     try:

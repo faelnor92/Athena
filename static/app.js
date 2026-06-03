@@ -1,6 +1,6 @@
 // Authentification et Gestion de Session
-let sessionToken = localStorage.getItem("jarvis_session_token") || "";
-let chatClientId = localStorage.getItem("jarvis_client_id") || "web";
+let sessionToken = localStorage.getItem("athena_session_token") || "";
+let chatClientId = localStorage.getItem("athena_client_id") || "web";
 
 // SSO OIDC : récupère le jeton renvoyé par le callback (?sso_token=) puis nettoie l'URL.
 try {
@@ -8,7 +8,7 @@ try {
     const _sso = _p.get("sso_token");
     if (_sso) {
         sessionToken = _sso;
-        localStorage.setItem("jarvis_session_token", _sso);
+        localStorage.setItem("athena_session_token", _sso);
         _p.delete("sso_token");
         const _q = _p.toString();
         window.history.replaceState({}, "", window.location.pathname + (_q ? "?" + _q : ""));
@@ -42,7 +42,7 @@ async function apiFetch(url, options = {}) {
     }
     setServerReachable(true);
     if (response.status === 401) {
-        localStorage.removeItem("jarvis_session_token");
+        localStorage.removeItem("athena_session_token");
         sessionToken = "";
         showLoginOverlay();
     }
@@ -55,7 +55,7 @@ async function applyBranding() {
         const r = await fetch("/api/platform", { cache: "no-store" });
         setServerReachable(true);
         const d = await r.json();
-        const name = (d && d.app_name) ? d.app_name : "Jarvis";
+        const name = (d && d.app_name) ? d.app_name : "Athena";
         document.title = `${name} — Assistant Multi-Agent`;
         const logo = document.querySelector(".logo-title");
         if (logo) logo.textContent = name.toUpperCase();
@@ -151,7 +151,7 @@ async function submitRegister() {
         }
         // Compte créé + session ouverte : on stocke le jeton et on entre.
         sessionToken = data.token;
-        localStorage.setItem("jarvis_session_token", data.token);
+        localStorage.setItem("athena_session_token", data.token);
         hideLoginOverlay();
         window.location.reload();
     } catch (e) {
@@ -189,10 +189,10 @@ async function submitLogin() {
         if (response.ok) {
             const data = await response.json();
             sessionToken = data.token;
-            localStorage.setItem("jarvis_session_token", sessionToken);
+            localStorage.setItem("athena_session_token", sessionToken);
             // Conversation par utilisateur (sauf admin/local -> 'web' historique).
             chatClientId = (data.username && !["admin", "local"].includes(data.username)) ? `web:${data.username}` : "web";
-            localStorage.setItem("jarvis_client_id", chatClientId);
+            localStorage.setItem("athena_client_id", chatClientId);
             passwordInput.value = "";
             hideLoginOverlay();
             
@@ -214,7 +214,7 @@ async function submitLogin() {
 }
 
 function handleLogout() {
-    localStorage.removeItem("jarvis_session_token");
+    localStorage.removeItem("athena_session_token");
     sessionToken = "";
     showLoginOverlay();
 }
@@ -258,7 +258,7 @@ async function checkAuthRequirements() {
 
 // Configuration générale
 const AGENT_COLORS = {
-    Jarvis: "#00f0ff",
+    Athena: "#00f0ff",
     Codeur: "#00ff66",
     Auteur: "#d600ff",
     Correcteur: "#ffb700",
@@ -266,7 +266,7 @@ const AGENT_COLORS = {
 };
 
 const AGENT_EMOJIS = {
-    Jarvis: "🤖",
+    Athena: "🤖",
     Codeur: "💻",
     Auteur: "✍️",
     Correcteur: "🔍",
@@ -305,7 +305,7 @@ function getAgentEmoji(name) {
 }
 
 // Variables d'état
-let currentActiveAgent = "Jarvis";
+let currentActiveAgent = "Athena";
 let agentsConfig = [];
 let activeAbortController = null;
 let activeRunId = null;
@@ -503,11 +503,11 @@ if (tabMeeting) {
 // =========================================================================
 // RECONSTRUCTION DYNAMIQUE DU RESEAU & DES BUREAUX
 // =========================================================================
-// Orchestrateur courant (renommable) : flag orchestrator, sinon "Jarvis", sinon 1er agent.
+// Orchestrateur courant (renommable) : flag orchestrator, sinon "Athena", sinon 1er agent.
 function orchestratorAgent() {
     if (!Array.isArray(agentsConfig) || !agentsConfig.length) return null;
     return agentsConfig.find(a => a.orchestrator === true)
-        || agentsConfig.find(a => a.name === "Jarvis")
+        || agentsConfig.find(a => a.name === "Athena")
         || agentsConfig[0];
 }
 function orchestratorName() {
@@ -644,7 +644,7 @@ function updateNetworkLines() {
 
 // 3. Reconstruction du Bureau Virtuel (Swarm Open Space - Rendu Isométrique)
 const agentOfficePositions = {
-    "Jarvis": { top: "24%", left: "54%" },            // Bureau principal surélevé
+    "Athena": { top: "24%", left: "54%" },            // Bureau principal surélevé
     "Codeur": { top: "70%", left: "68%" },            // Grand bureau de dev (Robert)
     "Auteur": { top: "58%", left: "26%" },            // Bureau créatif avec tablette (Émilie)
     "Correcteur": { top: "72%", left: "28%" },        // Bureau d'édition méticuleux (Marc)
@@ -719,7 +719,7 @@ function getAgentSpriteSVG(typeOrName) {
         </svg>`;
     }
     
-    if (key === "robot_neon" || key === "jarvis") {
+    if (key === "robot_neon" || key === "athena") {
         return character({
             skin: "#e7b489", skinShade: "#cf9669",
             jacket: "#0c2a3a", pants: "#0f3a52", shoes: "#00f0ff", accent: "#00f0ff",
@@ -867,7 +867,7 @@ const agentBreakStates = {}; // Suivi de l'état de break des agents
 
 function getAgentWorkingStatus(agentName) {
     switch(agentName) {
-        case "Jarvis": return "Supervise l'essaim... 🤖";
+        case "Athena": return "Supervise l'essaim... 🤖";
         case "Codeur": return "Optimise le code source... 💻";
         case "Auteur": return "Écrit le prochain best-seller... ✍️";
         case "Correcteur": return "Chasse les fautes de frappe... 🔍";
@@ -1134,7 +1134,7 @@ function setActiveAgentVisual(agentName) {
     }
     
     const statusMap = {
-        "Jarvis": "superviser • actif",
+        "Athena": "superviser • actif",
         "Codeur": "écrit le code • streaming",
         "Auteur": "compose un post • actif",
         "Chef": "coordonne l'équipe • actif",
@@ -1392,7 +1392,7 @@ async function playAgentSteps(steps, immediate = false) {
                         }
                     }
                     
-                    // Jarvis vient de créer/mettre à jour un agent → rafraîchir l'effectif
+                    // Athena vient de créer/mettre à jour un agent → rafraîchir l'effectif
                     // (openspace, graphe et liste des réglages lisent le cache agentsConfig).
                     if (prevStep && prevStep.tool === "create_agent" &&
                         typeof step.output === "string" && step.output.startsWith("Agent")) {
@@ -1786,7 +1786,7 @@ async function reloadChatHistory(redrawChat = true) {
                     if (msg.role === "user") {
                         if (msg.content && msg.content.startsWith("[Relais système")) {
                             // Extraire le nom de l'agent si possible
-                            // Format: [Relais système : La demande a été transférée à l'agent Jarvis (Jarvis). Veuillez répondre à l'utilisateur.]
+                            // Format: [Relais système : La demande a été transférée à l'agent Athena (Athena). Veuillez répondre à l'utilisateur.]
                             const match = msg.content.match(/transférée à l'agent (.*?)(?:\s|$|\.|\()/);
                             let label = "PASSAGE DE RELAIS";
                             if (match && match[1]) {
@@ -2087,11 +2087,11 @@ chatForm.addEventListener("submit", async (e) => {
     
     appendUserMessage(text);
     
-    // Activer visuellement Jarvis immédiatement pendant le chargement en arrière-plan
+    // Activer visuellement Athena immédiatement pendant le chargement en arrière-plan
     setActiveAgentVisual(orchestratorName());
-    const jarvisBubble = document.getElementById("bubble-"+orchestratorName());
-    if (jarvisBubble) {
-        jarvisBubble.textContent = "Analyse de la demande et coordination de l'essaim... 🧠⚙️";
+    const athenaBubble = document.getElementById("bubble-"+orchestratorName());
+    if (athenaBubble) {
+        athenaBubble.textContent = "Analyse de la demande et coordination de l'essaim... 🧠⚙️";
     }
     logToOrchestrator(orchestratorName() + " analyse votre demande et orchestre les agents spécialisés en arrière-plan...", "system");
     
@@ -2364,7 +2364,7 @@ if (_btnBackupExport) _btnBackupExport.addEventListener("click", async () => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `jarvis-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+        a.download = `athena-backup-${new Date().toISOString().slice(0, 10)}.zip`;
         document.body.appendChild(a); a.click(); a.remove();
         URL.revokeObjectURL(url);
         if (st) st.textContent = "✅ Archive téléchargée.";
@@ -2701,7 +2701,7 @@ async function saveSatelliteFromForm() {
                 port: parseInt(document.getElementById("sat-port").value || "6053", 10),
                 encryption_key: document.getElementById("sat-key").value.trim(),
                 wake_mode: (document.getElementById("sat-activation-mode") || {}).value || "embedded",
-                wake_word: (document.getElementById("sat-wakeword") || {}).value || "hey_jarvis"
+                wake_word: (document.getElementById("sat-wakeword") || {}).value || "hey_athena"
             })
         });
         const d = await r.json().catch(() => ({}));
@@ -2819,7 +2819,7 @@ async function _ensureSatCatalog() {
 }
 function _syncSatActivation() {
     // Le wake word embarqué (microWakeWord) propose un modèle ; en mode serveur,
-    // openWakeWord utilise le modèle configuré côté Jarvis — on garde le choix visible.
+    // openWakeWord utilise le modèle configuré côté Athena — on garde le choix visible.
     const mode = (document.getElementById("sat-activation-mode") || {}).value || "embedded";
     const ww = document.getElementById("sat-wakeword");
     if (ww) ww.style.display = (mode === "embedded") ? "" : "none";
@@ -2827,7 +2827,7 @@ function _syncSatActivation() {
 function _collectSatActivation() {
     return {
         mode: (document.getElementById("sat-activation-mode") || {}).value || "embedded",
-        wake_word: (document.getElementById("sat-wakeword") || {}).value || "hey_jarvis",
+        wake_word: (document.getElementById("sat-wakeword") || {}).value || "hey_athena",
     };
 }
 function _syncSatAudioRows() {
@@ -3500,9 +3500,9 @@ if (_btnAddUser) _btnAddUser.addEventListener("click", async () => {
 // -------------------------------------------------------------------------
 function loadConfigAgentsPane() {
     agentsList.innerHTML = "";
-    // Déterminer l'orchestrateur (protégé) : flag orchestrator, sinon "Jarvis", sinon 1er.
+    // Déterminer l'orchestrateur (protégé) : flag orchestrator, sinon "Athena", sinon 1er.
     let orchName = (agentsConfig.find(a => a.orchestrator === true) || {}).name;
-    if (!orchName) orchName = agentsConfig.some(a => a.name === "Jarvis") ? "Jarvis" : (agentsConfig[0] || {}).name;
+    if (!orchName) orchName = agentsConfig.some(a => a.name === "Athena") ? "Athena" : (agentsConfig[0] || {}).name;
     agentsConfig.forEach(agent => {
         const card = document.createElement("div");
         card.className = "agent-item-card";
@@ -4052,7 +4052,7 @@ agentConfigForm.addEventListener("submit", async (e) => {
     
     const updatedAgent = { name, display_name, welcome_message, avatar_type, model, system_prompt, tools, handoffs };
     // Préserver le flag orchestrateur lors d'une édition : sinon renommer l'orchestrateur
-    // (ex: Jarvis → Athena) le ferait passer pour une suppression et serait refusé.
+    // (ex: Athena → Athena) le ferait passer pour une suppression et serait refusé.
     if (origName) {
         const orig = agentsConfig.find(a => a.name === origName);
         if (orig && orig.orchestrator) updatedAgent.orchestrator = true;
@@ -4117,7 +4117,7 @@ function speakText(text, agentName) {
     if (frVoice) utterance.voice = frVoice;
     
     // Adapter la voix et le ton selon l'agent
-    if (agentName === "Jarvis") {
+    if (agentName === "Athena") {
         utterance.pitch = 1.0;
         utterance.rate = 1.05;
     } else if (agentName === "Codeur") {
@@ -5065,7 +5065,7 @@ async function executeTerminalCommand() {
     // Afficher la commande tapée dans la console avec style
     const agentSelect = document.getElementById("terminal-agent-select");
     const selectedAgent = agentSelect ? agentSelect.value : "Codeur";
-    logToTerminal(`$ jarvis-${selectedAgent.toLowerCase()} > ${command}`, "transition");
+    logToTerminal(`$ athena-${selectedAgent.toLowerCase()} > ${command}`, "transition");
     
     try {
         const response = await apiFetch("/api/terminal/coder", {
@@ -6199,7 +6199,7 @@ window.addEventListener("DOMContentLoaded", () => {
         
         // Mettre à jour l'UI
         dropzone.querySelector("span[style*='font-weight']").textContent = `Fichier prêt : ${file.name}`;
-        dropzone.style.borderColor = "var(--color-Jarvis)";
+        dropzone.style.borderColor = "var(--color-Athena)";
         
         playerWrapper.style.display = "flex";
         btnStart.style.display = "inline-block";
@@ -6269,7 +6269,7 @@ window.addEventListener("DOMContentLoaded", () => {
         // Assigner dynamiquement des couleurs aux locuteurs distincts
         const speakerColors = {};
         const colors = [
-            "var(--color-Jarvis)", // Cyan
+            "var(--color-Athena)", // Cyan
             "#a855f7", // Violet
             "#eab308", // Jaune
             "#ec4899", // Rose

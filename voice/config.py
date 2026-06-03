@@ -4,7 +4,7 @@ import os
 
 def voice_config() -> dict:
     return {
-        # Serveur Jarvis à interroger (réutilise l'API de streaming + sessions/permissions).
+        # Serveur Athena à interroger (réutilise l'API de streaming + sessions/permissions).
         "server_url": os.getenv("VOICE_SERVER_URL", "http://127.0.0.1:8000").rstrip("/"),
         "client_id": os.getenv("VOICE_CLIENT_ID", "voice"),
         "auth_token": os.getenv("VOICE_AUTH_TOKEN", ""),  # si ADMIN_PASSWORD activé
@@ -30,6 +30,6 @@ def voice_config() -> dict:
         # Wake word : "stt" (mot custom ex. Athena, par transcription), "openwakeword",
         # "porcupine", ou "none" (push-to-talk Entrée)
         "wake_engine": os.getenv("VOICE_WAKE_ENGINE", "openwakeword"),
-        "wake_word": os.getenv("VOICE_WAKE_WORD", "hey jarvis"),
+        "wake_word": os.getenv("VOICE_WAKE_WORD", "hey athena"),
         "porcupine_key": os.getenv("VOICE_PORCUPINE_KEY", ""),
     }
