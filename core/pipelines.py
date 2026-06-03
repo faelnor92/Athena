@@ -62,7 +62,7 @@ class PipelineStore:
             })
         return out
 
-    def upsert(self, data: dict, owner: str = None) -> dict:
+    def upsert(self, data: dict, owner: str = None, approved: bool = False) -> dict:
         owner = owner or _now_owner()
         pid = data.get("id") or uuid.uuid4().hex[:8]
         # On ne peut pas écraser le pipeline d'un autre propriétaire.
@@ -74,11 +74,29 @@ class PipelineStore:
             "name": (data.get("name") or "Workflow").strip() or "Workflow",
             "owner": owner,
             "steps": self._clean_steps(data.get("steps")),
+            # Validation admin : un pipeline créé/édité par un non-admin repart « en attente »
+            # (approved=False) et ne pourra s'exécuter qu'après validation par un admin.
+            "approved": bool(approved),
             "created_at": prev.get("created_at") if prev else time.time(),
             "updated_at": time.time(),
         }
         shared_store.set(_NS, pid, pipeline)
         return pipeline
+
+    def set_approved(self, pid: str, approved: bool = True) -> bool:
+        def _set(p):
+            if p is None:
+                return None
+            p["approved"] = bool(approved)
+            return p
+        if shared_store.get(_NS, pid) is None:
+            return False
+        shared_store.update(_NS, pid, _set)
+        return True
+
+    def pending(self) -> list:
+        """Pipelines en attente de validation (tous propriétaires) — pour les admins."""
+        return [p for p in shared_store.values(_NS) if not p.get("approved")]
 
     def delete(self, pid: str, owner: str = None) -> bool:
         owner = owner or _now_owner()

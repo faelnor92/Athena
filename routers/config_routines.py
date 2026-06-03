@@ -48,6 +48,13 @@ def _run_routine(routine: dict):
     import logging
     logger = logging.getLogger("athena.routines")
 
+    # Validation admin : une routine créée par un non-admin ne s'exécute (scheduler,
+    # webhook ou manuel) qu'une fois validée. `approved` absent = routine héritée/de
+    # confiance → autorisée. Filet de sécurité commun à TOUS les chemins d'exécution.
+    if routine.get("approved") is False:
+        logger.info("routine '%s' ignorée : en attente de validation admin", routine.get("name"))
+        return
+
     # Pont Workflow : une routine peut déclencher un pipeline déterministe (au lieu d'un
     # prompt). Exécuté dans le contexte du propriétaire ; le prompt sert d'entrée initiale.
     pid = routine.get("pipeline_id")
@@ -140,6 +147,16 @@ def _me() -> str:
     return current_user_key()
 
 
+def _is_admin(request: Request) -> bool:
+    """True si admin OU auth inactive (mode local de confiance)."""
+    import os
+    from core.users import user_store
+    if not (bool(os.getenv("ADMIN_PASSWORD", "").strip()) or user_store.count() > 0):
+        return True
+    u = getattr(request.state, "user", None)
+    return bool(u and u.get("role") == "admin")
+
+
 def _owned_or_404(rid: str):
     """Récupère une routine SI elle appartient à l'utilisateur courant, sinon 404."""
     r = routine_store.get(rid)
@@ -154,7 +171,7 @@ async def list_routines() -> Dict[str, Any]:
     return {"routines": [r for r in routine_store.list() if (r.get("owner") or "local") == me]}
 
 @router.post("/api/routines")
-async def save_routine(req: RoutineRequest) -> Dict[str, Any]:
+async def save_routine(req: RoutineRequest, request: Request) -> Dict[str, Any]:
     data = req.model_dump()
     # Empêche de détourner la routine d'un autre utilisateur : on (ré)affecte au courant.
     if data.get("id"):
@@ -162,6 +179,9 @@ async def save_routine(req: RoutineRequest) -> Dict[str, Any]:
         if existing and (existing.get("owner") or "local") != _me():
             raise HTTPException(status_code=404, detail="Routine introuvable.")
     data["owner"] = _me()
+    # Validation admin : un admin (ou le mode local) valide d'emblée ; sinon la routine
+    # est « en attente » et ne s'exécutera qu'après validation par un admin.
+    data["approved"] = _is_admin(request)
     return {"status": "success", "routine": routine_store.upsert(data)}
 
 @router.delete("/api/routines/{rid}")
@@ -171,9 +191,29 @@ async def delete_routine(rid: str) -> Dict[str, str]:
     return {"status": "success"}
 
 @router.post("/api/routines/{rid}/run")
-async def run_routine_now(rid: str) -> Dict[str, str]:
+async def run_routine_now(rid: str, request: Request) -> Dict[str, str]:
     r = _owned_or_404(rid)
+    if r.get("approved") is False and not _is_admin(request):
+        raise HTTPException(status_code=403, detail="Routine en attente de validation par un administrateur.")
     await asyncio.to_thread(_run_routine, r)
+    return {"status": "success"}
+
+@router.get("/api/routines/pending")
+async def list_pending_routines(request: Request) -> Dict[str, Any]:
+    """Routines de TOUS les utilisateurs en attente de validation (admin)."""
+    if not _is_admin(request):
+        raise HTTPException(status_code=403, detail="Réservé à l'administrateur.")
+    return {"pending": [r for r in routine_store.list() if r.get("approved") is False]}
+
+@router.post("/api/routines/{rid}/approve")
+async def approve_routine(rid: str, request: Request) -> Dict[str, str]:
+    if not _is_admin(request):
+        raise HTTPException(status_code=403, detail="Réservé à l'administrateur.")
+    r = routine_store.get(rid)
+    if not r:
+        raise HTTPException(status_code=404, detail="Routine introuvable.")
+    r["approved"] = True
+    routine_store.upsert(r)
     return {"status": "success"}
 
 @router.api_route("/api/hooks/{rid}", methods=["GET", "POST"])
