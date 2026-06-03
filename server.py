@@ -62,6 +62,35 @@ app.include_router(_auth_router.router)
 from routers.auth import auth_middleware, _enforce_network_security
 _enforce_network_security()
 app.middleware("http")(auth_middleware)
+
+# --- En-têtes HTTP de sécurité (anti-clickjacking / sniffing / XSS) -----------
+_SECURITY_HEADERS = os.getenv("SECURITY_HEADERS", "true").lower() not in ("false", "0", "no")
+_DEFAULT_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+    "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+    "img-src 'self' data: blob:; connect-src 'self'; "
+    "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+)
+_CSP = os.getenv("CONTENT_SECURITY_POLICY", _DEFAULT_CSP)
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    resp = await call_next(request)
+    if _SECURITY_HEADERS:
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if _CSP:
+            resp.headers.setdefault("Content-Security-Policy", _CSP)
+        # HSTS seulement derrière HTTPS (sinon casserait l'accès HTTP local).
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        if proto == "https":
+            resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return resp
 from core.state import swarm, _orch_name, _app_name, _orch_agent, ConversationManager, _session_file, ChatSession, SessionManager, sessions, session, TELEMETRY, CODER_CWD, get_coder_cwd, set_coder_cwd, get_model_cost
 
 from routers import config_agents as _config_agents_router
