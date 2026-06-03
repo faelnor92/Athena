@@ -1178,9 +1178,28 @@
                     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
                     <h5 style="color: var(--accent-cyan); margin: 8px 0;">🔑 Mon mot de passe</h5>
                     <div class="form-group"><label>Mot de passe actuel</label><input id="mypw-current" type="password" placeholder="••••••••"></div>
-                    <div class="form-group"><label>Nouveau mot de passe</label><input id="mypw-new" type="password" placeholder="min. 4 caractères"></div>
+                    <div class="form-group"><label>Nouveau mot de passe</label><input id="mypw-new" type="password" placeholder="min. 8 caractères"></div>
                     <button type="button" id="btn-change-mypw" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem;">Changer mon mot de passe</button>
                     <div id="mypw-status" style="text-align: center; margin-top: 6px; font-size: 0.8rem; opacity: 0.7;"></div>
+
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
+                    <h5 style="color: var(--accent-cyan); margin: 8px 0;">🔐 Authentification à deux facteurs (2FA)</h5>
+                    <p class="section-desc">Protège ton compte avec un code temporaire (Google Authenticator, Authy, FreeOTP…).</p>
+                    <div id="mfa-status" style="font-size: 0.82rem; margin-bottom: 6px;">…</div>
+                    <button type="button" id="btn-mfa-setup" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem; display: none;">Activer la 2FA</button>
+                    <div id="mfa-setup" style="display: none; margin-top: 8px;">
+                        <p class="section-desc">Ajoute ce compte dans ton app d'authentification (saisis le secret ou colle l'URI), puis entre un code pour activer :</p>
+                        <div style="font-family: monospace; font-size: 0.78rem; word-break: break-all; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 8px; margin: 6px 0;">
+                            Secret : <strong id="mfa-secret"></strong><br><span id="mfa-uri" style="opacity: 0.7;"></span>
+                        </div>
+                        <div class="form-group"><label>Code de vérification</label><input id="mfa-code" type="text" inputmode="numeric" maxlength="6" placeholder="123456"></div>
+                        <button type="button" id="btn-mfa-enable" class="btn btn-primary" style="width: 100%; font-size: 0.85rem;">✅ Activer</button>
+                    </div>
+                    <div id="mfa-disable" style="display: none; margin-top: 8px;">
+                        <div class="form-group"><label>Code 2FA pour confirmer la désactivation</label><input id="mfa-code-disable" type="text" inputmode="numeric" maxlength="6" placeholder="123456"></div>
+                        <button type="button" id="btn-mfa-disable" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem;">Désactiver la 2FA</button>
+                    </div>
+                    <div id="mfa-msg" style="text-align: center; margin-top: 6px; font-size: 0.8rem; opacity: 0.75;"></div>
 
                     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
                     <h5 style="color: var(--accent-cyan); margin: 8px 0;">🤖 Mon modèle & mes clés LLM</h5>
@@ -1365,7 +1384,12 @@
                 <label for="login-password" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4); margin-top: 4px;">Mot de passe</label>
                 <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; outline: none; transition: all 0.2s;" onkeydown="if(event.key==='Enter') submitLogin()">
             </div>
-            
+
+            <div id="login-totp-row" style="display: none; flex-direction: column; gap: 4px;">
+                <label for="login-totp" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4);">Code 2FA</label>
+                <input type="text" id="login-totp" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="6" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; letter-spacing: 0.2em; text-align: center; outline: none;" onkeydown="if(event.key==='Enter') submitLogin()">
+            </div>
+
             <div id="login-error" style="display: none; color: #ff5555; font-size: 0.8rem; text-align: center; font-weight: 500;">❌ Mot de passe incorrect.</div>
             
             <button onclick="submitLogin()" class="btn btn-primary" style="width: 100%; padding: 11px; font-size: 0.9rem; border-radius: 6px; font-weight: 600;">

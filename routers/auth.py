@@ -123,6 +123,7 @@ def _is_admin_only(method: str, path: str) -> bool:
 class LoginRequest(BaseModel):
     password: str
     username: str = None
+    totp: str = None  # code 2FA (si activé pour le compte)
 
 
 
@@ -221,6 +222,19 @@ async def login(req: LoginRequest, request: Request):
     if user_store.count() > 0 and req.username:
         role = user_store.verify(req.username, req.password)
         if role:
+            # 2FA : si activée, exiger un code TOTP valide (mot de passe déjà vérifié).
+            mfa = user_store.get_mfa(req.username)
+            if mfa and mfa.get("enabled"):
+                if not req.totp:
+                    # Mot de passe correct mais 2FA requise → l'UI doit demander le code.
+                    raise HTTPException(status_code=401,
+                                        detail={"mfa_required": True, "message": "Code 2FA requis."})
+                from core import totp
+                from core.state import _decrypt
+                if not totp.verify(_decrypt(mfa.get("secret", "")), req.totp):
+                    _record_login_fail(client_ip)
+                    audit.log("login_failed", actor=req.username, ip=client_ip, detail="2FA invalide")
+                    raise HTTPException(status_code=401, detail="Code 2FA invalide.")
             return _ok(req.username, role)
 
     # 2. Admin « bootstrap » via ADMIN_PASSWORD (toujours valable pour l'owner).
@@ -273,6 +287,72 @@ async def change_my_password(request: Request, req: PasswordChangeRequest):
         raise HTTPException(status_code=400, detail="Changement impossible.")
     ACTIVE_SESSIONS.revoke_user(username, keep_token=_bearer_token(request))
     audit.log("password_change", actor=username, ip=audit.client_ip(request))
+    return {"status": "success"}
+
+
+# --- 2FA / TOTP (self-service) ----------------------------------------------
+class MfaCodeRequest(BaseModel):
+    code: str = ""
+
+
+@router.get("/api/me/mfa")
+async def my_mfa_status(request: Request):
+    username = _current_user(request).get("username")
+    return {"enabled": user_store.mfa_enabled(username)}
+
+
+@router.post("/api/me/mfa/setup")
+async def my_mfa_setup(request: Request):
+    """Génère un secret TOTP (en attente d'activation) et renvoie l'URI otpauth + le secret."""
+    from core import totp
+    from core.state import _encrypt
+    username = _current_user(request).get("username")
+    if not username or username == "local":
+        raise HTTPException(status_code=400, detail="2FA indisponible pour ce compte.")
+    secret = totp.generate_secret()
+    user_store.set_mfa(username, _encrypt(secret), enabled=False)  # pas encore actif
+    return {"secret": secret, "otpauth_uri": totp.provisioning_uri(secret, username)}
+
+
+@router.post("/api/me/mfa/enable")
+async def my_mfa_enable(request: Request, req: MfaCodeRequest):
+    """Active la 2FA après vérification d'un premier code (preuve que l'app est configurée)."""
+    from core import totp
+    from core.state import _decrypt
+    username = _current_user(request).get("username")
+    mfa = user_store.get_mfa(username)
+    if not mfa or not mfa.get("secret"):
+        raise HTTPException(status_code=400, detail="Lancez d'abord la configuration 2FA.")
+    if not totp.verify(_decrypt(mfa["secret"]), req.code):
+        raise HTTPException(status_code=403, detail="Code 2FA invalide.")
+    user_store.set_mfa(username, mfa["secret"], enabled=True)
+    audit.log("mfa_enable", actor=username, ip=audit.client_ip(request))
+    return {"status": "success"}
+
+
+@router.post("/api/me/mfa/disable")
+async def my_mfa_disable(request: Request, req: MfaCodeRequest):
+    """Désactive la 2FA (exige un code valide pour éviter une désactivation par session volée)."""
+    from core import totp
+    from core.state import _decrypt
+    username = _current_user(request).get("username")
+    mfa = user_store.get_mfa(username)
+    if not mfa or not mfa.get("enabled"):
+        return {"status": "success"}  # déjà désactivée
+    if not totp.verify(_decrypt(mfa["secret"]), req.code):
+        raise HTTPException(status_code=403, detail="Code 2FA invalide.")
+    user_store.clear_mfa(username)
+    audit.log("mfa_disable", actor=username, ip=audit.client_ip(request))
+    return {"status": "success"}
+
+
+@router.post("/api/users/{username}/mfa/reset")
+async def admin_reset_mfa(request: Request, username: str):
+    """Réinitialise (désactive) la 2FA d'un compte — récupération si appareil perdu (ADMIN)."""
+    _require_admin(request)
+    user_store.clear_mfa(username)
+    audit.log("mfa_reset", actor=_current_user(request).get("username"), role="admin",
+              target=username, ip=audit.client_ip(request))
     return {"status": "success"}
 
 

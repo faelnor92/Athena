@@ -232,6 +232,8 @@ async function submitLogin() {
     const errorMsg = document.getElementById("login-error");
     const password = passwordInput.value.trim();
     const username = usernameInput ? usernameInput.value.trim() : "";
+    const totpInput = document.getElementById("login-totp");
+    const totp = totpInput ? totpInput.value.trim() : "";
 
     errorMsg.style.display = "none";
 
@@ -239,7 +241,7 @@ async function submitLogin() {
         const response = await fetch("/api/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ password, username: username || undefined })
+            body: JSON.stringify({ password, username: username || undefined, totp: totp || undefined })
         });
 
         if (response.ok) {
@@ -250,14 +252,27 @@ async function submitLogin() {
             chatClientId = (data.username && !["admin", "local"].includes(data.username)) ? `web:${data.username}` : "web";
             localStorage.setItem("athena_client_id", chatClientId);
             passwordInput.value = "";
+            if (totpInput) { totpInput.value = ""; const row = document.getElementById("login-totp-row"); if (row) row.style.display = "none"; }
             hideLoginOverlay();
-            
+
             // Recharger les données du dashboard après connexion réussie
             reloadSwarmConfig();
             loadWorkspaceFiles();
             loadGlobalConfig();
             loadAvailableModels();
         } else {
+            let detail = null;
+            try { detail = (await response.json()).detail; } catch (e) {}
+            if (detail && detail.mfa_required) {
+                // Mot de passe correct → on révèle le champ 2FA (on garde le mot de passe saisi).
+                const row = document.getElementById("login-totp-row");
+                if (row) row.style.display = "";
+                if (totpInput) totpInput.focus();
+                errorMsg.textContent = "🔐 Saisissez le code de votre application d'authentification.";
+                errorMsg.style.display = "block";
+                return;
+            }
+            errorMsg.textContent = (typeof detail === "string" && detail) ? `❌ ${detail}` : "❌ Identifiants incorrects.";
             errorMsg.style.display = "block";
             passwordInput.value = "";
             passwordInput.focus();
@@ -3467,6 +3482,7 @@ if (modalTabUsers && paneUsers) {
         loadInvitesPane();
         loadMyLlm();
         loadMyUsage();
+        loadMfaStatus();
     }));
 }
 
@@ -7258,3 +7274,65 @@ async function loadAdminPending() {
         };
     });
 }
+
+
+/* ===================== 2FA / TOTP (self-service) ===================== */
+async function loadMfaStatus() {
+    const st = document.getElementById("mfa-status");
+    const btnSetup = document.getElementById("btn-mfa-setup");
+    const setup = document.getElementById("mfa-setup");
+    const disable = document.getElementById("mfa-disable");
+    const msg = document.getElementById("mfa-msg");
+    if (!st) return;
+    if (msg) msg.textContent = "";
+    if (setup) setup.style.display = "none";
+    try {
+        const d = await (await apiFetch("/api/me/mfa")).json();
+        if (d.enabled) {
+            st.innerHTML = "✅ <strong>Activée</strong> — un code sera demandé à la connexion.";
+            if (btnSetup) btnSetup.style.display = "none";
+            if (disable) disable.style.display = "block";
+        } else {
+            st.innerHTML = "❌ Désactivée.";
+            if (btnSetup) btnSetup.style.display = "block";
+            if (disable) disable.style.display = "none";
+        }
+    } catch (e) { st.textContent = "—"; }
+}
+async function setupMfa() {
+    const msg = document.getElementById("mfa-msg");
+    try {
+        const d = await (await apiFetch("/api/me/mfa/setup", { method: "POST" })).json();
+        document.getElementById("mfa-secret").textContent = d.secret || "";
+        document.getElementById("mfa-uri").textContent = d.otpauth_uri || "";
+        document.getElementById("mfa-setup").style.display = "block";
+        document.getElementById("btn-mfa-setup").style.display = "none";
+        if (msg) msg.textContent = "";
+    } catch (e) { if (msg) msg.textContent = "❌ " + e; }
+}
+async function enableMfa() {
+    const msg = document.getElementById("mfa-msg");
+    const code = (document.getElementById("mfa-code").value || "").trim();
+    try {
+        const r = await apiFetch("/api/me/mfa/enable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
+        if (r.ok) { msg.textContent = "✅ 2FA activée."; loadMfaStatus(); }
+        else { const d = await r.json().catch(() => ({})); msg.textContent = "❌ " + (d.detail || "code invalide"); }
+    } catch (e) { msg.textContent = "❌ " + e; }
+}
+async function disableMfa() {
+    const msg = document.getElementById("mfa-msg");
+    const code = (document.getElementById("mfa-code-disable").value || "").trim();
+    try {
+        const r = await apiFetch("/api/me/mfa/disable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
+        if (r.ok) { msg.textContent = "2FA désactivée."; loadMfaStatus(); }
+        else { const d = await r.json().catch(() => ({})); msg.textContent = "❌ " + (d.detail || "code invalide"); }
+    } catch (e) { msg.textContent = "❌ " + e; }
+}
+(function wireMfa() {
+    const b1 = document.getElementById("btn-mfa-setup");
+    const b2 = document.getElementById("btn-mfa-enable");
+    const b3 = document.getElementById("btn-mfa-disable");
+    if (b1) b1.addEventListener("click", setupMfa);
+    if (b2) b2.addEventListener("click", enableMfa);
+    if (b3) b3.addEventListener("click", disableMfa);
+})();

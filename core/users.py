@@ -112,6 +112,36 @@ class UserStore:
         used = d.get("tokens_used_today", 0) if d.get("last_reset_date") == today else 0
         return (used + required_tokens) <= quota_max
 
+    # --- 2FA / TOTP (secret stocké chiffré) ---------------------------------
+    def set_mfa(self, username: str, secret_enc: str, enabled: bool) -> bool:
+        def _set(d):
+            if d is None:
+                raise KeyError
+            d["mfa"] = {"secret": secret_enc, "enabled": bool(enabled)}
+            return d
+        try:
+            self._s.update(_NS, username, _set)
+            return True
+        except KeyError:
+            return False
+
+    def get_mfa(self, username: str):
+        """Renvoie {'secret': <chiffré>, 'enabled': bool} ou None."""
+        return (self._s.get(_NS, username) or {}).get("mfa")
+
+    def mfa_enabled(self, username: str) -> bool:
+        m = self.get_mfa(username)
+        return bool(m and m.get("enabled"))
+
+    def clear_mfa(self, username: str) -> bool:
+        def _clr(d):
+            if d is None:
+                return None
+            d.pop("mfa", None)
+            return d
+        self._s.update(_NS, username, _clr)
+        return True
+
     def consume_tokens(self, username: str, amount: int):
         """Incrémente la conso du jour de façon ATOMIQUE (sûr en multi-process)."""
         import datetime
