@@ -1122,6 +1122,23 @@
                     <div class="form-group"><label>Rôle</label><select id="user-role"><option value="user">Utilisateur</option><option value="admin">Administrateur</option></select></div>
                     <button type="button" id="btn-add-user" class="btn btn-primary" style="width: 100%;">➕ Créer le compte</button>
                     <div id="users-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
+
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
+                    <h5 style="color: var(--accent-cyan); margin: 8px 0;">✉️ Invitations</h5>
+                    <p class="section-desc">Génère un code pour qu'une personne crée elle-même son compte (sans saisir son mot de passe ici).</p>
+                    <div style="display: flex; gap: 6px; align-items: center; margin: 6px 0;">
+                        <select id="invite-role" style="flex: 1;"><option value="user">Utilisateur</option><option value="admin">Administrateur</option></select>
+                        <select id="invite-exp" style="flex: 1;"><option value="24">24 h</option><option value="168" selected>7 jours</option><option value="720">30 jours</option></select>
+                        <button type="button" id="btn-create-invite" class="btn btn-secondary" style="white-space: nowrap; font-size: 0.8rem;">+ Inviter</button>
+                    </div>
+                    <div id="invites-list" style="display: flex; flex-direction: column; gap: 6px; margin: 8px 0; max-height: 160px; overflow-y: auto;"></div>
+
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
+                    <h5 style="color: var(--accent-cyan); margin: 8px 0;">🔑 Mon mot de passe</h5>
+                    <div class="form-group"><label>Mot de passe actuel</label><input id="mypw-current" type="password" placeholder="••••••••"></div>
+                    <div class="form-group"><label>Nouveau mot de passe</label><input id="mypw-new" type="password" placeholder="min. 4 caractères"></div>
+                    <button type="button" id="btn-change-mypw" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem;">Changer mon mot de passe</button>
+                    <div id="mypw-status" style="text-align: center; margin-top: 6px; font-size: 0.8rem; opacity: 0.7;"></div>
                 </div>
 
                 <div class="modal-pane" id="pane-knowledge" style="display: none;">

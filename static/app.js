@@ -13,6 +13,9 @@ try {
         const _q = _p.toString();
         window.history.replaceState({}, "", window.location.pathname + (_q ? "?" + _q : ""));
     }
+    // Lien d'invitation : ?invite=CODE → pré-remplit le formulaire d'inscription.
+    const _inv = _p.get("invite");
+    if (_inv) window._pendingInvite = _inv;
 } catch (e) { /* ignore */ }
 
 // Wrapper de fetch sécurisé avec injecteur de jeton d'autorisation Bearer
@@ -104,6 +107,13 @@ function showLoginOverlay() {
             const b = document.getElementById("btn-sso-login");
             if (b) b.style.display = d && d.enabled ? "block" : "none";
         }).catch(() => {});
+        // Lien d'invitation : ouvre et pré-remplit le formulaire d'inscription.
+        if (window._pendingInvite) {
+            const codeInput = document.getElementById("reg-code");
+            const box = document.getElementById("register-box");
+            if (codeInput) codeInput.value = window._pendingInvite;
+            if (box) box.style.display = "flex";
+        }
     }
 }
 
@@ -3366,7 +3376,18 @@ async function loadUsersPane() {
                 if (!rr.ok) { const dd = await rr.json().catch(() => ({})); if (st) st.textContent = "❌ " + (dd.detail || "Erreur"); }
                 loadUsersPane();
             });
-            row.append(info, del);
+            const reset = document.createElement("button");
+            reset.type = "button"; reset.textContent = "🔑"; reset.title = "Réinitialiser le mot de passe";
+            reset.style.cssText = "background:rgba(0,243,255,0.1);border:1px solid rgba(0,243,255,0.4);color:var(--accent-cyan);border-radius:4px;padding:1px 7px;cursor:pointer;font-size:0.72rem;";
+            reset.addEventListener("click", async () => {
+                const np = prompt(`Nouveau mot de passe pour « ${u.username} » :`);
+                if (!np || np.length < 4) { if (np !== null) alert("Mot de passe trop court (min. 4)."); return; }
+                const rr = await apiFetch(`/api/users/${encodeURIComponent(u.username)}/password`, {
+                    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ new_password: np }),
+                });
+                if (st) st.textContent = rr.ok ? `✅ Mot de passe de ${u.username} réinitialisé.` : "❌ Échec.";
+            });
+            row.append(info, reset, del);
             list.appendChild(row);
         });
     } catch (e) {
@@ -3378,8 +3399,84 @@ if (modalTabUsers && paneUsers) {
     modalTabUsers.addEventListener("click", () => switchModalTab(modalTabUsers, () => {
         paneUsers.style.display = "block";
         loadUsersPane();
+        loadInvitesPane();
     }));
 }
+
+async function loadInvitesPane() {
+    const list = document.getElementById("invites-list");
+    if (!list) return;
+    try {
+        const r = await apiFetch("/api/users/invites");
+        if (!r.ok) { list.innerHTML = ""; return; }
+        const invites = (await r.json()).invites || [];
+        list.innerHTML = "";
+        if (!invites.length) {
+            list.innerHTML = "<div style='opacity:0.5;font-size:0.76rem;'>Aucune invitation.</div>";
+            return;
+        }
+        invites.forEach(inv => {
+            const used = !!inv.used_by;
+            const expired = (inv.expires_at || 0) * 1000 < Date.now();
+            const row = document.createElement("div");
+            row.className = "service-item";
+            row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;font-size:0.74rem;";
+            const state = used ? `utilisé par ${inv.used_by}` : (expired ? "expiré" : "actif");
+            const link = `${location.origin}/?invite=${encodeURIComponent(inv.code)}`;
+            const info = document.createElement("div");
+            info.style.cssText = "flex:1;min-width:0;";
+            info.innerHTML = `<code style="font-size:0.7rem;">${inv.code.slice(0, 12)}…</code> <span style="opacity:0.6;">· ${inv.role} · ${state}</span>`;
+            const copy = document.createElement("button");
+            copy.type = "button"; copy.textContent = "📋"; copy.title = "Copier le lien d'invitation";
+            copy.style.cssText = "background:rgba(0,243,255,0.1);border:1px solid rgba(0,243,255,0.3);color:var(--accent-cyan);border-radius:4px;padding:1px 7px;cursor:pointer;";
+            copy.addEventListener("click", () => {
+                navigator.clipboard.writeText(link).then(() => { copy.textContent = "✓"; setTimeout(() => copy.textContent = "📋", 1200); }).catch(() => {});
+            });
+            const rev = document.createElement("button");
+            rev.type = "button"; rev.textContent = "🗑️";
+            rev.style.cssText = "background:rgba(255,0,80,0.12);border:1px solid rgba(255,0,80,0.4);color:#ff5b89;border-radius:4px;padding:1px 7px;cursor:pointer;";
+            rev.addEventListener("click", async () => {
+                await apiFetch(`/api/users/invites/${encodeURIComponent(inv.code)}`, { method: "DELETE" });
+                loadInvitesPane();
+            });
+            row.append(info, copy, rev);
+            list.appendChild(row);
+        });
+    } catch (e) { /* silencieux */ }
+}
+
+const _btnCreateInvite = document.getElementById("btn-create-invite");
+if (_btnCreateInvite) _btnCreateInvite.addEventListener("click", async () => {
+    const role = document.getElementById("invite-role").value;
+    const expires_hours = parseInt(document.getElementById("invite-exp").value, 10) || 168;
+    const r = await apiFetch("/api/users/invites", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, expires_hours }),
+    });
+    if (r.ok) {
+        const inv = (await r.json()).invite;
+        const link = `${location.origin}/?invite=${encodeURIComponent(inv.code)}`;
+        navigator.clipboard.writeText(link).catch(() => {});
+        alert("Invitation créée — lien copié dans le presse-papiers :\n\n" + link);
+        loadInvitesPane();
+    } else {
+        alert("Création de l'invitation refusée.");
+    }
+});
+
+const _btnChangeMyPw = document.getElementById("btn-change-mypw");
+if (_btnChangeMyPw) _btnChangeMyPw.addEventListener("click", async () => {
+    const st = document.getElementById("mypw-status");
+    const cur = document.getElementById("mypw-current").value;
+    const nw = document.getElementById("mypw-new").value;
+    st.textContent = "";
+    if ((nw || "").length < 4) { st.textContent = "❌ Nouveau mot de passe trop court (min. 4)."; return; }
+    const r = await apiFetch("/api/me/password", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ current_password: cur, new_password: nw }),
+    });
+    const d = await r.json().catch(() => ({}));
+    st.textContent = r.ok ? "✅ Mot de passe changé." : ("❌ " + (d.detail || "Échec."));
+    if (r.ok) { document.getElementById("mypw-current").value = ""; document.getElementById("mypw-new").value = ""; }
+});
 const _btnAddUser = document.getElementById("btn-add-user");
 if (_btnAddUser) _btnAddUser.addEventListener("click", async () => {
     const name = document.getElementById("user-name").value.trim();
