@@ -15,6 +15,28 @@ from typing import Any, Dict, List, Optional
 _DEFAULT_DB = os.getenv("RUNS_DB_PATH", "runs.sqlite3")
 
 
+def _enc(s):
+    """Chiffre une chaîne (au repos) si possible ; sinon la renvoie telle quelle."""
+    if not s:
+        return s
+    try:
+        from core.state import _encrypt
+        return _encrypt(s)
+    except Exception:
+        return s
+
+
+def _dec(s):
+    """Déchiffre une chaîne ; fallback migration douce (anciennes lignes en clair)."""
+    if not s:
+        return s
+    try:
+        from core.state import _decrypt
+        return _decrypt(s)
+    except Exception:
+        return s
+
+
 class RunStore:
     def __init__(self, db_path: str = _DEFAULT_DB):
         self.db_path = db_path
@@ -71,7 +93,8 @@ class RunStore:
     ):
         try:
             from core.redaction import redact_secrets
-            steps_json = redact_secrets(json.dumps(steps or [], ensure_ascii=False))
+            # Redaction des secrets PUIS chiffrement au repos du contenu sensible.
+            steps_json = _enc(redact_secrets(json.dumps(steps or [], ensure_ascii=False)))
             # Utilisateur courant (usage par compte), résolu sans changer les appelants.
             try:
                 from core.user_config import current_user_key
@@ -91,12 +114,12 @@ class RunStore:
                         created_at if created_at is not None else time.time(),
                         agent,
                         status,
-                        redact_secrets(user_message),
-                        redact_secrets(final_response),
+                        _enc(redact_secrets(user_message)),
+                        _enc(redact_secrets(final_response)),
                         int(duration_ms),
                         int(total_tokens),
                         float(total_cost),
-                        redact_secrets(error),
+                        _enc(redact_secrets(error)),
                         steps_json,
                         user,
                     ),
@@ -135,8 +158,12 @@ class RunStore:
         if not row:
             return None
         data = dict(row)
+        # Déchiffrement du contenu sensible (au repos).
+        for k in ("user_message", "final_response", "error"):
+            if data.get(k):
+                data[k] = _dec(data[k])
         try:
-            data["steps"] = json.loads(data.pop("steps_json") or "[]")
+            data["steps"] = json.loads(_dec(data.pop("steps_json")) or "[]")
         except Exception:
             data["steps"] = []
         return data
@@ -164,7 +191,13 @@ class RunStore:
         params.append(int(limit))
         with self._lock, self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(r)
+            if d.get("user_message"):
+                d["user_message"] = _dec(d["user_message"])
+            out.append(d)
+        return out
 
 
 # Singleton applicatif
