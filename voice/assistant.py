@@ -168,7 +168,8 @@ class VoiceAssistant:
                 if seg:
                     self.tts.speak(seg, stop_event=interrupted)
                 return
-            matches = list(re.finditer(r"[.!?…:]['\")\]]?\s|\n", buffer["txt"]))
+            # Micro-chunking (S2S) : on coupe aussi sur les virgules (,) pour démarrer la synthèse très tôt.
+            matches = list(re.finditer(r"[.!?…:,]['\")\]]?\s|\n", buffer["txt"]))
             if not matches:
                 return
             cut = matches[-1].end()

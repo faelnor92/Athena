@@ -35,3 +35,4 @@ pypdf==6.12.2
 
 # --- Automatisation Web (Computer Use RPA) ----------------------------------
 playwright>=1.40.0
+uv>=0.5.0

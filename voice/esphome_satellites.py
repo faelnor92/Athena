@@ -520,7 +520,7 @@ class Satellite:
         print(f"🗣️  [{self.name}] {text}")
 
         # 2. Essaim en streaming + 3. TTS phrase par phrase renvoyée au satellite
-        client_id = f"voice:{self.name}"
+        client_id = "voice_home"  # Mémoire partagée entre tous les satellites de la maison
         url = f"{self.vc['server_url']}/api/chat/stream"
         self._send_event_threadsafe("VOICE_ASSISTANT_TTS_START")
         buf = {"t": ""}
@@ -529,7 +529,8 @@ class Satellite:
             if force:
                 seg = buf["t"].strip(); buf["t"] = ""
             else:
-                m = list(re.finditer(r"[.!?…:]['\")\]]?\s|\n", buf["t"]))
+                # Micro-chunking S2S (avec les virgules)
+                m = list(re.finditer(r"[.!?…:,]['\")\]]?\s|\n", buf["t"]))
                 if not m:
                     return
                 cut = m[-1].end(); seg = buf["t"][:cut].strip(); buf["t"] = buf["t"][cut:]
@@ -562,11 +563,11 @@ class Satellite:
 
     def _speak_to_device(self, sentence: str):
         try:
-            wav = self.tts.synth_wav_bytes(sentence)
-            pcm, _sr = TTS.wav_to_pcm16(wav, target_sr=OUT_SR)
-            # Envoi par trames (depuis le thread worker, planifié sur la loop).
-            for i in range(0, len(pcm), 2048):
-                self._send_audio_threadsafe(pcm[i:i + 2048])
+            # Streaming direct HTTP -> PCM -> ESP32
+            for pcm_chunk in self.tts.synth_stream(sentence, target_sr=OUT_SR):
+                # Envoi par trames
+                for i in range(0, len(pcm_chunk), 2048):
+                    self._send_audio_threadsafe(pcm_chunk[i:i + 2048])
         except Exception as e:
             print(f"[Satellite {self.name}] TTS : {e}")
 

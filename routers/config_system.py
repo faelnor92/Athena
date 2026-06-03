@@ -67,6 +67,178 @@ async def save_config_mcp(req: SaveMcpRequest) -> Dict[str, Any]:
         return {"status": "saved_with_error", "detail": str(e), "mcp": mcp_manager.status()}
     return {"status": "success", "mcp": mcp_manager.status()}
 
+# --- Gestion graphique des serveurs MCP -----------------------------------
+_MCP_MARKETPLACE_CATALOGS = [
+    {
+        "category": "Officiels (Anthropic)",
+        "servers": [
+            {
+                "label": "Brave Search", "name": "brave-search", "icon": "🌐",
+                "command": "npx", "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+                "env": {"BRAVE_API_KEY": ""},
+                "note": "Recherche web sur internet."
+            },
+            {
+                "label": "Puppeteer", "name": "puppeteer", "icon": "🖥️",
+                "command": "npx", "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+                "env": {},
+                "note": "Automatisation web et navigation (Chromium headless)."
+            },
+            {
+                "label": "GitHub", "name": "github", "icon": "🐙",
+                "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"],
+                "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": ""},
+                "note": "Gérer issues, PRs, et repos GitHub."
+            },
+            {
+                "label": "PostgreSQL", "name": "postgres", "icon": "🐘",
+                "command": "npx", "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:pass@localhost/db"],
+                "env": {},
+                "note": "Requêtes directes dans une BDD PostgreSQL."
+            },
+            {
+                "label": "Memory", "name": "memory", "icon": "🧠",
+                "command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"],
+                "env": {},
+                "note": "Graphe de connaissances MCP d'Anthropic."
+            }
+        ]
+    },
+    {
+        "category": "Utilitaires Locaux",
+        "servers": [
+            {
+                "label": "Filesystem", "name": "filesystem", "icon": "📂",
+                "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/chemin/autorise"],
+                "env": {},
+                "note": "Donne un accès sécurisé à des dossiers spécifiques."
+            },
+            {
+                "label": "Git", "name": "git", "icon": "🗂️",
+                "command": "uvx", "args": ["mcp-server-git"],
+                "env": {},
+                "note": "Manipulation d'historique et branches Git locaux."
+            },
+            {
+                "label": "Time", "name": "time", "icon": "⏰",
+                "command": "npx", "args": ["-y", "@modelcontextprotocol/server-time"],
+                "env": {},
+                "note": "Gestion des horloges mondiales et fuseaux horaires."
+            }
+        ]
+    },
+    {
+        "category": "Communauté & Extensions",
+        "servers": [
+             {
+                "label": "Home Assistant (ha-mcp)", "name": "homeassistant", "icon": "🏠",
+                "command": "uv", "args": ["run", "--directory", "tools/mcp-servers/ha-mcp", "ha-mcp"],
+                "env": {"HOMEASSISTANT_URL": "", "HOMEASSISTANT_TOKEN": ""},
+                "note": "84+ outils HA. Clone local robuste de ha-mcp."
+            },
+            {
+                "label": "SQLite", "name": "sqlite", "icon": "🗃️",
+                "command": "uvx", "args": ["mcp-server-sqlite", "--db-path", "/chemin/vers/mabase.db"],
+                "env": {},
+                "note": "Exploration et modification de bases SQLite."
+            },
+            {
+                "label": "Slack", "name": "slack", "icon": "💬",
+                "command": "npx", "args": ["-y", "@modelcontextprotocol/server-slack"],
+                "env": {"SLACK_BOT_TOKEN": "", "SLACK_TEAM_ID": ""},
+                "note": "Accès aux channels Slack."
+            }
+        ]
+    }
+]
+
+
+def _mcp_raw() -> Dict[str, Any]:
+    from tools.mcp_manager import mcp_manager
+    path = mcp_manager.config_path
+    if os.path.exists(path):
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+            return data.get("mcpServers", data) if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _mcp_save(servers: Dict[str, Any]):
+    from tools.mcp_manager import mcp_manager
+    with open(mcp_manager.config_path, "w", encoding="utf-8") as f:
+        json.dump({"mcpServers": servers}, f, ensure_ascii=False, indent=2)
+
+
+@router.get("/api/config/mcp/servers")
+async def list_mcp_servers() -> Dict[str, Any]:
+    """Serveurs MCP configurés (avec statut connecté + outils) pour l'UI graphique."""
+    from tools.mcp_manager import mcp_manager
+    servers = _mcp_raw()
+    st = mcp_manager.status()
+    connected = set(st.get("connected_servers", []))
+    tbs = st.get("tools_by_server", {})
+    out = []
+    for name, conf in servers.items():
+        out.append({
+            "name": name,
+            "command": conf.get("command", ""),
+            "args": conf.get("args", []),
+            "env": conf.get("env", {}),
+            "disabled": bool(conf.get("disabled")),
+            "connected": name in connected,
+            "tools": tbs.get(name, []),
+        })
+    return {"servers": out, "presets": [], "tool_count": st.get("tool_count", 0)}
+
+@router.get("/api/config/mcp/marketplace")
+async def mcp_marketplace() -> list[Dict[str, Any]]:
+    """Retourne le catalogue complet des serveurs MCP pour l'UI."""
+    return _MCP_MARKETPLACE_CATALOGS
+
+
+class McpServerRequest(BaseModel):
+    name: str
+    command: str = ""
+    args: list = []
+    env: Dict[str, str] = {}
+    disabled: bool = False
+
+
+@router.post("/api/config/mcp/servers")
+async def upsert_mcp_server(req: McpServerRequest) -> Dict[str, Any]:
+    """Ajoute/met à jour UN serveur MCP (formulaire) et reconnecte à chaud."""
+    name = (req.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nom de serveur requis.")
+    servers = _mcp_raw()
+    servers[name] = {"command": req.command.strip(), "args": req.args or [],
+                     "env": req.env or {}, "disabled": bool(req.disabled)}
+    _mcp_save(servers)
+    from tools.mcp_manager import mcp_manager
+    try:
+        await asyncio.to_thread(mcp_manager.restart)
+    except Exception as e:
+        return {"status": "saved_with_error", "detail": str(e), "mcp": mcp_manager.status()}
+    return {"status": "success", "mcp": mcp_manager.status()}
+
+
+@router.delete("/api/config/mcp/servers/{name}")
+async def delete_mcp_server(name: str) -> Dict[str, Any]:
+    servers = _mcp_raw()
+    if name not in servers:
+        raise HTTPException(status_code=404, detail="Serveur introuvable.")
+    servers.pop(name, None)
+    _mcp_save(servers)
+    from tools.mcp_manager import mcp_manager
+    try:
+        await asyncio.to_thread(mcp_manager.restart)
+    except Exception as e:
+        return {"status": "saved_with_error", "detail": str(e)}
+    return {"status": "success", "mcp": mcp_manager.status()}
+
+
 @router.get("/api/user-profile")
 async def get_user_profile() -> Dict[str, str]:
     """Profil utilisateur évolutif (texte curé réinjecté dans le prompt)."""

@@ -13,7 +13,7 @@ def voice_config() -> dict:
         "sample_rate": int(os.getenv("VOICE_SAMPLE_RATE", "16000")),
         "block_ms": int(os.getenv("VOICE_BLOCK_MS", "30")),
         "silence_rms": float(os.getenv("VOICE_SILENCE_RMS", "0.012")),
-        "silence_ms": int(os.getenv("VOICE_SILENCE_MS", "800")),
+        "silence_ms": int(os.getenv("VOICE_SILENCE_MS", "500")),
         "max_record_s": float(os.getenv("VOICE_MAX_RECORD_S", "15")),
 
         # STT (faster-whisper)
@@ -22,8 +22,8 @@ def voice_config() -> dict:
         "stt_compute": os.getenv("VOICE_STT_COMPUTE", "int8"),
         "stt_language": os.getenv("VOICE_STT_LANGUAGE", "fr"),
 
-        # TTS : "piper" (local) ou "pyttsx3" (repli système)
-        "tts_engine": os.getenv("VOICE_TTS_ENGINE", "piper"),
+        # TTS : "http" (Kokoro/OpenAI), "piper" (local), ou "pyttsx3" (repli système)
+        "tts_engine": os.getenv("VOICE_TTS_ENGINE", "http"),
         "piper_model": os.getenv("VOICE_PIPER_MODEL", ""),   # chemin .onnx
         "piper_bin": os.getenv("VOICE_PIPER_BIN", "piper"),
 

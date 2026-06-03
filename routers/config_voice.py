@@ -169,3 +169,20 @@ async def connect_satellites() -> Dict[str, Any]:
         return {"status": "success", "satellites": es.manager.status()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/system/tts/restart")
+async def restart_kokoro_tts() -> Dict[str, Any]:
+    """Redémarre le conteneur Docker Kokoro-TTS s'il existe."""
+    import subprocess
+    import shutil
+    if not shutil.which("docker"):
+        raise HTTPException(status_code=400, detail="Docker n'est pas installé sur la machine.")
+    try:
+        res = await asyncio.to_thread(subprocess.run, ["docker", "ps", "-a", "-q", "-f", "name=kokoro-tts"], capture_output=True, text=True)
+        if not res.stdout.strip():
+            raise HTTPException(status_code=404, detail="Conteneur 'kokoro-tts' introuvable.")
+        
+        await asyncio.to_thread(subprocess.run, ["docker", "restart", "kokoro-tts"], check=True)
+        return {"status": "success", "message": "Serveur TTS redémarré avec succès."}
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"Erreur Docker: {e}")

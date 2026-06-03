@@ -62,9 +62,9 @@ def _resolve_starting_agent(sess, req):
             aliases.extend(["sofia", "traducteur"])
         import re as _re
         for alias in aliases:
-            # On accepte « @correcteur » MAIS aussi le nom seul comme MOT entier
-            # (« demande au correcteur… ») → l'agent nommé prend la main directement.
-            m = _re.search(r"@?\b" + _re.escape(alias) + r"\b", last_user_content)
+            # Pour éviter les faux positifs (ex: "je suis développeur" routé vers le Codeur),
+            # on ne force l'agent de départ QUE si l'utilisateur utilise une mention explicite @alias
+            m = _re.search(r"@" + _re.escape(alias) + r"\b", last_user_content)
             if m and m.start() < first_mention_idx:
                 first_mention_idx = m.start()
                 mentioned_agent = agent
@@ -80,7 +80,9 @@ def _chat_prepare(sess, req, run_id):
     Renvoie (chain, starting_agent, original_chain_len)."""
     parent_id = req.parent_id if req.parent_id is not None else sess.active_node_id
     user_msg_id = uuid.uuid4().hex
-    sess.messages.append({"id": user_msg_id, "parent_id": parent_id, "role": "user", "content": req.message})
+    msgs = sess.messages
+    msgs.append({"id": user_msg_id, "parent_id": parent_id, "role": "user", "content": req.message})
+    sess.messages = msgs
     sess.active_node_id = user_msg_id
 
     chain = []
@@ -105,10 +107,12 @@ def _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_ch
     global TELEMETRY
     sess.active_agent = _orch_agent()
     prev_id = sess.active_node_id
+    msgs = sess.messages
     for msg in new_chain[original_chain_len:]:
         new_id = uuid.uuid4().hex
-        sess.messages.append({"id": new_id, "parent_id": prev_id, **msg})
+        msgs.append({"id": new_id, "parent_id": prev_id, **msg})
         prev_id = new_id
+    sess.messages = msgs
     sess.active_node_id = prev_id
 
     final_response = ""
@@ -711,15 +715,17 @@ async def fork_chat(req: ForkRequest):
 
 class TerminalRequest(BaseModel):
     command: str
+    agent: str = "Codeur"
 
 @router.post("/api/terminal/coder")
 async def terminal_coder(req: TerminalRequest):
     if not session.active_agent:
         raise HTTPException(status_code=500, detail=f"{_app_name()} n'est pas initialisé.")
         
-    coder_agent = swarm.agents.get("Codeur")
+    agent_name = req.agent or "Codeur"
+    coder_agent = swarm.agents.get(agent_name)
     if not coder_agent:
-        raise HTTPException(status_code=404, detail="Agent Codeur introuvable.")
+        raise HTTPException(status_code=404, detail=f"Agent {agent_name} introuvable.")
         
     # Reconstruire la chaîne linéaire de messages existante pour donner le contexte à l'IA
     chain = []
@@ -886,14 +892,14 @@ async def terminal_coder(req: TerminalRequest):
         
         # Créer les étapes visuelles pour la console de logs (sans polluer le chat)
         steps = [
-            {"type": "activation", "agent": "Codeur"},
-            {"type": "tool_call", "agent": "Codeur", "tool": "Direct Shell Execution", "args": {"command": raw_bash_cmd}}
+            {"type": "activation", "agent": coder_agent.name},
+            {"type": "tool_call", "agent": coder_agent.name, "tool": "Direct Shell Execution", "args": {"command": raw_bash_cmd}}
         ]
         
         if stdout_content:
             steps.append({
                 "type": "terminal_output_direct",
-                "agent": "Codeur",
+                "agent": coder_agent.name,
                 "output": stdout_content,
                 "stream": "stdout"
             })
@@ -901,7 +907,7 @@ async def terminal_coder(req: TerminalRequest):
         if stderr_content:
             steps.append({
                 "type": "terminal_output_direct",
-                "agent": "Codeur",
+                "agent": coder_agent.name,
                 "output": stderr_content,
                 "stream": "stderr"
             })
@@ -909,7 +915,7 @@ async def terminal_coder(req: TerminalRequest):
         if not stdout_content and not stderr_content:
             steps.append({
                 "type": "terminal_output_direct",
-                "agent": "Codeur",
+                "agent": coder_agent.name,
                 "output": "(Exécution terminée avec succès, aucun retour standard)",
                 "stream": "stdout"
             })
@@ -930,8 +936,9 @@ async def terminal_coder(req: TerminalRequest):
     chan_token = channels.current_channel.set("web")
     appr_token = approvals.auto_approve_var.set(channels.auto_approve_for("web"))
     try:
-        # Lancer l'exécution en ciblant directement l'Agent Codeur (dans un thread).
-        next_agent, new_chain, steps = await asyncio.to_thread(swarm.run, coder_agent, chain)
+        # Lancer l'exécution en ciblant directement l'Agent Codeur (dans un thread) avec LOCKED=TRUE
+        next_agent, new_chain, steps = await asyncio.to_thread(swarm.run, coder_agent, chain, locked=True)
+        # S'assurer de rester sur l'orchestrateur au niveau de la session globale 
         session.active_agent = _orch_agent()
 
         # Transformer les types "message" en "terminal_message" pour éviter de polluer le chat principal

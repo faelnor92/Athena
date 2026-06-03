@@ -374,20 +374,38 @@ class Swarm:
             for target_name in targets:
                 if target_name in self.agents:
                     target_agent = self.agents[target_name]
-                    # Éviter les doublons
+                    # Handoffs
                     if not any(f.__name__ == f"transfer_to_{target_agent.name}" for f in agent.tools):
                         handoff_func = self.create_handoff_function(target_agent)
                         agent.tools.append(handoff_func)
+                    # Delegates
+                    if not any(f.__name__ == f"delegate_to_{target_agent.name}" for f in agent.tools):
+                        delegate_func = self.create_delegate_function(target_agent)
+                        agent.tools.append(delegate_func)
 
     def create_handoff_function(self, target_agent: Agent) -> Callable:
         """Génère une fonction Python dynamiquement pour transférer la conversation."""
         def handoff() -> Result:
             return Result(value=f"Transféré avec succès à {target_agent.name}", agent=target_agent)
         
-        # On renomme la fonction pour que le LLM comprenne son but
         handoff.__name__ = f"transfer_to_{target_agent.name}"
-        handoff.__doc__ = f"Appelle cette fonction pour transférer la demande à l'agent {target_agent.name} si elle relève de ses compétences."
+        handoff.__doc__ = f"Transfère la conversation DÉFINITIVEMENT à {target_agent.name}. Utilise ceci si la demande globale de l'utilisateur relève de ses compétences."
         return handoff
+
+    def create_delegate_function(self, target_agent: Agent) -> Callable:
+        """Génère une fonction pour déléguer une sous-tâche et attendre le résultat."""
+        def delegate(task_description: str) -> str:
+            # On lance une sous-routine isolée
+            try:
+                res = self.run(target_agent, [{"role": "user", "content": task_description}], execute_tools=True)
+                final_msg = res.messages[-1]["content"] if res.messages else "Aucune réponse."
+                return f"Réponse de {target_agent.name}:\n{final_msg}"
+            except Exception as e:
+                return f"Erreur lors de la délégation à {target_agent.name}: {str(e)}"
+                
+        delegate.__name__ = f"delegate_to_{target_agent.name}"
+        delegate.__doc__ = f"SOUS-TRAITANCE : Envoie une tâche à {target_agent.name} et attends sa réponse. Tu restes le maître. Ex: 'Peux-tu vérifier ce code ?'"
+        return delegate
 
     def _maybe_continue(self, model: str, base_messages: list, response):
         """Auto-continuation : si la réponse est tronquée (finish_reason='length',
@@ -574,15 +592,19 @@ class Swarm:
             model = os.getenv("FAST_MODEL", "").strip() or agent.model
             sys_p = (
                 "Tu es un AIGUILLEUR. Voici les agents spécialisés disponibles :\n" + "\n".join(specialists) +
-                "\n\nQuestion : la demande de l'utilisateur est-elle une TÂCHE À CONFIER à l'un de ces "
-                "spécialistes ? Réponds par le NOM EXACT de l'agent, ou « AUCUN ».\n"
-                "Réponds AUCUN pour : une présentation/identité (« qui es-tu »), une salutation, une "
-                "question générale, l'heure/la date, du bavardage, ou tout ce qui ne correspond pas "
-                "précisément au métier d'un agent ci-dessus.\n"
-                "Exemples : « qui es-tu ? » → AUCUN | « bonjour » → AUCUN | « quelle heure est-il ? » → "
-                "AUCUN | « raconte une blague » → AUCUN | une demande relevant clairement d'un des "
-                "métiers listés → le nom de cet agent.\n"
-                "Ne réponds QUE par un nom de la liste ou AUCUN, rien d'autre."
+                "\n\nQuestion : L'utilisateur demande-t-il explicitement la RÉALISATION D'UNE TÂCHE "
+                "qui nécessite l'expertise de l'un de ces spécialistes ? Réponds par le NOM EXACT de l'agent, ou « AUCUN ».\n\n"
+                "RÈGLES STRICTES POUR RÉPONDRE « AUCUN » :\n"
+                "- L'utilisateur donne des informations sur LUI-MÊME (ex: « je suis développeur », « je suis auteur », « mon métier est... »).\n"
+                "- L'utilisateur pose une question générale, dit bonjour, ou discute.\n"
+                "- La demande est ambiguë ou pourrait être gérée par un assistant généraliste.\n\n"
+                "Exemples :\n"
+                "« je m'appelle Bob et je suis correcteur » → AUCUN\n"
+                "« je suis développeur » → AUCUN\n"
+                "« écris-moi un chapitre de roman » → Auteur\n"
+                "« corrige les fautes dans ce texte » → Correcteur\n"
+                "« qui es-tu ? » → AUCUN\n\n"
+                "Ne réponds QUE par un nom de la liste ci-dessus ou AUCUN, sans aucune autre explication."
             )
             resp = self._complete(model, [
                 {"role": "system", "content": sys_p},
@@ -1005,7 +1027,7 @@ class Swarm:
             print(f"[\033[91mAuto-compétence erreur\033[0m] {e}")
 
     def run(self, starting_agent: Agent, messages: list, max_turns: int = 10,
-            max_seconds: float = None, max_tokens: int = None) -> Tuple[Agent, list, list]:
+            max_seconds: float = None, max_tokens: int = None, locked: bool = False) -> Tuple[Agent, list, list]:
         """
         Boucle principale de l'orchestrateur.
         Retourne l'agent final actif, les messages mis à jour, et l'historique des étapes (steps).
@@ -1013,6 +1035,7 @@ class Swarm:
         max_turns   : nombre maximum d'itérations (appels LLM) avant arrêt forcé.
         max_seconds : budget temps mur (défaut env SWARM_MAX_SECONDS, 0 = illimité).
         max_tokens  : budget tokens cumulés (défaut env SWARM_MAX_TOKENS, 0 = illimité).
+        locked      : Si True, retire l'outil 'transfer_to_' et force l'utilisation de 'delegate_to_'
         """
         if max_seconds is None:
             max_seconds = float(os.getenv("SWARM_MAX_SECONDS", "0") or 0)
@@ -1098,6 +1121,20 @@ class Swarm:
             if chan:
                 effective_tools = [f for f in effective_tools if channels.tool_allowed(chan, f.__name__)]
 
+            # Protection pour modèles LLM "exotiques" ou petits (ex: Qwen) : 
+            # On évite de leur donner les 2 outils en même temps dans le chat libre.
+            if not locked:
+                strategy = os.getenv("ROUTING_STRATEGY", "handoff").lower()
+                if strategy == "handoff":
+                    effective_tools = [f for f in effective_tools if not f.__name__.startswith("delegate_to_")]
+                elif strategy == "delegate":
+                    effective_tools = [f for f in effective_tools if not f.__name__.startswith("transfer_to_")]
+
+            # Mode "Console Verrouillée" : Interdit formellement les transferts définitifs (Handoffs)
+            # (Prioritaire sur la stratégie globale)
+            if locked:
+                effective_tools = [f for f in effective_tools if not f.__name__.startswith("transfer_to_")]
+
             # Garde-fou anti sur-délégation : pour une question triviale/générale adressée
             # à l'orchestrateur, on RETIRE les outils de délégation pour ce tour → il répond
             # lui-même (qwen3 a tendance à transférer à tort sinon).
@@ -1115,6 +1152,7 @@ class Swarm:
                     # les outils de délégation (il garde ses propres outils).
                     effective_tools = [f for f in effective_tools
                                        if not f.__name__.startswith("transfer_to_")
+                                       and not f.__name__.startswith("delegate_to_")
                                        and f.__name__ not in ("query_agent", "debate_between_agents")]
                 elif _route_target:
                     # Un spécialiste correspond → on FORCE la délégation : on retire à
@@ -1141,6 +1179,16 @@ class Swarm:
             
             # Injection dynamique des informations mémorisées (Core Memory) dans Jarvis
             system_prompt = current_agent.system_prompt
+            
+            # Renforcement strict de l'identité de l'agent pour éviter les hallucinations (usurpation d'identité)
+            system_prompt += (
+                f"\n\n🛑 RÈGLE D'IDENTITÉ ABSOLUE :\n"
+                f"Tu es exclusivement l'agent {current_agent.name} ({current_agent.display_name or current_agent.name}). "
+                f"L'historique de la conversation contient des messages d'autres agents de l'équipe. "
+                f"Tu NE DOIS JAMAIS prétendre être un autre agent ou reprendre le nom d'un de tes collègues. "
+                f"Reste strictement dans ton rôle de {current_agent.name} et garde ta propre identité.\n"
+            )
+
             # Ne forcer la présentation que si aucun message de cet agent n'est déjà présent dans l'historique
             has_agent_spoken = any(msg.get("role") == "assistant" and msg.get("name") == current_agent.name for msg in messages)
             if getattr(current_agent, "welcome_message", None) and not has_agent_spoken and current_agent.name != getattr(self, "orchestrator_name", "Jarvis"):
@@ -1165,7 +1213,9 @@ class Swarm:
                 if _route_target:
                     system_prompt += (
                         f"\n➡️ AIGUILLAGE : cette demande relève du métier de « {_route_target} ». "
-                        f"Délègue-lui MAINTENANT (transfer_to_{_route_target} ou query_agent('{_route_target}', …)) "
+                        f"Si la demande contient de NOUVELLES INFORMATIONS SUR L'UTILISATEUR "
+                        f"(nom, métier, etc.), utilise D'ABORD `memorize_fact` pour les retenir en mémoire. "
+                        f"Délègue-lui ensuite MAINTENANT (transfer_to_{_route_target} ou query_agent('{_route_target}', …)) "
                         "— ne la traite pas toi-même.\n")
 
             # Si l'agent peut analyser des documents ET qu'un fichier est joint dans la

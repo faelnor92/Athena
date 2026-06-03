@@ -109,7 +109,22 @@ def step_optional_components():
             ok = pip_install("-r", "requirements-voice.txt")
             say("✔ Pipeline vocal installé." if ok else "⚠ Échec d'installation du vocal.",
                 "green" if ok else "red")
-            say("  Note : pour la synthèse Piper, installe aussi le binaire `piper` + un modèle .onnx.", "yellow")
+            
+            if ok and ask_yes_no("  → Installer le serveur TTS 'Kokoro' via Docker (voix expressives ultra-rapides) ?", default=False):
+                if shutil.which("docker"):
+                    say("    Téléchargement et lancement de Kokoro-FastAPI (port 8880)...", "cyan")
+                    # --restart unless-stopped pour qu'il survive aux redémarrages
+                    cmd = ["docker", "run", "-d", "-p", "8880:8880", "--restart", "unless-stopped", "--name", "kokoro-tts", "ghcr.io/remsky/kokoro-fastapi-cpu:latest"]
+                    if subprocess.call(cmd) == 0:
+                        say("    ✔ Serveur Kokoro lancé en arrière-plan.", "green")
+                        set_env_var("VOICE_TTS_HTTP_URL", "http://127.0.0.1:8880/v1/audio/speech")
+                        set_env_var("VOICE_TTS_ENGINE", "http")
+                    else:
+                        say("    ⚠ Erreur lors du lancement Docker. Le conteneur existe peut-être déjà.", "yellow")
+                else:
+                    say("    ⚠ Docker n'est pas installé. Installation ignorée.", "red")
+            else:
+                say("  Note : tu pourras configurer la synthèse vocale plus tard dans ton .env (VOICE_TTS_ENGINE).", "yellow")
         else:
             say("⚠ requirements-voice.txt introuvable.", "red")
 
