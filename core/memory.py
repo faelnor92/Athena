@@ -107,11 +107,17 @@ class SemanticMemory:
     collection (um_<user>) → les documents d'un utilisateur ne sont pas cherchables
     par un autre. Résolue à chaque accès via core.user_config."""
     def __init__(self, db_path=None):
-        db_path = db_path or os.getenv("CHROMA_DB_PATH", ".chroma_db")
-        self.client = chromadb.PersistentClient(
-            path=db_path,
-            settings=chromadb.Settings(anonymized_telemetry=False)
-        )
+        settings = chromadb.Settings(anonymized_telemetry=False)
+        # Multi-worker : si CHROMA_SERVER_HOST est défini, tous les workers parlent au
+        # MÊME serveur Chroma (écritures concurrentes sûres). Sinon, base locale embarquée
+        # (PersistentClient) — parfait en mono-process.
+        host = os.getenv("CHROMA_SERVER_HOST", "").strip()
+        if host:
+            port = int(os.getenv("CHROMA_SERVER_PORT", "8001") or 8001)
+            self.client = chromadb.HttpClient(host=host, port=port, settings=settings)
+        else:
+            db_path = db_path or os.getenv("CHROMA_DB_PATH", ".chroma_db")
+            self.client = chromadb.PersistentClient(path=db_path, settings=settings)
         self._collections = {}  # nom -> collection
 
     @staticmethod

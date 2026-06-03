@@ -84,7 +84,7 @@ L'état mutable partagé (comptes & quotas, sessions d'auth, routines, invitatio
 uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 > [!NOTE]
-> **Caveat RAG.** La base vectorielle (ChromaDB `PersistentClient`) n'est pas conçue pour des écritures multi-process concurrentes. En multi-worker, faites tourner **ChromaDB en mode serveur** (client/serveur) ou réservez l'indexation RAG à un worker dédié. Tout le reste de l'état est multi-worker-safe.
+> **RAG en multi-worker.** En mono-process, la base vectorielle est embarquée (ChromaDB local). Pour le multi-worker, définissez **`CHROMA_SERVER_HOST`** (+ `CHROMA_SERVER_PORT`) : tous les workers parlent alors au même serveur ChromaDB (écritures concurrentes sûres). Le `docker-compose.yml` fourni inclut déjà ce service `chroma` et le câblage. Tout le reste de l'état est multi-worker-safe nativement.
 
 ### 🔒 Sécurité en production
 - **TLS obligatoire** : placez Athena derrière un reverse-proxy HTTPS (Caddy, Nginx, Traefik). Le serveur émet automatiquement **HSTS** quand il détecte HTTPS (`X-Forwarded-Proto: https`).

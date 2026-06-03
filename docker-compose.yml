@@ -28,13 +28,29 @@ services:
       CORE_MEMORY_PATH: "${ATHENA_DATA}/core_memory.json"
       CHROMA_DB_PATH: "${ATHENA_DATA}/chroma"
       RUNS_DB_PATH: "${ATHENA_DATA}/runs.sqlite3"
+      # État partagé multi-worker (comptes, quotas, sessions, routines, invitations,
+      # projets partagés, config par-utilisateur, pipelines) — DOIT persister sur le volume.
+      STATE_DB_PATH: "${ATHENA_DATA}/athena_state.sqlite3"
       ROUTINES_PATH: "${ATHENA_DATA}/routines.json"
       ACTIVE_WORKSPACE_DIR: "${ATHENA_DATA}/workspace"
       LOG_DIR: "${ATHENA_DATA}/logs"
       MCP_CONFIG_PATH: "${ATHENA_DATA}/mcp_servers.json"
       CHANNEL_POLICIES_PATH: "${ATHENA_DATA}/channel_policies.json"
+      # RAG en mode SERVEUR (sûr en multi-worker) : tous les workers parlent au service chroma.
+      CHROMA_SERVER_HOST: "chroma"
+      CHROMA_SERVER_PORT: "8000"
+    depends_on:
+      - chroma
     volumes:
       # Même chemin hôte/conteneur => la sandbox (socket hôte) peut monter le workspace.
       - "${ATHENA_DATA}:${ATHENA_DATA}"
       # Socket Docker : exécution de la sandbox en conteneurs frères sur l'hôte.
       - "/var/run/docker.sock:/var/run/docker.sock"
+
+  # Base vectorielle (RAG) en mode serveur — partagée par tous les workers Athena.
+  chroma:
+    image: chromadb/chroma:0.5.0
+    container_name: athena-chroma
+    restart: unless-stopped
+    volumes:
+      - "${ATHENA_DATA}/chroma:/chroma/chroma"
