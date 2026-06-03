@@ -32,6 +32,8 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 * **Serveurs MCP (Model Context Protocol)** : Branchez des serveurs externes sans coder. Le connecteur Home Assistant MCP est vendorisé localement pour une sécurité absolue.
 * **Computer Use (RPA 2.0)** : Pilotage d'un navigateur interactif headless optimisé pour les LLMs.
 * **Navigation Git & Code** : Compréhension de vos dépôts de code (logs, branches, édition), exécution bash/python via Sandbox Docker.
+* **Création de Skills à la Volée** : L'IA peut littéralement *coder ses propres outils* et les sauvegarder de façon permanente pour étendre ses capacités !
+* **Administration SSH** : Gestion de vos serveurs distants via des commandes SSH.
 * **Créativité & Web** : Recherche web approfondie, génération d'images/vidéos (Fal, Replicate), scraping.
 * **Traitement Média & Réunions** : Capacité à résumer et transcrire des fichiers audios ou des réunions entières.
 
@@ -43,7 +45,7 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 
 ### 💾 Mémoire & Apprentissage
 * **Base Vectorielle RAG** : Indexation sémantique automatique de documents via ChromaDB.
-* **Mémoire Sémantique** : Archivage de faits durables (Core Memory).
+* **Knowledge Graph & Core Memory** : Archivage de faits durables et modélisation de relations en réseau (Graphes).
 * **Auto-Amélioration** : Retour d'expérience persistant après une tâche complexe pour affiner le comportement futur.
 
 ### 🎙️ Assistant Vocal (STT/TTS)

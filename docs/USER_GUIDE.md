@@ -40,8 +40,10 @@ Allez dans le dossier d'Athena et tapez :
 Athena n'est pas un simple "ChatGPT". C'est un framework d'**agents d'intelligence artificielle autonomes** qui intègrent des dizaines d'outils ("Skills") capables d'agir sur votre machine et sur le web.
 
 ### 💻 Code Agentique (Software Engineering)
-C'est le cœur du système. Athena peut remplacer un développeur sur certaines tâches :
+C'est le cœur du système. Athena peut remplacer un administrateur système ou un développeur :
 - **Exécution Python & Bash (Sandbox)** : L'IA écrit du code et l'exécute de manière autonome dans un bac à sable Docker sécurisé.
+- **Création de Skills à la Volée** : Fonctionnalité unique, l'IA peut coder de nouveaux "outils" pour s'améliorer elle-même, et les enregistrer définitivement dans son code source de base !
+- **Administration SSH** : L'IA peut se connecter à vos autres serveurs distants via SSH pour faire de la maintenance.
 - **Computer Use (RPA 2.0)** : L'IA peut ouvrir un vrai navigateur web caché, cliquer sur des boutons, remplir des formulaires et scraper des sites.
 - **Navigation Git & Code** : L'IA peut lire vos dépôts Git, comprendre votre code source existant et l'éditer en direct.
 - **Maintenance autonome** : Un agent nocturne peut vérifier et réparer le code source automatiquement.
@@ -103,6 +105,8 @@ C'est la section la plus importante pour ajuster le comportement global et les s
 - `Auto-critique` : Si activé, l'IA relit et vérifie sa propre réponse avant de vous l'envoyer.
 
 #### 4. Mémoire
+- `Base de faits (Core Memory)` : Liste tout ce qu'Athena a appris sur vous de façon permanente (vos goûts, votre métier). Vous pouvez y supprimer des éléments.
+- `Knowledge Graph` : En plus des faits simples, l'IA construit un réseau de relations ("Graphe") entre les entités pour mieux comprendre votre contexte.
 - `Compaction au-delà de N messages` : Pour éviter de faire exploser la facture, Athena résume automatiquement les vieilles parties de la conversation au bout de N messages (40 par défaut).
 - `Messages récents gardés mot pour mot` : Athena garde toujours les N derniers échanges stricts en mémoire à court terme (12 par défaut).
 
