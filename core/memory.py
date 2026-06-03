@@ -1,8 +1,15 @@
 import json
+import logging
 import os
 import time
 import uuid
 import chromadb
+
+# ChromaDB 0.5.x logge « Failed to send telemetry event … capture() takes 1
+# positional argument but 3 were given » à chaque opération : bug de sa télémétrie
+# posthog, sans impact (la télémétrie est déjà coupée plus bas). On fait taire ce
+# logger précis pour ne pas polluer les logs.
+logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 class CoreMemory:
     """Mémoire clé-valeur (JSON) des faits/préférences — PAR UTILISATEUR.
