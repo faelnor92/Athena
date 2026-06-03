@@ -46,6 +46,7 @@ import tools.code_nav
 import tools.presence
 import tools.n8n_tools
 import tools.computer_use
+import tools.pipeline_tools
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -108,6 +109,7 @@ AVAILABLE_TOOLS = {
     "get_current_room": tools.presence.get_current_room,
     "trigger_workflow": tools.n8n_tools.trigger_workflow,
     "computer_use_action": tools.computer_use.computer_use_action,
+    "run_rigid_pipeline": tools.pipeline_tools.run_rigid_pipeline,
 }
 
 def load_dynamic_skills() -> dict:
@@ -667,7 +669,9 @@ class Swarm:
         if _ucfg.get("LLM_MODEL"):
             model = str(_ucfg["LLM_MODEL"]).strip()
 
-        completion_kwargs = {"model": model, "messages": messages, "tools": tools_schema}
+        # Plafond de tokens pour forcer des réponses concises (optimisation des coûts)
+        max_t = int(os.getenv("LLM_MAX_TOKENS", "4000"))
+        completion_kwargs = {"model": model, "messages": messages, "tools": tools_schema, "max_tokens": max_t}
         custom_base = _u("CUSTOM_LLM_API_BASE")
         custom_key = _u("CUSTOM_LLM_API_KEY")
         model_l = (model or "").lower()
@@ -739,10 +743,10 @@ class Swarm:
         seul, garde les plus récents verbatim. N'agit que sur la vue LLM.
         Activé par MEMORY_MAX_MESSAGES (0 = désactivé). Résultats mis en cache
         pour ne pas re-résumer le même bloc à chaque tour."""
-        max_msgs = int(os.getenv("MEMORY_MAX_MESSAGES", "40") or 0)
+        max_msgs = int(os.getenv("MEMORY_MAX_MESSAGES", "15") or 0)
         if not max_msgs or len(history) <= max_msgs:
             return history
-        keep = max(1, int(os.getenv("MEMORY_KEEP_RECENT", "12")))
+        keep = max(1, int(os.getenv("MEMORY_KEEP_RECENT", "5")))
         head, tail = history[:-keep], history[-keep:]
         if not head:
             return history
@@ -1401,6 +1405,21 @@ class Swarm:
             # Injection du system prompt de l'agent actif
             current_messages = [{"role": "system", "content": system_prompt}] + clean_history
             
+            # --- VÉRIFICATION DES QUOTAS ---
+            try:
+                from core.users import user_store
+                from core.state import _current_username
+                current_user = _current_username.get()
+                if current_user and not user_store.check_quota(current_user):
+                    quota_msg = "🛑 Quota de tokens LLM épuisé pour aujourd'hui. L'exécution est interrompue."
+                    print(f"[\033[91mSWARM\033[0m] {quota_msg}")
+                    steps.append({"type": "message", "agent": current_agent.name, "content": quota_msg})
+                    messages.append({"role": "assistant", "name": current_agent.name, "content": quota_msg})
+                    break
+            except Exception as e:
+                print(f"Erreur quota: {e}")
+            # -------------------------------
+
             # Appel API via litellm (compatible OpenAI, Anthropic, Ollama...).
             # Streaming token-par-token (latence minimale, surtout vocal) : les
             # deltas de texte sont publiés en live (event 'message_delta') sans
@@ -1426,7 +1445,16 @@ class Swarm:
                 prompt_tokens = len(str(current_messages)) // 4
                 completion_tokens = len(str(msg_dict)) // 4
                 
-            tokens_used += prompt_tokens + completion_tokens
+            used_now = prompt_tokens + completion_tokens
+            tokens_used += used_now
+            
+            # --- CONSOMMATION DU QUOTA ---
+            try:
+                if current_user:
+                    user_store.consume_tokens(current_user, used_now)
+            except Exception:
+                pass
+            # -----------------------------
             steps.append({
                 "type": "usage",
                 "agent": current_agent.name,

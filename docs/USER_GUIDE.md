@@ -93,6 +93,8 @@ C'est la section la plus importante pour ajuster le comportement global et les s
 - `Auto-approuver les outils sensibles` : Par défaut (décoché), l'IA vous demandera toujours une confirmation avant d'utiliser un outil marqué comme "sensible" (ex: écrire dans un fichier système). Si vous le cochez, l'IA devient totalement autonome (à vos risques et périls).
 - `Mot de passe admin / Origines CORS` : Sécurisation du serveur web pour empêcher les connexions extérieures non désirées.
 - `Durée de validité d'une session` : Temps (en heures) avant d'être déconnecté de l'interface (défaut: 168h, soit une semaine).
+- `Quotas et Limites` : Le système protège vos finances. Un administrateur peut définir une limite de consommation de tokens par jour dans la base des utilisateurs.
+- `Chiffrement E2EE` : Les conversations sont chiffrées de bout en bout en base de données (SQLite) via une clé de sécurité stockée dans le `.env` de votre installation.
 - `Protections intégrées (invisibles)` : Athena masque automatiquement vos clés API et secrets dans les logs (Redaction) et intègre une protection anti-SSRF bloquant les requêtes web vers votre réseau interne ou vos métadonnées Cloud.
 
 #### 3. Orchestration & agents (avancé)

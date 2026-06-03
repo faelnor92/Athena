@@ -1,6 +1,6 @@
 # 🎛️ Athena — Framework Multi-Agent Auto-Hébergé
 
-![Version](https://img.shields.io/badge/version-0.9.35-blue.svg)
+![Version](https://img.shields.io/badge/version-0.9.36-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 
 Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des serveurs légers ou avec des GPU modestes. Accessible via **Interface Web**, **CLI**, **Telegram** et **Vocal Local**.
@@ -11,6 +11,8 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 
 ### 🔐 Multi-Tenant Pro & Collaboration
 * **Sécurité & SSO** : Support de l'authentification OIDC / OAuth2 pour l'entreprise. Système d'inscription par invitation géré par l'administrateur.
+* **Chiffrement E2E au Repos** : Les conversations en base de données (SQLite) sont chiffrées de bout en bout via AES-256 (Fernet) pour une confidentialité totale.
+* **Contrôle des Coûts (Quotas)** : Bridage automatique des dépenses API via un système de quotas de tokens journaliers configurable par utilisateur.
 * **Sécurité Avancée** : Protection intégrée anti-SSRF (DNS rebinding) pour la navigation web et masquage automatique des secrets (Redaction) dans les logs.
 * **Isolation Absolue** : Chaque utilisateur dispose de sa propre mémoire (RAG, Core Memory), de son propre agenda, de ses listes et de son budget API.
 * **Self-Service LLM** : Chaque utilisateur peut surcharger les modèles IA globaux avec ses propres clés API (OpenAI, Anthropic, Gemini, Groq, etc.).
@@ -19,6 +21,7 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 ### 🧠 Moteur d'Orchestration & LLM
 * **Multi-Modèles** : OpenAI, Anthropic, Gemini, Ollama, Groq, Mistral, Qwen, APIs locales compatibles.
 * **Swarm (Essaim)** : Routage automatique entre agents spécialisés (handoffs), exécution concurrente, débats inter-agents.
+* **Pipelines Rigides (Optionnel)** : Possibilité de forcer une chaîne de montage stricte où les agents s'enchaînent séquentiellement sans autonomie de déviation.
 * **Architecture Modulaire** : Backend FastAPI découpé par routeurs fonctionnels, soutenu par une base de données **SQLite** robuste et thread-safe.
 * **Isolation des Tâches** : État isolé par exécution (ContextVars). Plusieurs requêtes parallèles n'interfèrent jamais.
 

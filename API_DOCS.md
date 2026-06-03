@@ -16,6 +16,7 @@ Envoie un message à l'essaim et récupère la réponse (Streaming ou JSON).
   * `message` (string) : Le message de l'utilisateur.
   * `agent` (string, optionnel) : Forcer l'utilisation d'un agent spécifique. Par défaut: Orchestrateur.
   * `stream` (boolean) : `true` pour recevoir du Server-Sent Events (SSE).
+* **Code d'Erreur :** Peut retourner HTTP 429 (Trop de requêtes) si le **Quota LLM** journalier de l'utilisateur est dépassé.
 
 ### `GET /api/history`
 Récupère l'historique de la session conversationnelle de l'utilisateur.
@@ -30,6 +31,7 @@ Authentification standard ou OIDC/SSO (si configuré).
 
 ### `GET /api/users/me`
 Retourne les données profil (rôle, budget, tokens consommés).
+* **Nouveauté :** Contient désormais `quota_max_tokens` et `tokens_used_today`.
 
 ---
 

@@ -148,6 +148,35 @@ def _orch_agent():
         a = next(iter(swarm.agents.values()))
     return a
 
+# --- Chiffrement de la DB ---
+from cryptography.fernet import Fernet
+_fernet = None
+
+def _get_fernet():
+    global _fernet
+    if _fernet is None:
+        env_vars = parse_env()
+        key = env_vars.get("DB_ENCRYPTION_KEY")
+        if not key:
+            key = Fernet.generate_key().decode("utf-8")
+            try:
+                with open(".env", "a", encoding="utf-8") as f:
+                    f.write(f"\n# Clé de chiffrement des conversations SQLite (NE PAS PERDRE)\nDB_ENCRYPTION_KEY={key}\n")
+            except Exception:
+                pass
+        _fernet = Fernet(key.encode("utf-8"))
+    return _fernet
+
+def _encrypt(data: str) -> str:
+    return _get_fernet().encrypt(data.encode("utf-8")).decode("utf-8")
+
+def _decrypt(data: str) -> str:
+    try:
+        return _get_fernet().decrypt(data.encode("utf-8")).decode("utf-8")
+    except Exception:
+        # Fallback de migration douce : la donnée était en clair
+        return data
+
 # Gestionnaire de Conversations persistantes
 import sqlite3
 
@@ -220,7 +249,7 @@ class ConversationManager:
                             VALUES (?, ?, ?, ?, ?, ?, ?)
                         """, (
                             self.client_id, c_id, c_data.get("name", "Discussion"),
-                            json.dumps(c_data.get("messages", [])),
+                            _encrypt(json.dumps(c_data.get("messages", []))),
                             c_data.get("active_node_id"),
                             c_data.get("active_agent", _orch_name()),
                             time.time()
@@ -245,8 +274,8 @@ class ConversationManager:
             if not row:
                 conn.execute("""
                     INSERT INTO conversations (client_id, conv_id, name, messages_json, active_node_id, active_agent, updated_at)
-                    VALUES (?, ?, ?, '[]', NULL, ?, ?)
-                """, (self.client_id, conv_id, default_name, _orch_name(), time.time()))
+                    VALUES (?, ?, ?, ?, NULL, ?, ?)
+                """, (self.client_id, conv_id, default_name, _encrypt('[]'), _orch_name(), time.time()))
 
     @property
     def conversations(self):
@@ -257,7 +286,7 @@ class ConversationManager:
             for r in rows:
                 res[r["conv_id"]] = {
                     "name": r["name"],
-                    "messages": json.loads(r["messages_json"]),
+                    "messages": json.loads(_decrypt(r["messages_json"])),
                     "active_node_id": r["active_node_id"],
                     "active_agent": r["active_agent"]
                 }
@@ -268,7 +297,7 @@ class ConversationManager:
         
     def _update_conv(self, conv_id, key, value):
         if key == "messages":
-            col, val = "messages_json", json.dumps(value)
+            col, val = "messages_json", _encrypt(json.dumps(value))
         else:
             col, val = key, value
         with _db_lock, sqlite3.connect(_CONV_DB_PATH) as conn:
@@ -303,7 +332,7 @@ class ConversationManager:
                 row = conn.execute("SELECT * FROM conversations WHERE client_id=? AND conv_id=?", (self.client_id, self.active_id)).fetchone()
             return {
                 "name": row["name"],
-                "messages": json.loads(row["messages_json"]),
+                "messages": json.loads(_decrypt(row["messages_json"])),
                 "active_node_id": row["active_node_id"],
                 "active_agent": row["active_agent"]
             }

@@ -56,14 +56,22 @@ class UserStore:
 
     def list(self) -> list:
         with self._lock:
-            return [{"username": u, "role": d.get("role", "user")} for u, d in self._data.items()]
+            return [{"username": u, "role": d.get("role", "user"), "quota_max_tokens": d.get("quota_max_tokens"), "tokens_used_today": d.get("tokens_used_today", 0)} for u, d in self._data.items()]
 
     def create(self, username: str, password: str, role: str = "user") -> bool:
         username = (username or "").strip()
         if not username or not password:
             return False
+        import datetime
+        today = datetime.date.today().isoformat()
         with self._lock:
-            self._data[username] = {"hash": hash_password(password), "role": role if role in ("admin", "user") else "user"}
+            self._data[username] = {
+                "hash": hash_password(password), 
+                "role": role if role in ("admin", "user") else "user",
+                "quota_max_tokens": None, # None means unlimited
+                "tokens_used_today": 0,
+                "last_reset_date": today
+            }
             self._save()
             return True
 
@@ -90,6 +98,46 @@ class UserStore:
         if d and verify_password(password, d.get("hash", "")):
             return d.get("role", "user")
         return None
+
+    def check_quota(self, username: str, required_tokens: int = 0) -> bool:
+        """Vérifie si l'utilisateur a suffisamment de quota (True si OK, False si dépassé)."""
+        import datetime
+        with self._lock:
+            d = self._data.get(username)
+            if not d:
+                return True # Si l'utilisateur n'existe pas (ex: système), on laisse passer
+            
+            quota_max = d.get("quota_max_tokens")
+            if quota_max is None or quota_max <= 0:
+                return True # Illimité
+            
+            today = datetime.date.today().isoformat()
+            last_reset = d.get("last_reset_date", "")
+            if last_reset != today:
+                # Nouveau jour, on reset
+                d["tokens_used_today"] = 0
+                d["last_reset_date"] = today
+                self._save()
+                
+            used = d.get("tokens_used_today", 0)
+            return (used + required_tokens) <= quota_max
+
+    def consume_tokens(self, username: str, amount: int):
+        """Consomme des tokens pour l'utilisateur."""
+        import datetime
+        if amount <= 0: return
+        with self._lock:
+            d = self._data.get(username)
+            if not d: return
+            
+            today = datetime.date.today().isoformat()
+            last_reset = d.get("last_reset_date", "")
+            if last_reset != today:
+                d["tokens_used_today"] = 0
+                d["last_reset_date"] = today
+                
+            d["tokens_used_today"] = d.get("tokens_used_today", 0) + amount
+            self._save()
 
 
 user_store = UserStore()
