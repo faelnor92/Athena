@@ -6865,6 +6865,13 @@ if (tabMine && tabMarket) {
 async function loadProjects() {
     const sel = document.getElementById("project-select");
     if (!sel) return;
+    // Bandeau « dossier hôte arbitraire » (Parcourir/Set) réservé aux admins ; les autres
+    // n'ont que le sélecteur de projet (confinés à leurs projets / projets partagés).
+    try {
+        const me = await (await apiFetch("/api/me")).json();
+        const bar = document.getElementById("workspace-path-bar");
+        if (bar) bar.style.display = (me && me.role === "admin") ? "" : "none";
+    } catch (e) { /* ignore */ }
     try {
         const r = await apiFetch("/api/projects");
         if (!r.ok) return;

@@ -33,6 +33,7 @@ graph_memory*.db-wal
 graph_memory*.db-shm
 test.db
 test_*.db
+shared_projects.json
 invites.json
 users.json
 

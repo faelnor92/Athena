@@ -51,6 +51,15 @@ def run_checks(command: str, timeout: int = 120) -> str:
     if not command:
         return "Erreur : commande vide (ex: 'pytest -q', 'ruff check .', 'npm test')."
 
+    # Lecture seule : un membre « viewer » d'un projet partagé ne lance pas de commandes
+    # (elles peuvent modifier le projet).
+    try:
+        from core import projects
+        if not projects.can_write():
+            return "Erreur : projet en LECTURE SEULE (rôle lecteur) — exécution de commandes refusée."
+    except Exception:
+        pass
+
     from tools.system_tools import check_command_blacklist
     rejection = check_command_blacklist(command)
     if rejection:

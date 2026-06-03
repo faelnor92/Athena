@@ -11,6 +11,12 @@ import time
 import uuid
 
 from core import user_config
+from core import shared_projects
+
+
+def _projects_base() -> str:
+    """Racine GLOBALE des projets (tous utilisateurs) — pour valider les projets partagés."""
+    return os.path.join(_base_workspace(), "projects")
 
 
 def _base_workspace() -> str:
@@ -28,8 +34,15 @@ def _slug(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", (name or "").strip()).strip("-")[:60] or "projet"
 
 
-def list_projects() -> list:
+def _own_projects() -> list:
     return user_config.get("projects", []) or []
+
+
+def list_projects() -> list:
+    """Projets de l'utilisateur courant : les SIENS (role 'owner') + ceux PARTAGÉS avec lui."""
+    own = [{**p, "role": "owner", "shared": False} for p in _own_projects()]
+    user = user_config.current_user_key()
+    return own + shared_projects.projects_for(user)
 
 
 def get_active():
@@ -40,14 +53,41 @@ def get_active():
 
 
 def active_path():
-    p = get_active()
-    path = p.get("path") if p else None
-    # Sécurité : le projet doit rester sous la racine projets de l'utilisateur.
+    pid = user_config.get("active_project")
+    if not pid:
+        return None
+    user = user_config.current_user_key()
+    path = None
+    own = next((p for p in _own_projects() if p.get("id") == pid), None)
+    if own:
+        path = own.get("path")
+    else:
+        # Projet PARTAGÉ : autorisé si l'utilisateur en est membre (ou propriétaire).
+        if shared_projects.role_for(pid, user):
+            e = shared_projects.get(pid)
+            path = e.get("path") if e else None
+    # Anti-traversée : tout projet doit rester sous la racine GLOBALE des projets.
     if path:
         real = os.path.realpath(path)
-        if os.path.commonpath([real, os.path.realpath(projects_root())]) == os.path.realpath(projects_root()):
+        base = os.path.realpath(_projects_base())
+        if os.path.commonpath([real, base]) == base:
             return real
     return None
+
+
+def current_role():
+    """Rôle de l'utilisateur sur le projet ACTIF : None (workspace de base) | owner | editor | viewer."""
+    pid = user_config.get("active_project")
+    if not pid:
+        return None
+    if any(p.get("id") == pid for p in _own_projects()):
+        return "owner"
+    return shared_projects.role_for(pid, user_config.current_user_key())
+
+
+def can_write() -> bool:
+    """Droit d'écriture sur le projet actif (base/own/editor = oui ; viewer = non)."""
+    return current_role() in (None, "owner", "editor")
 
 
 def create_project(name: str):
@@ -59,7 +99,7 @@ def create_project(name: str):
     os.makedirs(root, exist_ok=True)
     path = os.path.abspath(os.path.join(root, f"{_slug(name)}-{pid}"))
     os.makedirs(path, exist_ok=True)
-    projs = list_projects()
+    projs = _own_projects()
     proj = {"id": pid, "name": name, "path": path, "created_at": time.time()}
     projs.append(proj)
     user_config.set_many({"projects": projs, "active_project": pid})
@@ -67,6 +107,7 @@ def create_project(name: str):
 
 
 def select(pid: str) -> bool:
+    # Autorise un projet propre OU partagé (membre).
     if any(p.get("id") == pid for p in list_projects()):
         user_config.set("active_project", pid)
         return True
@@ -74,10 +115,12 @@ def select(pid: str) -> bool:
 
 
 def delete(pid: str, remove_files: bool = False) -> bool:
-    projs = list_projects()
+    # On ne supprime QUE ses propres projets (un projet partagé se quitte, pas se supprime).
+    projs = _own_projects()
     proj = next((p for p in projs if p.get("id") == pid), None)
     if not proj:
         return False
+    shared_projects.remove_project(pid)  # retire tout partage associé
     projs = [p for p in projs if p.get("id") != pid]
     updates = {"projects": projs}
     if user_config.get("active_project") == pid:

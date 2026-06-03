@@ -58,6 +58,17 @@ def _need_repo(subdir: str = ""):
     return None
 
 
+def _ro_guard():
+    """Bloque les opérations git d'écriture si le projet actif est en lecture seule (viewer)."""
+    try:
+        from core import projects
+        if not projects.can_write():
+            return "Erreur : projet en LECTURE SEULE (rôle lecteur) — opération git d'écriture refusée."
+    except Exception:
+        pass
+    return None
+
+
 def git_status(subdir: str = "") -> str:
     """Affiche l'état du dépôt git (branche courante + fichiers modifiés).
     subdir: sous-dossier du workspace (ex. un worktree '.worktrees/feature-x')."""
@@ -110,6 +121,9 @@ def git_log(count: int = 10, subdir: str = "") -> str:
 def git_create_branch(name: str, subdir: str = "") -> str:
     """Crée une nouvelle branche et bascule dessus (git checkout -b). name: nom de branche.
     subdir: sous-dossier du workspace (ex. un worktree)."""
+    _g = _ro_guard()
+    if _g:
+        return _g
     err = _need_repo(subdir)
     if err:
         return err
@@ -128,6 +142,9 @@ def git_commit(message: str, all_changes: bool = True, subdir: str = "") -> str:
     all_changes=True indexe tout le suivi modifié (git add -A) ; sinon ne commite que ce
     qui est déjà indexé. subdir: sous-dossier du workspace (ex. un worktree). Ne POUSSE pas.
     """
+    _g = _ro_guard()
+    if _g:
+        return _g
     err = _need_repo(subdir)
     if err:
         return err
@@ -163,6 +180,9 @@ def git_create_worktree(branch: str) -> str:
     Renvoie le sous-dossier à passer aux autres outils (read_file/edit_file/git_* via subdir).
     branch: nom de la branche (créée si absente).
     """
+    _g = _ro_guard()
+    if _g:
+        return _g
     err = _need_repo()
     if err:
         return err

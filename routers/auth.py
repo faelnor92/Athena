@@ -62,6 +62,7 @@ _ADMIN_EXACT = {
     ("POST", "/api/terminal/coder"),
     ("POST", "/api/reset"),
     ("POST", "/api/workspace/config"),
+    ("GET", "/api/workspace/dirs"),  # parcourir l'arborescence hôte = admin (anti-fuite)
     ("POST", "/api/config/agents"),
     ("GET", "/api/config/env"), ("POST", "/api/config/env"),
     ("GET", "/api/config/mcp"), ("POST", "/api/config/mcp"),

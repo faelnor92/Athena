@@ -39,6 +39,15 @@ def _resolve(path: str, must_exist: bool):
 
 
 def _atomic_write(real_path: str, content: str):
+    # Lecture seule : un membre « viewer » d'un projet partagé ne peut pas écrire.
+    try:
+        from core import projects
+        if not projects.can_write():
+            raise PermissionError("projet en LECTURE SEULE (rôle lecteur) — modification refusée.")
+    except PermissionError:
+        raise
+    except Exception:
+        pass
     directory = os.path.dirname(real_path) or "."
     os.makedirs(directory, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".edit-", suffix=".tmp", dir=directory)
