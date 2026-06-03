@@ -18,6 +18,19 @@ def _csv(env_name: str):
     return [x.strip() for x in os.getenv(env_name, "").split(",") if x.strip()]
 
 
+def _csv_user(env_name: str):
+    """Cible PERSONNELLE (Telegram chat / email) de l'utilisateur courant si définie
+    dans user_config, sinon repli sur le global .env. L'infra (token/SMTP) reste globale."""
+    try:
+        from core import user_config
+        v = user_config.get(env_name)
+        if v:
+            return [x.strip() for x in str(v).split(",") if x.strip()]
+    except Exception:
+        pass
+    return _csv(env_name)
+
+
 def configured_channels() -> list:
     """Liste des canaux actuellement configurés (pour l'UI/diagnostic)."""
     chans = []
@@ -27,9 +40,9 @@ def configured_channels() -> list:
         chans.append("slack")
     if os.getenv("NOTIFY_WEBHOOK_URL", "").strip():
         chans.append("webhook")
-    if os.getenv("TELEGRAM_BOT_TOKEN", "").strip() and _csv("TELEGRAM_CHAT_ID"):
+    if os.getenv("TELEGRAM_BOT_TOKEN", "").strip() and _csv_user("TELEGRAM_CHAT_ID"):
         chans.append("telegram")
-    if os.getenv("SMTP_HOST", "").strip() and _csv("NOTIFY_EMAIL_TO"):
+    if os.getenv("SMTP_HOST", "").strip() and _csv_user("NOTIFY_EMAIL_TO"):
         chans.append("email")
     return chans
 
@@ -96,7 +109,7 @@ def notify(message: str, title: str = None, channel: str = None) -> list:
             print(f"[notif webhook] {e}")
 
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_ids = _csv("TELEGRAM_CHAT_ID")
+    chat_ids = _csv_user("TELEGRAM_CHAT_ID")
     if token and chat_ids and _wanted("telegram"):
         ok = False
         for cid in chat_ids:
@@ -110,7 +123,7 @@ def notify(message: str, title: str = None, channel: str = None) -> list:
             sent.append("telegram")
 
     host = os.getenv("SMTP_HOST", "").strip()
-    to_list = _csv("NOTIFY_EMAIL_TO")
+    to_list = _csv_user("NOTIFY_EMAIL_TO")
     if host and to_list and _wanted("email"):
         try:
             _send_email(host, to_list, title or "Notification Jarvis", message)

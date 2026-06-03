@@ -70,6 +70,10 @@ def _run_routine(routine: dict):
     run_registry.start(rid)
     chan_token = channels.current_channel.set("routine")
     appr_token = approvals.auto_approve_var.set(True)
+    # Exécuter la routine DANS LE CONTEXTE DE SON PROPRIÉTAIRE (agenda/mémoire/notifs
+    # de cet utilisateur). Sans propriétaire (routines historiques) → "local".
+    from core.state import _current_username
+    user_token = _current_username.set(routine.get("owner") or "local")
     try:
         agent, _msgs, steps = swarm.run(starting, [{"role": "user", "content": prompt}])
         steps = list(steps)
@@ -90,6 +94,7 @@ def _run_routine(routine: dict):
         current_run_id.reset(token)
         channels.current_channel.reset(chan_token)
         approvals.auto_approve_var.reset(appr_token)
+        _current_username.reset(user_token)
 
 
 router = APIRouter(tags=["Config Routines & Transcribe"])
@@ -104,24 +109,44 @@ class RoutineRequest(BaseModel):
     notify: bool = True
     secret: str = None
 
+def _me() -> str:
+    from core.user_config import current_user_key
+    return current_user_key()
+
+
+def _owned_or_404(rid: str):
+    """Récupère une routine SI elle appartient à l'utilisateur courant, sinon 404."""
+    r = routine_store.get(rid)
+    if not r or (r.get("owner") or "local") != _me():
+        raise HTTPException(status_code=404, detail="Routine introuvable.")
+    return r
+
+
 @router.get("/api/routines")
 async def list_routines() -> Dict[str, Any]:
-    return {"routines": routine_store.list()}
+    me = _me()
+    return {"routines": [r for r in routine_store.list() if (r.get("owner") or "local") == me]}
 
 @router.post("/api/routines")
 async def save_routine(req: RoutineRequest) -> Dict[str, Any]:
-    return {"status": "success", "routine": routine_store.upsert(req.model_dump())}
+    data = req.model_dump()
+    # Empêche de détourner la routine d'un autre utilisateur : on (ré)affecte au courant.
+    if data.get("id"):
+        existing = routine_store.get(data["id"])
+        if existing and (existing.get("owner") or "local") != _me():
+            raise HTTPException(status_code=404, detail="Routine introuvable.")
+    data["owner"] = _me()
+    return {"status": "success", "routine": routine_store.upsert(data)}
 
 @router.delete("/api/routines/{rid}")
 async def delete_routine(rid: str) -> Dict[str, str]:
+    _owned_or_404(rid)
     routine_store.delete(rid)
     return {"status": "success"}
 
 @router.post("/api/routines/{rid}/run")
 async def run_routine_now(rid: str) -> Dict[str, str]:
-    r = routine_store.get(rid)
-    if not r:
-        raise HTTPException(status_code=404, detail="Routine introuvable.")
+    r = _owned_or_404(rid)
     await asyncio.to_thread(_run_routine, r)
     return {"status": "success"}
 

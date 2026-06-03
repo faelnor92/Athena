@@ -53,6 +53,13 @@ class RoutineStore:
             routine.setdefault("enabled", True)
             routine.setdefault("notify", True)
             routine.setdefault("agent", "Jarvis")
+            # Propriétaire (multi-tenant) : la routine s'exécutera dans SON contexte.
+            if not routine.get("owner"):
+                try:
+                    from core.user_config import current_user_key
+                    routine["owner"] = current_user_key()
+                except Exception:
+                    routine["owner"] = "local"
             prev = self._data.get(rid, {})
             # Conserver last_run existant si non fourni.
             if "last_run" not in routine:
