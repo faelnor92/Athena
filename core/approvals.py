@@ -29,6 +29,23 @@ def sensitive_tool_names() -> set:
     return {t.strip() for t in raw.split(",") if t.strip()}
 
 
+def admin_only_tool_names() -> set:
+    """Outils réservés au rôle admin (RBAC), via ADMIN_ONLY_TOOLS (CSV). Vide par défaut."""
+    raw = os.getenv("ADMIN_ONLY_TOOLS", "")
+    return {t.strip() for t in raw.split(",") if t.strip()}
+
+
+def caller_is_restricted() -> bool:
+    """True si l'appelant est un utilisateur NON-admin (auth active). None (mode
+    local/no-auth) ou 'admin' → non restreint."""
+    try:
+        from core.state import _current_role
+        role = _current_role.get()
+    except Exception:
+        role = None
+    return role is not None and role != "admin"
+
+
 def auto_approve_enabled() -> bool:
     v = auto_approve_var.get()
     if v is not None:

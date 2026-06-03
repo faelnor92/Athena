@@ -1133,6 +1133,13 @@ class Swarm:
             if chan:
                 effective_tools = [f for f in effective_tools if channels.tool_allowed(chan, f.__name__)]
 
+            # RBAC par outil : un utilisateur NON-admin ne voit pas les outils réservés aux
+            # admins (ADMIN_ONLY_TOOLS). Retirés du schéma → le modèle ne peut pas les appeler.
+            if approvals.caller_is_restricted():
+                _admin_only = approvals.admin_only_tool_names()
+                if _admin_only:
+                    effective_tools = [f for f in effective_tools if f.__name__ not in _admin_only]
+
             # Protection pour modèles LLM "exotiques" ou petits (ex: Qwen) : 
             # On évite de leur donner les 2 outils en même temps dans le chat libre.
             if not locked:

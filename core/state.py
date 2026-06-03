@@ -166,6 +166,9 @@ class _SessionStore:
 
 ACTIVE_SESSIONS = _SessionStore()
 _current_username = contextvars.ContextVar("current_username", default=None)
+# Rôle de l'appelant courant ("admin"/"user"/None). None = mode local/no-auth → traité
+# comme admin (aucune restriction). Sert au RBAC par outil (ADMIN_ONLY_TOOLS).
+_current_role = contextvars.ContextVar("current_role", default=None)
 
 def _scope_cid(client_id: str) -> str:
     client_id = (client_id or "web").strip() or "web"

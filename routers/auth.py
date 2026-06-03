@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.users import user_store
-from core.state import ACTIVE_SESSIONS, _current_username, _scope_cid
+from core.state import ACTIVE_SESSIONS, _current_username, _current_role, _scope_cid
 from core import audit
 
 router = APIRouter(tags=["Auth"])
@@ -145,6 +145,7 @@ async def auth_middleware(request: Request, call_next):
             return JSONResponse(status_code=401, content={"detail": "Session expirée. Reconnectez-vous."})
         request.state.user = sess
         _current_username.set(sess.get("username"))
+        _current_role.set(sess.get("role"))
         # Garde-fou d'autorisation : endpoints sensibles réservés aux admins.
         if _is_admin_only(request.method, request.url.path) and sess.get("role") != "admin":
             return JSONResponse(status_code=403, content={"detail": "Réservé à l'administrateur."})
