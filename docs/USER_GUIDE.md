@@ -93,6 +93,7 @@ C'est la section la plus importante pour ajuster le comportement global et les s
 - `Auto-approuver les outils sensibles` : Par défaut (décoché), l'IA vous demandera toujours une confirmation avant d'utiliser un outil marqué comme "sensible" (ex: écrire dans un fichier système). Si vous le cochez, l'IA devient totalement autonome (à vos risques et périls).
 - `Mot de passe admin / Origines CORS` : Sécurisation du serveur web pour empêcher les connexions extérieures non désirées.
 - `Durée de validité d'une session` : Temps (en heures) avant d'être déconnecté de l'interface (défaut: 168h, soit une semaine).
+- `Protections intégrées (invisibles)` : Athena masque automatiquement vos clés API et secrets dans les logs (Redaction) et intègre une protection anti-SSRF bloquant les requêtes web vers votre réseau interne ou vos métadonnées Cloud.
 
 #### 3. Orchestration & agents (avancé)
 - `Aiguillage LLM (Delegation Router)` : L'Orchestrateur lit votre message et choisit le bon agent. 
@@ -124,7 +125,7 @@ En plus de "Comportement", la barre latérale des réglages vous donne accès à
 * **Onglet "Routines"** : Permet de programmer des tâches automatiques (ex: "Fais le résumé de la maison tous les jours à 7h00"). Vous pouvez aussi y récupérer les adresses "Webhooks" de ces routines.
 * **Onglet "Satellites Vocaux"** : Permet de configurer les enceintes ESP32 connectées à Athena.
 * **Onglet "Extensions MCP"** : Permet de brancher des plugins externes standards (ex: connecteur GitHub, connecteur Home Assistant) à l'IA.
-* **Onglet "Diagnostics & Système"** : Vérifie la santé de l'installation (base de données, STT, TTS). C'est ici que se trouve le bouton d'urgence **Redémarrer le moteur Vocal (Kokoro)** en cas de bug sonore.
+* **Onglet "Diagnostics & Système"** : Vérifie la santé de l'installation (base de données, STT, TTS). C'est ici que se trouve le bouton d'urgence **Redémarrer le moteur Vocal (Kokoro)** en cas de bug sonore, ainsi que les options de **Sauvegarde & Restauration** de votre environnement complet.
 * **Onglet "Utilisateurs" (Admin)** : Si vous êtes administrateur, vous pouvez ici inviter de nouvelles personnes sur votre serveur et gérer leurs droits.
 
 ---
