@@ -254,7 +254,10 @@
                         
                         <div style="display: flex; justify-content: space-between; align-items: center; margin: 6px 0;">
                             <h4 class="view-panel-title" style="margin: 0;">📁 Fichiers du Projet</h4>
-                            <button id="btn-refresh-files" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Actualiser la liste">🔄 Actualiser</button>
+                            <div style="display:flex; gap:6px;">
+                                <button id="btn-toggle-explorer" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Réduire/agrandir l'explorateur">◀ Réduire</button>
+                                <button id="btn-refresh-files" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Actualiser la liste">🔄 Actualiser</button>
+                            </div>
                         </div>
                         
                         <div class="files-columns-layout">
@@ -269,7 +272,10 @@
                                     <!-- Généré en JS -->
                                 </div>
                             </div>
-                            
+
+                            <!-- Séparateur draggable : rétrécir l'explorateur / agrandir l'éditeur -->
+                            <div id="col-splitter" title="Glisser pour redimensionner"></div>
+
                             <!-- Right: File viewer -->
                             <div id="file-viewer-container" class="glass file-viewer-card">
                                 <div id="file-viewer-header" class="file-viewer-title-bar">

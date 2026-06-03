@@ -7510,3 +7510,43 @@ async function _ideReloadFromDisk(path) {
     const b = document.getElementById("btn-save-file");
     if (b) b.addEventListener("click", ideSaveActive);
 })();
+
+
+/* ===== Redimensionnement / repli de l'explorateur (agrandir l'éditeur) ===== */
+(function setupColSplitter() {
+    const splitter = document.getElementById("col-splitter");
+    const col = document.querySelector(".files-list-col");
+    const layout = document.querySelector(".files-columns-layout");
+    const toggle = document.getElementById("btn-toggle-explorer");
+    if (!splitter || !col || !layout) return;
+    let dragging = false;
+    const refreshCM = () => { if (typeof _cm !== "undefined" && _cm) setTimeout(() => _cm.refresh(), 0); };
+
+    splitter.addEventListener("mousedown", (e) => {
+        dragging = true; splitter.classList.add("dragging");
+        document.body.style.userSelect = "none"; document.body.style.cursor = "col-resize";
+        e.preventDefault();
+    });
+    window.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        const rect = layout.getBoundingClientRect();
+        let w = e.clientX - rect.left;
+        w = Math.max(120, Math.min(w, rect.width - 220));   // explorateur ≥120px, éditeur ≥220px
+        col.style.flex = "0 0 " + Math.round(w) + "px";
+        refreshCM();
+    });
+    window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false; splitter.classList.remove("dragging");
+        document.body.style.userSelect = ""; document.body.style.cursor = "";
+    });
+    if (toggle) {
+        toggle.addEventListener("click", () => {
+            const hidden = col.style.display === "none";
+            col.style.display = hidden ? "" : "none";
+            splitter.style.display = hidden ? "" : "none";
+            toggle.textContent = hidden ? "◀ Réduire" : "▶ Explorateur";
+            refreshCM();
+        });
+    }
+})();

@@ -886,6 +886,19 @@ code[class*="language-"] {
     overflow: hidden;
 }
 
+/* Séparateur draggable entre l'explorateur et l'éditeur */
+#col-splitter {
+    flex: 0 0 6px;
+    cursor: col-resize;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    transition: background 0.15s ease;
+}
+#col-splitter:hover,
+#col-splitter.dragging {
+    background: var(--accent-cyan, rgba(0, 240, 255, 0.6));
+}
+
 .upload-dropzone {
     border: 2px dashed rgba(255, 255, 255, 0.12);
     border-radius: 10px;
