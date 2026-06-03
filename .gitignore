@@ -27,7 +27,21 @@ routines.json
 plans.json
 graph_memory.json
 graph_memory_*.json
+# Mémoire-graphe migrée en SQLite (par-utilisateur) + artefacts de test
+graph_memory*.db
+graph_memory*.db-wal
+graph_memory*.db-shm
+test.db
+test_*.db
 users.json
+
+# Serveurs MCP vendorisés en local (ex. tools/mcp-servers/ha-mcp) : on GARDE la source
+# avec le projet (auto-suffisant), mais on ignore les parties régénérables/volumineuses.
+tools/mcp-servers/**/.venv/
+tools/mcp-servers/**/node_modules/
+tools/mcp-servers/**/__pycache__/
+tools/mcp-servers/**/*.pyc
+tools/mcp-servers/**/.git/
 satellites.json
 # Compétences générées par les agents à l'exécution (état local, pas du code source).
 # Le dossier est conservé via .gitkeep ; forcez l'ajout d'une skill avec: git add -f skills/<x>.py

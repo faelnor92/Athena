@@ -65,6 +65,7 @@ _ADMIN_EXACT = {
     ("POST", "/api/config/agents"),
     ("GET", "/api/config/env"), ("POST", "/api/config/env"),
     ("GET", "/api/config/mcp"), ("POST", "/api/config/mcp"),
+    ("GET", "/api/config/mcp/servers"), ("POST", "/api/config/mcp/servers"),
     ("POST", "/api/config/voice-wake"),
     ("GET", "/api/backup"), ("POST", "/api/backup/restore"),
     # NB: /api/config/agenda* n'est PLUS admin-only : la config agenda est désormais
@@ -78,6 +79,7 @@ _ADMIN_PREFIX = (
     ("POST", "/api/config/satellites"),
     ("DELETE", "/api/config/satellites/"),
     ("DELETE", "/api/config/skills/"),
+    ("DELETE", "/api/config/mcp/servers/"),
     ("GET", "/api/users"), ("POST", "/api/users"), ("DELETE", "/api/users/"),
 )
 
