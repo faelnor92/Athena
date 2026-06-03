@@ -31,14 +31,15 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 ### 🧰 Outils & Extensibilité (Skills)
 * **Serveurs MCP (Model Context Protocol)** : Branchez des serveurs externes sans coder. Le connecteur Home Assistant MCP est vendorisé localement pour une sécurité absolue.
 * **Computer Use (RPA 2.0)** : Pilotage d'un navigateur interactif headless optimisé pour les LLMs.
-* **Outils Natifs & Sûrs** : Outils natifs rapides (`get_time`, `get_weather`) et isolation de l'exécution bash/python via Sandbox Docker. Mode lecture-seule optionnel.
-* **Capacités Multiples** : Recherche web, scraping, génération d'images/vidéos (Fal, Replicate).
+* **Navigation Git & Code** : Compréhension de vos dépôts de code (logs, branches, édition), exécution bash/python via Sandbox Docker.
+* **Créativité & Web** : Recherche web approfondie, génération d'images/vidéos (Fal, Replicate), scraping.
+* **Traitement Média & Réunions** : Capacité à résumer et transcrire des fichiers audios ou des réunions entières.
 
 ### 🏠 Domotique & Automatisations
-* **Home Assistant** : Lecture d'état et exécution d'actions domotiques de manière asynchrone et rapide.
-* **Routines Proactives** : Planification de tâches (CRON) isolées par utilisateur, déclenchements webhooks.
-* **Agenda & Listes** : Synchronisation bidirectionnelle Google Calendar, iCal et CalDAV (par utilisateur).
-* **Notifications** : Alertes autonomes vers Telegram, Discord, Slack, Email et Webhooks.
+* **Home Assistant & Contexte** : Lecture d'état et exécution d'actions domotiques. Conscience spatiale (sait dans quelle pièce vous êtes).
+* **Routines Proactives & Workflows** : Planification de tâches (CRON) isolées par utilisateur, déclenchements webhooks, intégrations poussées avec **n8n**.
+* **Agenda & Listes** : Synchronisation bidirectionnelle Google Calendar, iCal et CalDAV. Gestion de vos Todos et listes de courses.
+* **Notifications Actives** : Alertes autonomes de la part d'Athena vers Telegram, Discord, Slack, Email et Webhooks.
 
 ### 💾 Mémoire & Apprentissage
 * **Base Vectorielle RAG** : Indexation sémantique automatique de documents via ChromaDB.

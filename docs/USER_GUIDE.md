@@ -35,23 +35,32 @@ Allez dans le dossier d'Athena et tapez :
 
 ---
 
-## 3. 🛠️ Que peut faire Athena ? (Code Agentique & Capacités)
+## 3. 🛠️ Que peut faire Athena ? (Les Super-Pouvoirs)
 
-Athena n'est pas un simple "ChatGPT". C'est un framework d'**agents d'intelligence artificielle autonomes** capables d'agir sur votre machine et sur le web.
+Athena n'est pas un simple "ChatGPT". C'est un framework d'**agents d'intelligence artificielle autonomes** qui intègrent des dizaines d'outils ("Skills") capables d'agir sur votre machine et sur le web.
 
 ### 💻 Code Agentique (Software Engineering)
-C'est le cœur d'Athena. L'assistant peut remplacer un développeur humain sur certaines tâches :
-- **Exécution Python & Bash (Sandbox)** : Athena peut écrire du code, créer des scripts complexes, et surtout **les exécuter de manière autonome** dans un bac à sable Docker sécurisé pour vérifier qu'ils fonctionnent.
-- **Computer Use (RPA 2.0)** : L'IA peut ouvrir un vrai navigateur web en arrière-plan, cliquer sur des boutons, remplir des formulaires et lire le contenu (utile pour scraper des sites web ou faire des tests automatisés).
-- **Maintenance autonome** : Un agent nocturne peut nettoyer et vérifier le code source de vos projets automatiquement.
+C'est le cœur du système. Athena peut remplacer un développeur sur certaines tâches :
+- **Exécution Python & Bash (Sandbox)** : L'IA écrit du code et l'exécute de manière autonome dans un bac à sable Docker sécurisé.
+- **Computer Use (RPA 2.0)** : L'IA peut ouvrir un vrai navigateur web caché, cliquer sur des boutons, remplir des formulaires et scraper des sites.
+- **Navigation Git & Code** : L'IA peut lire vos dépôts Git, comprendre votre code source existant et l'éditer en direct.
+- **Maintenance autonome** : Un agent nocturne peut vérifier et réparer le code source automatiquement.
 
-### 🏠 Domotique & Outils Quotidiens
-- **Outils natifs** : Lui demander l'heure, la météo, ou de faire une recherche Web approfondie (Recherche sémantique).
-- **Domotique (Home Assistant)** : Grâce au protocole MCP, Athena connaît les objets connectés de votre maison. Demandez-lui *"Éteins la lumière du salon"* et elle transmettra l'ordre sans aucune configuration complexe.
-- **Génération Média** : Si configurée avec une API externe, elle peut générer des images ou modifier des fichiers.
+### 🏠 Domotique, Contexte & Quotidien
+- **Domotique (Home Assistant)** : Grâce au protocole MCP, Athena interagit avec votre maison. Demandez-lui *"Éteins la lumière du salon"*.
+- **Conscience Spatiale** : L'IA peut savoir dans quelle pièce vous vous trouvez (si vous avez des capteurs) pour adapter ses actions (ex: *"Allume la lumière"* allumera celle de la pièce où vous êtes).
+- **Météo & Temps** : Prévisions météorologiques sur plusieurs jours et synchronisation temporelle.
+- **Listes & Courses** : Demandez-lui de rajouter du lait sur votre liste de courses ou de créer une Todo-list.
 
-### 📅 Planification (Routines)
-Demandez à l'IA : *"Fais-moi un résumé de ma journée et de la météo tous les matins à 7h30"*. Athena se réveillera toute seule pour exécuter la tâche et vous préparer le briefing.
+### 📅 Productivité & Communication
+- **Agenda & Planification** : Synchronisation avec vos calendriers (iCal, CalDAV) pour lire et créer des événements.
+- **Résumés de Réunions** : Capacité à transcrire et résumer des réunions ou des fichiers audios.
+- **Notifications** : Athena peut vous envoyer des messages de son plein gré sur Telegram, Discord ou Slack.
+- **Génération Média** : Création d'images (via API Fal/Replicate) et manipulations de fichiers (PDF, documents).
+- **Workflows (n8n)** : Déclenchement de scénarios complexes via des webhooks n8n.
+
+### ⏰ Routines Proactives
+Athena n'attend pas que vous lui parliez. Demandez-lui : *"Fais-moi un résumé de ma journée tous les matins à 7h30"*. Elle se réveillera toute seule, analysera votre agenda, la météo, l'état de votre maison, et pourra même déclencher la cafetière !
 
 ---
 
