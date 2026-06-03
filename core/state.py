@@ -140,6 +140,30 @@ class _SessionStore:
         shared_store.delete(self._NS, token)
         return v
 
+    def revoke_user(self, username: str, keep_token: str = None) -> int:
+        """Révoque toutes les sessions d'un utilisateur (sauf keep_token éventuel).
+        Appelé au changement/reset de mot de passe → un token volé cesse d'être valide."""
+        from core import shared_store
+        n = 0
+        for tok, sess in shared_store.items(self._NS).items():
+            if tok == keep_token:
+                continue
+            if (sess or {}).get("username") == username:
+                shared_store.delete(self._NS, tok)
+                n += 1
+        return n
+
+    def purge_expired(self) -> int:
+        """Supprime les sessions expirées (hygiène du store)."""
+        from core import shared_store
+        now = time.time()
+        n = 0
+        for tok, sess in shared_store.items(self._NS).items():
+            if (sess or {}).get("exp", 0) < now:
+                shared_store.delete(self._NS, tok)
+                n += 1
+        return n
+
 ACTIVE_SESSIONS = _SessionStore()
 _current_username = contextvars.ContextVar("current_username", default=None)
 

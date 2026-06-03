@@ -14,9 +14,34 @@ router = APIRouter(tags=["Auth"])
 _SESSION_TTL = int(os.getenv("SESSION_TTL_HOURS", "168") or 168) * 3600
 
 # Anti-brute-force du login : IP -> [timestamps des échecs récents].
-_LOGIN_FAILURES = {}
 _LOGIN_MAX_FAILS = int(os.getenv("LOGIN_MAX_FAILS", "8") or 8)
 _LOGIN_WINDOW = int(os.getenv("LOGIN_WINDOW_SECONDS", "300") or 300)
+_MIN_PASSWORD_LEN = int(os.getenv("MIN_PASSWORD_LENGTH", "8") or 8)
+
+
+# Throttle anti-brute-force partagé entre workers (ns "login_fail" du store SQLite),
+# au lieu d'un dict par-process inefficace en multi-worker.
+def _recent_fails(ip: str) -> list:
+    from core import shared_store
+    now = time.time()
+    return [t for t in (shared_store.get("login_fail", ip) or []) if now - t < _LOGIN_WINDOW]
+
+
+def _record_login_fail(ip: str):
+    from core import shared_store
+    now = time.time()
+    shared_store.update("login_fail", ip,
+                        lambda l: [t for t in (l or []) if now - t < _LOGIN_WINDOW] + [now])
+
+
+def _clear_login_fails(ip: str):
+    from core import shared_store
+    shared_store.delete("login_fail", ip)
+
+
+def _bearer_token(request: Request) -> str:
+    h = request.headers.get("Authorization", "")
+    return h.split(" ", 1)[1].strip() if h.startswith("Bearer ") else ""
 
 
 def _is_exposed_host(host: str) -> bool:
@@ -171,37 +196,36 @@ async def oidc_callback(request: Request, code: str = "", state: str = ""):
 async def login(req: LoginRequest, request: Request):
     admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
 
-    # Anti-brute-force : throttle par IP au-delà de N échecs dans la fenêtre.
+    # Anti-brute-force : throttle par IP au-delà de N échecs dans la fenêtre (partagé
+    # entre workers via le store SQLite).
     client_ip = request.client.host if request.client else "?"
-    now = time.time()
-    fails = [t for t in _LOGIN_FAILURES.get(client_ip, []) if now - t < _LOGIN_WINDOW]
-    if len(fails) >= _LOGIN_MAX_FAILS:
-        _LOGIN_FAILURES[client_ip] = fails
+    if len(_recent_fails(client_ip)) >= _LOGIN_MAX_FAILS:
         raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
 
-    def _fail():
-        fails.append(now)
-        _LOGIN_FAILURES[client_ip] = fails
+    def _ok(username, role):
+        _clear_login_fails(client_ip)
+        try:
+            ACTIVE_SESSIONS.purge_expired()  # hygiène opportuniste du store de sessions
+        except Exception:
+            pass
+        return {"status": "success", "token": _new_session(username, role),
+                "username": username, "role": role}
 
     # 1. Multi-utilisateur : si des comptes existent et un username est fourni.
     if user_store.count() > 0 and req.username:
         role = user_store.verify(req.username, req.password)
         if role:
-            _LOGIN_FAILURES.pop(client_ip, None)
-            token = _new_session(req.username, role)
-            return {"status": "success", "token": token, "username": req.username, "role": role}
+            return _ok(req.username, role)
 
     # 2. Admin « bootstrap » via ADMIN_PASSWORD (toujours valable pour l'owner).
     if admin_password and secrets.compare_digest(req.password, admin_password):
-        _LOGIN_FAILURES.pop(client_ip, None)
-        token = _new_session(req.username or "admin", "admin")
-        return {"status": "success", "token": token, "username": req.username or "admin", "role": "admin"}
+        return _ok(req.username or "admin", "admin")
 
     # 3. Aucune auth configurée.
     if not _auth_active():
         return {"status": "success", "token": "no-auth-required", "username": "local", "role": "admin"}
 
-    _fail()
+    _record_login_fail(client_ip)
     raise HTTPException(status_code=401, detail="Identifiants incorrects")
 
 
@@ -230,15 +254,26 @@ class PasswordChangeRequest(BaseModel):
 
 @router.post("/api/me/password")
 async def change_my_password(request: Request, req: PasswordChangeRequest):
-    """Change le mot de passe du COMPTE COURANT (vérifie l'ancien). Self-service."""
-    if len((req.new_password or "")) < 4:
-        raise HTTPException(status_code=400, detail="Nouveau mot de passe trop court (min. 4 caractères).")
+    """Change le mot de passe du COMPTE COURANT (vérifie l'ancien). Self-service.
+    Révoque les AUTRES sessions du compte (la session courante est conservée)."""
+    if len((req.new_password or "")) < _MIN_PASSWORD_LEN:
+        raise HTTPException(status_code=400, detail=f"Nouveau mot de passe trop court (min. {_MIN_PASSWORD_LEN} caractères).")
     username = _current_user(request).get("username")
     if not username or user_store.verify(username, req.current_password) is None:
         raise HTTPException(status_code=403,
                             detail="Mot de passe actuel incorrect (ou compte sans mot de passe propre, ex. admin bootstrap).")
     if not user_store.set_password(username, req.new_password):
         raise HTTPException(status_code=400, detail="Changement impossible.")
+    ACTIVE_SESSIONS.revoke_user(username, keep_token=_bearer_token(request))
+    return {"status": "success"}
+
+
+@router.post("/api/logout")
+async def logout(request: Request):
+    """Invalide le jeton de session courant."""
+    tok = _bearer_token(request)
+    if tok:
+        ACTIVE_SESSIONS.pop(tok, None)
     return {"status": "success"}
 
 
@@ -284,8 +319,8 @@ async def register(req: RegisterRequest):
     """Inscription PUBLIQUE via un code d'invitation valide → crée le compte + connecte."""
     from core.invites import invite_store
     username = (req.username or "").strip()
-    if not username or len((req.password or "")) < 4:
-        raise HTTPException(status_code=400, detail="username requis et mot de passe d'au moins 4 caractères.")
+    if not username or len((req.password or "")) < _MIN_PASSWORD_LEN:
+        raise HTTPException(status_code=400, detail=f"username requis et mot de passe d'au moins {_MIN_PASSWORD_LEN} caractères.")
     inv = invite_store.check(req.code)
     if not inv:
         raise HTTPException(status_code=403, detail="Invitation invalide, expirée ou déjà utilisée.")
@@ -308,10 +343,12 @@ class AdminPasswordResetRequest(BaseModel):
 async def admin_reset_password(request: Request, username: str, req: AdminPasswordResetRequest):
     """Réinitialise le mot de passe d'un utilisateur (ADMIN ; sans l'ancien)."""
     _require_admin(request)
-    if len((req.new_password or "")) < 4:
-        raise HTTPException(status_code=400, detail="Mot de passe trop court (min. 4 caractères).")
+    if len((req.new_password or "")) < _MIN_PASSWORD_LEN:
+        raise HTTPException(status_code=400, detail=f"Mot de passe trop court (min. {_MIN_PASSWORD_LEN} caractères).")
     if not user_store.set_password(username, req.new_password):
         raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+    # Reset admin → on déconnecte l'utilisateur de TOUTES ses sessions.
+    ACTIVE_SESSIONS.revoke_user(username)
     return {"status": "success"}
 
 
@@ -330,6 +367,8 @@ async def list_users(request: Request):
 @router.post("/api/users")
 async def create_user(request: Request, req: UserCreateRequest):
     _require_admin(request)
+    if len((req.password or "")) < _MIN_PASSWORD_LEN:
+        raise HTTPException(status_code=400, detail=f"Mot de passe trop court (min. {_MIN_PASSWORD_LEN} caractères).")
     if not user_store.create(req.username, req.password, req.role):
         raise HTTPException(status_code=400, detail="username/password requis.")
     return {"status": "success"}

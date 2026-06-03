@@ -96,6 +96,7 @@
  "POST /api/knowledge/ingest",
  "POST /api/lists",
  "POST /api/login",
+ "POST /api/logout",
  "POST /api/logs/level",
  "POST /api/me/llm",
  "POST /api/me/password",
