@@ -205,6 +205,13 @@
                 <!-- PANEL C: PROJECT FILES EXPLORER -->
                 <div class="viewport-panel" id="view-files" style="display: none;">
                     <div class="files-explorer-container">
+                        <!-- Sélecteur de PROJET (scope les outils codeur + l'explorateur) -->
+                        <div class="glass files-path-bar" style="margin-bottom: 6px;">
+                            <span style="font-size: 0.75rem; user-select: none; white-space: nowrap; opacity: 0.75;">🗂️ Projet :</span>
+                            <select id="project-select" class="path-input" style="flex: 1;"></select>
+                            <button id="btn-new-project" class="btn btn-secondary" style="margin: 0; padding: 2px 10px; font-size: 0.75rem; font-weight: bold; height: 26px; white-space: nowrap;" title="Créer un projet">＋ Projet</button>
+                            <button id="btn-del-project" class="btn btn-secondary" style="margin: 0; padding: 2px 8px; font-size: 0.75rem; height: 26px;" title="Supprimer le projet actif">🗑️</button>
+                        </div>
                         <!-- Path Config bar -->
                         <div class="glass files-path-bar">
                             <span style="font-size: 0.75rem; user-select: none; white-space: nowrap; opacity: 0.75;">📁 Dossier :</span>

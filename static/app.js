@@ -452,6 +452,7 @@ if (tabGraph) {
 if (tabFiles) {
     tabFiles.addEventListener("click", () => {
         selectActiveTab(tabFiles, viewFiles, () => {
+            loadProjects();
             loadWorkspaceFiles();
         });
     });
@@ -6858,3 +6859,62 @@ if (tabMine && tabMarket) {
         if (formContainer) formContainer.style.display = "none";
     };
 }
+
+
+/* ===== Gestion de projet (scope les outils codeur + l'explorateur) ===== */
+async function loadProjects() {
+    const sel = document.getElementById("project-select");
+    if (!sel) return;
+    try {
+        const r = await apiFetch("/api/projects");
+        if (!r.ok) return;
+        const d = await r.json();
+        const activeId = (d.active && d.active.id) || "";
+        sel.innerHTML = "";
+        const base = document.createElement("option");
+        base.value = ""; base.textContent = "📂 Workspace de base";
+        sel.appendChild(base);
+        (d.projects || []).forEach(p => {
+            const o = document.createElement("option");
+            o.value = p.id; o.textContent = "🗂️ " + p.name;
+            if (p.id === activeId) o.selected = true;
+            sel.appendChild(o);
+        });
+    } catch (e) { /* silencieux */ }
+}
+
+async function _selectProject(id) {
+    try {
+        await apiFetch("/api/projects/select", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: id || "" }),
+        });
+        // Le projet actif change le workspace → recharger l'explorateur.
+        if (typeof loadWorkspaceFiles === "function") loadWorkspaceFiles();
+    } catch (e) { /* silencieux */ }
+}
+
+(function bindProjectControls() {
+    const sel = document.getElementById("project-select");
+    if (sel) sel.addEventListener("change", () => _selectProject(sel.value));
+    const add = document.getElementById("btn-new-project");
+    if (add) add.addEventListener("click", async () => {
+        const name = prompt("Nom du nouveau projet :");
+        if (!name || !name.trim()) return;
+        const r = await apiFetch("/api/projects", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: name.trim() }),
+        });
+        if (r.ok) { await loadProjects(); if (typeof loadWorkspaceFiles === "function") loadWorkspaceFiles(); }
+        else alert("Création du projet refusée.");
+    });
+    const del = document.getElementById("btn-del-project");
+    if (del) del.addEventListener("click", async () => {
+        const sel2 = document.getElementById("project-select");
+        const id = sel2 && sel2.value;
+        if (!id) { alert("Sélectionne un projet à supprimer (le workspace de base ne peut pas l'être)."); return; }
+        const rmFiles = confirm("Supprimer AUSSI les fichiers du projet sur le disque ?\n\nOK = supprimer les fichiers · Annuler = ne retirer que de la liste");
+        const r = await apiFetch(`/api/projects/${encodeURIComponent(id)}?remove_files=${rmFiles}`, { method: "DELETE" });
+        if (r.ok) { await loadProjects(); if (typeof loadWorkspaceFiles === "function") loadWorkspaceFiles(); }
+    });
+})();
