@@ -25,26 +25,109 @@ class TTS:
         self._pyttsx = None
 
     # --------------------------------------------------- TTS expressif via HTTP
-    def _http_to_wav(self, text: str, emotion: str = "neutral") -> str:
-        """Appelle un serveur TTS expressif et écrit le WAV renvoyé.
-        Config : VOICE_TTS_HTTP_URL (POST), VOICE_TTS_VOICE, VOICE_TTS_FORMAT.
-        Corps JSON générique : {text, voice, emotion, format}. Compatible aussi avec
-        une API style OpenAI (/v1/audio/speech : {model, input, voice})."""
-        import requests
+    def _get_http_payload(self, text: str, emotion: str):
         url = os.getenv("VOICE_TTS_HTTP_URL", "").strip()
         if not url:
-            raise TTSUnavailable("VOICE_TTS_HTTP_URL non défini pour le moteur TTS 'http'.")
+            raise TTSUnavailable("VOICE_TTS_HTTP_URL non défini.")
         voice = os.getenv("VOICE_TTS_VOICE", "").strip()
         fmt = os.getenv("VOICE_TTS_FORMAT", "wav").strip() or "wav"
-        if "/audio/speech" in url:  # forme OpenAI-compatible
+        if "/audio/speech" in url:
             payload = {"model": os.getenv("VOICE_TTS_MODEL", "tts-1"), "input": text,
                        "voice": voice or "alloy", "response_format": fmt}
-        else:  # forme générique
+        else:
             payload = {"text": text, "voice": voice, "emotion": emotion, "format": fmt}
         headers = {"Content-Type": "application/json"}
         key = os.getenv("VOICE_TTS_API_KEY", "").strip()
         if key:
             headers["Authorization"] = f"Bearer {key}"
+        return url, payload, headers
+
+    def _open_stream(self, emotion: str, text: str):
+        """Ouvre la réponse HTTP en streaming. Lève TTSUnavailable si injoignable."""
+        import requests
+        url, payload, headers = self._get_http_payload(text, emotion)
+        try:
+            r = requests.post(url, json=payload, headers=headers, stream=True,
+                              timeout=int(os.getenv("VOICE_TTS_TIMEOUT", "30")))
+            r.raise_for_status()
+        except Exception as e:
+            raise TTSUnavailable(f"Serveur TTS HTTP injoignable : {e}") from e
+        return r
+
+    @staticmethod
+    def _iter_pcm(r):
+        """Itère les octets PCM 16-bit d'une réponse TTS en streaming.
+
+        Robuste : si c'est un WAV, on localise le sous-chunk `data` (certains
+        serveurs insèrent LIST/fact avant les échantillons, donc l'offset n'est
+        pas toujours 44) et on en extrait le sample rate ; sinon on traite le flux
+        comme du PCM brut 24 kHz. Yield (sample_rate, pcm_bytes), sample_rate
+        constant sur tout le flux ; le 1ᵉʳ yield n'arrive qu'une fois l'en-tête lu."""
+        import struct
+        sample_rate = 24000  # défaut (Kokoro, OpenAI, PCM brut)
+        head = b""
+        started = False
+        carry = b""  # octet impair reporté d'un chunk au suivant (alignement int16)
+        for chunk in r.iter_content(chunk_size=4096):
+            if not chunk:
+                continue
+            if not started:
+                head += chunk
+                if head[:4] == b"RIFF" and head[8:12] == b"WAVE":
+                    idx = head.find(b"data")
+                    if idx == -1 or len(head) < idx + 8:
+                        continue  # en-tête pas encore complet
+                    sample_rate = struct.unpack("<I", head[24:28])[0]
+                    chunk = head[idx + 8:]
+                elif len(head) >= 44:
+                    chunk = head  # pas du WAV → PCM brut
+                else:
+                    continue
+                started = True
+            chunk = carry + chunk
+            if len(chunk) % 2:
+                chunk, carry = chunk[:-1], chunk[-1:]  # garde l'octet impair pour la suite
+            else:
+                carry = b""
+            if chunk:
+                yield sample_rate, chunk
+        if carry:  # dernier octet orphelin : on le complète pour ne rien perdre
+            yield sample_rate, carry + b"\x00"
+
+    def _http_play_stream(self, text: str, emotion: str, stop_event=None):
+        """Streaming S2S ultra-rapide depuis le serveur HTTP vers les haut-parleurs."""
+        try:
+            import sounddevice as sd
+            import numpy as np
+        except ImportError as e:
+            raise TTSUnavailable("sounddevice/numpy requis pour la lecture audio streaming.") from e
+
+        r = self._open_stream(emotion, text)
+        stream = None
+        try:
+            for sample_rate, chunk in self._iter_pcm(r):
+                if stop_event and stop_event.is_set():
+                    break
+                if stream is None:
+                    # latency='low' : démarre la sortie au plus tôt (S2S réactif).
+                    stream = sd.OutputStream(samplerate=sample_rate, channels=1,
+                                             dtype='int16', latency='low')
+                    stream.start()
+                stream.write(np.frombuffer(chunk, dtype=np.int16))
+        finally:
+            if stream is not None:
+                # Barge-in : abort() coupe immédiatement (stop() viderait le buffer).
+                if stop_event and stop_event.is_set():
+                    stream.abort()
+                else:
+                    stream.stop()
+                stream.close()
+            r.close()
+
+    def _http_to_wav(self, text: str, emotion: str = "neutral") -> str:
+        """Appelle un serveur TTS expressif et écrit le WAV renvoyé (non-streamé)."""
+        import requests
+        url, payload, headers = self._get_http_payload(text, emotion)
         try:
             r = requests.post(url, json=payload, headers=headers,
                               timeout=int(os.getenv("VOICE_TTS_TIMEOUT", "30")))
@@ -104,14 +187,15 @@ class TTS:
             engine.runAndWait()
             return
         if self.engine == "http":
-            wav_path = self._http_to_wav(text, emotion)
+            self._http_play_stream(text, emotion, stop_event)
+            return
         else:
             wav_path = self._piper_to_wav(text)
-        try:
-            self._play_wav(wav_path, stop_event)
-        finally:
-            if os.path.exists(wav_path):
-                os.remove(wav_path)
+            try:
+                self._play_wav(wav_path, stop_event)
+            finally:
+                if os.path.exists(wav_path):
+                    os.remove(wav_path)
 
     @staticmethod
     def _apply_pyttsx_emotion(engine, emotion):
@@ -156,6 +240,40 @@ class TTS:
         finally:
             if os.path.exists(wav_path):
                 os.remove(wav_path)
+
+    def synth_stream(self, text: str, target_sr: int = 16000):
+        """Générateur : synthétise et stream l'audio PCM 16-bit au sample rate cible (idéal pour ESP32)."""
+        emotion, text = split_emotion(text or "")
+        text = text.strip()
+        if not text:
+            return
+        
+        if self.engine != "http":
+            # Fallback pour pyttsx3 / piper : on génère tout et on yield en une fois
+            wav = self.synth_wav_bytes(text)
+            pcm, _sr = self.wav_to_pcm16(wav, target_sr)
+            yield pcm
+            return
+
+        # Moteur HTTP : Streaming
+        try:
+            import numpy as np
+        except ImportError as e:
+            raise TTSUnavailable("numpy requis pour le streaming (resampling).") from e
+
+        r = self._open_stream(emotion, text)
+        try:
+            for source_sr, chunk in self._iter_pcm(r):
+                data = np.frombuffer(chunk, dtype=np.int16)
+                # Resampling à la volée si nécessaire
+                if source_sr != target_sr and len(data) > 1:
+                    n = int(len(data) * target_sr / source_sr)
+                    xp = np.linspace(0, 1, len(data))
+                    data = np.interp(np.linspace(0, 1, n), xp, data).astype(np.float32)
+                    data = np.clip(data, -32768, 32767).astype(np.int16)
+                yield data.tobytes()
+        finally:
+            r.close()
 
     @staticmethod
     def wav_to_pcm16(wav_bytes: bytes, target_sr: int = 16000):
