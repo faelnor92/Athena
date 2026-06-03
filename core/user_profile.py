@@ -10,12 +10,19 @@ import threading
 
 class UserProfile:
     def __init__(self, path: str = None):
-        self.path = path or os.getenv("USER_PROFILE_PATH", "user_profile.md")
+        # Base configurable ; le fichier RÉEL est suffixé par l'utilisateur courant
+        # (profil PAR UTILISATEUR, résolu à chaque appel). Cf. _path().
+        self._base = path or os.getenv("USER_PROFILE_PATH", "user_profile.md")
         self._lock = threading.Lock()
+
+    def _path(self) -> str:
+        from core.user_config import user_slug
+        root, ext = os.path.splitext(self._base)
+        return f"{root}_{user_slug()}{ext or '.md'}"
 
     def get(self) -> str:
         try:
-            with open(self.path, "r", encoding="utf-8") as f:
+            with open(self._path(), "r", encoding="utf-8") as f:
                 return f.read().strip()
         except FileNotFoundError:
             return ""
@@ -25,7 +32,7 @@ class UserProfile:
     def set(self, text: str):
         with self._lock:
             try:
-                with open(self.path, "w", encoding="utf-8") as f:
+                with open(self._path(), "w", encoding="utf-8") as f:
                     f.write((text or "").strip() + "\n")
             except Exception as e:
                 print(f"[Profil utilisateur] écriture impossible : {e}")

@@ -5,25 +5,53 @@ import uuid
 import chromadb
 
 class CoreMemory:
-    """Mémoire de type clé-valeur (JSON) pour stocker les faits et préférences globales."""
+    """Mémoire clé-valeur (JSON) des faits/préférences — PAR UTILISATEUR.
+
+    Le fichier réel est suffixé par l'utilisateur courant (core_memory_<user>.json) ;
+    `data` reflète toujours l'utilisateur courant (résolu à chaque accès)."""
     def __init__(self, filepath=None):
-        self.filepath = filepath or os.getenv("CORE_MEMORY_PATH", "core_memory.json")
-        self.data = {}
-        self.load()
+        import threading
+        self._base = filepath or os.getenv("CORE_MEMORY_PATH", "core_memory.json")
+        self._cache = {}      # user -> dict
+        self._loaded = set()
+        self._lock = threading.Lock()
+
+    def _key(self) -> str:
+        from core.user_config import current_user_key
+        return current_user_key()
+
+    def _path(self) -> str:
+        from core.user_config import user_slug
+        root, ext = os.path.splitext(self._base)
+        return f"{root}_{user_slug()}{ext or '.json'}"
+
+    @property
+    def data(self) -> dict:
+        u = self._key()
+        if u not in self._loaded:
+            self.load()
+        return self._cache.setdefault(u, {})
 
     def load(self):
-        if os.path.exists(self.filepath):
+        u = self._key()
+        d = {}
+        p = self._path()
+        if os.path.exists(p):
             try:
-                with open(self.filepath, "r", encoding="utf-8") as f:
-                    self.data = json.load(f)
+                with open(p, "r", encoding="utf-8") as f:
+                    d = json.load(f)
             except Exception as e:
                 print(f"[\033[91mErreur\033[0m] Chargement core memory: {e}")
-                self.data = {}
+                d = {}
+        with self._lock:
+            self._cache[u] = d if isinstance(d, dict) else {}
+            self._loaded.add(u)
 
     def save(self):
+        u = self._key()
         try:
-            with open(self.filepath, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, indent=4, ensure_ascii=False)
+            with open(self._path(), "w", encoding="utf-8") as f:
+                json.dump(self._cache.get(u, {}), f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"[\033[91mErreur\033[0m] Sauvegarde core memory: {e}")
 

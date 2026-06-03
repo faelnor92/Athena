@@ -65,6 +65,12 @@ def current_user_key() -> str:
         return "local"
 
 
+def user_slug(user: str = None) -> str:
+    """Forme du nom d'utilisateur sûre pour un nom de fichier (par-utilisateur)."""
+    import re
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", (user or current_user_key())) or "local"
+
+
 def get(key: str, default=None, user: str = None):
     user = user or current_user_key()
     with _LOCK:

@@ -3,6 +3,9 @@ d'interroger le VOISINAGE d'une entité — complément du RAG vectoriel (Chroma
 lui, ne capture que la similarité de texte. Pur-Python (aucune dépendance), persistance
 atomique. Ce n'est PAS du GraphRAG complet (pas d'extraction massive ni de communautés) :
 juste un graphe de faits reliés, le « 20 % qui donne 80 % ».
+
+PAR UTILISATEUR : chaque utilisateur a ses propres relations (graph_memory_<user>.json),
+résolu à chaque accès via core.user_config.
 """
 import json
 import os
@@ -10,30 +13,39 @@ import tempfile
 import threading
 
 _LOCK = threading.Lock()
-_TRIPLES = []      # [{"s": str, "r": str, "o": str}]
-_LOADED = False
+_BY_USER = {}      # user -> [{"s","r","o"}]
+_LOADED = set()    # users déjà chargés
 _MAX = int(os.getenv("GRAPH_MEMORY_MAX", "5000") or 5000)
 
 
-def _path():
-    p = os.getenv("GRAPH_MEMORY_PATH", "").strip()
-    if p:
-        return p
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "graph_memory.json")
+def _key() -> str:
+    from core.user_config import current_user_key
+    return current_user_key()
 
 
-def _load():
-    global _LOADED
-    if _LOADED:
-        return
-    try:
-        with open(_path(), "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                _TRIPLES.extend(data)
-    except Exception:
-        pass
-    _LOADED = True
+def _path() -> str:
+    base = os.getenv("GRAPH_MEMORY_PATH", "").strip() or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "graph_memory.json")
+    from core.user_config import user_slug
+    root, ext = os.path.splitext(base)
+    return f"{root}_{user_slug()}{ext or '.json'}"
+
+
+def _triples() -> list:
+    """Liste de triplets de l'utilisateur courant (chargée paresseusement). Appeler sous _LOCK."""
+    u = _key()
+    if u not in _LOADED:
+        data = []
+        try:
+            with open(_path(), "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if isinstance(d, list):
+                    data = d
+        except Exception:
+            pass
+        _BY_USER[u] = data
+        _LOADED.add(u)
+    return _BY_USER.setdefault(u, [])
 
 
 def _save():
@@ -43,7 +55,7 @@ def _save():
         os.makedirs(directory, exist_ok=True)
         fd, tmp = tempfile.mkstemp(prefix=".graph-", suffix=".tmp", dir=directory)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(_TRIPLES[-_MAX:], f, ensure_ascii=False, indent=2)
+            json.dump(_BY_USER.get(_key(), [])[-_MAX:], f, ensure_ascii=False, indent=2)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, p)
@@ -63,11 +75,11 @@ def add_triple(s, r, o):
     if not s or not o:
         return False
     with _LOCK:
-        _load()
+        triples = _triples()
         key = (s.lower(), r.lower(), o.lower())
-        if any((t["s"].lower(), t["r"].lower(), t["o"].lower()) == key for t in _TRIPLES):
+        if any((t["s"].lower(), t["r"].lower(), t["o"].lower()) == key for t in triples):
             return True  # déjà connu
-        _TRIPLES.append({"s": s, "r": r, "o": o})
+        triples.append({"s": s, "r": r, "o": o})
         _save()
     return True
 
@@ -90,8 +102,7 @@ def neighborhood(entity, depth=1):
     if not ent:
         return []
     with _LOCK:
-        _load()
-        triples = list(_TRIPLES)
+        triples = list(_triples())
     seen_entities = {ent}
     result = []
     frontier = {ent}
@@ -116,5 +127,4 @@ def neighborhood(entity, depth=1):
 
 def stats():
     with _LOCK:
-        _load()
-        return {"triples": len(_TRIPLES)}
+        return {"triples": len(_triples())}

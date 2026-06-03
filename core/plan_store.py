@@ -56,7 +56,14 @@ def _save():
 
 
 def _cid(client_id):
-    return (client_id or "web").strip() or "web"
+    # Scope PAR UTILISATEUR (cohérent avec les conversations) : préfixe par l'utilisateur
+    # courant pour que deux comptes sur le même client_id ne partagent pas leurs plans.
+    cid = (client_id or "web").strip() or "web"
+    try:
+        from core.user_config import current_user_key
+        return f"{current_user_key()}::{cid}"
+    except Exception:
+        return cid
 
 
 def get_plan(client_id="web"):

@@ -20,11 +20,13 @@ logs/
 conversations.json
 conversations_*.json
 core_memory.json
+core_memory_*.json
 agenda.json
 lists.json
 routines.json
 plans.json
 graph_memory.json
+graph_memory_*.json
 users.json
 satellites.json
 # Compétences générées par les agents à l'exécution (état local, pas du code source).
@@ -68,6 +70,7 @@ voice/speakers/*.npy
 
 # Profil utilisateur évolutif (données perso runtime)
 user_profile.md
+user_profile_*.md
 
 # Config d'agents LOCALE (le dépôt livre agents.default.yaml + agents.example.yaml)
 agents.yaml

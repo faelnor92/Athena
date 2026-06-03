@@ -4,15 +4,20 @@ import uuid
 import threading
 from typing import List, Dict, Any
 
-LISTS_FILE = "workspace/lists.json"
 lists_lock = threading.Lock()
+
+def _lists_file() -> str:
+    """Fichier de listes de l'utilisateur courant (listes PAR UTILISATEUR)."""
+    from core.user_config import user_slug
+    return os.path.join("workspace", f"lists_{user_slug()}.json")
 
 def ensure_lists_file():
     """ Assure que le répertoire et le fichier JSON de listes existent. """
     os.makedirs("workspace", exist_ok=True)
     with lists_lock:
-        if not os.path.exists(LISTS_FILE):
-            with open(LISTS_FILE, "w", encoding="utf-8") as f:
+        path = _lists_file()
+        if not os.path.exists(path):
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump({}, f, indent=4, ensure_ascii=False)
 
 def read_lists() -> Dict[str, List[Dict[str, Any]]]:
@@ -20,7 +25,7 @@ def read_lists() -> Dict[str, List[Dict[str, Any]]]:
     ensure_lists_file()
     with lists_lock:
         try:
-            with open(LISTS_FILE, "r", encoding="utf-8") as f:
+            with open(_lists_file(), "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return {}
@@ -29,7 +34,7 @@ def write_lists(data: Dict[str, List[Dict[str, Any]]]):
     """ Écrit le contenu dans le fichier de listes. """
     ensure_lists_file()
     with lists_lock:
-        with open(LISTS_FILE, "w", encoding="utf-8") as f:
+        with open(_lists_file(), "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
 
 def add_list_item(list_name: str, item_text: str) -> Dict[str, Any]:
