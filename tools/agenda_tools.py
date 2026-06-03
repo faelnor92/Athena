@@ -68,6 +68,27 @@ def _per_user(fn):
     return wrap
 
 
+def _atomic_write(path: str, data) -> None:
+    """Écriture atomique (temp + os.replace) : pas de fichier partiel/corrompu si deux
+    workers écrivent l'agenda du même utilisateur (multi-worker-safe ; last-writer-wins)."""
+    import tempfile
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".agenda-", suffix=".tmp",
+                               dir=os.path.dirname(os.path.abspath(path)) or ".")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+        raise
+
+
 def ensure_agenda_file():
     """Garantit un agenda_<user>.json VALIDE (crée/répare)."""
     os.makedirs("workspace", exist_ok=True)
@@ -83,8 +104,7 @@ def ensure_agenda_file():
         except Exception:
             needs_init = True
     if needs_init:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump([], f)
+        _atomic_write(path, [])
 
 
 def load_agenda() -> list:
@@ -137,8 +157,7 @@ def sync_all_external_calendars() -> int:
     merged = local_events + external_events
     merged.sort(key=lambda x: x.get("datetime", ""))
 
-    with open(agenda_file(), "w", encoding="utf-8") as f:
-        json.dump(merged, f, indent=4, ensure_ascii=False)
+    _atomic_write(agenda_file(), merged)
 
     print(f"📅 [Sync] Synchronisation terminée ! {len(external_events)} événements externes importés.")
     return len(external_events)
@@ -204,8 +223,7 @@ def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60
     events.append(event)
     events.sort(key=lambda x: x["datetime"])
 
-    with open(agenda_file(), "w", encoding="utf-8") as f:
-        json.dump(events, f, indent=4, ensure_ascii=False)
+    _atomic_write(agenda_file(), events)
 
     if written_externally:
         sync_all_external_calendars()
@@ -279,8 +297,7 @@ def delete_calendar_event(event_id: str) -> str:
         deleted_externally = agenda_sync.delete_caldav_calendar_event(event_id)
 
     filtered_events = [e for e in events if e["id"] != event_id]
-    with open(agenda_file(), "w", encoding="utf-8") as f:
-        json.dump(filtered_events, f, indent=4, ensure_ascii=False)
+    _atomic_write(agenda_file(), filtered_events)
 
     if deleted_externally or source in ["google", "caldav"]:
         sync_all_external_calendars()

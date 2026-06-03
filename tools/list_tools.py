@@ -1,95 +1,94 @@
 import os
 import json
 import uuid
-import threading
 from typing import List, Dict, Any
 
-lists_lock = threading.Lock()
+from core import shared_store
+from core.user_config import current_user_key, user_slug
 
-def _lists_file() -> str:
-    """Fichier de listes de l'utilisateur courant (listes PAR UTILISATEUR)."""
-    from core.user_config import user_slug
+# Listes PAR UTILISATEUR, désormais dans le store SQLite partagé (multi-worker-safe :
+# lectures cohérentes + mutations atomiques). Migration douce des anciens fichiers
+# workspace/lists_<user>.json au premier accès.
+_NS = "lists"
+
+
+def _legacy_file() -> str:
     return os.path.join("workspace", f"lists_{user_slug()}.json")
 
-def ensure_lists_file():
-    """ Assure que le répertoire et le fichier JSON de listes existent. """
-    os.makedirs("workspace", exist_ok=True)
-    with lists_lock:
-        path = _lists_file()
-        if not os.path.exists(path):
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump({}, f, indent=4, ensure_ascii=False)
 
 def read_lists() -> Dict[str, List[Dict[str, Any]]]:
-    """ Lit le contenu du fichier de listes. """
-    ensure_lists_file()
-    with lists_lock:
-        try:
-            with open(_lists_file(), "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
+    """Lit les listes de l'utilisateur courant (migre l'ancien fichier JSON si présent)."""
+    user = current_user_key()
+    data = shared_store.get(_NS, user)
+    if data is None:
+        data = {}
+        p = _legacy_file()
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data = loaded
+            except Exception:
+                data = {}
+            shared_store.set(_NS, user, data)  # persiste la migration (une seule fois)
+    return data if isinstance(data, dict) else {}
+
 
 def write_lists(data: Dict[str, List[Dict[str, Any]]]):
-    """ Écrit le contenu dans le fichier de listes. """
-    ensure_lists_file()
-    with lists_lock:
-        with open(_lists_file(), "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+    """Remplace les listes de l'utilisateur courant."""
+    shared_store.set(_NS, current_user_key(), data or {})
+
+
+def _mutate(fn):
+    """Lecture-modification-écriture ATOMIQUE des listes de l'utilisateur courant."""
+    read_lists()  # garantit la migration éventuelle avant l'update atomique
+    return shared_store.update(_NS, current_user_key(), lambda d: fn(d or {}))
+
 
 def add_list_item(list_name: str, item_text: str) -> Dict[str, Any]:
-    """ Ajoute un élément à une liste spécifique (ex: courses, taches, idees). """
+    """Ajoute un élément à une liste spécifique (ex: courses, taches, idees)."""
     list_name = list_name.lower().strip()
-    data = read_lists()
-    
-    if list_name not in data:
-        data[list_name] = []
-        
-    item = {
-        "id": uuid.uuid4().hex[:12],
-        "text": item_text.strip(),
-        "completed": False
-    }
-    
-    data[list_name].append(item)
-    write_lists(data)
+    item = {"id": uuid.uuid4().hex[:12], "text": item_text.strip(), "completed": False}
+
+    def _add(data):
+        data.setdefault(list_name, []).append(item)
+        return data
+    _mutate(_add)
     return item
 
+
 def get_list_items(list_name: str) -> List[Dict[str, Any]]:
-    """ Récupère tous les éléments d'une liste spécifique. """
-    list_name = list_name.lower().strip()
-    data = read_lists()
-    return data.get(list_name, [])
+    """Récupère tous les éléments d'une liste spécifique."""
+    return read_lists().get(list_name.lower().strip(), [])
+
 
 def toggle_list_item(list_name: str, item_id: str) -> bool:
-    """ Coche ou décoche un élément d'une liste. """
+    """Coche ou décoche un élément d'une liste."""
     list_name = list_name.lower().strip()
-    data = read_lists()
-    
-    if list_name not in data:
-        return False
-        
-    for item in data[list_name]:
-        if item["id"] == item_id:
-            item["completed"] = not item["completed"]
-            write_lists(data)
-            return True
-            
-    return False
+    outcome = {"ok": False}
+
+    def _toggle(data):
+        for item in data.get(list_name, []):
+            if item["id"] == item_id:
+                item["completed"] = not item["completed"]
+                outcome["ok"] = True
+                break
+        return data
+    _mutate(_toggle)
+    return outcome["ok"]
+
 
 def delete_list_item(list_name: str, item_id: str) -> bool:
-    """ Supprime un élément d'une liste. """
+    """Supprime un élément d'une liste."""
     list_name = list_name.lower().strip()
-    data = read_lists()
-    
-    if list_name not in data:
-        return False
-        
-    initial_len = len(data[list_name])
-    data[list_name] = [item for item in data[list_name] if item["id"] != item_id]
-    
-    if len(data[list_name]) < initial_len:
-        write_lists(data)
-        return True
-        
-    return False
+    outcome = {"ok": False}
+
+    def _del(data):
+        if list_name in data:
+            before = len(data[list_name])
+            data[list_name] = [i for i in data[list_name] if i["id"] != item_id]
+            outcome["ok"] = len(data[list_name]) < before
+        return data
+    _mutate(_del)
+    return outcome["ok"]
