@@ -4436,56 +4436,7 @@ async function loadWorkspaceFiles() {
 
 let activeSelectedFilePath = null;
 
-async function viewWorkspaceFile(filePath) {
-    const titleEl = document.getElementById("file-viewer-title");
-    const preEl = document.getElementById("file-viewer-pre");
-    const downloadBtn = document.getElementById("btn-download-file");
-    
-    titleEl.textContent = `Lecture de ${filePath}... ⏳`;
-    preEl.textContent = "";
-    downloadBtn.style.display = "none";
-    activeSelectedFilePath = filePath;
-    
-    try {
-        const response = await apiFetch(`/api/workspace/file?path=${encodeURIComponent(filePath)}`);
-        const data = await response.json();
-        
-        if (response.ok) {
-            titleEl.textContent = `📄 ${filePath}`;
-            
-            // Déterminer la classe de coloration de syntaxe PrismJS selon l'extension
-            const ext = (filePath.split('.').pop() || "").toLowerCase();
-            let langClass = "language-plaintext";
-            
-            if (ext === "js" || ext === "mjs") langClass = "language-javascript";
-            else if (ext === "py") langClass = "language-python";
-            else if (ext === "html") langClass = "language-html";
-            else if (ext === "css") langClass = "language-css";
-            else if (ext === "json") langClass = "language-json";
-            else if (ext === "sh" || ext === "bash") langClass = "language-bash";
-            else if (ext === "md" || ext === "markdown") langClass = "language-markdown";
-            
-            // Injecter la structure <code> et colorer
-            preEl.innerHTML = `<code class="${langClass}"></code>`;
-            const codeEl = preEl.querySelector("code");
-            codeEl.textContent = data.content;
-            _collabMtime = data.mtime || 0;
-            
-            if (typeof Prism !== "undefined") {
-                Prism.highlightElement(codeEl);
-            }
-            
-            downloadBtn.style.display = "block";
-        } else {
-            titleEl.textContent = "⚠️ Erreur de chargement";
-            preEl.textContent = data.detail || "Impossible de lire ce fichier.";
-        }
-    } catch (err) {
-        titleEl.textContent = "⚠️ Erreur réseau";
-        preEl.textContent = err;
-    }
-}
-
+async function viewWorkspaceFile(filePath) { await openInEditor(filePath); }
 // Bouton de téléchargement
 const downloadBtn = document.getElementById("btn-download-file");
 if (downloadBtn) {
@@ -7397,7 +7348,7 @@ async function _collabTick() {
         const m = await (await apiFetch(`/api/workspace/file/meta?path=${encodeURIComponent(p)}`)).json();
         if (m.exists && m.mtime > _collabMtime + 0.0005 && !_collabReloading && p === activeSelectedFilePath) {
             _collabReloading = true;
-            await viewWorkspaceFile(p);     // re-fetch + met à jour _collabMtime
+            await _ideReloadFromDisk(p);    // recharge dans l'éditeur (sauf si modifs locales)
             _collabReloading = false;
             const fl = document.getElementById("file-viewer-reloaded");
             if (fl) { fl.textContent = "🔄 actualisé"; setTimeout(() => { fl.textContent = ""; }, 2500); }
@@ -7405,3 +7356,157 @@ async function _collabTick() {
     } catch (e) { _collabReloading = false; }
 }
 setInterval(_collabTick, 5000);
+
+
+/* ============================ Mini-IDE (CodeMirror) ============================ */
+let _cm = null;
+const ideTabs = new Map();   // path -> { doc, mtime, dirty, _loading }
+let ideActive = null;
+
+function _ideMode(path) {
+    if (window.CodeMirror && CodeMirror.findModeByFileName) {
+        const m = CodeMirror.findModeByFileName(path);
+        if (m) return m.mime || m.mode;
+    }
+    const ext = (path.split(".").pop() || "").toLowerCase();
+    return ({ py: "python", js: "javascript", mjs: "javascript", ts: "text/typescript",
+        json: { name: "javascript", json: true }, html: "htmlmixed", htm: "htmlmixed", xml: "xml",
+        css: "css", md: "markdown", markdown: "markdown", sh: "shell", bash: "shell",
+        yml: "yaml", yaml: "yaml", c: "text/x-csrc", h: "text/x-csrc", cpp: "text/x-c++src",
+        java: "text/x-java", go: "text/x-go", rs: "text/x-rustsrc", sql: "sql" })[ext] || null;
+}
+
+function _ideEnsureEditor() {
+    if (_cm || !window.CodeMirror) return _cm;
+    const host = document.getElementById("editor-host");
+    _cm = CodeMirror(host, {
+        lineNumbers: true, theme: "material-darker", autoCloseBrackets: true,
+        matchBrackets: true, indentUnit: 4, lineWrapping: false,
+        extraKeys: {
+            "Ctrl-Space": cm => cm.showHint({ hint: CodeMirror.hint.anyword, completeSingle: false }),
+            "Ctrl-S": () => ideSaveActive(), "Cmd-S": () => ideSaveActive(),
+        },
+    });
+    _cm.setSize("100%", "60vh");
+    _cm.on("change", () => {
+        const t = ideActive && ideTabs.get(ideActive);
+        if (t && !t._loading && !t.dirty) { t.dirty = true; _ideRenderTabs(); }
+    });
+    _cm.on("inputRead", (cm, ev) => {
+        if (cm.state.completionActive) return;
+        const tok = cm.getTokenAt(cm.getCursor());
+        if (ev.text && /^\w$/.test(ev.text[0]) && tok.string.trim().length >= 2) {
+            cm.showHint({ hint: CodeMirror.hint.anyword, completeSingle: false });
+        }
+    });
+    return _cm;
+}
+
+async function openInEditor(path) {
+    if (!_ideEnsureEditor()) { return; }  // CodeMirror pas chargé → no-op
+    document.getElementById("editor-host").style.display = "block";
+    const pre = document.getElementById("file-viewer-pre"); if (pre) pre.style.display = "none";
+    if (ideTabs.has(path)) { _ideActivate(path); return; }
+    const titleEl = document.getElementById("file-viewer-title");
+    titleEl.textContent = `Ouverture de ${path}… ⏳`;
+    try {
+        const r = await apiFetch(`/api/workspace/file?path=${encodeURIComponent(path)}`);
+        const d = await r.json();
+        if (!r.ok) { titleEl.textContent = "⚠️ " + (d.detail || "Erreur"); return; }
+        ideTabs.set(path, { doc: CodeMirror.Doc(d.content, _ideMode(path)), mtime: d.mtime || 0, dirty: false });
+        _ideActivate(path);
+    } catch (e) { titleEl.textContent = "⚠️ " + e; }
+}
+
+function _ideActivate(path) {
+    const t = ideTabs.get(path); if (!t || !_cm) return;
+    ideActive = path; activeSelectedFilePath = path;
+    t._loading = true; _cm.swapDoc(t.doc); t._loading = false;
+    _collabMtime = t.mtime || 0;
+    document.getElementById("file-viewer-title").textContent = "📝 " + path;
+    document.getElementById("btn-save-file").style.display = "inline-block";
+    document.getElementById("btn-download-file").style.display = "inline-block";
+    _ideRenderTabs();
+    setTimeout(() => _cm.refresh(), 0);
+}
+
+function _ideRenderTabs() {
+    const bar = document.getElementById("editor-tabs"); if (!bar) return;
+    bar.innerHTML = "";
+    ideTabs.forEach((t, path) => {
+        const tab = document.createElement("div");
+        const on = path === ideActive;
+        tab.style.cssText = "display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px 6px 0 0;cursor:pointer;font-size:0.76rem;white-space:nowrap;" +
+            (on ? "background:rgba(0,243,255,0.15);border:1px solid rgba(0,243,255,0.4);border-bottom:none;" : "background:rgba(255,255,255,0.05);border:1px solid transparent;");
+        tab.title = path;
+        const label = document.createElement("span");
+        label.textContent = (t.dirty ? "● " : "") + path.split("/").pop();
+        label.onclick = () => _ideActivate(path);
+        const x = document.createElement("span");
+        x.textContent = "×"; x.style.cssText = "opacity:0.6;font-weight:bold;padding:0 2px;";
+        x.title = "Fermer"; x.onclick = e => { e.stopPropagation(); _ideCloseTab(path); };
+        tab.append(label, x);
+        bar.appendChild(tab);
+    });
+}
+
+function _ideCloseTab(path) {
+    const t = ideTabs.get(path); if (!t) return;
+    if (t.dirty && !confirm(`« ${path.split("/").pop()} » a des modifications non enregistrées. Fermer quand même ?`)) return;
+    ideTabs.delete(path);
+    if (ideActive === path) {
+        const keys = Array.from(ideTabs.keys());
+        if (keys.length) { _ideActivate(keys[keys.length - 1]); }
+        else {
+            ideActive = null; activeSelectedFilePath = null;
+            document.getElementById("editor-host").style.display = "none";
+            document.getElementById("file-viewer-title").textContent = "Sélectionnez un fichier…";
+            document.getElementById("btn-save-file").style.display = "none";
+            document.getElementById("btn-download-file").style.display = "none";
+            _ideRenderTabs();
+        }
+    } else { _ideRenderTabs(); }
+}
+
+async function ideSaveActive() {
+    if (!ideActive || !_cm) return;
+    const t = ideTabs.get(ideActive);
+    const flash = document.getElementById("file-viewer-reloaded");
+    try {
+        const r = await apiFetch("/api/workspace/file", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: ideActive, content: _cm.getValue() }),
+        });
+        if (r.ok) {
+            const d = await r.json();
+            t.dirty = false; t.mtime = d.mtime || t.mtime; _collabMtime = t.mtime;
+            _ideRenderTabs();
+            if (flash) { flash.style.color = "var(--accent-cyan)"; flash.textContent = "💾 enregistré"; setTimeout(() => { flash.textContent = ""; }, 2000); }
+        } else {
+            const d = await r.json().catch(() => ({}));
+            if (flash) { flash.style.color = "#ff5b89"; flash.textContent = "❌ " + (d.detail || "échec"); setTimeout(() => { flash.textContent = ""; flash.style.color = "var(--accent-cyan)"; }, 4000); }
+        }
+    } catch (e) { if (flash) flash.textContent = "❌ " + e; }
+}
+
+async function _ideReloadFromDisk(path) {
+    const t = ideTabs.get(path); if (!t || !_cm) return;
+    try {
+        const r = await apiFetch(`/api/workspace/file?path=${encodeURIComponent(path)}`);
+        const d = await r.json(); if (!r.ok) return;
+        const flash = document.getElementById("file-viewer-reloaded");
+        if (t.dirty) {
+            t.mtime = d.mtime || t.mtime; _collabMtime = t.mtime;  // évite le spam d'alerte
+            if (flash && path === ideActive) flash.textContent = "⚠️ modifié sur disque (agent) — fermez sans enregistrer pour récupérer";
+            return;
+        }
+        t._loading = true; t.doc.setValue(d.content); t._loading = false;
+        t.dirty = false; t.mtime = d.mtime || 0; _collabMtime = t.mtime;
+        if (flash && path === ideActive) { flash.style.color = "var(--accent-cyan)"; flash.textContent = "🔄 actualisé"; setTimeout(() => { flash.textContent = ""; }, 2500); }
+    } catch (e) { /* ignore */ }
+}
+
+(function wireIdeSave() {
+    const b = document.getElementById("btn-save-file");
+    if (b) b.addEventListener("click", ideSaveActive);
+})();

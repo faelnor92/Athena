@@ -13,6 +13,10 @@
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <link rel="stylesheet" href="style.css?v=20260528_v2">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <!-- CodeMirror 5 (éditeur du mini-IDE) -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Fira+Code:wght@400;500&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -269,11 +273,16 @@
                             <!-- Right: File viewer -->
                             <div id="file-viewer-container" class="glass file-viewer-card">
                                 <div id="file-viewer-header" class="file-viewer-title-bar">
-                                    <span id="file-viewer-title">Sélectionnez un fichier pour l'examiner...</span>
+                                    <span id="file-viewer-title">Sélectionnez un fichier…</span>
                                     <span id="file-viewer-reloaded" style="font-size: 0.72rem; color: var(--accent-cyan); margin-left: 8px;"></span>
-                                    <button id="btn-download-file" class="btn btn-primary" style="display: none; padding: 2px 8px; font-size: 0.75rem; border-radius: 4px;">📥 Télécharger</button>
+                                    <span style="flex:1;"></span>
+                                    <button id="btn-save-file" class="btn btn-primary" style="display: none; padding: 2px 10px; font-size: 0.75rem; border-radius: 4px;" title="Enregistrer (Ctrl+S)">💾 Enregistrer</button>
+                                    <button id="btn-download-file" class="btn btn-primary" style="display: none; padding: 2px 8px; font-size: 0.75rem; border-radius: 4px;">📥</button>
                                 </div>
+                                <!-- Barre d'onglets multi-fichiers (mini-IDE) -->
+                                <div id="editor-tabs" style="display:flex; gap:2px; overflow-x:auto; padding:2px 4px 0;"></div>
                                 <div id="file-viewer-presence" style="font-size: 0.72rem; opacity: 0.75; padding: 0 4px 4px;"></div>
+                                <div id="editor-host" style="display:none;"></div>
                                 <pre id="file-viewer-pre" class="file-pre-container"></pre>
                             </div>
                         </div>
@@ -1434,7 +1443,24 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
 
-    <script src="app.js?v=20260529_ssh_settings"></script>
+    <!-- CodeMirror 5 : éditeur multi-onglets (mini-IDE) + modes + autocomplétion -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/meta.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/shell/shell.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
+
+    <script src="app.js?v=20260603_ide"></script>
     <script>
         // Enregistrement du service worker (PWA installable).
         if ("serviceWorker" in navigator) {
