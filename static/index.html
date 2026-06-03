@@ -1158,6 +1158,18 @@
                     <div class="form-group"><label>Nouveau mot de passe</label><input id="mypw-new" type="password" placeholder="min. 4 caractères"></div>
                     <button type="button" id="btn-change-mypw" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem;">Changer mon mot de passe</button>
                     <div id="mypw-status" style="text-align: center; margin-top: 6px; font-size: 0.8rem; opacity: 0.7;"></div>
+
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
+                    <h5 style="color: var(--accent-cyan); margin: 8px 0;">🤖 Mon modèle & mes clés LLM</h5>
+                    <p class="section-desc">Optionnel : utilise <strong>ton propre</strong> modèle / tes clés API. Laissé vide = on garde la config de base du serveur.</p>
+                    <div class="form-group"><label>Modèle préféré (vide = défaut)</label><input id="myllm-model" type="text" placeholder="ex: gpt-4o, claude-..., qwen3"></div>
+                    <div class="form-group"><label>Clé OpenAI</label><input id="myllm-openai" type="password" placeholder="laisser vide = inchangé / base"></div>
+                    <div class="form-group"><label>Clé Anthropic</label><input id="myllm-anthropic" type="password" placeholder="laisser vide = inchangé / base"></div>
+                    <div class="form-group"><label>Clé Gemini</label><input id="myllm-gemini" type="password" placeholder="laisser vide = inchangé / base"></div>
+                    <div class="form-group"><label>Endpoint custom (base URL)</label><input id="myllm-custom-base" type="text" placeholder="ex: https://mon-llm/v1"></div>
+                    <div class="form-group"><label>Clé endpoint custom</label><input id="myllm-custom-key" type="password" placeholder="laisser vide = inchangé / base"></div>
+                    <button type="button" id="btn-save-myllm" class="btn btn-secondary" style="width: 100%; font-size: 0.85rem;">💾 Enregistrer ma config LLM</button>
+                    <div id="myllm-status" style="text-align: center; margin-top: 6px; font-size: 0.8rem; opacity: 0.7;"></div>
                 </div>
 
                 <div class="modal-pane" id="pane-knowledge" style="display: none;">

@@ -3401,6 +3401,7 @@ if (modalTabUsers && paneUsers) {
         paneUsers.style.display = "block";
         loadUsersPane();
         loadInvitesPane();
+        loadMyLlm();
     }));
 }
 
@@ -6994,3 +6995,46 @@ async function loadShareMembers() {
         else st.textContent = "❌ " + (d.detail || "Échec du partage.");
     });
 })();
+
+
+/* ===== Ma config LLM (modèle + clés par utilisateur, repli sur la base) ===== */
+async function loadMyLlm() {
+    const model = document.getElementById("myllm-model");
+    if (!model) return;
+    try {
+        const d = await (await apiFetch("/api/me/llm")).json();
+        model.value = d.model || "";
+        const map = {
+            "myllm-openai": "OPENAI_API_KEY", "myllm-anthropic": "ANTHROPIC_API_KEY",
+            "myllm-gemini": "GEMINI_API_KEY", "myllm-custom-base": "CUSTOM_LLM_API_BASE",
+            "myllm-custom-key": "CUSTOM_LLM_API_KEY",
+        };
+        for (const [id, key] of Object.entries(map)) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            el.placeholder = d[key] ? d[key] : "laisser vide = base";
+        }
+    } catch (e) { /* ignore */ }
+}
+
+const _btnSaveMyLlm = document.getElementById("btn-save-myllm");
+if (_btnSaveMyLlm) _btnSaveMyLlm.addEventListener("click", async () => {
+    const st = document.getElementById("myllm-status");
+    const val = id => (document.getElementById(id).value || "").trim();
+    const keys = {};
+    const m = {
+        "myllm-openai": "OPENAI_API_KEY", "myllm-anthropic": "ANTHROPIC_API_KEY",
+        "myllm-gemini": "GEMINI_API_KEY", "myllm-custom-base": "CUSTOM_LLM_API_BASE",
+        "myllm-custom-key": "CUSTOM_LLM_API_KEY",
+    };
+    for (const [id, key] of Object.entries(m)) {
+        const v = val(id);
+        if (v && !v.includes("...")) keys[key] = v;
+    }
+    const r = await apiFetch("/api/me/llm", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: val("myllm-model"), keys }),
+    });
+    st.textContent = r.ok ? "✅ Config LLM enregistrée." : "❌ Échec.";
+    if (r.ok) { ["myllm-openai","myllm-anthropic","myllm-gemini","myllm-custom-key"].forEach(i => document.getElementById(i).value = ""); loadMyLlm(); }
+});
