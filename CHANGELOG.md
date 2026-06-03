@@ -1,5 +1,19 @@
 # Historique des Versions (Changelog)
 
+## v0.9.40 (Éditeur intégré & collaboration)
+L'explorateur de fichiers devient un mini-IDE éditable, avec une première couche collaborative.
+
+### 📝 Mini-IDE
+- **Explorateur éditable** : édition des fichiers directement dans l'UI, **multi-onglets** (CodeMirror), coloration syntaxique, **autocomplétion** basique (Ctrl+Espace + au fil de la frappe), parenthèses auto, indicateur « ● modifié ».
+- **Sauvegarde** (💾 / Ctrl+S) → `POST /api/workspace/file`, avec garde de rôle **`can_write`** (un *Lecteur* de projet partagé est en lecture seule, comme pour les outils de l'agent).
+- **Panneau redimensionnable** : poignée draggable + bouton replier pour agrandir l'éditeur.
+
+### 👥 Collaboration (niveau 1 + soupçon de niveau 2)
+- **Live-reload** : quand l'agent (ou un autre process) modifie un fichier ouvert, la vue se rafraîchit automatiquement ; si vous avez des modifications locales non enregistrées, un avertissement remplace l'écrasement.
+- **Présence** : affichage des autres personnes consultant le même fichier (`POST /api/workspace/presence`, via le store partagé). `GET /api/workspace/file` renvoie désormais le `mtime` ; `GET /api/workspace/file/meta` pour le polling léger.
+
+---
+
 ## v0.9.39 (Qualité & multi-worker)
 Fiabilisation (tests/CI), finalisation du multi-worker et compléments d'UI.
 

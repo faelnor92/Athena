@@ -1,6 +1,6 @@
 # 🎛️ Athena — Framework Multi-Agent Auto-Hébergé
 
-![Version](https://img.shields.io/badge/version-0.9.39-blue.svg)
+![Version](https://img.shields.io/badge/version-0.9.40-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 
 Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des serveurs légers ou avec des GPU modestes. Accessible via **Interface Web**, **CLI**, **Telegram** et **Vocal Local**.
@@ -29,7 +29,8 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 * **Bureau Virtuel (3D Isométrique)** : Visualisation de l'essaim, agents actifs surlignés, animations de délégation.
 * **Cockpit & Télémétrie** : Suivi en direct de la consommation (tokens, coûts financiers par utilisateur), exécutions et erreurs.
 * **Observabilité** : Historique complet et panneau de Logs en temps réel dans l'UI pour auditer les appels d'outils et le système.
-* **Outils Intégrés** : Explorateur de fichiers collaboratif, agenda, listes, terminal, et galerie de médias générés.
+* **Éditeur intégré (mini-IDE)** : Explorateur de fichiers **éditable** — édition multi-onglets (CodeMirror), coloration, autocomplétion, sauvegarde Ctrl+S (lecture seule pour les Lecteurs), panneau redimensionnable, et **live-reload** quand l'agent modifie un fichier ouvert.
+* **Outils Intégrés** : Agenda, listes, terminal, et galerie de médias générés.
 * **Réglages No-Code** : Gestion complète du comportement (routines, mémoire, rôles) via des interfaces claires.
 
 ### 🧰 Outils & Extensibilité (Skills)
