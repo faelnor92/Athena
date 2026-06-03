@@ -142,3 +142,13 @@ def clear_plan(client_id):
         _load()
         _PLANS[_cid(client_id)] = []
         _save()
+
+
+def purge_user(user: str):
+    """Supprime tous les plans d'un utilisateur (clés '<user>::...') — suppression de compte."""
+    pref = f"{(user or '').strip()}::"
+    with _LOCK:
+        _load()
+        for k in [k for k in _PLANS if k.startswith(pref)]:
+            _PLANS.pop(k, None)
+        _save()

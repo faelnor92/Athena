@@ -112,3 +112,14 @@ def delete(key: str, user: str = None) -> bool:
             _save()
             return True
     return False
+
+
+def delete_user(user: str) -> bool:
+    """Supprime entièrement la config d'un utilisateur (suppression de compte)."""
+    with _LOCK:
+        _load()
+        if user in _DATA:
+            del _DATA[user]
+            _save()
+            return True
+    return False

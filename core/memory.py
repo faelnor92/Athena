@@ -78,22 +78,46 @@ class CoreMemory:
 
 
 class SemanticMemory:
-    """Mémoire vectorielle (ChromaDB) pour archiver et faire des recherches sémantiques."""
+    """Mémoire vectorielle (ChromaDB) PAR UTILISATEUR : chaque compte a sa propre
+    collection (um_<user>) → les documents d'un utilisateur ne sont pas cherchables
+    par un autre. Résolue à chaque accès via core.user_config."""
     def __init__(self, db_path=None):
         db_path = db_path or os.getenv("CHROMA_DB_PATH", ".chroma_db")
-        # Initialise le client ChromaDB persistant avec télémétrie désactivée
         self.client = chromadb.PersistentClient(
             path=db_path,
             settings=chromadb.Settings(anonymized_telemetry=False)
         )
-        self.collection = self.client.get_or_create_collection(
-            name="agent_memory"
-        )
+        self._collections = {}  # nom -> collection
+
+    @staticmethod
+    def collection_name(user: str = None) -> str:
+        import re
+        from core.user_config import user_slug
+        safe = re.sub(r"[^a-zA-Z0-9]", "_", user_slug(user))[:55].strip("_") or "local"
+        return f"um_{safe}"
+
+    def _coll(self):
+        name = self.collection_name()
+        coll = self._collections.get(name)
+        if coll is None:
+            coll = self.client.get_or_create_collection(name=name)
+            self._collections[name] = coll
+        return coll
+
+    def drop_user(self, user: str) -> bool:
+        """Supprime entièrement la collection d'un utilisateur (suppression de compte)."""
+        name = self.collection_name(user)
+        try:
+            self.client.delete_collection(name=name)
+            self._collections.pop(name, None)
+            return True
+        except Exception:
+            return False
 
     def store(self, content: str, source: str = "user") -> str:
         """Enregistre un document/concept dans la base vectorielle."""
         doc_id = str(uuid.uuid4())
-        self.collection.add(
+        self._coll().add(
             documents=[content],
             metadatas=[{"source": source, "ts": time.time()}],
             ids=[doc_id]
@@ -104,7 +128,7 @@ class SemanticMemory:
         """Consolidation anti-bloat : ne conserve que les `keep` documents les plus
         récents d'une source donnée (ex: 'retour_experience'). Renvoie le nb supprimé."""
         try:
-            res = self.collection.get(where={"source": source}, include=["metadatas"])
+            res = self._coll().get(where={"source": source}, include=["metadatas"])
         except Exception:
             return 0
         ids = res.get("ids", []) or []
@@ -115,7 +139,7 @@ class SemanticMemory:
         to_del = [i for i, _ in items[:len(ids) - keep]]
         if to_del:
             try:
-                self.collection.delete(ids=to_del)
+                self._coll().delete(ids=to_del)
             except Exception:
                 return 0
         return len(to_del)
@@ -123,7 +147,7 @@ class SemanticMemory:
     def list_documents(self, limit: int = 200) -> list:
         """Liste les documents indexés : [{id, source, preview}]."""
         try:
-            res = self.collection.get(limit=limit, include=["documents", "metadatas"])
+            res = self._coll().get(limit=limit, include=["documents", "metadatas"])
         except Exception:
             return []
         ids = res.get("ids", []) or []
@@ -143,20 +167,20 @@ class SemanticMemory:
 
     def count(self) -> int:
         try:
-            return self.collection.count()
+            return self._coll().count()
         except Exception:
             return 0
 
     def delete(self, doc_id: str) -> bool:
         try:
-            self.collection.delete(ids=[doc_id])
+            self._coll().delete(ids=[doc_id])
             return True
         except Exception:
             return False
 
     def search(self, query: str, limit: int = 3) -> list:
         """Recherche les informations les plus proches sémantiquement."""
-        results = self.collection.query(
+        results = self._coll().query(
             query_texts=[query],
             n_results=limit
         )

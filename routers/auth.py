@@ -194,7 +194,7 @@ async def create_user(request: Request, req: UserCreateRequest):
 
 
 @router.delete("/api/users/{username}")
-async def delete_user(request: Request, username: str):
+async def delete_user(request: Request, username: str, purge: bool = True):
     _require_admin(request)
     # Empêcher de supprimer le dernier admin restant.
     users = user_store.list()
@@ -204,5 +204,14 @@ async def delete_user(request: Request, username: str):
         raise HTTPException(status_code=400, detail="Impossible de supprimer le dernier administrateur.")
     if not user_store.delete(username):
         raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
-    return {"status": "success"}
+    report = None
+    if purge:
+        # RGPD : efface toutes les données propres au compte (best-effort).
+        try:
+            from core.user_data import purge_user
+            report = purge_user(username)
+        except Exception:
+            import logging
+            logging.exception("Purge des données utilisateur échouée")
+    return {"status": "success", "purged": report}
 
