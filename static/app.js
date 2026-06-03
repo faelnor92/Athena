@@ -4469,6 +4469,7 @@ async function viewWorkspaceFile(filePath) {
             preEl.innerHTML = `<code class="${langClass}"></code>`;
             const codeEl = preEl.querySelector("code");
             codeEl.textContent = data.content;
+            _collabMtime = data.mtime || 0;
             
             if (typeof Prism !== "undefined") {
                 Prism.highlightElement(codeEl);
@@ -7375,3 +7376,32 @@ async function disableMfa() {
     if (b2) b2.addEventListener("click", enableMfa);
     if (b3) b3.addEventListener("click", disableMfa);
 })();
+
+
+/* ===== Collaboration : live-reload (édition agent) + présence sur le fichier ouvert ===== */
+let _collabMtime = 0;
+let _collabReloading = false;
+async function _collabTick() {
+    const p = (typeof activeSelectedFilePath !== "undefined") ? activeSelectedFilePath : null;
+    if (!p) return;
+    try {
+        // Présence : qui d'autre consulte ce fichier
+        const pr = await (await apiFetch("/api/workspace/presence", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: p })
+        })).json();
+        const ind = document.getElementById("file-viewer-presence");
+        if (ind) ind.textContent = (pr.viewers && pr.viewers.length) ? `👁️ aussi consulté par ${pr.viewers.join(", ")}` : "";
+    } catch (e) { /* ignore */ }
+    try {
+        // Changement sur disque (ex. l'agent a édité) → recharge la vue (lecture seule = sûr)
+        const m = await (await apiFetch(`/api/workspace/file/meta?path=${encodeURIComponent(p)}`)).json();
+        if (m.exists && m.mtime > _collabMtime + 0.0005 && !_collabReloading && p === activeSelectedFilePath) {
+            _collabReloading = true;
+            await viewWorkspaceFile(p);     // re-fetch + met à jour _collabMtime
+            _collabReloading = false;
+            const fl = document.getElementById("file-viewer-reloaded");
+            if (fl) { fl.textContent = "🔄 actualisé"; setTimeout(() => { fl.textContent = ""; }, 2500); }
+        }
+    } catch (e) { _collabReloading = false; }
+}
+setInterval(_collabTick, 5000);
