@@ -175,6 +175,40 @@ async def get_me(request: Request):
     return _current_user(request)
 
 
+class PasswordChangeRequest(BaseModel):
+    current_password: str = ""
+    new_password: str
+
+
+@router.post("/api/me/password")
+async def change_my_password(request: Request, req: PasswordChangeRequest):
+    """Change le mot de passe du COMPTE COURANT (vérifie l'ancien). Self-service."""
+    if len((req.new_password or "")) < 4:
+        raise HTTPException(status_code=400, detail="Nouveau mot de passe trop court (min. 4 caractères).")
+    username = _current_user(request).get("username")
+    if not username or user_store.verify(username, req.current_password) is None:
+        raise HTTPException(status_code=403,
+                            detail="Mot de passe actuel incorrect (ou compte sans mot de passe propre, ex. admin bootstrap).")
+    if not user_store.set_password(username, req.new_password):
+        raise HTTPException(status_code=400, detail="Changement impossible.")
+    return {"status": "success"}
+
+
+class AdminPasswordResetRequest(BaseModel):
+    new_password: str
+
+
+@router.post("/api/users/{username}/password")
+async def admin_reset_password(request: Request, username: str, req: AdminPasswordResetRequest):
+    """Réinitialise le mot de passe d'un utilisateur (ADMIN ; sans l'ancien)."""
+    _require_admin(request)
+    if len((req.new_password or "")) < 4:
+        raise HTTPException(status_code=400, detail="Mot de passe trop court (min. 4 caractères).")
+    if not user_store.set_password(username, req.new_password):
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+    return {"status": "success"}
+
+
 class UserCreateRequest(BaseModel):
     username: str
     password: str
