@@ -77,3 +77,28 @@ iwr -useb https://raw.githubusercontent.com/faelnor92/athena/main/install.ps1 | 
 * **Alternative Docker Compose** : `docker compose up -d --build`
 
 **Démarrage** : `athena start` ou `python3 server.py`. Accessible sur 👉 **http://localhost:8000/**.
+
+---
+
+## 🛡️ Tableau Comparatif : Athena vs Marché
+
+| Catégorie | Critère | 🦉 Athena | Hermes Agent | OpenClaw | CrewAI | AutoGen |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Interface & UX** | **Interface Graphique (UI)** | **Oui (Dashboard complet, 3D, Graphe Nodal)** | Non | Non | Non | Basique (AutoGen Studio) |
+| | **Interaction** | Web, Terminal UI, Telegram, Discord, Voix | CLI, Telegram, Slack, Discord | CLI | Scripts Python purs | CLI |
+| | **Intégration IDE** | Non (Bureau Virtuel unifié favorisé) | Non | **Oui (Native CLI/IDE)** | Non | Non |
+| **Orchestration** | **Modèle Multi-Agents** | **Essaim (Swarm) avec routage sémantique automatique** | Sous-agents isolés parallèles | Multi-agents basique | Séquentiel / Hiérarchique strict | Débats / Chat de groupe |
+| | **Topologies de Chat Groupé** | **Oui (Débats et transferts organiques)** | Handoffs isolés | Modèle standard | Pipelines stricts définis à l'avance | **Débats de groupe complexes, algorithmes (Round Robin, etc.)** |
+| | **Exécution de scripts rigides** | **Oui (Outil optionnel de chaîne de montage)** | Organique | Linéaire basique | **Très robuste (Assembly line stricte native)** | Linéaire ou organique |
+| | **Persistance (Mémoire)** | **Oui (Vector DB, historique, conservation inter-sessions)** | **Oui (SQLite + FTS5)** | Non (Fichiers locaux) | Non (Épisodique) | Non (Sauf implémentation manuelle) |
+| | **Apprentissage (Closed-Loop)**| **Oui (Création de "Skills" à la volée + RAG Experience)** | **Oui (Génération de "Skills")** | Non | Non | Non |
+| | **Support Outils & MCP** | **Oui (Outils natifs, MCP, intégration Home Assistant)** | Oui (MCP) | Oui | Partiel (Custom tools) | Partiel |
+| **Sécurité Globale** | **Authentification** | **Mot de passe, Tokens Sécurisés, SSO (OIDC)** | Non (Exécution locale isolée) | Non | Non | Non |
+| | **Contrôle d'Accès (RBAC)** | **Oui (Rôles Lecteur vs Éditeur, permissions par utilisateur)** | Non | Non | Non | Non |
+| | **Limitation de Quotas / Coûts** | **Oui (Quota LLM strict par utilisateur, compaction mémoire)** | Non | Non | Non | Non |
+| **Exécution & Réseau**| **Isolation du Code (Sandbox)**| **Oui (Conteneur Docker éphémère, ressources limitées)** | Varie selon déploiement | Non (Tourne sur la machine hôte) | Non | **Oui (Docker supporté)** |
+| | **Bouclier Anti-SSRF (Réseau)**| **Oui (Protection contre DNS Rebinding et scans locaux)** | Non | Non | Non | Non |
+| **Protection Données** | **Censure des Secrets (Logs)** | **Oui (Masque automatiquement les clés API et mots de passe)** | Non | Non | Non | Non |
+| | **Chiffrement de bout en bout**| **Oui (AES-256 Fernet sur les bases de données)** | Non | N/A | N/A | N/A |
+| | **Isolation Multi-Locataires** | **Oui (Conversations et mémoires isolées par utilisateur)** | Non | N/A | N/A | N/A |
+| | **Approbation Humaine (HITL)** | **Oui (Interception des actions sensibles via l'UI web)** | Oui (Via terminaux de chat) | Non / Basique | Requiert du code spécifique | Requiert du code spécifique |
