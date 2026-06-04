@@ -59,3 +59,17 @@ Direction pressentie (à valider) :
 8. (Option Aider) **architect/editor split** : modèle fort planifie le diff, applicateur déterministe/léger applique — utile si le modèle d'édition est faible.
 
 Sources étudiées : aider.chat/docs, github.com/All-Hands-AI/OpenHands, github.com/openclaw/openclaw, github.com/NousResearch/hermes-agent.
+
+### Décisions (2026-06-04)
+- **Modèle de code = choisi par l'UTILISATEUR** (configurable par-agent/par-user, défaut = meilleur dispo). On NE force pas un modèle ; on rend le plomberie impeccable pour qu'il branche le sien.
+- **Inspiration ciblée** : **OpenClaw pour le code** (réputé pour ça : allowlist d'outils + sandbox par session, gateway), **Hermes pour la mémoire + les agents** (déjà reproduit par Athena : skills, routing, delegate).
+- On garde le **swarm conversationnel** (Hermes-like) ET on ajoute un **sous-système Code dédié** (OpenClaw-like) séparé.
+
+### Plan de build incrémental (le sous-système code)
+Ordre proposé (chaque étape = valeur + testable) :
+1. **Quick wins / bugs** : budget de tours ↑ (≈90, configurable) ; **projets hors workspace de base** (fin de la fuite) ; **images affichées** dans l'explorateur ; **sandbox dev** (git + réseau contrôlé pour pip/npm).
+2. **Édition fiable** : outil **search/replace** (Aider-like) + format selon le modèle.
+3. **Repo-map** (contexte codebase) via code_nav.
+4. **Boucle de code dédiée** (plan→agir→observer→itérer, finish/budget) — séparée du swarm.
+5. **UI** : fusion explorateur + IDE (espace « Code »).
+6. **Sécurité code** : allowlist d'outils par session (OpenClaw), garde-fous SSH.
