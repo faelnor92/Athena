@@ -95,6 +95,14 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 - **RBAC par outil** : `ADMIN_ONLY_TOOLS="execute_bash_command,run_ssh_command,..."` réserve l'exécution de code/commandes aux admins.
 - **Conteneur** : l'image tourne en utilisateur **non-root** avec un `HEALTHCHECK`. Audit de l'installation : `bash scripts/security_scan.sh` (pip-audit + bandit + secrets).
 
+### 📡 Observabilité LLM (optionnelle — OpenInference / Phoenix)
+En plus du cockpit intégré (runs tracés, usage, audit), Athena peut exporter des **traces LLM standardisées** (OpenInference / OpenTelemetry) vers **Phoenix** (Arize), un visualiseur de traces auto-hébergeable avec évaluations. Activation :
+```bash
+pip install -r requirements-observability.txt        # paquets optionnels
+docker compose --profile observability up -d         # lance Phoenix (UI: http://localhost:6006)
+```
+puis dans `.env` : `OPENINFERENCE_ENABLED=true` et `OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006/v1/traces`. Désactivé par défaut, sans aucun impact.
+
 ---
 
 ## 🛡️ Tableau Comparatif : Athena vs Marché

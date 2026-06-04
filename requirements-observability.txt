@@ -1,0 +1,7 @@
+# Observabilité LLM OPTIONNELLE (OpenInference → OpenTelemetry → Phoenix).
+# Non requis au fonctionnement d'Athena. Installer seulement si OPENINFERENCE_ENABLED=true :
+#   pip install -r requirements-observability.txt
+# puis lancer un collecteur Phoenix (cf. docker-compose : service `phoenix`).
+openinference-instrumentation-litellm>=0.1.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp>=1.20.0

@@ -32,6 +32,13 @@ from core.logging_config import setup_logging, get_logger
 setup_logging()
 logger = get_logger("athena.server")
 
+# Observabilité LLM optionnelle (OpenInference → OTLP/Phoenix) — no-op si désactivée.
+try:
+    from core import observability
+    observability.setup()
+except Exception:
+    pass
+
 from core.swarm import Swarm
 from core.tracing import run_store
 from core.run_context import registry as run_registry, current_run_id

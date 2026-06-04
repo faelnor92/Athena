@@ -54,3 +54,16 @@ services:
     restart: unless-stopped
     volumes:
       - "${ATHENA_DATA}/chroma:/chroma/chroma"
+
+  # Observabilité LLM OPTIONNELLE (OpenInference → Phoenix). Démarrer avec :
+  #   docker compose --profile observability up -d
+  # puis dans .env : OPENINFERENCE_ENABLED=true et
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006/v1/traces
+  # UI Phoenix accessible sur http://localhost:6006
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: athena-phoenix
+    restart: unless-stopped
+    profiles: ["observability"]
+    ports:
+      - "6006:6006"
