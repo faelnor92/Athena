@@ -477,6 +477,15 @@ function selectActiveTab(tab, view, extraAction = null) {
         }
     }
     
+    // Sur la console codeur : le chat principal n'y sert à rien → on le masque et on
+    // affiche l'arborescence du projet à la place. (Restauré sur les autres vues.)
+    const _chat = document.querySelector(".right-chat-sidebar");
+    const _resizer = document.getElementById("layout-resizer");
+    const onConsole = (view === viewConsole);
+    if (_chat) _chat.style.display = onConsole ? "none" : "";
+    if (_resizer) _resizer.style.display = onConsole ? "none" : "";
+    if (onConsole && typeof loadConsoleTree === "function") loadConsoleTree();
+
     if (extraAction) extraAction();
 }
 
@@ -7372,7 +7381,7 @@ async function _collabTick() {
     } catch (e) { /* ignore */ }
     try {
         // Changement sur disque (ex. l'agent a édité) → recharge la vue (lecture seule = sûr)
-        const m = await (await apiFetch(`/api/workspace/file/meta?path=${encodeURIComponent(p)}`)).json();
+        const m = await (await apiFetch(`/api/workspace/file/meta?path=${encodeURIComponent(p)}${(typeof _ideQ === "function" ? _ideQ() : "")}`)).json();
         if (m.exists && m.mtime > _collabMtime + 0.0005 && !_collabReloading && p === activeSelectedFilePath) {
             _collabReloading = true;
             await _ideReloadFromDisk(p);    // recharge dans l'éditeur (sauf si modifs locales)
@@ -7440,6 +7449,11 @@ function _ideKind(path) {
     return "text";
 }
 
+// Projet ciblé par l'IDE (null = projet courant global). Posé quand on ouvre un fichier
+// depuis l'arborescence de la console, pour lire/écrire dans CE projet.
+let _ideProjectId = null;
+function _ideQ() { return _ideProjectId ? `&project_id=${encodeURIComponent(_ideProjectId)}` : ""; }
+
 async function openInEditor(path) {
     if (!_ideEnsureEditor()) { return; }  // CodeMirror pas chargé → no-op
     const pre = document.getElementById("file-viewer-pre"); if (pre) pre.style.display = "none";
@@ -7454,7 +7468,7 @@ async function openInEditor(path) {
     const titleEl = document.getElementById("file-viewer-title");
     titleEl.textContent = `Ouverture de ${path}… ⏳`;
     try {
-        const r = await apiFetch(`/api/workspace/file?path=${encodeURIComponent(path)}`);
+        const r = await apiFetch(`/api/workspace/file?path=${encodeURIComponent(path)}${_ideQ()}`);
         const d = await r.json();
         if (!r.ok) { titleEl.textContent = "⚠️ " + (d.detail || "Erreur"); return; }
         ideTabs.set(path, { kind: "text", doc: CodeMirror.Doc(d.content, _ideMode(path)), mtime: d.mtime || 0, dirty: false });
@@ -7494,7 +7508,7 @@ async function _idePreview(path, t) {
     // On récupère le fichier via apiFetch (avec le jeton) → object URL : les balises
     // natives (iframe/img) n'envoient pas l'Authorization, donc pas d'accès direct par URL.
     try {
-        const r = await apiFetch(`/api/workspace/download?path=${encodeURIComponent(path)}`);
+        const r = await apiFetch(`/api/workspace/download?path=${encodeURIComponent(path)}${_ideQ()}`);
         if (!r.ok) { prev.innerHTML = `<div style="padding:12px;color:#ff5b89;">Aperçu indisponible (${r.status}).</div>`; return; }
         let blob = await r.blob();
         // Le endpoint renvoie application/octet-stream → on force le bon type MIME pour un
@@ -7573,7 +7587,7 @@ async function ideSaveActive() {
     try {
         const r = await apiFetch("/api/workspace/file", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: ideActive, content: _cm.getValue() }),
+            body: JSON.stringify({ path: ideActive, content: _cm.getValue(), project_id: _ideProjectId || undefined }),
         });
         if (r.ok) {
             const d = await r.json();
@@ -7591,7 +7605,7 @@ async function _ideReloadFromDisk(path) {
     const t = ideTabs.get(path); if (!t || !_cm) return;
     if (t.kind !== "text") return;  // l'aperçu PDF/image n'a pas de live-reload texte
     try {
-        const r = await apiFetch(`/api/workspace/file?path=${encodeURIComponent(path)}`);
+        const r = await apiFetch(`/api/workspace/file?path=${encodeURIComponent(path)}${_ideQ()}`);
         const d = await r.json(); if (!r.ok) return;
         const flash = document.getElementById("file-viewer-reloaded");
         if (t.dirty) {
@@ -7648,4 +7662,98 @@ async function _ideReloadFromDisk(path) {
             refreshCM();
         });
     }
+})();
+
+
+/* ===================== Console : arborescence projet + IDE flottant ===================== */
+function _consoleProjectId() {
+    const sel = document.getElementById("terminal-project-select");
+    return sel && sel.value ? sel.value : null;
+}
+async function loadConsoleTree() {
+    const box = document.getElementById("console-tree");
+    if (!box) return;
+    const pid = _consoleProjectId();
+    box.innerHTML = "<div style='opacity:0.5;font-size:0.76rem;'>Chargement…</div>";
+    try {
+        const url = "/api/workspace/files" + (pid ? `?project_id=${encodeURIComponent(pid)}` : "");
+        const files = await (await apiFetch(url)).json();
+        if (!Array.isArray(files) || !files.length) {
+            box.innerHTML = "<div style='opacity:0.5;font-size:0.76rem;'>Projet vide ou aucun fichier.</div>";
+            return;
+        }
+        box.innerHTML = "";
+        files.forEach(f => {
+            const depth = (f.path.split("/").length - 1);
+            const row = document.createElement("div");
+            row.textContent = "📄 " + f.path.split("/").pop();
+            row.title = f.path;
+            row.style.cssText = `padding:2px 4px 2px ${6 + depth * 12}px; cursor:pointer; border-radius:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;`;
+            row.onmouseenter = () => row.style.background = "rgba(255,255,255,0.06)";
+            row.onmouseleave = () => row.style.background = "";
+            row.onclick = () => openConsoleFile(f.path, pid);
+            box.appendChild(row);
+        });
+    } catch (e) { box.innerHTML = "<div style='color:#f88;font-size:0.76rem;'>Erreur de chargement.</div>"; }
+}
+async function openConsoleFile(path, projectId) {
+    _ideProjectId = projectId || null;     // l'IDE lit/écrit dans CE projet
+    detachIde(true);                        // ouvre l'éditeur en fenêtre flottante au-dessus de la console
+    await openInEditor(path);
+}
+
+let _ideFloating = false;
+function _ensureFloatWrapper() {
+    let fw = document.getElementById("ide-float");
+    if (fw) return fw;
+    fw = document.createElement("div");
+    fw.id = "ide-float";
+    fw.style.cssText = "position:fixed; top:80px; left:120px; width:70vw; height:72vh; z-index:7000; display:none; flex-direction:column; background:rgba(15,18,28,0.98); border:1px solid rgba(0,243,255,0.4); border-radius:10px; box-shadow:0 16px 60px rgba(0,0,0,0.6); overflow:hidden; resize:both;";
+    const bar = document.createElement("div");
+    bar.style.cssText = "display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:rgba(0,0,0,0.45); cursor:move; font-size:0.8rem; color:#fff; flex-shrink:0;";
+    const title = document.createElement("span"); title.textContent = "🛠️ Éditeur (fenêtre flottante)";
+    const dockBtn = document.createElement("button");
+    dockBtn.textContent = "⇲ Ancrer"; dockBtn.className = "btn";
+    dockBtn.style.cssText = "padding:2px 8px;font-size:0.72rem;";
+    dockBtn.onclick = dockIde;
+    bar.append(title, dockBtn);
+    const body = document.createElement("div");
+    body.id = "ide-float-body";
+    body.style.cssText = "flex:1; min-height:0; overflow:auto;";
+    fw.append(bar, body);
+    document.body.appendChild(fw);
+    let drag = false, ox = 0, oy = 0;
+    bar.addEventListener("mousedown", e => { if (e.target === dockBtn) return; drag = true; ox = e.clientX - fw.offsetLeft; oy = e.clientY - fw.offsetTop; e.preventDefault(); });
+    window.addEventListener("mousemove", e => { if (!drag) return; fw.style.left = Math.max(0, e.clientX - ox) + "px"; fw.style.top = Math.max(0, e.clientY - oy) + "px"; });
+    window.addEventListener("mouseup", () => drag = false);
+    return fw;
+}
+function detachIde(show) {
+    const fw = _ensureFloatWrapper();
+    const card = document.getElementById("file-viewer-container");
+    const body = document.getElementById("ide-float-body");
+    if (card && body && card.parentElement !== body) {
+        card._dockParent = card.parentElement;   // mémorise l'emplacement d'origine
+        body.appendChild(card);
+        card.style.height = "100%";
+    }
+    _ideFloating = true;
+    fw.style.display = "flex";
+    if (typeof _cm !== "undefined" && _cm) setTimeout(() => _cm.refresh(), 60);
+}
+function dockIde() {
+    const fw = document.getElementById("ide-float");
+    const card = document.getElementById("file-viewer-container");
+    if (card && card._dockParent) { card._dockParent.appendChild(card); card.style.height = ""; }
+    if (fw) fw.style.display = "none";
+    _ideFloating = false;
+    if (typeof _cm !== "undefined" && _cm) setTimeout(() => _cm.refresh(), 60);
+}
+(function wireConsoleTree() {
+    const r = document.getElementById("btn-console-tree-refresh");
+    const d = document.getElementById("btn-ide-detach");
+    const psel = document.getElementById("terminal-project-select");
+    if (r) r.addEventListener("click", loadConsoleTree);
+    if (d) d.addEventListener("click", () => detachIde(true));
+    if (psel) psel.addEventListener("change", loadConsoleTree);
 })();

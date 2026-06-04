@@ -5,8 +5,26 @@ from pydantic import BaseModel
 
 router = APIRouter(tags=["Workspace"])
 
+import contextlib
+
 # Source unique (évite la divergence) : cf. core/state.py.
 from core.state import get_workspace_dir
+
+
+@contextlib.contextmanager
+def _project_scope(project_id: str = None):
+    """Cible un projet précis le temps de la requête (override de contexte) — utilisé par
+    la console pour lister/éditer SON projet, sans toucher le projet global du chat."""
+    tok = None
+    if project_id:
+        from core import projects
+        tok = projects.set_override(project_id)
+    try:
+        yield
+    finally:
+        if tok is not None:
+            from core import projects
+            projects.reset_override(tok)
 
 @router.get("/api/workspace/config")
 async def get_workspace_config():
@@ -65,8 +83,9 @@ async def list_subdirectories(path: str = ""):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/workspace/files")
-async def list_workspace_files():
+async def list_workspace_files(project_id: str = None):
     try:
+      with _project_scope(project_id):
         base_dir = get_workspace_dir()
         ignored_patterns = [".venv", "venv", "__pycache__", ".git", ".gemini", "static", ".env", "node_modules"]
         files = []
@@ -91,16 +110,17 @@ async def list_workspace_files():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/workspace/file")
-async def get_workspace_file(path: str):
+async def get_workspace_file(path: str, project_id: str = None):
     try:
+      with _project_scope(project_id):
         base_dir = get_workspace_dir()
         clean_path = os.path.abspath(os.path.join(base_dir, path))
         if os.path.commonpath([clean_path, base_dir]) != base_dir:
             raise HTTPException(status_code=403, detail="Accès interdit.")
-            
+
         if not os.path.exists(clean_path) or os.path.isdir(clean_path):
             raise HTTPException(status_code=404, detail="Fichier introuvable.")
-            
+
         with open(clean_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
 
@@ -122,24 +142,31 @@ def _safe_workspace_path(path: str) -> str:
 
 
 @router.get("/api/workspace/file/meta")
-async def get_workspace_file_meta(path: str):
+async def get_workspace_file_meta(path: str, project_id: str = None):
     """Métadonnées légères (mtime) pour détecter qu'un fichier ouvert a changé sur disque
     — ex. l'agent vient de l'éditer → le front propose/effectue un rechargement."""
-    clean = _safe_workspace_path(path)
-    if not os.path.exists(clean) or os.path.isdir(clean):
-        return {"path": path, "exists": False, "mtime": 0}
-    return {"path": path, "exists": True, "mtime": os.path.getmtime(clean)}
+    with _project_scope(project_id):
+        clean = _safe_workspace_path(path)
+        if not os.path.exists(clean) or os.path.isdir(clean):
+            return {"path": path, "exists": False, "mtime": 0}
+        return {"path": path, "exists": True, "mtime": os.path.getmtime(clean)}
 
 
 class FileWriteRequest(BaseModel):
     path: str
     content: str
+    project_id: str = None
 
 
 @router.post("/api/workspace/file")
 async def save_workspace_file(req: FileWriteRequest):
     """Sauvegarde (édition humaine dans l'IDE). Garde de RÔLE : un viewer d'un projet
     partagé ne peut PAS écrire (can_write, comme les outils de l'agent). Écriture atomique."""
+    with _project_scope(req.project_id):
+        return _do_save_workspace_file(req)
+
+
+def _do_save_workspace_file(req: "FileWriteRequest"):
     from core import projects
     if not projects.can_write():
         raise HTTPException(status_code=403,
@@ -191,16 +218,17 @@ async def workspace_presence(req: PresenceRequest):
     return {"viewers": others}
 
 @router.get("/api/workspace/download")
-async def download_workspace_file(path: str):
+async def download_workspace_file(path: str, project_id: str = None):
     try:
+      with _project_scope(project_id):
         base_dir = get_workspace_dir()
         clean_path = os.path.abspath(os.path.join(base_dir, path))
         if os.path.commonpath([clean_path, base_dir]) != base_dir:
             raise HTTPException(status_code=403, detail="Accès interdit.")
-            
+
         if not os.path.exists(clean_path) or os.path.isdir(clean_path):
             raise HTTPException(status_code=404, detail="Fichier introuvable.")
-            
+
         return FileResponse(
             clean_path,
             media_type="application/octet-stream",

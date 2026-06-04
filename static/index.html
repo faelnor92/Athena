@@ -392,7 +392,8 @@
 
                 <!-- PANEL H: BASH CODER INTERACTIVE TERMINAL -->
                 <div class="viewport-panel" id="view-console" style="display: none;">
-                    <div class="terminal-container">
+                  <div style="display:flex; gap:12px; height:100%; min-height:0;">
+                    <div class="terminal-container" style="flex:1; min-width:0;">
                         <h4 class="view-panel-title" style="display: flex; align-items: center; gap: 8px;">
                             <span class="terminal-title-dot"></span> ⚙️ Console Codeur (Interactive Bash Terminal)
                         </h4>
@@ -413,6 +414,20 @@
                             <button id="btn-send-terminal" class="btn btn-primary" style="padding: 2px 12px; font-size: 0.75rem; border-radius: 4px; font-weight: bold; height: 28px; margin: 0; flex-shrink: 0;">Run</button>
                         </div>
                     </div>
+                    <!-- Arborescence du projet ciblé par la console -->
+                    <div id="console-tree-panel" class="glass" style="width:300px; flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; padding:10px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                            <h4 class="view-panel-title" style="margin:0; font-size:0.85rem;">📁 Projet</h4>
+                            <div style="display:flex; gap:4px;">
+                                <button id="btn-console-tree-refresh" class="btn-icon" style="padding:2px 6px; font-size:0.72rem;" title="Actualiser l'arborescence">🔄</button>
+                                <button id="btn-ide-detach" class="btn-icon" style="padding:2px 6px; font-size:0.72rem;" title="Ouvrir l'éditeur en fenêtre flottante">⧉ IDE</button>
+                            </div>
+                        </div>
+                        <div id="console-tree" style="flex:1; overflow:auto; font-size:0.8rem;">
+                            <div style="opacity:0.5; font-size:0.76rem;">Sélectionnez un projet dans la console.</div>
+                        </div>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- PANEL I: COMPTE-RENDU DE RÉUNION (🎙️ TRANSCRIPTION & DIARISATION) -->
