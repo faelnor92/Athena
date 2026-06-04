@@ -42,4 +42,20 @@ Direction pressentie (à valider) :
 - **Sandbox dev** : image avec git + toolchains + réseau contrôlé pour les installs.
 - S'inspirer des projets open-source éprouvés (Aider, OpenHands…) pour la boucle.
 
-_(Décisions définitives à consigner ici au fur et à mesure.)_
+### Étude open-source (2026-06-04) — patterns retenus
+- **Aider** : édition par **blocs search/replace** (le modèle ne renvoie QUE les sections changées) — fiable/efficace vs réécriture complète ; **format d'édition adapté au modèle** (faible → whole, fort → diff) ; **mode architect** (1 modèle raisonne le changement, 1 applique) ; **repo-map** (tree-sitter + ranking de dépendances dans un budget de tokens) pour donner le contexte codebase sans tout lire.
+- **OpenHands** : boucle **Action/Observation** via EventStream → Runtime (Docker/local/remote : bash/python/browser) → arrêt sur **finish action** ou max itérations ; **condensation d'historique** ; séparation nette **planification ↔ exécution sandboxée**.
+- **OpenClaw** : **Gateway** control plane ; **sandbox + allowlist d'outils PAR SESSION** (session principale = hôte ; canaux = Docker/SSH restreint).
+- **Hermes** (NousResearch — Athena s'en inspire déjà) : boucle jusqu'à **max_iterations = 90** + budget ; **toolsets** activables par plateforme ; **skills** = docs Markdown (agentskills.io) + **Curator** qui archive les obsolètes ; backends d'exécution local/Docker/SSH/Modal/Daytona ; **smart_model_routing** (modèle choisi par capacité : reasoning/coding/vision + fallback) ; `read_file/patch/write_file` workspace-aware ; **delegate_task** = sous-agents isolés ; prompt caching.
+
+### Architecture proposée — sous-système Code Athena (v1, à valider)
+1. **Agent code dédié + boucle serrée** (hors swarm conversationnel) : plan → agir → **observer la vraie sortie** → itérer ; budget élevé (≈60–90 itérations, pas 30) ; fin sur action « terminé » ou budget. Indépendant des agents dynamiques.
+2. **Modèle FORT pour le code** via routing par capacité « coding » (défaut = meilleur modèle configuré ; local en repli). ← levier #1 de qualité.
+3. **Édition fiable** : outil **search/replace** (style Aider) en mécanisme principal + `write_file` pour les nouveaux fichiers ; format adapté à la force du modèle.
+4. **Repo-map** tree-sitter (réutiliser `code_nav`: file_outline/find_definition + ranking) injecté comme contexte (budget tokens).
+5. **Sandbox dev réelle** : image avec git + python + node + build ; **réseau contrôlé** pour les installs.
+6. **Projets HORS workspace de base** (fin de la fuite) ; chat = workspaces généraux, code = projets.
+7. **UI fusionnée** explorateur + IDE = un espace « Code » (arbre auto-refresh + éditeur), alimenté par la boucle.
+8. (Option Aider) **architect/editor split** : modèle fort planifie le diff, applicateur déterministe/léger applique — utile si le modèle d'édition est faible.
+
+Sources étudiées : aider.chat/docs, github.com/All-Hands-AI/OpenHands, github.com/openclaw/openclaw, github.com/NousResearch/hermes-agent.
