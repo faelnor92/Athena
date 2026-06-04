@@ -942,19 +942,32 @@ async def terminal_coder(req: TerminalRequest):
     # AUTO-APPROUVE les outils (sinon chaque git_status/écriture exige une confirmation
     # verbeuse). L'admin qui tape la commande assume l'action ; sandbox + can_write tiennent.
     appr_token = approvals.auto_approve_var.set(True)
-    # Génération multi-fichiers : la console a besoin de plus de tours que le défaut (10).
-    max_turns = int(os.getenv("CODER_CONSOLE_MAX_TURNS", "30") or 30)
+    # Tâche de code multi-fichiers : budget de tours généreux (cf. Aider/Hermes ≈ 60-90).
+    max_turns = int(os.getenv("CODER_CONSOLE_MAX_TURNS", "60") or 60)
+    # REPO-MAP : on donne à l'agent la carte du projet (arbo + symboles) pour qu'il ne code
+    # pas « à l'aveugle ». Injecté à l'exécution seulement (pas persisté : éviter bloat/staleness).
+    run_chain = chain
+    try:
+        from tools.repo_map import build_repo_map
+        _rmap = build_repo_map()
+        if _rmap and len(_rmap) > 20:
+            run_chain = [{"role": "system",
+                          "content": "Carte du projet actif (pour situer ton travail ; relis les "
+                                     "fichiers au besoin) :\n" + _rmap}] + chain
+    except Exception:
+        pass
     try:
         # Exécution ciblée sur l'Agent Codeur (thread), verrouillée sur lui.
         next_agent, new_chain, steps = await asyncio.to_thread(
-            functools.partial(swarm.run, coder_agent, chain, max_turns=max_turns, locked=True))
+            functools.partial(swarm.run, coder_agent, run_chain, max_turns=max_turns, locked=True))
         # S'assurer de rester sur l'orchestrateur au niveau de la session globale
         session.active_agent = _orch_agent()
 
-        # MÉMOIRE de la console (isolée du chat) : on sauvegarde l'historique mis à jour,
-        # borné aux 40 derniers messages pour éviter qu'il n'enfle indéfiniment.
+        # MÉMOIRE de la console (isolée du chat) : on sauvegarde l'historique, en retirant la
+        # carte injectée (messages système) et borné aux 40 derniers messages.
         try:
-            shared_store.set("coder_console", _console_key, new_chain[-40:])
+            persist = [m for m in new_chain if m.get("role") != "system"][-40:]
+            shared_store.set("coder_console", _console_key, persist)
         except Exception:
             import logging
             logging.getLogger("athena.server").exception("Persistance console codeur échouée")
