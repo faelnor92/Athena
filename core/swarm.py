@@ -1203,7 +1203,23 @@ class Swarm:
             
             # Injection dynamique des informations mémorisées (Core Memory) dans Athena
             system_prompt = current_agent.system_prompt
-            
+
+            # Préambule SYSTÈME (non éditable par l'utilisateur, contrairement au prompt de
+            # l'agent ci-dessus) : garanties de comportement, adaptées aux OUTILS de l'agent.
+            _tool_names = {getattr(f, "__name__", "") for f in getattr(current_agent, "tools", [])}
+            system_prompt += (
+                "\n\n=== RÈGLES SYSTÈME ===\n"
+                "- N'invente JAMAIS le résultat d'un outil : si un outil échoue ou ne renvoie rien, "
+                "rapporte l'erreur ou l'absence de résultat telle quelle. Ne prétends pas avoir agi sans l'avoir fait.\n"
+                "- Sois concis et orienté action : agis via les outils plutôt que de longues explications.\n"
+            )
+            if _tool_names & {"write_file", "edit_file", "apply_patch"}:
+                system_prompt += (
+                    "- Code : tu travailles dans le PROJET ACTIF en CHEMINS RELATIFS (ex: app.py, src/x.js). "
+                    "Jamais de chemins absolus (/tmp/…, refusés) ni de code « en mémoire » — écris les fichiers. "
+                    "Pour Git, utilise git_status/git_diff/git_log/git_commit (pas « git » via le shell de la sandbox).\n"
+                )
+
             # Renforcement strict de l'identité de l'agent pour éviter les hallucinations (usurpation d'identité)
             system_prompt += (
                 f"\n\n🛑 RÈGLE D'IDENTITÉ ABSOLUE :\n"

@@ -5192,10 +5192,13 @@ async function executeTerminalCommand() {
             await reloadChatHistory(true);
             await refreshMemory();
         } else {
-            logToTerminal("Erreur terminal: " + data.detail, "error");
+            // data.detail peut être une chaîne OU un objet (erreur structurée) → message lisible.
+            let msg = data && data.detail;
+            if (msg && typeof msg === "object") msg = msg.message || msg.detail || JSON.stringify(msg);
+            logToTerminal("Erreur terminal : " + (msg || `HTTP ${response.status}`), "error");
         }
     } catch (err) {
-        logToTerminal("Erreur de connexion terminal: " + err, "error");
+        logToTerminal("Erreur de connexion terminal : " + (err && err.message ? err.message : err), "error");
     } finally {
         terminalCoderInput.disabled = false;
         if (btnSendTerminal) btnSendTerminal.disabled = false;

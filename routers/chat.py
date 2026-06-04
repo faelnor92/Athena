@@ -938,7 +938,10 @@ async def terminal_coder(req: TerminalRequest):
     run_registry.start(run_id)
     token = current_run_id.set(run_id)
     chan_token = channels.current_channel.set("web")
-    appr_token = approvals.auto_approve_var.set(channels.auto_approve_for("web"))
+    # La console codeur est admin-only ET pilotée en direct par l'utilisateur : on
+    # AUTO-APPROUVE les outils (sinon chaque git_status/écriture exige une confirmation
+    # verbeuse). L'admin qui tape la commande assume l'action ; sandbox + can_write tiennent.
+    appr_token = approvals.auto_approve_var.set(True)
     # Génération multi-fichiers : la console a besoin de plus de tours que le défaut (10).
     max_turns = int(os.getenv("CODER_CONSOLE_MAX_TURNS", "30") or 30)
     try:
