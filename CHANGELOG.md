@@ -1,5 +1,34 @@
 # Historique des Versions (Changelog)
 
+## v0.9.41 (Codeur utilisable & IDE en fenêtre)
+Refonte de l'expérience de code (console + IDE) et correctifs majeurs remontés à l'usage.
+
+### 🤖 Code agentique — enfin opérationnel
+- **Outils fichiers donnés aux agents** : la cause racine de « le codeur ne crée rien » était qu'AUCUN agent n'avait d'outil d'écriture. Le Codeur dispose désormais de `read/write/edit_file`, `apply_patch`, `search_code`, `file_outline`, `find_definition/references` et `git_*` (configs par défaut/exemple incluses). Prompt réallégé (rôle + « projet actif, chemins relatifs ») — les outils cochés sont exposés au modèle via leur schéma.
+- **Handoffs réparés** (`Jarvis` → `Athena`).
+- **Verbosité réduite** : le Codeur annonce, agit via les outils, et conclut court.
+- **Sandbox = projet actif** : bash/python/tests s'exécutent dans le projet sélectionné (montage en écriture → les fichiers produits y persistent), et non plus dans un ancien dossier global.
+
+### 🖥️ Console codeur & IDE
+- **Console isolée du chat** : mémoire dédiée (par utilisateur et par projet) ; la console ne pollue plus le chat principal et garde son contexte. `max_turns` relevé (défaut 30).
+- **Projet propre à la console** : un sélecteur permet de coder dans la console sur un projet **différent** de celui du chat/vocal (override de contexte).
+- **Vue console repensée** : chat principal masqué (grille pleine largeur, plus de zone vide) ; **arborescence du projet** avec auto-refresh (on voit les fichiers créés par l'agent apparaître).
+- **IDE en VRAIE fenêtre** (`window.open`) : déplaçable sur un 2ᵉ écran, avec **onglets**, arbre, sauvegarde Ctrl+S et auto-refresh. L'IDE intégré (vue Fichiers) reste éditable (multi-onglets, aperçu PDF/images, live-reload).
+
+### 🔒 Sécurité (audit injections/intrusion)
+- **Anti-SSRF** sur les flux agenda **iCal/CalDAV** (URL fournie par l'utilisateur, fetch côté serveur → réseau interne/métadonnées cloud bloqués).
+- **Sandbox `tool_script` durcie** : fermeture de l'évasion `"{0.__class__}".format()` (dunders en chaîne littérale).
+- Vérifiés sûrs : SQL paramétré, upload (basename+limite), exécution code (Docker + AST + terminal admin-only), authz centralisée.
+
+### 🩹 Correctifs UI
+- **Artefact (aperçu)** : ne s'ouvrait pas sous CSP (srcdoc héritait) → passage en iframe `blob:` (contexte propre, toujours sandbox isolé), React inclus.
+- **Bouton « Parcourir »** invisible : un `<div>` non fermé du formulaire d'agent imbriquait la modale dans la modale Réglages (cachée) → HTML rééquilibré.
+
+### 📡 Observabilité (optionnelle)
+- **OpenInference** (traçage LLM → Phoenix) intégrable en option (`OPENINFERENCE_ENABLED`, `requirements-observability.txt`, service compose).
+
+---
+
 ## v0.9.40 (Éditeur intégré & collaboration)
 L'explorateur de fichiers devient un mini-IDE éditable, avec une première couche collaborative.
 
