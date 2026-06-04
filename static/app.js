@@ -1655,9 +1655,19 @@ function openArtifact(i) {
     iframe.setAttribute("sandbox", "allow-scripts");
     iframe.setAttribute("referrerpolicy", "no-referrer");
     iframe.style.cssText = "flex:1;border:none;width:100%;background:#fff;";
-    iframe.srcdoc = a.kind === "react" ? _reactTemplate(a.code)
-                  : a.kind === "js" ? _jsTemplate(a.code)
-                  : _htmlTemplate(a.code);
+    // On charge via une URL blob: (autorisée par frame-src) plutôt que srcdoc : un iframe
+    // srcdoc HÉRITE de la CSP de la page (qui bloquerait les scripts React/unpkg), alors
+    // qu'un document blob: a son propre contexte. Sandbox sans allow-same-origin → origine
+    // opaque : pas d'accès au token/localStorage/DOM parent. La barrière de sécurité tient.
+    const html = a.kind === "react" ? _reactTemplate(a.code)
+               : a.kind === "js" ? _jsTemplate(a.code)
+               : _htmlTemplate(a.code);
+    const blobUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    iframe.src = blobUrl;
+    overlay._blobUrl = blobUrl;
+    const _revoke = () => { try { URL.revokeObjectURL(blobUrl); } catch (e) {} };
+    close.onclick = () => { _revoke(); overlay.remove(); };
+    overlay.onclick = (e) => { if (e.target === overlay) { _revoke(); overlay.remove(); } };
     card.append(bar, iframe);
     overlay.appendChild(card);
     document.body.appendChild(overlay);

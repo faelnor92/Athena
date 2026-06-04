@@ -928,8 +928,9 @@ async def terminal_coder(req: TerminalRequest):
 
     # Sinon, on passe par l'exécution standard de l'Agent Codeur
     # On ajoute la commande de la console localement à la chaîne contextuelle
+    base_len = len(chain)  # repère : tout ce qui suit = nouvel échange à persister
     chain.append({"role": "user", "content": f"[CLI] {req.command}"})
-        
+
     run_id = run_store.new_run_id()
     run_registry.start(run_id)
     token = current_run_id.set(run_id)
@@ -938,8 +939,24 @@ async def terminal_coder(req: TerminalRequest):
     try:
         # Lancer l'exécution en ciblant directement l'Agent Codeur (dans un thread) avec LOCKED=TRUE
         next_agent, new_chain, steps = await asyncio.to_thread(swarm.run, coder_agent, chain, locked=True)
-        # S'assurer de rester sur l'orchestrateur au niveau de la session globale 
+        # S'assurer de rester sur l'orchestrateur au niveau de la session globale
         session.active_agent = _orch_agent()
+
+        # CONTEXTE : on persiste le nouvel échange (commande CLI + réponses de l'agent) dans
+        # la conversation, sinon chaque commande repartirait sans mémoire des précédentes.
+        try:
+            msgs = session.messages
+            prev_id = session.active_node_id
+            for m in new_chain[base_len:]:
+                nid = uuid.uuid4().hex
+                msgs.append({"id": nid, "parent_id": prev_id,
+                             **{k: v for k, v in m.items() if k not in ("id", "parent_id")}})
+                prev_id = nid
+            session.messages = msgs            # déclenche la sauvegarde
+            session.active_node_id = prev_id
+        except Exception:
+            import logging
+            logging.getLogger("athena.server").exception("Persistance console codeur échouée")
 
         # Transformer les types "message" en "terminal_message" pour éviter de polluer le chat principal
         for step in steps:
