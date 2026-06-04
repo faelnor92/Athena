@@ -100,3 +100,6 @@ athena_state.sqlite3
 athena_state.sqlite3-wal
 athena_state.sqlite3-shm
 *.migrated
+
+# Projets de code (hors workspace de base)
+athena_projects/

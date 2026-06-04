@@ -38,20 +38,31 @@ def _effective_pid():
     return _project_override.get() or user_config.get("active_project")
 
 
-def _projects_base() -> str:
-    """Racine GLOBALE des projets (tous utilisateurs) — pour valider les projets partagés."""
-    return os.path.join(_base_workspace(), "projects")
-
-
 def _base_workspace() -> str:
     return os.path.abspath(os.environ.get(
         "ACTIVE_WORKSPACE_DIR",
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workspace")))
 
 
+def _projects_base() -> str:
+    """Racine GLOBALE des projets (tous utilisateurs). HORS du workspace de base par défaut
+    (sinon les projets fuient dans l'explorateur du workspace général). Configurable via
+    PROJECTS_DIR."""
+    env = os.getenv("PROJECTS_DIR", "").strip()
+    if env:
+        return os.path.abspath(env)
+    return os.path.join(os.path.dirname(_base_workspace()), "athena_projects")
+
+
+def _legacy_projects_base() -> str:
+    """Ancienne racine (sous le workspace de base) — acceptée pour ne pas casser les
+    projets déjà créés avant le déplacement."""
+    return os.path.join(_base_workspace(), "projects")
+
+
 def projects_root() -> str:
-    """Racine des projets de l'utilisateur courant."""
-    return os.path.join(_base_workspace(), "projects", user_config.user_slug())
+    """Racine des projets de l'utilisateur courant (nouveaux projets)."""
+    return os.path.join(_projects_base(), user_config.user_slug())
 
 
 def _slug(name: str) -> str:
@@ -90,12 +101,16 @@ def active_path():
         if shared_projects.role_for(pid, user):
             e = shared_projects.get(pid)
             path = e.get("path") if e else None
-    # Anti-traversée : tout projet doit rester sous la racine GLOBALE des projets.
+    # Anti-traversée : le projet doit rester sous une racine de projets autorisée
+    # (nouvelle racine OU racine héritée, pour ne pas casser l'existant).
     if path:
         real = os.path.realpath(path)
-        base = os.path.realpath(_projects_base())
-        if os.path.commonpath([real, base]) == base:
-            return real
+        for base in (os.path.realpath(_projects_base()), os.path.realpath(_legacy_projects_base())):
+            try:
+                if os.path.commonpath([real, base]) == base:
+                    return real
+            except ValueError:
+                continue
     return None
 
 

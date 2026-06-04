@@ -87,7 +87,11 @@ async def list_workspace_files(project_id: str = None):
     try:
       with _project_scope(project_id):
         base_dir = get_workspace_dir()
-        ignored_patterns = [".venv", "venv", "__pycache__", ".git", ".gemini", "static", ".env", "node_modules"]
+        # On masque "projects" : c'est la racine des projets (qui vivent SOUS le workspace
+        # de base pour des raisons historiques) → ne pas exposer tous les projets dans
+        # l'explorateur du workspace général.
+        ignored_patterns = [".venv", "venv", "__pycache__", ".git", ".gemini", "static",
+                            ".env", "node_modules", "projects", "athena_projects"]
         files = []
         for root, dirs, filenames in os.walk(base_dir):
             dirs[:] = [d for d in dirs if d not in ignored_patterns and not d.startswith(".")]
