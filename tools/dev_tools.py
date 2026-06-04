@@ -75,7 +75,11 @@ def run_checks(command: str, timeout: int = 120) -> str:
             where = "sandbox Docker"
         else:
             import subprocess
-            cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
+            try:
+                from core.state import get_workspace_dir
+                cwd = get_workspace_dir()
+            except Exception:
+                cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
             shell = "/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh"
             # -c (non-login) : évite le bruit des profils ; l'agent active un venv via
             # « source .venv/bin/activate && … » si nécessaire.

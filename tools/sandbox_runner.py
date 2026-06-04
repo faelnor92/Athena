@@ -44,7 +44,14 @@ def docker_available() -> bool:
 
 
 def _workspace_dir() -> str:
-    ws = os.path.abspath(os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd()))
+    # Le PROJET ACTIF (get_workspace_dir) — pas l'ancienne var globale — pour que la
+    # sandbox monte/exécute dans le bon dossier ; le montage `-v ws:/work` étant en
+    # écriture, les fichiers produits par le code persistent dans le projet sur l'hôte.
+    try:
+        from core.state import get_workspace_dir
+        ws = os.path.abspath(get_workspace_dir())
+    except Exception:
+        ws = os.path.abspath(os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd()))
     os.makedirs(ws, exist_ok=True)
     return ws
 

@@ -169,7 +169,11 @@ def execute_bash_command(command: str, user_confirmed: bool = False) -> str:
         else:
             # Repli local : choix du shell selon l'OS hôte (portabilité Win/Mac/Linux).
             import platform
-            cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
+            try:
+                from core.state import get_workspace_dir
+                cwd = get_workspace_dir()
+            except Exception:
+                cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
             if platform.system() == "Windows":
                 argv = ["powershell", "-NoProfile", "-Command", command]
             else:

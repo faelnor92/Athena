@@ -24,7 +24,11 @@ def _run_local_unsandboxed(code: str) -> str:
         f.write(code)
         temp_path = f.name
     try:
-        cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
+        try:
+            from core.state import get_workspace_dir
+            cwd = get_workspace_dir()
+        except Exception:
+            cwd = os.environ.get("ACTIVE_WORKSPACE_DIR", os.getcwd())
         result = subprocess.run(
             [sys.executable, temp_path],
             capture_output=True, text=True, timeout=15, cwd=cwd,
