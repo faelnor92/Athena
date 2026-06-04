@@ -129,18 +129,95 @@ def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = F
     except Exception as e:
         return f"Erreur de lecture : {e}"
     count = content.count(old_string)
-    if count == 0:
-        return ("Erreur : old_string introuvable tel quel (vérifie l'indentation et les "
-                "espaces ; lis d'abord le fichier avec read_file).")
     if count > 1 and not replace_all:
         return (f"Erreur : old_string apparaît {count} fois (ambigu). Ajoute du contexte "
                 "pour le rendre unique, ou utilise replace_all=True.")
-    new_content = content.replace(old_string, new_string)
-    try:
-        _atomic_write(real, new_content)
-    except Exception as e:
-        return f"Erreur d'écriture : {e}"
-    return f"Modifié : {path} ({count} remplacement{'s' if count > 1 else ''})."
+    if count >= 1:
+        new_content = content.replace(old_string, new_string) if replace_all \
+            else content.replace(old_string, new_string, 1)
+        try:
+            _atomic_write(real, new_content)
+        except Exception as e:
+            return f"Erreur d'écriture : {e}"
+        return f"Modifié : {path} ({count if replace_all else 1} remplacement{'s' if (replace_all and count > 1) else ''})."
+
+    # Repli TOLÉRANT (style Aider) : old_string introuvable au caractère près → on tente
+    # une correspondance en ignorant l'indentation/les espaces de bord, puis on réindente
+    # new_string sur l'indentation réelle du fichier.
+    flexible, fcount = _flexible_replace(content, old_string, new_string, replace_all)
+    if flexible is not None:
+        try:
+            _atomic_write(real, flexible)
+        except Exception as e:
+            return f"Erreur d'écriture : {e}"
+        return f"Modifié : {path} ({fcount} remplacement{'s' if fcount > 1 else ''}, correspondance tolérante aux espaces)."
+    if fcount == -1:
+        return ("Erreur : correspondance tolérante AMBIGUË (plusieurs blocs similaires). "
+                "Ajoute du contexte unique ou utilise replace_all=True.")
+
+    # Échec total → message utile : on suggère le bloc le plus proche dans le fichier.
+    return ("Erreur : old_string introuvable (même en ignorant les espaces). "
+            "Lis le fichier avec read_file pour copier le texte exact.\n" + _suggest_similar(content, old_string))
+
+
+def _flexible_replace(content: str, old: str, new: str, replace_all: bool):
+    """Correspondance ligne-à-ligne en ignorant l'indentation/espaces de bord. Réindente
+    new sur l'indentation réelle du bloc trouvé. Renvoie (nouveau_contenu, n) ; (None, 0)
+    si introuvable ; (None, -1) si ambigu."""
+    old_lines = old.splitlines()
+    while old_lines and not old_lines[-1].strip():
+        old_lines.pop()
+    if not old_lines:
+        return None, 0
+    c_lines = content.splitlines(keepends=True)
+    bare = [l.rstrip("\n") for l in c_lines]
+    target = [l.strip() for l in old_lines]
+    nL = len(old_lines)
+    starts = [i for i in range(len(bare) - nL + 1)
+              if [bare[i + j].strip() for j in range(nL)] == target]
+    if not starts:
+        return None, 0
+    if len(starts) > 1 and not replace_all:
+        return None, -1
+
+    # Indentation de référence dans old (1ère ligne non vide) pour préserver le relatif.
+    old_base = old_lines[0][:len(old_lines[0]) - len(old_lines[0].lstrip())]
+    new_lines = new.splitlines()
+    out, last, n = [], 0, 0
+    for start in starts:
+        out.extend(c_lines[last:start])
+        file_indent = c_lines[start][:len(c_lines[start]) - len(c_lines[start].lstrip())]
+        for nl in new_lines:
+            if not nl.strip():
+                out.append("\n")
+                continue
+            rel = nl[len(old_base):] if nl.startswith(old_base) else nl.lstrip()
+            out.append(file_indent + rel + "\n")
+        last = start + nL
+        n += 1
+        if not replace_all:
+            break
+    out.extend(c_lines[last:])
+    return "".join(out), n
+
+
+def _suggest_similar(content: str, old: str) -> str:
+    """Renvoie le bloc du fichier le plus proche de `old` (aide l'agent à se corriger)."""
+    import difflib
+    old_lines = [l for l in old.splitlines() if l.strip()]
+    if not old_lines:
+        return ""
+    c_lines = content.splitlines()
+    nL = len(old_lines)
+    best, best_ratio = None, 0.0
+    for i in range(max(1, len(c_lines) - nL + 1)):
+        window = "\n".join(c_lines[i:i + nL])
+        r = difflib.SequenceMatcher(None, old, window).ratio()
+        if r > best_ratio:
+            best_ratio, best = r, (i, window)
+    if best and best_ratio > 0.5:
+        return f"Bloc le plus proche (lignes {best[0]+1}–{best[0]+nL}, similarité {int(best_ratio*100)}%) :\n{best[1]}"
+    return ""
 
 
 def _apply_unified_diff(original: str, patch: str):
