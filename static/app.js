@@ -7402,18 +7402,35 @@ function _ideEnsureEditor() {
     return _cm;
 }
 
+function _ideKind(path) {
+    const ext = (path.split(".").pop() || "").toLowerCase();
+    if (ext === "pdf") return "pdf";
+    if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(ext)) return "image";
+    if (["zip", "tar", "gz", "tgz", "7z", "rar", "exe", "bin", "so", "dll", "o", "pyc", "class",
+         "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "mp3", "mp4", "wav", "ogg",
+         "mov", "avi", "mkv", "webm", "woff", "woff2", "ttf", "otf", "eot", "db", "sqlite",
+         "sqlite3", "jar"].includes(ext)) return "binary";
+    return "text";
+}
+
 async function openInEditor(path) {
     if (!_ideEnsureEditor()) { return; }  // CodeMirror pas chargé → no-op
-    document.getElementById("editor-host").style.display = "block";
     const pre = document.getElementById("file-viewer-pre"); if (pre) pre.style.display = "none";
     if (ideTabs.has(path)) { _ideActivate(path); return; }
+    const kind = _ideKind(path);
+    if (kind !== "text") {
+        // PDF / image / binaire → onglet d'APERÇU (pas d'éditeur texte, sinon charabia)
+        ideTabs.set(path, { kind, mtime: 0, dirty: false });
+        _ideActivate(path);
+        return;
+    }
     const titleEl = document.getElementById("file-viewer-title");
     titleEl.textContent = `Ouverture de ${path}… ⏳`;
     try {
         const r = await apiFetch(`/api/workspace/file?path=${encodeURIComponent(path)}`);
         const d = await r.json();
         if (!r.ok) { titleEl.textContent = "⚠️ " + (d.detail || "Erreur"); return; }
-        ideTabs.set(path, { doc: CodeMirror.Doc(d.content, _ideMode(path)), mtime: d.mtime || 0, dirty: false });
+        ideTabs.set(path, { kind: "text", doc: CodeMirror.Doc(d.content, _ideMode(path)), mtime: d.mtime || 0, dirty: false });
         _ideActivate(path);
     } catch (e) { titleEl.textContent = "⚠️ " + e; }
 }
@@ -7421,13 +7438,64 @@ async function openInEditor(path) {
 function _ideActivate(path) {
     const t = ideTabs.get(path); if (!t || !_cm) return;
     ideActive = path; activeSelectedFilePath = path;
-    t._loading = true; _cm.swapDoc(t.doc); t._loading = false;
-    _collabMtime = t.mtime || 0;
-    document.getElementById("file-viewer-title").textContent = "📝 " + path;
-    document.getElementById("btn-save-file").style.display = "inline-block";
+    const host = document.getElementById("editor-host");
+    const prev = document.getElementById("editor-preview");
+    const saveBtn = document.getElementById("btn-save-file");
     document.getElementById("btn-download-file").style.display = "inline-block";
+    document.getElementById("file-viewer-title").textContent = (t.kind === "text" ? "📝 " : "👁️ ") + path;
+    if (t.kind === "text") {
+        if (prev) { prev.style.display = "none"; prev.innerHTML = ""; }
+        host.style.display = "block";
+        t._loading = true; _cm.swapDoc(t.doc); t._loading = false;
+        _collabMtime = t.mtime || 0;
+        if (saveBtn) saveBtn.style.display = "inline-block";
+        setTimeout(() => _cm.refresh(), 0);
+    } else {
+        host.style.display = "none";
+        if (saveBtn) saveBtn.style.display = "none";
+        if (prev) prev.style.display = "block";
+        _idePreview(path, t);
+    }
     _ideRenderTabs();
-    setTimeout(() => _cm.refresh(), 0);
+}
+
+async function _idePreview(path, t) {
+    const prev = document.getElementById("editor-preview");
+    if (!prev) return;
+    const name = path.split("/").pop();
+    prev.innerHTML = `<div style="opacity:0.6;font-size:0.8rem;padding:8px;">Chargement de l'aperçu…</div>`;
+    // On récupère le fichier via apiFetch (avec le jeton) → object URL : les balises
+    // natives (iframe/img) n'envoient pas l'Authorization, donc pas d'accès direct par URL.
+    try {
+        const r = await apiFetch(`/api/workspace/download?path=${encodeURIComponent(path)}`);
+        if (!r.ok) { prev.innerHTML = `<div style="padding:12px;color:#ff5b89;">Aperçu indisponible (${r.status}).</div>`; return; }
+        let blob = await r.blob();
+        // Le endpoint renvoie application/octet-stream → on force le bon type MIME pour un
+        // rendu INLINE (sinon l'iframe PDF déclencherait un téléchargement).
+        if (t.kind === "pdf") blob = new Blob([blob], { type: "application/pdf" });
+        else if (t.kind === "image" && !blob.type) {
+            const ext = path.split(".").pop().toLowerCase();
+            const mime = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+                webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp", ico: "image/x-icon" }[ext];
+            if (mime) blob = new Blob([blob], { type: mime });
+        }
+        if (t._url) { try { URL.revokeObjectURL(t._url); } catch (e) {} }
+        t._url = URL.createObjectURL(blob);
+        if (path !== ideActive) return;  // changement d'onglet entre-temps
+        if (t.kind === "pdf") {
+            prev.innerHTML = `<iframe src="${t._url}" style="width:100%;height:58vh;border:none;border-radius:8px;background:#fff;"></iframe>`;
+        } else if (t.kind === "image") {
+            prev.innerHTML = `<img src="${t._url}" alt="${name}" style="max-width:100%;border-radius:8px;display:block;margin:8px auto;">`;
+        } else {
+            prev.innerHTML = `<div style="padding:16px;opacity:0.85;font-size:0.85rem;">📦 Fichier binaire « ${name} » — non affichable dans l'éditeur.</div>`;
+        }
+        if (t.kind === "binary") {
+            const a = document.createElement("a");
+            a.href = t._url; a.download = name; a.textContent = "⬇️ Télécharger";
+            a.className = "btn btn-primary"; a.style.cssText = "display:inline-block;margin:0 16px 12px;font-size:0.8rem;";
+            prev.appendChild(a);
+        }
+    } catch (e) { prev.innerHTML = `<div style="padding:12px;color:#ff5b89;">${e}</div>`; }
 }
 
 function _ideRenderTabs() {
@@ -7453,6 +7521,7 @@ function _ideRenderTabs() {
 function _ideCloseTab(path) {
     const t = ideTabs.get(path); if (!t) return;
     if (t.dirty && !confirm(`« ${path.split("/").pop()} » a des modifications non enregistrées. Fermer quand même ?`)) return;
+    if (t._url) { try { URL.revokeObjectURL(t._url); } catch (e) {} }  // libère l'aperçu
     ideTabs.delete(path);
     if (ideActive === path) {
         const keys = Array.from(ideTabs.keys());
@@ -7460,6 +7529,8 @@ function _ideCloseTab(path) {
         else {
             ideActive = null; activeSelectedFilePath = null;
             document.getElementById("editor-host").style.display = "none";
+            const prev = document.getElementById("editor-preview");
+            if (prev) { prev.style.display = "none"; prev.innerHTML = ""; }
             document.getElementById("file-viewer-title").textContent = "Sélectionnez un fichier…";
             document.getElementById("btn-save-file").style.display = "none";
             document.getElementById("btn-download-file").style.display = "none";
@@ -7491,6 +7562,7 @@ async function ideSaveActive() {
 
 async function _ideReloadFromDisk(path) {
     const t = ideTabs.get(path); if (!t || !_cm) return;
+    if (t.kind !== "text") return;  // l'aperçu PDF/image n'a pas de live-reload texte
     try {
         const r = await apiFetch(`/api/workspace/file?path=${encodeURIComponent(path)}`);
         const d = await r.json(); if (!r.ok) return;

@@ -71,6 +71,7 @@ _DEFAULT_CSP = (
     "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
     "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
     "img-src 'self' data: blob:; connect-src 'self'; "
+    "frame-src 'self' blob:; "  # aperçu PDF (object URL) dans une iframe
     "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
 )
 _CSP = os.getenv("CONTENT_SECURITY_POLICY", _DEFAULT_CSP)
