@@ -481,10 +481,12 @@ function selectActiveTab(tab, view, extraAction = null) {
     // affiche l'arborescence du projet à la place. (Restauré sur les autres vues.)
     const _chat = document.querySelector(".right-chat-sidebar");
     const _resizer = document.getElementById("layout-resizer");
+    const _appc = document.querySelector(".app-container");
     const onConsole = (view === viewConsole);
     if (_chat) _chat.style.display = onConsole ? "none" : "";
     if (_resizer) _resizer.style.display = onConsole ? "none" : "";
-    if (onConsole && typeof loadConsoleTree === "function") loadConsoleTree();
+    if (_appc) _appc.classList.toggle("chat-hidden", onConsole);  // grille 2 colonnes → plus de « trou »
+    if (typeof setConsoleTreeAutoRefresh === "function") setConsoleTreeAutoRefresh(onConsole);
 
     if (extraAction) extraAction();
 }
@@ -7697,63 +7699,98 @@ async function loadConsoleTree() {
     } catch (e) { box.innerHTML = "<div style='color:#f88;font-size:0.76rem;'>Erreur de chargement.</div>"; }
 }
 async function openConsoleFile(path, projectId) {
-    _ideProjectId = projectId || null;     // l'IDE lit/écrit dans CE projet
-    detachIde(true);                        // ouvre l'éditeur en fenêtre flottante au-dessus de la console
-    await openInEditor(path);
+    // Ouvre le fichier dans la FENÊTRE IDE (déplaçable sur un 2e écran), pas dans la page.
+    const w = openIdeWindow(projectId);
+    if (w && typeof w.openFileInIde === "function") w.openFileInIde(path);
+    else if (w) setTimeout(() => { try { w.openFileInIde && w.openFileInIde(path); } catch (e) {} }, 600);
 }
 
-let _ideFloating = false;
-function _ensureFloatWrapper() {
-    let fw = document.getElementById("ide-float");
-    if (fw) return fw;
-    fw = document.createElement("div");
-    fw.id = "ide-float";
-    fw.style.cssText = "position:fixed; top:80px; left:120px; width:70vw; height:72vh; z-index:7000; display:none; flex-direction:column; background:rgba(15,18,28,0.98); border:1px solid rgba(0,243,255,0.4); border-radius:10px; box-shadow:0 16px 60px rgba(0,0,0,0.6); overflow:hidden; resize:both;";
-    const bar = document.createElement("div");
-    bar.style.cssText = "display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:rgba(0,0,0,0.45); cursor:move; font-size:0.8rem; color:#fff; flex-shrink:0;";
-    const title = document.createElement("span"); title.textContent = "🛠️ Éditeur (fenêtre flottante)";
-    const dockBtn = document.createElement("button");
-    dockBtn.textContent = "⇲ Ancrer"; dockBtn.className = "btn";
-    dockBtn.style.cssText = "padding:2px 8px;font-size:0.72rem;";
-    dockBtn.onclick = dockIde;
-    bar.append(title, dockBtn);
-    const body = document.createElement("div");
-    body.id = "ide-float-body";
-    body.style.cssText = "flex:1; min-height:0; overflow:auto;";
-    fw.append(bar, body);
-    document.body.appendChild(fw);
-    let drag = false, ox = 0, oy = 0;
-    bar.addEventListener("mousedown", e => { if (e.target === dockBtn) return; drag = true; ox = e.clientX - fw.offsetLeft; oy = e.clientY - fw.offsetTop; e.preventDefault(); });
-    window.addEventListener("mousemove", e => { if (!drag) return; fw.style.left = Math.max(0, e.clientX - ox) + "px"; fw.style.top = Math.max(0, e.clientY - oy) + "px"; });
-    window.addEventListener("mouseup", () => drag = false);
-    return fw;
-}
-function detachIde(show) {
-    const fw = _ensureFloatWrapper();
-    const card = document.getElementById("file-viewer-container");
-    const body = document.getElementById("ide-float-body");
-    if (card && body && card.parentElement !== body) {
-        card._dockParent = card.parentElement;   // mémorise l'emplacement d'origine
-        body.appendChild(card);
-        card.style.height = "100%";
+// IDE en VRAIE fenêtre navigateur (multi-écran) avec onglets, arbre et sauvegarde.
+let _ideWin = null;
+function openIdeWindow(projectId) {
+    const token = (typeof sessionToken !== "undefined" && sessionToken) ? sessionToken : "";
+    const api = location.origin;
+    const pid = projectId || (typeof _consoleProjectId === "function" ? _consoleProjectId() : "") || "";
+    if (_ideWin && !_ideWin.closed) {
+        _ideWin.focus();
+        if (_ideWin.__pid !== pid && typeof _ideWin.setIdeProject === "function") _ideWin.setIdeProject(pid);
+        return _ideWin;
     }
-    _ideFloating = true;
-    fw.style.display = "flex";
-    if (typeof _cm !== "undefined" && _cm) setTimeout(() => _cm.refresh(), 60);
+    _ideWin = window.open("", "athenaIdeWindow", "width=1100,height=760");
+    if (!_ideWin) { alert("La fenêtre IDE a été bloquée — autorise les pop-ups pour ce site."); return null; }
+    const CM = "https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16";
+    const modes = ["mode/meta","mode/python/python","mode/javascript/javascript","mode/xml/xml",
+        "mode/css/css","mode/htmlmixed/htmlmixed","mode/markdown/markdown","mode/shell/shell",
+        "mode/clike/clike","mode/yaml/yaml","addon/edit/closebrackets","addon/edit/matchbrackets",
+        "addon/hint/show-hint","addon/hint/anyword-hint"];
+    const modeScripts = modes.map(m => '<scr'+'ipt src="'+CM+'/'+m+'.min.js"><\/scr'+'ipt>').join("");
+    const html = '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Athena — IDE</title>'
+      + '<link rel="stylesheet" href="'+CM+'/codemirror.min.css">'
+      + '<link rel="stylesheet" href="'+CM+'/theme/material-darker.min.css">'
+      + '<link rel="stylesheet" href="'+CM+'/addon/hint/show-hint.min.css">'
+      + '<style>html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:#0f1320;color:#cfe;}'
+      + '#wrap{display:flex;height:100vh;}#tree{width:240px;flex-shrink:0;overflow:auto;border-right:1px solid #234;padding:6px;font-size:13px;}'
+      + '#main{flex:1;display:flex;flex-direction:column;min-width:0;}'
+      + '#tabs{display:flex;gap:2px;overflow-x:auto;background:#0b0e18;padding:4px 4px 0;}'
+      + '.tab{padding:4px 8px;border-radius:6px 6px 0 0;cursor:pointer;white-space:nowrap;font-size:12px;background:#172033;display:flex;gap:6px;align-items:center;}'
+      + '.tab.act{background:#0d2a33;border:1px solid #0af4;border-bottom:none;}'
+      + '#bar{display:flex;gap:8px;align-items:center;padding:4px 8px;background:#0b0e18;font-size:12px;}'
+      + '#bar button{background:#0af3;color:#fff;border:1px solid #0af6;border-radius:5px;padding:3px 10px;cursor:pointer;}'
+      + '.CodeMirror{flex:1;height:auto;}.f{padding:2px 4px;cursor:pointer;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.f:hover{background:#1c2740;}'
+      + '</style></head><body><div id="wrap"><div id="tree">…</div><div id="main">'
+      + '<div id="bar"><strong>🛠️ IDE</strong><span id="proj" style="opacity:.6;"></span><span style="flex:1"></span><span id="stat" style="opacity:.7;"></span><button id="save">💾 Enregistrer (Ctrl+S)</button><button id="refresh">🔄</button></div>'
+      + '<div id="tabs"></div><div id="host" style="flex:1;display:flex;"></div></div></div>'
+      + '<scr'+'ipt>window.__TOKEN='+JSON.stringify(token)+';window.__API='+JSON.stringify(api)+';window.__PID='+JSON.stringify(pid)+';<\/scr'+'ipt>'
+      + '<scr'+'ipt src="'+CM+'/codemirror.min.js"><\/scr'+'ipt>' + modeScripts
+      + '<scr'+'ipt>' + _ideWindowApp() + '<\/scr'+'ipt></body></html>';
+    _ideWin.document.open(); _ideWin.document.write(html); _ideWin.document.close();
+    _ideWin.__pid = pid;
+    return _ideWin;
 }
-function dockIde() {
-    const fw = document.getElementById("ide-float");
-    const card = document.getElementById("file-viewer-container");
-    if (card && card._dockParent) { card._dockParent.appendChild(card); card.style.height = ""; }
-    if (fw) fw.style.display = "none";
-    _ideFloating = false;
-    if (typeof _cm !== "undefined" && _cm) setTimeout(() => _cm.refresh(), 60);
+
+// Code (chaîne) de l'application éditeur injectée DANS la fenêtre IDE.
+function _ideWindowApp() {
+    return [
+"(function(){",
+"var API=window.__API, TOKEN=window.__TOKEN, PID=window.__PID;",
+"function H(){var h={'Content-Type':'application/json'}; if(TOKEN) h['Authorization']='Bearer '+TOKEN; return h;}",
+"function q(){return PID?('&project_id='+encodeURIComponent(PID)):'';}",
+"function mode(p){var e=(p.split('.').pop()||'').toLowerCase();var m={py:'python',js:'javascript',mjs:'javascript',json:{name:'javascript',json:true},html:'htmlmixed',htm:'htmlmixed',xml:'xml',css:'css',md:'markdown',sh:'shell',bash:'shell',yml:'yaml',yaml:'yaml',c:'text/x-csrc',cpp:'text/x-c++src',h:'text/x-csrc',java:'text/x-java',go:'text/x-go',rs:'text/x-rustsrc'};return m[e]||null;}",
+"var host=document.getElementById('host');",
+"var cm=CodeMirror(host,{lineNumbers:true,theme:'material-darker',autoCloseBrackets:true,matchBrackets:true,indentUnit:4,extraKeys:{'Ctrl-Space':function(c){c.showHint({hint:CodeMirror.hint.anyword,completeSingle:false});},'Ctrl-S':function(){saveActive();},'Cmd-S':function(){saveActive();}}});",
+"cm.setSize('100%','100%');",
+"var tabs={}, active=null;",
+"cm.on('change',function(){var t=active&&tabs[active]; if(t&&!t._l&&!t.dirty){t.dirty=true; renderTabs();}});",
+"document.getElementById('proj').textContent = PID? ('· projet '+PID) : '· projet courant';",
+"function setStat(s){document.getElementById('stat').textContent=s||''; if(s) setTimeout(function(){document.getElementById('stat').textContent='';},2500);}",
+"function renderTabs(){var bar=document.getElementById('tabs');bar.innerHTML='';Object.keys(tabs).forEach(function(p){var d=document.createElement('div');d.className='tab'+(p===active?' act':'');var n=document.createElement('span');n.textContent=(tabs[p].dirty?'● ':'')+p.split('/').pop();n.onclick=function(){activate(p);};var x=document.createElement('span');x.textContent='×';x.onclick=function(e){e.stopPropagation();closeTab(p);};d.appendChild(n);d.appendChild(x);bar.appendChild(d);});}",
+"function activate(p){var t=tabs[p];if(!t)return;active=p;t._l=true;cm.swapDoc(t.doc);t._l=false;renderTabs();setTimeout(function(){cm.refresh();},0);}",
+"function closeTab(p){var t=tabs[p];if(t&&t.dirty&&!confirm('Modifs non enregistrées. Fermer ?'))return;delete tabs[p];if(active===p){var k=Object.keys(tabs);active=null;if(k.length)activate(k[k.length-1]);else{cm.swapDoc(CodeMirror.Doc(''));renderTabs();}}else renderTabs();}",
+"function openFile(p){if(tabs[p]){activate(p);return;}fetch(API+'/api/workspace/file?path='+encodeURIComponent(p)+q(),{headers:H()}).then(function(r){return r.json();}).then(function(d){if(d.detail){setStat('⚠️ '+d.detail);return;}tabs[p]={doc:CodeMirror.Doc(d.content,mode(p)),mtime:d.mtime||0,dirty:false};activate(p);}).catch(function(e){setStat('⚠️ '+e);});}",
+"function saveActive(){if(!active)return;var t=tabs[active];fetch(API+'/api/workspace/file',{method:'POST',headers:H(),body:JSON.stringify({path:active,content:cm.getValue(),project_id:PID||undefined})}).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}).then(function(x){if(x.ok){t.dirty=false;t.mtime=x.d.mtime||t.mtime;renderTabs();setStat('💾 enregistré');}else setStat('❌ '+(x.d.detail||'échec'));}).catch(function(e){setStat('❌ '+e);});}",
+"function loadTree(){fetch(API+'/api/workspace/files'+(PID?('?project_id='+encodeURIComponent(PID)):''),{headers:H()}).then(function(r){return r.json();}).then(function(files){var box=document.getElementById('tree');if(!Array.isArray(files)||!files.length){box.innerHTML='<div style=opacity:.5>Projet vide.</div>';return;}box.innerHTML='';files.forEach(function(f){var d=document.createElement('div');d.className='f';d.textContent='📄 '+f.path;d.title=f.path;d.onclick=function(){openFile(f.path);};box.appendChild(d);});}).catch(function(){});}",
+"document.getElementById('save').onclick=saveActive;",
+"document.getElementById('refresh').onclick=loadTree;",
+"window.openFileInIde=openFile;",
+"window.setIdeProject=function(p){PID=p||'';window.__PID=PID;document.getElementById('proj').textContent=PID?('· projet '+PID):'· projet courant';loadTree();};",
+"loadTree();",
+"setInterval(loadTree,5000);",  // auto-refresh de l'arbre dans la fenêtre IDE
+"})();"
+    ].join("\n");
 }
+
+// Auto-refresh de l'arborescence DANS la console (pendant que la vue console est active).
+let _consoleTreeTimer = null;
+function setConsoleTreeAutoRefresh(on) {
+    if (_consoleTreeTimer) { clearInterval(_consoleTreeTimer); _consoleTreeTimer = null; }
+    if (on) { loadConsoleTree(); _consoleTreeTimer = setInterval(loadConsoleTree, 4000); }
+}
+
 (function wireConsoleTree() {
     const r = document.getElementById("btn-console-tree-refresh");
     const d = document.getElementById("btn-ide-detach");
     const psel = document.getElementById("terminal-project-select");
     if (r) r.addEventListener("click", loadConsoleTree);
-    if (d) d.addEventListener("click", () => detachIde(true));
+    if (d) d.addEventListener("click", () => openIdeWindow(_consoleProjectId()));
     if (psel) psel.addEventListener("change", loadConsoleTree);
 })();

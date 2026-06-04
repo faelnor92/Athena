@@ -73,6 +73,12 @@ body {
 }
 
 /* APP STRUCTURE: THREE COLUMNS DOCK GRID */
+/* Vue console : le chat est masqué → la grille passe à 2 colonnes (dock + principal
+   pleine largeur), sinon la colonne du chat laisse un vide. */
+.app-container.chat-hidden {
+    grid-template-columns: 76px 1fr !important;
+}
+
 .app-container {
     display: grid;
     /* minmax(0,…) : les colonnes peuvent rétrécir → le chat reste visible quand on
