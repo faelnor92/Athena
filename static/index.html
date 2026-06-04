@@ -405,6 +405,9 @@
                             <select id="terminal-agent-select" class="terminal-agent-select" style="background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; height: 28px;">
                                 <!-- Options peuplées dynamiquement par JS -->
                             </select>
+                            <select id="terminal-project-select" title="Projet ciblé par la console (indépendant du chat)" style="background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; height: 28px; max-width: 160px;">
+                                <option value="">Projet : courant</option>
+                            </select>
                             <span class="terminal-prompt-symbol" style="color: #4CAF50; font-weight: bold; margin-left: 4px;">$</span>
                             <input type="text" id="terminal-coder-input" placeholder="Refactorer un fichier, exécuter bash..." autocomplete="off" style="flex: 1; min-width: 0;">
                             <button id="btn-send-terminal" class="btn btn-primary" style="padding: 2px 12px; font-size: 0.75rem; border-radius: 4px; font-weight: bold; height: 28px; margin: 0; flex-shrink: 0;">Run</button>

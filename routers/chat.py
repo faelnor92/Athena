@@ -717,23 +717,31 @@ async def fork_chat(req: ForkRequest):
 class TerminalRequest(BaseModel):
     command: str
     agent: str = "Codeur"
+    project_id: str = None  # projet ciblé par la CONSOLE (indépendant du chat/voix)
 
 @router.post("/api/terminal/coder")
 async def terminal_coder(req: TerminalRequest):
     if not session.active_agent:
         raise HTTPException(status_code=500, detail=f"{_app_name()} n'est pas initialisé.")
-        
+
     agent_name = req.agent or "Codeur"
     coder_agent = swarm.agents.get(agent_name)
     if not coder_agent:
         raise HTTPException(status_code=404, detail=f"Agent {agent_name} introuvable.")
-        
-    # Contexte de la CONSOLE codeur : historique DÉDIÉ (isolé du chat principal),
-    # propre à l'utilisateur et persistant (shared_store, multi-worker). La console ne
-    # pollue donc plus le chat principal, mais garde sa mémoire d'une commande à l'autre.
+
+    # Projet ciblé PAR LA CONSOLE : override de contexte (sans toucher le projet global du
+    # chat/voix). get_workspace_dir() résoudra ce projet pour CE run uniquement.
+    from core import projects as _projects
+    _proj = (req.project_id or "").strip() or None
+    if _proj:
+        _projects.set_override(_proj)
+
+    # Contexte de la CONSOLE codeur : historique DÉDIÉ (isolé du chat principal), propre à
+    # l'utilisateur ET au projet, persistant (shared_store, multi-worker). La console garde
+    # sa mémoire d'une commande à l'autre sans polluer le chat.
     from core import shared_store
     from core.user_config import current_user_key
-    _console_key = current_user_key()
+    _console_key = f"{current_user_key()}:{_proj or 'global'}"
     chain = list(shared_store.get("coder_console", _console_key) or [])
 
     # Détecter si la commande doit être exécutée directement dans le shell système

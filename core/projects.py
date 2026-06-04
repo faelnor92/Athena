@@ -10,8 +10,32 @@ import re
 import time
 import uuid
 
+import contextvars
+
 from core import user_config
 from core import shared_projects
+
+# Override de projet PAR CONTEXTE D'EXÉCUTION (ContextVar) : permet à la console codeur
+# de cibler un projet précis pour SON run, sans modifier le projet global de l'utilisateur
+# (donc le chat et le vocal continuent sur le leur). Se propage aux threads via to_thread.
+_project_override = contextvars.ContextVar("project_override", default=None)
+
+
+def set_override(pid):
+    """Force le projet actif pour le contexte courant. Renvoie un token à passer à reset_override."""
+    return _project_override.set(pid or None)
+
+
+def reset_override(token):
+    try:
+        _project_override.reset(token)
+    except Exception:
+        pass
+
+
+def _effective_pid():
+    """Projet actif effectif : override de contexte s'il existe, sinon celui de l'utilisateur."""
+    return _project_override.get() or user_config.get("active_project")
 
 
 def _projects_base() -> str:
@@ -53,7 +77,7 @@ def get_active():
 
 
 def active_path():
-    pid = user_config.get("active_project")
+    pid = _effective_pid()
     if not pid:
         return None
     user = user_config.current_user_key()
@@ -77,7 +101,7 @@ def active_path():
 
 def current_role():
     """Rôle de l'utilisateur sur le projet ACTIF : None (workspace de base) | owner | editor | viewer."""
-    pid = user_config.get("active_project")
+    pid = _effective_pid()
     if not pid:
         return None
     if any(p.get("id") == pid for p in _own_projects()):

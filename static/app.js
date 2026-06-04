@@ -614,7 +614,9 @@ async function reloadSwarmConfig() {
             const hasCodeur = agentsConfig.some(a => a.name === "Codeur");
             agentSelect.value = hasCodeur ? "Codeur" : (orchestratorAgent()?.name || agentsConfig[0].name);
         }
-        
+        // Peupler le sélecteur de PROJET de la console (cible indépendante du chat).
+        loadTerminalProjects();
+
         rebuildGraphView();
         rebuildOfficeFloor();
 
@@ -5134,6 +5136,19 @@ document.addEventListener("click", (e) => {
 const terminalCoderInput = document.getElementById("terminal-coder-input");
 const btnSendTerminal = document.getElementById("btn-send-terminal");
 
+async function loadTerminalProjects() {
+    const sel = document.getElementById("terminal-project-select");
+    if (!sel) return;
+    try {
+        const d = await (await apiFetch("/api/projects")).json();
+        const projs = d.projects || [];
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">Projet : courant</option>' +
+            projs.map(p => `<option value="${p.id}">${_esc(p.name || p.id)}${p.shared ? " (partagé)" : ""}</option>`).join("");
+        if (cur) sel.value = cur;
+    } catch (e) { /* ignore */ }
+}
+
 async function executeTerminalCommand() {
     if (!terminalCoderInput) return;
     const command = terminalCoderInput.value.trim();
@@ -5146,13 +5161,15 @@ async function executeTerminalCommand() {
     // Afficher la commande tapée dans la console avec style
     const agentSelect = document.getElementById("terminal-agent-select");
     const selectedAgent = agentSelect ? agentSelect.value : "Codeur";
+    const projSelect = document.getElementById("terminal-project-select");
+    const projectId = projSelect ? (projSelect.value || null) : null;
     logToTerminal(`$ athena-${selectedAgent.toLowerCase()} > ${command}`, "transition");
-    
+
     try {
         const response = await apiFetch("/api/terminal/coder", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command: command, agent: selectedAgent })
+            body: JSON.stringify({ command: command, agent: selectedAgent, project_id: projectId })
         });
         
         const data = await response.json();
