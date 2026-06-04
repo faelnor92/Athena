@@ -1,0 +1,45 @@
+# Athena — Notes de développement (mémoire projet)
+
+> Fichier de référence **persistant** : vision, règles dures, particularités d'archi, bugs
+> connus et plan de refonte. À tenir à jour à chaque décision importante.
+
+## 🎯 Vision
+Framework multi-agent auto-hébergé, **niveau pro**, utilisable par les **foyers ET les
+entreprises**. Objectif : qualité comparable aux meilleurs (Claude Code, OpenClaw…) côté
+code, tout en restant **user-friendly** (tout dans l'UI, install simple).
+
+## ⛔ Règles dures (obligations)
+- **Secrets** : ne JAMAIS committer `.env`, clés, tokens. `.env` + données par-user gitignorés.
+- **Git** : commits locaux ; l'utilisateur pousse lui-même (ou demande explicitement). Auteur = faelnor92@gmail.com. Co-Authored-By: Claude.
+- **Config locale** : `agents.yaml`, `routines.json`, etc. sont **gitignorés** (config/état runtime). Les correctifs de config doivent aller dans `agents.default.yaml` / `agents.example.yaml` (suivis) pour les nouvelles installs.
+- **Prompts d'agents** : le `system_prompt` d'un agent = sa **personnalité**, ÉDITABLE par l'utilisateur. Les **règles système** (honnêteté outils, chemins relatifs, etc.) NE doivent PAS y être écrites en dur : elles vivent dans le **préambule système** injecté par `core/swarm.py` (adapté aux outils de l'agent).
+- **Agents dynamiques** : SEUL l'**orchestrateur** (Athena) est fixe. Tous les autres peuvent être créés / supprimés / recréés avec d'autres métiers/prompts → ne jamais coder en supposant qu'un agent précis (« Codeur », etc.) existe.
+- **Outils** : les outils cochés sont exposés au modèle via leur **schéma** (docstring) — ne pas redécrire les outils dans les prompts.
+- **Tests** : `for t in tests/test_*.py; do python3 "$t"` + `tests/test_api_smoke.py` (baseline des routes). Régénérer la baseline après ajout intentionnel de routes.
+
+## 🧩 Particularités d'architecture
+- **Multi-tenant** : tout est par-utilisateur (mémoire, RAG `um_<user>`, agenda, listes, quotas, config). Bucket `local` en mode sans auth.
+- **État partagé multi-worker** : `core/shared_store.py` (SQLite WAL, atomique) pour comptes/quotas/sessions/routines/invites/projets/config — cohérent en `uvicorn --workers N`.
+- **Projets** : un projet = un dossier. Projet actif (par-user) → `get_workspace_dir()` → scope des outils code + explorateur. Override de contexte (`projects.set_override`) pour que la **console** cible un projet différent du chat/voix.
+- **Sandbox** : `tools/sandbox_runner.py` (Docker, image `python:3.11-slim`, réseau coupé, `-v projet:/work`). `tool_script` = exec Python en-process sandboxé par AST. Garde `can_write()` (viewer = lecture seule) sur tous les outils d'écriture.
+- **Sécurité** : auth Bearer + middleware authz centralisé, throttle login partagé, 2FA TOTP, chiffrement au repos (Fernet) conv+traces, SSRF `net_guard` (web + iCal/CalDAV), en-têtes CSP, rate-limit, audit (`/api/audit`), validation admin des automatisations.
+
+## 🐛 Bugs / limites connus (remontés à l'usage — 2026-06-04)
+1. **Code médiocre** : `model: coder-qwen` (petit modèle local) → hallucine, boucle, ignore les outils. **Le modèle est LE facteur #1** ; viser un modèle frontier pour le code.
+2. **Boucle inefficace** : atteint `max_turns` sans converger (narration, re-lectures). Besoin d'une vraie boucle agentique plan→act→observe→iterate.
+3. **Orchestrateur fait du code** même si l'agent code est restreint (routage qui fuit).
+4. **Sandbox trop fermée** : pas de réseau (pip/npm échouent en DNS), pas de `git` dans l'image.
+5. **Fuite de workspace** : les projets vivent SOUS le workspace de base (`projects/local/<id>/`) → l'explorateur du workspace de base montre TOUS les projets. À isoler.
+6. **Images non affichées** dans l'explorateur de projet (vue Fichiers).
+7. **SSH** : un seul host (config admin) ; pas de `net_guard` ni filtre de commande dessus ; pas de garde `can_write`. À cadrer.
+8. **Hallucination d'outil** : l'agent prétend avoir lancé git / lu un dossier sans le faire (atténué par le préambule système « ne jamais inventer un résultat d'outil » + auto-approve console).
+
+## 🚧 Refonte « partie code » (en cours de décision)
+Direction pressentie (à valider) :
+- **Sous-système de code séparé du swarm conversationnel** : un agent de code dédié (indépendant des agents dynamiques) avec une **boucle agentique** propre (lire/écrire/éditer/exécuter/tester/itérer), sur un **modèle fort**.
+- **Console + explorateur + IDE FUSIONNÉS** en un seul espace de code.
+- **Chat principal** = workspaces généraux (notes/docs) ; **code** = projets distincts (dépôts git), stockés HORS du workspace de base (plus de fuite).
+- **Sandbox dev** : image avec git + toolchains + réseau contrôlé pour les installs.
+- S'inspirer des projets open-source éprouvés (Aider, OpenHands…) pour la boucle.
+
+_(Décisions définitives à consigner ici au fur et à mesure.)_
