@@ -2,6 +2,7 @@ import os
 import json
 import time
 import asyncio
+import functools
 import re
 import threading
 import traceback
@@ -727,18 +728,14 @@ async def terminal_coder(req: TerminalRequest):
     if not coder_agent:
         raise HTTPException(status_code=404, detail=f"Agent {agent_name} introuvable.")
         
-    # Reconstruire la chaîne linéaire de messages existante pour donner le contexte à l'IA
-    chain = []
-    curr_id = session.active_node_id
-    node_map = {m["id"]: m for m in session.messages if m.get("id")}
-    while curr_id:
-        node = node_map.get(curr_id)
-        if not node:
-            break
-        standard_msg = {k: v for k, v in node.items() if k not in ["id", "parent_id"]}
-        chain.insert(0, standard_msg)
-        curr_id = node["parent_id"]
-        
+    # Contexte de la CONSOLE codeur : historique DÉDIÉ (isolé du chat principal),
+    # propre à l'utilisateur et persistant (shared_store, multi-worker). La console ne
+    # pollue donc plus le chat principal, mais garde sa mémoire d'une commande à l'autre.
+    from core import shared_store
+    from core.user_config import current_user_key
+    _console_key = current_user_key()
+    chain = list(shared_store.get("coder_console", _console_key) or [])
+
     # Détecter si la commande doit être exécutée directement dans le shell système
     import subprocess
     import os
@@ -927,38 +924,32 @@ async def terminal_coder(req: TerminalRequest):
         }
 
     # Sinon, on passe par l'exécution standard de l'Agent Codeur
-    # On ajoute la commande de la console localement à la chaîne contextuelle
-    base_len = len(chain)  # repère : tout ce qui suit = nouvel échange à persister
-    chain.append({"role": "user", "content": f"[CLI] {req.command}"})
+    chain.append({"role": "user", "content": req.command})
 
     run_id = run_store.new_run_id()
     run_registry.start(run_id)
     token = current_run_id.set(run_id)
     chan_token = channels.current_channel.set("web")
     appr_token = approvals.auto_approve_var.set(channels.auto_approve_for("web"))
+    # Génération multi-fichiers : la console a besoin de plus de tours que le défaut (10).
+    max_turns = int(os.getenv("CODER_CONSOLE_MAX_TURNS", "30") or 30)
     try:
-        # Lancer l'exécution en ciblant directement l'Agent Codeur (dans un thread) avec LOCKED=TRUE
-        next_agent, new_chain, steps = await asyncio.to_thread(swarm.run, coder_agent, chain, locked=True)
+        # Exécution ciblée sur l'Agent Codeur (thread), verrouillée sur lui.
+        next_agent, new_chain, steps = await asyncio.to_thread(
+            functools.partial(swarm.run, coder_agent, chain, max_turns=max_turns, locked=True))
         # S'assurer de rester sur l'orchestrateur au niveau de la session globale
         session.active_agent = _orch_agent()
 
-        # CONTEXTE : on persiste le nouvel échange (commande CLI + réponses de l'agent) dans
-        # la conversation, sinon chaque commande repartirait sans mémoire des précédentes.
+        # MÉMOIRE de la console (isolée du chat) : on sauvegarde l'historique mis à jour,
+        # borné aux 40 derniers messages pour éviter qu'il n'enfle indéfiniment.
         try:
-            msgs = session.messages
-            prev_id = session.active_node_id
-            for m in new_chain[base_len:]:
-                nid = uuid.uuid4().hex
-                msgs.append({"id": nid, "parent_id": prev_id,
-                             **{k: v for k, v in m.items() if k not in ("id", "parent_id")}})
-                prev_id = nid
-            session.messages = msgs            # déclenche la sauvegarde
-            session.active_node_id = prev_id
+            shared_store.set("coder_console", _console_key, new_chain[-40:])
         except Exception:
             import logging
             logging.getLogger("athena.server").exception("Persistance console codeur échouée")
 
-        # Transformer les types "message" en "terminal_message" pour éviter de polluer le chat principal
+        # Transformer les types "message" en "terminal_message" : la console reste séparée
+        # du chat principal côté affichage.
         for step in steps:
             if step.get("type") == "message":
                 step["type"] = "terminal_message"
