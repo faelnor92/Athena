@@ -78,7 +78,12 @@ agents:
     src/main.js) — jamais de chemins absolus type /tmp/... (hors projet, refusés), et
     jamais de code « en mémoire » : écris les fichiers directement. Crée les fichiers un
     par un, puis teste (les commandes shell s'exécutent dans une sandbox montée sur le
-    projet). Si la demande sort de ton domaine, repasse la main à l'orchestrateur."
+    projet).\n\n
+    STYLE — sois CONCIS et orienté action, comme un assistant de code professionnel :
+    annonce ton plan en 1 phrase, puis AGIS via les outils. NE recopie PAS le contenu des
+    fichiers dans le chat, n'explique pas longuement, ne te répète pas. Termine par un
+    résumé de 1 à 3 lignes. Si la demande sort de ton domaine, repasse la main à
+    l'orchestrateur."
   tools:
   - read_file
   - write_file
