@@ -69,6 +69,10 @@ def validate_tool_script(code: str):
             return False, f"accès interdit à un attribut dunder : .{node.attr}"
         elif isinstance(node, ast.Name) and node.id.startswith("__"):
             return False, f"identifiant interdit : {node.id}"
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and "__" in node.value:
+            # Les dunders dans une f-string sont vus par l'AST, mais pas ceux d'une chaîne
+            # littérale passée à str.format ("{0.__class__...}".format(x)) → on bloque ici.
+            return False, "chaîne contenant '__' interdite (anti-évasion sandbox via str.format)"
     return True, ""
 
 

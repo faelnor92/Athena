@@ -95,6 +95,12 @@ def format_ics_datetime(raw_dt: str) -> str:
 # =========================================================================
 def sync_ical_feed(url: str) -> List[Dict[str, Any]]:
     """ Récupère et parse un flux ICS externe """
+    # Anti-SSRF : refuser les URL pointant vers le réseau interne / métadonnées cloud
+    # (l'URL iCal vient de la config utilisateur → fetch côté serveur).
+    from tools.net_guard import is_blocked_url
+    if is_blocked_url(url):
+        print(f"📅 [Sync iCal] URL refusée (réseau interne/SSRF) : {url}")
+        return []
     try:
         r = requests.get(url, timeout=10)
         if r.status_code == 200:
@@ -287,7 +293,13 @@ def sync_caldav_calendar() -> List[Dict[str, Any]]:
     
     if not url or not user or not password:
         return []
-        
+
+    # Anti-SSRF : l'URL CalDAV vient de la config utilisateur → bloquer le réseau interne.
+    from tools.net_guard import is_blocked_url
+    if is_blocked_url(url):
+        print("📅 [Sync CalDAV] URL refusée (réseau interne/SSRF).")
+        return []
+
     events = []
     try:
         # Requête REPORT pour récupérer tous les VEVENT du calendrier
