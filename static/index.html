@@ -49,9 +49,9 @@
                     <span class="dock-icon">📊</span>
                     <span class="dock-tooltip">Cockpit</span>
                 </button>
-                <button class="dock-btn" id="tab-files" title="Explorateur de Fichiers">
-                    <span class="dock-icon">📁</span>
-                    <span class="dock-tooltip">Fichiers</span>
+                <button class="dock-btn" id="tab-files" title="Espace Code (explorateur + éditeur + terminal)">
+                    <span class="dock-icon">🧩</span>
+                    <span class="dock-tooltip">Code</span>
                 </button>
                 <button class="dock-btn" id="tab-agenda" title="Tâches & Agenda">
                     <span class="dock-icon">📋</span>
@@ -70,7 +70,7 @@
                     <button class="dock-btn" id="tab-branches"><span class="dock-icon">🌿</span><span class="dock-tooltip">Branches</span></button>
                     <button class="dock-btn" id="tab-memory"><span class="dock-icon">🧠</span><span class="dock-tooltip">Mémoire</span></button>
                     <button class="dock-btn" id="tab-meeting"><span class="dock-icon">🎙️</span><span class="dock-tooltip">Réunions</span></button>
-                    <button class="dock-btn" id="tab-console"><span class="dock-icon">💻</span><span class="dock-tooltip">Console</span></button>
+                    <button class="dock-btn" id="tab-console" style="display:none;"><span class="dock-icon">💻</span><span class="dock-tooltip">Console</span></button>
                     <button class="dock-btn" id="tab-orchestrator"><span class="dock-icon">⚡</span><span class="dock-tooltip">Orchestrateur</span></button>
                 </div>
                 </div>
@@ -218,8 +218,14 @@
                 </div>
                 
                 <!-- PANEL C: PROJECT FILES EXPLORER -->
-                <div class="viewport-panel" id="view-files" style="display: none;">
-                    <div class="files-explorer-container">
+                <div class="viewport-panel" id="view-files" style="display: none; flex-direction: column; min-height: 0;">
+                    <!-- Barre visible UNIQUEMENT quand l'éditeur est détaché (explorateur masqué) -->
+                    <div id="code-toolbar" style="display:none; align-items:center; gap:8px; padding:4px 2px 8px;">
+                        <span style="font-size:0.8rem; opacity:0.7;">🪟 Éditeur + explorateur ouverts en fenêtre flottante</span>
+                        <span style="flex:1;"></span>
+                        <button id="btn-code-reattach" class="btn-icon" style="padding:4px 8px; font-size:0.75rem;" title="Rattacher l'éditeur dans la page">⧉ Rattacher</button>
+                    </div>
+                    <div class="files-explorer-container" style="flex: 1 1 auto; min-height: 0; overflow: auto;">
                         <!-- Sélecteur de PROJET (scope les outils codeur + l'explorateur) -->
                         <div class="glass files-path-bar" style="margin-bottom: 6px;">
                             <span style="font-size: 0.75rem; user-select: none; white-space: nowrap; opacity: 0.75;">🗂️ Projet :</span>
@@ -253,8 +259,9 @@
                         </div>
                         
                         <div style="display: flex; justify-content: space-between; align-items: center; margin: 6px 0;">
-                            <h4 class="view-panel-title" style="margin: 0;">📁 Fichiers du Projet</h4>
+                            <h4 class="view-panel-title" style="margin: 0;">🧩 Espace Code</h4>
                             <div style="display:flex; gap:6px;">
+                                <button id="btn-code-detach" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Détacher l'éditeur en fenêtre flottante (2e écran)">⧉ Détacher</button>
                                 <button id="btn-toggle-explorer" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Réduire/agrandir l'explorateur">◀ Réduire</button>
                                 <button id="btn-refresh-files" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Actualiser la liste">🔄 Actualiser</button>
                             </div>
@@ -294,8 +301,12 @@
                             </div>
                         </div>
                     </div>
+                    <!-- ESPACE CODE : poignée de redimensionnement (haut éditeur ↔ bas terminal) -->
+                    <div id="code-vsplitter" title="Glisser pour redimensionner le terminal" style="flex:0 0 auto; height:8px; margin:4px 0; cursor:row-resize; border-radius:4px; background:rgba(255,255,255,0.08);"></div>
+                    <!-- ESPACE CODE : terminal codeur rapatrié ici (relocation JS depuis view-console) -->
+                    <div id="code-terminal-zone" style="flex: 0 0 32%; min-height: 0; display: flex; flex-direction: column;"></div>
                 </div>
-                
+
                 <!-- PANEL D: TASKS / INTERACTIVE LISTS -->
                 <div class="viewport-panel" id="view-agenda" style="display: none;">
                     <div class="agenda-container">
@@ -406,9 +417,13 @@
                             <select id="terminal-agent-select" class="terminal-agent-select" style="background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; height: 28px;">
                                 <!-- Options peuplées dynamiquement par JS -->
                             </select>
-                            <select id="terminal-project-select" title="Projet ciblé par la console (indépendant du chat)" style="background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; height: 28px; max-width: 160px;">
+                            <select id="terminal-project-select" title="Projet ciblé par la console" style="display:none; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; height: 28px; max-width: 160px;">
                                 <option value="">Projet : courant</option>
                             </select>
+                            <select id="terminal-host-select" title="Hôte SSH ciblé (registre multi-hôtes ; admin)" style="background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; height: 28px; max-width: 160px;">
+                                <option value="">💻 Local</option>
+                            </select>
+                            <button id="btn-add-ssh-host" class="btn-icon" title="Ajouter un hôte SSH" style="padding:2px 6px; font-size:0.72rem; height:28px;">➕ SSH</button>
                             <span class="terminal-prompt-symbol" style="color: #4CAF50; font-weight: bold; margin-left: 4px;">$</span>
                             <input type="text" id="terminal-coder-input" placeholder="Refactorer un fichier, exécuter bash..." autocomplete="off" style="flex: 1; min-width: 0;">
                             <button id="btn-send-terminal" class="btn btn-primary" style="padding: 2px 12px; font-size: 0.75rem; border-radius: 4px; font-weight: bold; height: 28px; margin: 0; flex-shrink: 0;">Run</button>
@@ -793,8 +808,26 @@
                         </div>
                         <button type="submit" class="btn btn-primary" style="margin-top: 16px;">Sauvegarder la configuration SSH</button>
                     </form>
+
+                    <!-- REGISTRE MULTI-HÔTES : brancher plusieurs serveurs -->
+                    <div style="margin-top: 22px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
+                        <h3 style="margin-top: 0;">🖧 Hôtes supplémentaires (multi-serveurs)</h3>
+                        <p class="section-desc">Branche plusieurs serveurs : ils apparaissent dans le sélecteur de la console Code et sont accessibles aux agents via <code>execute_bash_command(host='Nom')</code>. L'hôte ci-dessus (.env) reste le serveur « par défaut ».</p>
+                        <div id="ssh-hosts-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
+                            <div style="opacity:0.5; font-size:0.8rem;">Chargement…</div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group"><label for="newssh-label">Nom affiché</label><input type="text" id="newssh-label" placeholder="Ex: Prod"></div>
+                            <div class="form-group"><label for="newssh-host">Hôte</label><input type="text" id="newssh-host" placeholder="Ex: 10.0.0.5"></div>
+                            <div class="form-group"><label for="newssh-username">Utilisateur</label><input type="text" id="newssh-username" placeholder="Ex: root"></div>
+                            <div class="form-group"><label for="newssh-port">Port</label><input type="text" id="newssh-port" placeholder="22"></div>
+                            <div class="form-group"><label for="newssh-key">Clé privée (chemin sur le serveur)</label><input type="text" id="newssh-key" placeholder="~/.ssh/id_ed25519 (recommandé)"></div>
+                            <div class="form-group"><label for="newssh-password">Mot de passe (déconseillé)</label><input type="password" id="newssh-password" placeholder="préférez une clé"></div>
+                        </div>
+                        <button id="btn-settings-add-ssh" class="btn btn-secondary" style="margin-top: 8px;">＋ Ajouter cet hôte</button>
+                    </div>
                 </div>
-                
+
                 <!-- ONGLET 3 : CONFIGURATION AGENDA EXTERNE -->
                 <div class="modal-pane" id="pane-agenda" style="display: none;">
                     <h3>📅 Synchronisation Universelle de l'Agenda</h3>
@@ -1021,6 +1054,20 @@
                     <div class="form-group"><label>Mot de passe SMTP</label><input type="password" id="msg-smtp-pass" placeholder="Laisser vide si inchangé"></div>
                     <div class="form-group"><label>Expéditeur (From)</label><input type="text" id="msg-smtp-from" placeholder="athena@maison.local"></div>
                     <div class="form-group"><label>Destinataire(s) — séparés par des virgules</label><input type="text" id="msg-email-to" placeholder="moi@gmail.com"></div>
+
+                    <h5 style="color: var(--accent-cyan); margin: 18px 0 4px;">📥 Lecture des mails (IMAP)</h5>
+                    <p class="section-desc" style="margin:0 0 6px;">L'assistant peut LIRE ta boîte et préparer des BROUILLONS — il n'envoie ni ne supprime jamais (séparé du SMTP ci-dessus, mais souvent le même compte). Gmail : active IMAP + « mot de passe d'application ».</p>
+                    <div style="display:flex; gap:6px;">
+                        <div class="form-group" style="flex:2;"><label>Serveur IMAP</label><input type="text" id="msg-imap-host" placeholder="imap.gmail.com"></div>
+                        <div class="form-group" style="flex:1;"><label>Port</label><input type="text" id="msg-imap-port" placeholder="993"></div>
+                        <div class="form-group" style="flex:0.7; flex-direction:row; align-items:center; gap:6px; margin-top:22px;"><input type="checkbox" id="msg-imap-ssl" checked style="width:16px;height:16px;"><label style="margin:0;">SSL</label></div>
+                    </div>
+                    <div class="form-group"><label>Utilisateur IMAP</label><input type="text" id="msg-imap-user" placeholder="moi@gmail.com"></div>
+                    <div class="form-group"><label>Mot de passe IMAP (mot de passe d'application)</label><input type="password" id="msg-imap-pass" placeholder="Laisser vide si inchangé"></div>
+                    <div style="display:flex; gap:6px;">
+                        <div class="form-group" style="flex:1;"><label>Adresse « From » (brouillons)</label><input type="text" id="msg-imap-from" placeholder="moi@gmail.com"></div>
+                        <div class="form-group" style="flex:1;"><label>Dossier des brouillons</label><input type="text" id="msg-imap-drafts" placeholder="Drafts (Gmail : [Gmail]/Drafts)"></div>
+                    </div>
 
                     <button type="button" id="btn-msg-save" class="btn btn-primary" style="width:100%; margin-top:10px;">💾 Enregistrer les messageries</button>
                     <div style="display:flex; gap:6px; margin-top:8px; align-items:center;">
@@ -1324,7 +1371,12 @@
                         <label for="agent-display-name">Nom d'usage (Ex: Robert Développeur)</label>
                         <input type="text" id="agent-display-name" placeholder="Ex: Robert Développeur">
                     </div>
-                    
+
+                    <div class="form-group">
+                        <label for="agent-description">Spécialité (1 phrase) — sert au ROUTAGE d'Athéna</label>
+                        <input type="text" id="agent-description" placeholder="Ex: Développe et débogue du code (Python, JS) et gère Git">
+                    </div>
+
                     <div class="form-group">
                         <label for="agent-avatar-type">Apparence (Sprite 2.5D)</label>
                         <select id="agent-avatar-type" style="width: 100%; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; padding: 10px; outline: none; cursor: pointer;">

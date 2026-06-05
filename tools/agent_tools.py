@@ -36,12 +36,13 @@ def _known_tool_names():
 
 def create_agent(name: str, system_prompt: str, model: str = "", tools: str = "",
                  avatar_type: str = "", display_name: str = "",
-                 welcome_message: str = "") -> str:
+                 welcome_message: str = "", description: str = "") -> str:
     """
     Crée un nouvel agent dans l'essaim (ou met à jour un agent existant), puis recharge l'essaim à chaud.
     L'agent devient immédiatement utilisable et Athena peut lui déléguer des tâches (handoff automatique).
     name: Nom unique de l'agent (lettres/chiffres/underscore, ex: 'Analyste'). Le nom 'Athena' est protégé et refusé.
     system_prompt: Instruction système décrivant le rôle, le ton et la mission de l'agent.
+    description: Spécialité de l'agent EN UNE PHRASE COURTE (ex: « Développeur Python/JS, écrit et débogue du code »). UTILISÉE POUR LE ROUTAGE : c'est sur elle qu'Athena décide de lui confier une demande. Renseigne-la toujours, claire et distinctive.
     model: Identifiant du modèle LLM (ex: 'gpt-4o'). Vide = réutilise le modèle de Athena.
     tools: Noms d'outils à accorder, séparés par des virgules (ex: 'web_search,execute_python_code'). Les outils inconnus sont ignorés.
     avatar_type: Apparence parmi robot_neon, dev_purple, writer_orange, manager_gold, artist_pink, support_green, scientist_blue, agent_dark, wizard_purple, cyber_neko, astronaut_white, cyber_ninja.
@@ -104,6 +105,7 @@ def create_agent(name: str, system_prompt: str, model: str = "", tools: str = ""
     entry = {
         "name": name,
         "display_name": display_name.strip() or (existing.get("display_name") if existing else None) or name,
+        "description": description.strip() or (existing.get("description") if existing else "") or "",
         "system_prompt": system_prompt.strip(),
         "model": model,
         "supports_tools": True,
@@ -122,6 +124,17 @@ def create_agent(name: str, system_prompt: str, model: str = "", tools: str = ""
     else:
         agents.append(entry)
     data["agents"] = agents
+
+    # L'ORCHESTRATEUR doit pouvoir router vers ce nouvel agent : on l'ajoute à ses handoffs
+    # (sinon transfer_to_X/delegate_to_X ne sont pas générés et il ne reste que query_agent).
+    # 100 % dynamique : aucun agent codé en dur, c'est la création qui câble le hub.
+    for a in agents:
+        if str(a.get("name", "")).lower() == orch_name.lower():
+            ho = a.get("handoffs") or []
+            if name not in ho:
+                ho.append(name)
+            a["handoffs"] = ho
+            break
 
     # Écrire puis recharger à chaud.
     try:

@@ -168,6 +168,8 @@ from routers import projects as _projects_router
 app.include_router(_projects_router.router)
 from routers import pipelines as _pipelines_router
 app.include_router(_pipelines_router.router)
+from routers import ssh_hosts as _ssh_hosts_router
+app.include_router(_ssh_hosts_router.router)
 
 
 # Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Athena →

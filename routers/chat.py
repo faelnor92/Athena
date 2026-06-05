@@ -31,7 +31,7 @@ router = APIRouter(tags=["Chat"])
 
 class ChatRequest(BaseModel):
     message: str
-    parent_id: str = None
+    parent_id: Optional[str] = None
     client_id: str = "web"  # canal/session : web (défaut), cli, voice, ...
 
 class ChatResponse(BaseModel):
@@ -320,7 +320,7 @@ _ASYNC_LOCK = threading.Lock()
 
 class AsyncChatRequest(BaseModel):
     message: str
-    callback_url: str = None
+    callback_url: Optional[str] = None
     client_id: str = "web"
     structured_schema: Dict[str, Any] = None
 
@@ -628,6 +628,18 @@ async def cancel_run_endpoint(run_id: str):
     return {"run_id": run_id, "cancellation_requested": ok}
 
 
+class SteerRequest(BaseModel):
+    message: str
+
+
+@router.post("/api/runs/{run_id}/steer")
+async def steer_run_endpoint(run_id: str, req: SteerRequest):
+    """STEERING : envoie une consigne à un run EN COURS pour le réorienter sans le relancer.
+    Injectée comme message utilisateur au prochain tour de l'essaim."""
+    ok = run_registry.steer(run_id, req.message)
+    return {"run_id": run_id, "steering_accepted": ok}
+
+
 @router.post("/api/runs/{run_id}/replay")
 async def replay_run_endpoint(run_id: str):
     """Rejoue le message d'un run et renvoie la comparaison ancien/nouveau."""
@@ -668,7 +680,7 @@ async def select_conversation(req: SelectConvRequest):
     raise HTTPException(status_code=404, detail="Conversation not found")
 
 class NewConvRequest(BaseModel):
-    name: str = None
+    name: Optional[str] = None
 
 @router.post("/api/conversations/new")
 async def create_conversation(req: NewConvRequest = None):
@@ -717,7 +729,8 @@ async def fork_chat(req: ForkRequest):
 class TerminalRequest(BaseModel):
     command: str
     agent: str = "Codeur"
-    project_id: str = None  # projet ciblé par la CONSOLE (indépendant du chat/voix)
+    project_id: Optional[str] = None  # projet ciblé par la CONSOLE (None = projet courant)
+    host_id: Optional[str] = None     # hôte SSH ciblé (None = défaut .env / local)
 
 @router.post("/api/terminal/coder")
 async def terminal_coder(req: TerminalRequest):
@@ -728,6 +741,15 @@ async def terminal_coder(req: TerminalRequest):
     coder_agent = swarm.agents.get(agent_name)
     if not coder_agent:
         raise HTTPException(status_code=404, detail=f"Agent {agent_name} introuvable.")
+
+    # Suivi de PLAN/TODO (façon Claude Code) : on garantit que l'agent codeur dispose des
+    # outils de plan, quelle que soit sa config (agents.yaml éditable par l'utilisateur).
+    # Ajout idempotent au toolset de l'agent — comme la carte de projet injectée au runtime.
+    import tools.planning_tools as _planning
+    _have = {getattr(f, "__name__", "") for f in coder_agent.tools}
+    for _pf in (_planning.make_plan, _planning.update_plan_step, _planning.get_plan):
+        if _pf.__name__ not in _have:
+            coder_agent.tools.append(_pf)
 
     # Projet ciblé PAR LA CONSOLE : override de contexte (sans toucher le projet global du
     # chat/voix). get_workspace_dir() résoudra ce projet pour CE run uniquement.
@@ -783,38 +805,31 @@ async def terminal_coder(req: TerminalRequest):
             raw_bash_cmd = cmd_stripped
 
     if is_direct_bash:
-        # 1. Routage SSH si configuré
-        if os.getenv("SSH_HOST"):
+        # 1. Routage SSH : hôte sélectionné dans la console (registre multi-hôtes) OU
+        #    hôte unique du .env (rétro-compatible).
+        if req.host_id or os.getenv("SSH_HOST"):
             from tools.system_tools import run_ssh_command
-            
-            if raw_bash_cmd.startswith("cd "):
-                target_dir = raw_bash_cmd[3:].strip().strip("'\"")
-                current_remote_cwd = os.getenv("SSH_REMOTE_CWD")
-                # Échappement des chemins (issus d'entrée utilisateur) via shlex.quote.
-                if current_remote_cwd:
-                    remote_cmd = f"cd {shlex.quote(current_remote_cwd)} && cd {shlex.quote(target_dir)} && pwd"
-                else:
-                    remote_cmd = f"cd {shlex.quote(target_dir)} && pwd"
-                
-                stdout_content, stderr_content, rc = run_ssh_command(remote_cmd)
+            from tools import ssh_hosts as _sshh
+            _hid = req.host_id
+
+            if raw_bash_cmd.startswith("cd ") or raw_bash_cmd == "cd":
+                # `cd` indépendant PAR HÔTE : run_ssh_command préfixe déjà le cwd suivi de
+                # l'hôte (resolve), donc on envoie juste `cd <cible> && pwd` et on mémorise
+                # le nouveau chemin pour CE serveur (ssh_hosts.set_cwd).
+                target_dir = raw_bash_cmd[3:].strip().strip("'\"") if raw_bash_cmd != "cd" else "~"
+                remote_cmd = f"cd {shlex.quote(target_dir)} && pwd"
+                stdout_content, stderr_content, rc = run_ssh_command(remote_cmd, host_id=_hid)
                 if rc == 0 and stdout_content.strip():
                     new_remote_path = stdout_content.strip()
-                    os.environ["SSH_REMOTE_CWD"] = new_remote_path
+                    _sshh.set_cwd(new_remote_path, _hid)
                     stdout_content = f"📂 Répertoire distant SSH changé : {new_remote_path}"
                     stderr_content = ""
                 else:
                     stdout_content = ""
                     if not stderr_content:
                         stderr_content = f"cd: {target_dir}: Aucun fichier ou dossier de ce type sur l'hôte SSH"
-            elif raw_bash_cmd == "cd":
-                stdout_content, stderr_content, rc = run_ssh_command("cd ~ && pwd")
-                if rc == 0 and stdout_content.strip():
-                    new_remote_path = stdout_content.strip()
-                    os.environ["SSH_REMOTE_CWD"] = new_remote_path
-                    stdout_content = f"📂 Répertoire distant SSH changé : {new_remote_path}"
-                    stderr_content = ""
             else:
-                stdout_content, stderr_content, rc = run_ssh_command(raw_bash_cmd)
+                stdout_content, stderr_content, rc = run_ssh_command(raw_bash_cmd, host_id=_hid)
                 
         # 2. Exécution locale par défaut
         else:
@@ -836,6 +851,7 @@ async def terminal_coder(req: TerminalRequest):
                 import sys
                 from tools.system_tools import check_command_blacklist
                 from tools import sandbox_runner
+                from tools import dev_container
 
                 # Filtrage de sécurité partagé (mêmes motifs que l'outil bash des agents).
                 rejection = check_command_blacklist(raw_bash_cmd)
@@ -857,6 +873,18 @@ async def terminal_coder(req: TerminalRequest):
                             )
                             stdout_content = res.stdout
                             stderr_content = res.stderr
+                        elif dev_container.enabled():
+                            # CONTENEUR DEV PERSISTANT (par utilisateur+projet) : git, pip/npm et
+                            # l'état persistent entre les commandes (vrai terminal de dev). Timeout
+                            # plus large (installs). Sous-dossier courant relatif à /work.
+                            rel = os.path.relpath(get_coder_cwd(), get_workspace_dir())
+                            if rel.startswith("..") or os.path.isabs(rel):
+                                rel = "."
+                            dc_key = dev_container.sanitize_key(current_user_key(), _proj)
+                            _dc_to = int(os.getenv("DEV_CONTAINER_EXEC_TIMEOUT", "180") or 180)
+                            stdout_content, stderr_content, _rc = dev_container.exec_bash(
+                                dc_key, raw_bash_cmd, timeout=_dc_to, workdir=rel
+                            )
                         elif sandbox_runner.sandbox_mode() != "off" and sandbox_runner.docker_available():
                             # Exécution isolée en conteneur Docker jetable, dans le sous-dossier courant.
                             rel = os.path.relpath(get_coder_cwd(), get_workspace_dir())
@@ -942,6 +970,25 @@ async def terminal_coder(req: TerminalRequest):
     # AUTO-APPROUVE les outils (sinon chaque git_status/écriture exige une confirmation
     # verbeuse). L'admin qui tape la commande assume l'action ; sandbox + can_write tiennent.
     appr_token = approvals.auto_approve_var.set(True)
+    # CONTENEUR DEV PERSISTANT : on l'active pour CE run → les outils bash de l'agent
+    # (run_checks, execute_bash_command via sandbox_runner) s'exécutent dans le conteneur
+    # du projet (git/pip/npm + état persistent), comme le bash direct de la console.
+    from tools import dev_container as _dev_container
+    _dc_token = None
+    if _dev_container.enabled():
+        _dc_token = _dev_container.activate(_dev_container.sanitize_key(current_user_key(), _proj))
+    # Scope du PLAN propre à cette console (user+projet) → isolé du plan du chat principal.
+    _plan_token = _planning.set_scope(f"coder:{_console_key}")
+    # Hôte SSH actif pour CE run (registre multi-hôtes) → l'outil bash de l'agent cible le
+    # serveur sélectionné dans la console.
+    from tools import ssh_hosts as _ssh_hosts
+    _ssh_token = _ssh_hosts.set_active(req.host_id) if req.host_id else None
+    # Allowlist/denylist d'outils PAR SESSION (sécurité, configurable par l'admin) : permet
+    # de restreindre ce que l'agent codeur peut faire dans la console, sans toucher sa config.
+    from core import tool_policy as _tool_policy
+    _tp_allow = [t.strip() for t in os.getenv("CODER_CONSOLE_ALLOW_TOOLS", "").split(",") if t.strip()]
+    _tp_deny = [t.strip() for t in os.getenv("CODER_CONSOLE_DENY_TOOLS", "").split(",") if t.strip()]
+    _tp_token = _tool_policy.set_policy(allow=_tp_allow or None, deny=_tp_deny or None) if (_tp_allow or _tp_deny) else None
     # Tâche de code multi-fichiers : budget de tours généreux (cf. Aider/Hermes ≈ 60-90).
     max_turns = int(os.getenv("CODER_CONSOLE_MAX_TURNS", "60") or 60)
     # REPO-MAP : on donne à l'agent la carte du projet (arbo + symboles) pour qu'il ne code
@@ -956,10 +1003,22 @@ async def terminal_coder(req: TerminalRequest):
                                      "fichiers au besoin) :\n" + _rmap}] + chain
     except Exception:
         pass
+    # ÉTAT PARTAGÉ du run (context_variables) : ancre l'agent sur le contexte de code
+    # courant (projet, répertoire) — visible dans son préambule et lisible par ses outils.
+    _ctx_vars = {}
+    try:
+        from core.state import get_workspace_dir, get_coder_cwd
+        _active = _projects.get_active() if _proj else None
+        _ctx_vars["projet"] = (_active or {}).get("name") if _active else (_proj or "workspace de base")
+        _rel = os.path.relpath(get_coder_cwd(), get_workspace_dir())
+        _ctx_vars["repertoire_courant"] = "." if (_rel == "." or _rel.startswith("..")) else _rel
+    except Exception:
+        pass
     try:
         # Exécution ciblée sur l'Agent Codeur (thread), verrouillée sur lui.
         next_agent, new_chain, steps = await asyncio.to_thread(
-            functools.partial(swarm.run, coder_agent, run_chain, max_turns=max_turns, locked=True))
+            functools.partial(swarm.run, coder_agent, run_chain, max_turns=max_turns,
+                              locked=True, context_variables=_ctx_vars))
         # S'assurer de rester sur l'orchestrateur au niveau de la session globale
         session.active_agent = _orch_agent()
 
@@ -992,6 +1051,13 @@ async def terminal_coder(req: TerminalRequest):
         current_run_id.reset(token)
         channels.current_channel.reset(chan_token)
         approvals.auto_approve_var.reset(appr_token)
+        if _dc_token is not None:
+            _dev_container.deactivate(_dc_token)
+        _planning.reset_scope(_plan_token)
+        if _ssh_token is not None:
+            _ssh_hosts.reset_active(_ssh_token)
+        if _tp_token is not None:
+            _tool_policy.reset_policy(_tp_token)
 
 # Endpoints mémoire / connaissances / agenda / listes : extraits en routeurs
 # dédiés (Single Responsibility). Voir routers/{memory,agenda,lists}.py.

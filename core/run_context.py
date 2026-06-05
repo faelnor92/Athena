@@ -29,7 +29,7 @@ class RunRegistry:
 
     def start(self, run_id: str):
         with self._lock:
-            self._runs[run_id] = {"steps": [], "running": True, "cancelled": False}
+            self._runs[run_id] = {"steps": [], "running": True, "cancelled": False, "steer": []}
             self._order.append(run_id)
             self._last_run_id = run_id
             # Purge des runs live les plus anciens (la persistance durable est en SQLite).
@@ -59,6 +59,31 @@ class RunRegistry:
             run = self._runs.get(run_id)
             return bool(run and run.get("cancelled"))
 
+    def steer(self, run_id: str, text: str) -> bool:
+        """STEERING : ajoute un message de réorientation à injecter dans le run EN COURS
+        (sans le relancer). Renvoie True si le run existe et tourne."""
+        text = (text or "").strip()
+        if not text:
+            return False
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is not None and run.get("running"):
+                run.setdefault("steer", []).append(text)
+                return True
+            return False
+
+    def pop_steers(self, run_id: Optional[str]) -> List[str]:
+        """Récupère ET vide les messages de steering en attente pour `run_id`."""
+        if run_id is None:
+            return []
+        with self._lock:
+            run = self._runs.get(run_id)
+            if not run:
+                return []
+            pending = run.get("steer") or []
+            run["steer"] = []
+            return list(pending)
+
     def append_step(self, run_id: Optional[str], step: dict):
         if run_id is None:
             return
@@ -87,3 +112,8 @@ def publish_step(step: dict):
 def is_cancelled_current() -> bool:
     """Vrai si le run courant (ContextVar) a reçu une demande d'annulation."""
     return registry.is_cancelled(current_run_id.get())
+
+
+def pop_steers_current() -> List[str]:
+    """Messages de steering en attente pour le run courant (vidés)."""
+    return registry.pop_steers(current_run_id.get())

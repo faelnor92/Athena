@@ -87,27 +87,51 @@ async def list_workspace_files(project_id: str = None):
     try:
       with _project_scope(project_id):
         base_dir = get_workspace_dir()
-        # On masque "projects" : c'est la racine des projets (qui vivent SOUS le workspace
-        # de base pour des raisons historiques) → ne pas exposer tous les projets dans
-        # l'explorateur du workspace général.
-        ignored_patterns = [".venv", "venv", "__pycache__", ".git", ".gemini", "static",
-                            ".env", "node_modules", "projects", "athena_projects"]
+        from core import projects as _projects
+        # « Dans un projet » = le workspace résolu n'est PAS le workspace de base (détection
+        # robuste, indépendante de l'état override/active). Dans un projet → aucun filtrage.
+        try:
+            in_project = os.path.realpath(base_dir) != os.path.realpath(_projects._base_workspace())
+        except Exception:
+            in_project = _projects.active_path() is not None
+
+        # Dossiers TOUJOURS masqués : volumineux/bruit (partout).
+        ignored_dirs = {".venv", "venv", "__pycache__", ".git", ".gemini", "node_modules"}
+        if not in_project:
+            # Workspace de BASE : on masque aussi l'app et la racine des projets (sinon on
+            # exposerait le code d'Athena et tous les projets) + on reste conservateur sur
+            # les fichiers cachés.
+            ignored_dirs |= {"static", "projects", "athena_projects"}
+
+        def _is_secret_env(name: str) -> bool:
+            # (Base uniquement) masquer le .env ; garder .env.example/.sample/.template.
+            if name == ".env":
+                return True
+            if name.startswith(".env."):
+                return name.split(".env.", 1)[1].lower() not in ("example", "sample", "template", "dist")
+            return False
+
         files = []
         for root, dirs, filenames in os.walk(base_dir):
-            dirs[:] = [d for d in dirs if d not in ignored_patterns and not d.startswith(".")]
-            
+            if in_project:
+                # Dans un PROJET : AUCUN filtrage de fichiers (c'est le projet de l'utilisateur,
+                # l'agent voit tout). On n'élague que les dossiers LOURDS/générés pour que
+                # l'arbre reste utilisable (node_modules, .git… peuvent contenir 10k+ entrées).
+                dirs[:] = [d for d in dirs if d not in ignored_dirs]
+            else:
+                # Workspace de BASE : conservateur (pas de dotfiles, ni .env, ni app/projets).
+                dirs[:] = [d for d in dirs if d not in ignored_dirs and not d.startswith(".")]
+
             for f in filenames:
-                if f.startswith("."):
-                    continue
+                if not in_project and (f.startswith(".") or _is_secret_env(f)):
+                    continue   # filtrage seulement hors projet
                 full_path = os.path.join(root, f)
                 rel_path = os.path.relpath(full_path, base_dir)
-                
-                size_bytes = os.path.getsize(full_path)
-                files.append({
-                    "name": f,
-                    "path": rel_path,
-                    "size": size_bytes
-                })
+                try:
+                    size_bytes = os.path.getsize(full_path)
+                except OSError:
+                    continue   # lien cassé / fichier disparu entre walk et stat
+                files.append({"name": f, "path": rel_path, "size": size_bytes})
         files.sort(key=lambda x: x["path"])
         return files
     except Exception as e:
@@ -159,9 +183,7 @@ async def get_workspace_file_meta(path: str, project_id: str = None):
 class FileWriteRequest(BaseModel):
     path: str
     content: str
-    project_id: str = None
-
-
+    project_id: str | None = None
 @router.post("/api/workspace/file")
 async def save_workspace_file(req: FileWriteRequest):
     """Sauvegarde (édition humaine dans l'IDE). Garde de RÔLE : un viewer d'un projet

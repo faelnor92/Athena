@@ -111,6 +111,8 @@ _ADMIN_PREFIX = (
     ("DELETE", "/api/config/skills/"),
     ("DELETE", "/api/config/mcp/servers/"),
     ("GET", "/api/users"), ("POST", "/api/users"), ("DELETE", "/api/users/"),
+    # Registre multi-hôtes SSH (surface sensible) : admin uniquement.
+    ("GET", "/api/ssh/hosts"), ("POST", "/api/ssh/hosts"), ("DELETE", "/api/ssh/hosts/"),
 )
 
 
@@ -122,8 +124,8 @@ def _is_admin_only(method: str, path: str) -> bool:
 
 class LoginRequest(BaseModel):
     password: str
-    username: str = None
-    totp: str = None  # code 2FA (si activé pour le compte)
+    username: str | None = None
+    totp: str | None = None  # code 2FA (si activé pour le compte)
 
 
 

@@ -34,7 +34,7 @@ class StepModel(BaseModel):
 
 
 class PipelineRequest(BaseModel):
-    id: str = None
+    id: str | None = None
     name: str = "Workflow"
     steps: List[StepModel] = []
 

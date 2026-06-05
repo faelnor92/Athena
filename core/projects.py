@@ -14,6 +14,7 @@ import contextvars
 
 from core import user_config
 from core import shared_projects
+from core import shared_store
 
 # Override de projet PAR CONTEXTE D'EXÉCUTION (ContextVar) : permet à la console codeur
 # de cibler un projet précis pour SON run, sans modifier le projet global de l'utilisateur
@@ -127,6 +128,38 @@ def current_role():
 def can_write() -> bool:
     """Droit d'écriture sur le projet actif (base/own/editor = oui ; viewer = non)."""
     return current_role() in (None, "owner", "editor")
+
+
+def migrate_legacy_projects() -> dict:
+    """Déplace les projets de l'ANCIEN emplacement (`<base>/projects/<user>/…`, sous le
+    workspace de base) vers le NOUVEAU (`athena_projects/<user>/…`, hors base) et met à jour
+    les chemins en config. Idempotent : un projet déjà hors-legacy est ignoré.
+
+    Renvoie {moved: [(src,dst)], errors: [str]}."""
+    import shutil
+    legacy_base = os.path.realpath(_legacy_projects_base())
+    moved, errors = [], []
+    for user, cfg in (shared_store.items(user_config._NS) or {}).items():
+        projs = (cfg or {}).get("projects") or []
+        changed = False
+        for p in projs:
+            real = os.path.realpath(p.get("path") or "")
+            if not real.startswith(legacy_base + os.sep):
+                continue  # déjà migré / hors zone héritée
+            new_root = os.path.join(_projects_base(), user_config.user_slug(user))
+            new_path = os.path.abspath(os.path.join(new_root, os.path.basename(real)))
+            try:
+                if os.path.isdir(real) and not os.path.exists(new_path):
+                    os.makedirs(new_root, exist_ok=True)
+                    shutil.move(real, new_path)
+                p["path"] = new_path
+                changed = True
+                moved.append((real, new_path))
+            except Exception as e:
+                errors.append(f"{p.get('path')}: {e}")
+        if changed:
+            user_config.set("projects", projs, user=user)
+    return {"moved": moved, "errors": errors}
 
 
 def create_project(name: str):

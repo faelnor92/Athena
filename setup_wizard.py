@@ -134,6 +134,31 @@ def step_optional_components():
         say("✔ Whisper installé." if ok else "⚠ Échec d'installation de Whisper.",
             "green" if ok else "red")
 
+    # 3bis. OBSERVABILITÉ LLM (optionnelle) : traçage OpenInference → OpenTelemetry → Phoenix.
+    if ask_yes_no("Installer l'OBSERVABILITÉ LLM (traçage des appels/agents → Phoenix) ?", default=False):
+        if os.path.exists("requirements-observability.txt"):
+            ok = pip_install("-r", "requirements-observability.txt")
+            if ok:
+                set_env_var("OPENINFERENCE_ENABLED", "true")
+                set_env_var("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:6006/v1/traces")
+                say("✔ Observabilité installée et activée (OPENINFERENCE_ENABLED=true).", "green")
+                # Collecteur Phoenix via Docker (comme Kokoro) : optionnel.
+                if ask_yes_no("  → Lancer le collecteur Phoenix via Docker (UI sur http://localhost:6006) ?", default=False):
+                    if shutil.which("docker"):
+                        cmd = ["docker", "run", "-d", "-p", "6006:6006", "-p", "4317:4317",
+                               "--restart", "unless-stopped", "--name", "phoenix",
+                               "arizephoenix/phoenix:latest"]
+                        if subprocess.call(cmd) == 0:
+                            say("    ✔ Phoenix lancé (UI : http://localhost:6006).", "green")
+                        else:
+                            say("    ⚠ Erreur Docker (le conteneur 'phoenix' existe peut-être déjà).", "yellow")
+                    else:
+                        say("    ⚠ Docker non installé — lance un collecteur Phoenix toi-même.", "red")
+            else:
+                say("⚠ Échec d'installation de l'observabilité.", "red")
+        else:
+            say("⚠ requirements-observability.txt introuvable.", "red")
+
     # 3. Docker (sandbox) — non installable via pip, on détecte/conseille.
     if shutil.which("docker"):
         say("✔ Docker détecté : l'exécution de code sera isolée (sandbox).", "green")

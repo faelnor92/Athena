@@ -38,8 +38,8 @@ async def delete_knowledge(doc_id: str):
 
 
 class IngestRequest(BaseModel):
-    url: str = None
-    text: str = None
+    url: str | None = None
+    text: str | None = None
     source: str = "manuel"
 
 

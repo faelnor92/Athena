@@ -132,15 +132,15 @@ def _run_routine(routine: dict):
 router = APIRouter(tags=["Config Routines & Transcribe"])
 
 class RoutineRequest(BaseModel):
-    id: str = None
+    id: str | None = None
     name: str
     prompt: str = ""
     agent: str = ""
     schedule: Dict[str, Any]
     enabled: bool = True
     notify: bool = True
-    secret: str = None
-    pipeline_id: str = None  # si défini : la routine déclenche ce workflow déterministe
+    secret: str | None = None
+    pipeline_id: str | None = None  # si défini : la routine déclenche ce workflow déterministe
 
 def _me() -> str:
     from core.user_config import current_user_key

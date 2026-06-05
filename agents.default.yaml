@@ -2,6 +2,8 @@ agents:
 - name: Athena
   orchestrator: true
   display_name: Athena
+  description: 'Orchestratrice généraliste : comprend la demande, répond elle-même
+    ou route vers le bon spécialiste.'
   welcome_message: Bonjour, je suis Athena. Comment puis-je vous aider aujourd'hui
     ?
   avatar_type: athena
@@ -68,6 +70,7 @@ agents:
   - send_notification
   - make_plan
   - update_plan_step
+  - get_plan
   - create_agent
   - run_tool_script
   - save_new_skill

@@ -33,7 +33,7 @@ async def get_my_llm():
 
 
 class MyLlmRequest(BaseModel):
-    model: str = None
+    model: str | None = None
     keys: dict = None  # {OPENAI_API_KEY: "...", ...} ; valeur masquée/vide = inchangée
 
 

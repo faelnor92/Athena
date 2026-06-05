@@ -112,7 +112,18 @@ def run_python(code: str, timeout: int = 15) -> Tuple[str, str, int]:
 def run_bash(command: str, timeout: int = 15, workdir: Optional[str] = None) -> Tuple[str, str, int]:
     """Exécute une commande shell dans le conteneur.
 
-    workdir : sous-répertoire (relatif à /work) où se placer avant l'exécution."""
+    workdir : sous-répertoire (relatif à /work) où se placer avant l'exécution.
+
+    Si un CONTENEUR DEV PERSISTANT est actif pour le contexte courant (console codeur),
+    on y délègue : git/pip/npm + état persistent entre commandes. Sinon, conteneur jetable."""
+    try:
+        from tools import dev_container
+        _dc_key = dev_container.active_key()
+        if _dc_key and dev_container.enabled():
+            # Le conteneur dev tolère des commandes plus longues (installs/tests).
+            return dev_container.exec_bash(_dc_key, command, timeout=max(timeout, 120), workdir=workdir)
+    except Exception:
+        pass
     if workdir and workdir not in (".", ""):
         command = f"cd {shlex.quote(workdir)} && {command}"
     return _execute(["bash", "-lc", command], stdin_data="", timeout=timeout)

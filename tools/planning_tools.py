@@ -4,15 +4,36 @@ l'UI, puis met à jour le statut de chaque étape au fil de l'exécution.
 Les étapes sont publiées en temps réel via run_context (events 'plan' /
 'plan_update'), rendues sous forme de checklist dans le chat.
 """
+import contextvars
 import re
 
 from core import run_context
 from core import plan_store
 from core import channels
 
+# Scope EXPLICITE du plan, prioritaire sur le canal : permet à la console codeur d'isoler
+# son plan (par utilisateur+projet) de celui du chat principal — sinon les deux partagent
+# la clé du canal "web" et se polluent. Posé par routers/chat.py autour du run console.
+_plan_scope: contextvars.ContextVar = contextvars.ContextVar("plan_scope", default=None)
+
+
+def set_scope(scope):
+    """Force le scope du plan pour le contexte courant. Renvoie un token (reset_scope)."""
+    return _plan_scope.set(scope or None)
+
+
+def reset_scope(token):
+    try:
+        _plan_scope.reset(token)
+    except Exception:
+        pass
+
 
 def _cid():
-    """Canal/session courant (pour scoper le plan persistant)."""
+    """Scope du plan persistant : override explicite s'il existe, sinon le canal courant."""
+    s = _plan_scope.get()
+    if s:
+        return s
     try:
         return channels.current_channel.get() or "web"
     except Exception:

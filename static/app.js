@@ -482,11 +482,15 @@ function selectActiveTab(tab, view, extraAction = null) {
     const _chat = document.querySelector(".right-chat-sidebar");
     const _resizer = document.getElementById("layout-resizer");
     const _appc = document.querySelector(".app-container");
-    const onConsole = (view === viewConsole);
+    // Espace « Code » = view-files (explorateur + éditeur + terminal fusionnés) OU l'ancienne
+    // view-console : le chat principal n'y sert pas → on le masque pour libérer l'espace.
+    const onConsole = (view === viewConsole || view === viewFiles);
     if (_chat) _chat.style.display = onConsole ? "none" : "";
     if (_resizer) _resizer.style.display = onConsole ? "none" : "";
     if (_appc) _appc.classList.toggle("chat-hidden", onConsole);  // grille 2 colonnes → plus de « trou »
-    if (typeof setConsoleTreeAutoRefresh === "function") setConsoleTreeAutoRefresh(onConsole);
+    // `console-tree` (ancienne vue console) est fusionné/masqué → on n'active son auto-refresh
+    // que si l'ancienne vue console est réellement affichée (donc plus jamais en pratique).
+    if (typeof setConsoleTreeAutoRefresh === "function") setConsoleTreeAutoRefresh(view === viewConsole);
 
     if (extraAction) extraAction();
 }
@@ -536,10 +540,134 @@ if (tabGraph) {
 if (tabFiles) {
     tabFiles.addEventListener("click", () => {
         selectActiveTab(tabFiles, viewFiles, () => {
+            mountCodeSpace();
             loadProjects();
             loadWorkspaceFiles();
         });
     });
+}
+
+// ESPACE CODE (fusion) : rapatrie le terminal codeur (de view-console) sous l'explorateur+éditeur
+// de view-files → une seule vue « Code ». Relocation par appendChild (préserve IDs + listeners).
+// Idempotent : ne déplace qu'une fois.
+// Peuple le sélecteur d'hôtes SSH (registre multi-hôtes, admin) ; « Local » = pas de SSH.
+async function loadSshHosts() {
+    const sel = document.getElementById("terminal-host-select");
+    if (!sel) return;
+    try {
+        const r = await apiFetch("/api/ssh/hosts");
+        if (!r.ok) return;                              // non-admin / non configuré : on garde « Local »
+        const hosts = await r.json();
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">💻 Local</option>';
+        (hosts || []).forEach(h => {
+            const o = document.createElement("option");
+            o.value = h.id;
+            o.textContent = "🖧 " + (h.label || h.host);
+            sel.appendChild(o);
+        });
+        sel.value = cur;                                // conserve la sélection si possible
+    } catch (e) { /* silencieux */ }
+}
+
+(function wireAddSshHost() {
+    const btn = document.getElementById("btn-add-ssh-host");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+        const host = prompt("Hôte SSH (IP ou domaine) :"); if (!host) return;
+        const label = prompt("Nom affiché (optionnel) :", host) || host;
+        const username = prompt("Utilisateur SSH :", "root") || "";
+        const key_path = prompt("Chemin de la clé privée sur le serveur (recommandé ; laisser vide pour mot de passe) :", "") || "";
+        let password = "";
+        if (!key_path) password = prompt("Mot de passe SSH (déconseillé — préférez une clé) :", "") || "";
+        try {
+            const r = await apiFetch("/api/ssh/hosts", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ host, label, username, key_path, password })
+            });
+            const d = await r.json();
+            if (!r.ok) { alert("Échec : " + (d.detail || r.status)); return; }
+            await loadSshHosts();
+            if (typeof loadSshHostsSettings === "function") loadSshHostsSettings();  // garder les 2 UI en phase
+            const sel = document.getElementById("terminal-host-select");
+            if (sel && d.id) sel.value = d.id;
+        } catch (e) { alert("Erreur : " + e); }
+    });
+})();
+
+// RÉGLAGES > SSH : liste des hôtes du registre (avec suppression) + ajout via formulaire.
+async function loadSshHostsSettings() {
+    const list = document.getElementById("ssh-hosts-list");
+    if (!list) return;
+    list.innerHTML = '<div style="opacity:0.5;font-size:0.8rem;">Chargement…</div>';
+    try {
+        const r = await apiFetch("/api/ssh/hosts");
+        if (!r.ok) { list.innerHTML = '<div style="opacity:0.6;font-size:0.8rem;">Réservé à l\'administrateur.</div>'; return; }
+        const hosts = await r.json();
+        if (!hosts || !hosts.length) { list.innerHTML = '<div style="opacity:0.6;font-size:0.8rem;">Aucun hôte configuré.</div>'; return; }
+        list.innerHTML = "";
+        hosts.forEach(h => {
+            const row = document.createElement("div");
+            row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:0.82rem;";
+            const isEnv = h.id === "env";
+            const auth = h.has_key ? "🔑 clé" : (h.password ? "🔒 mdp" : "");
+            row.innerHTML = `<span style="font-weight:600;">🖧 ${h.label || h.host}</span>`
+                + `<span style="opacity:0.6;">${h.username ? h.username + "@" : ""}${h.host}:${h.port || 22}</span>`
+                + `<span style="opacity:0.5;">${auth}</span><span style="flex:1;"></span>`
+                + (isEnv ? '<span style="opacity:0.5;font-size:0.72rem;">.env (défaut)</span>'
+                         : `<button class="btn-icon btn-del-ssh" data-id="${h.id}" style="color:#f87171;padding:2px 8px;">Supprimer</button>`);
+            list.appendChild(row);
+        });
+        list.querySelectorAll(".btn-del-ssh").forEach(b => b.addEventListener("click", async (e) => {
+            const id = e.target.getAttribute("data-id");
+            if (!confirm("Supprimer cet hôte SSH ?")) return;
+            const rr = await apiFetch("/api/ssh/hosts/" + encodeURIComponent(id), { method: "DELETE" });
+            if (rr.ok) { loadSshHostsSettings(); if (typeof loadSshHosts === "function") loadSshHosts(); }
+            else { const d = await rr.json().catch(() => ({})); alert("Échec : " + (d.detail || rr.status)); }
+        }));
+    } catch (e) { list.innerHTML = '<div style="color:#f87171;font-size:0.8rem;">Erreur : ' + e + '</div>'; }
+}
+
+(function wireSettingsAddSsh() {
+    const btn = document.getElementById("btn-settings-add-ssh");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+        const g = (id) => (document.getElementById(id)?.value || "").trim();
+        const host = g("newssh-host");
+        if (!host) { alert("L'hôte est requis."); return; }
+        const body = {
+            host, label: g("newssh-label"), username: g("newssh-username"),
+            port: parseInt(g("newssh-port") || "22", 10) || 22,
+            key_path: g("newssh-key"), password: document.getElementById("newssh-password")?.value || "",
+        };
+        try {
+            const r = await apiFetch("/api/ssh/hosts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) { alert("Échec : " + (d.detail || r.status)); return; }
+            ["newssh-label", "newssh-host", "newssh-username", "newssh-port", "newssh-key", "newssh-password"]
+                .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+            loadSshHostsSettings();
+            if (typeof loadSshHosts === "function") loadSshHosts();
+        } catch (e) { alert("Erreur : " + e); }
+    });
+})();
+
+function mountCodeSpace() {
+    const zone = document.getElementById("code-terminal-zone");
+    if (!zone || zone.dataset.mounted === "1") {
+        loadSshHosts();                                 // rafraîchir les hôtes même si déjà monté
+        return;
+    }
+    const term = document.querySelector("#view-console .terminal-container");
+    if (term) {
+        // NE PAS écraser le `height:100%` du CSS (sinon logs-terminal {flex:1} collapse
+        // quand la zone est en flex indéfini). On laisse la classe gérer la hauteur.
+        term.style.flex = "1 1 auto";
+        term.style.minHeight = "0";
+        zone.appendChild(term);
+        zone.dataset.mounted = "1";
+    }
+    loadSshHosts();
 }
 
 if (tabAgenda) {
@@ -1404,6 +1532,48 @@ function updatePlanStep(index, status) {
     }
 }
 
+// --- Plan/TODO rendu DANS LA CONSOLE codeur (affichage seul, piloté en live par l'agent) ---
+// On NE réutilise pas _fillPlan ici : ses poignées de clic écrivent via chatClientId, alors
+// que le plan de la console est scopé serveur (coder:user:projet). Affichage simple et sûr.
+let _termPlanEl = null;
+let _termPlanItems = [];
+function _renderTermPlanRows(el) {
+    el.innerHTML = "";
+    const title = document.createElement("div");
+    title.style.cssText = "font-weight:700;color:var(--accent-cyan,#00f3ff);font-size:0.78rem;margin-bottom:6px;";
+    title.textContent = "🗺️ Plan";
+    el.appendChild(title);
+    _termPlanItems.forEach((it) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;gap:8px;align-items:flex-start;font-size:0.8rem;padding:1px 0;";
+        const ic = document.createElement("span");
+        ic.textContent = _PLAN_ICONS[it.status] || "⬜";
+        const tx = document.createElement("span");
+        tx.style.cssText = "flex:1;" + (it.status === "done" ? "opacity:0.6;text-decoration:line-through;" : "");
+        tx.textContent = it.text;
+        row.appendChild(ic);
+        row.appendChild(tx);
+        el.appendChild(row);
+    });
+}
+function renderPlanTerminal(items) {
+    if (!logsTerminal) return;
+    _termPlanItems = (items || []).map(it => ({ text: it.text, status: it.status || "pending" }));
+    const el = document.createElement("div");
+    el.className = "log-line";
+    el.style.cssText = "background:rgba(0,243,255,0.06);border:1px solid rgba(0,243,255,0.3);border-radius:10px;padding:8px 12px;margin:6px 0;";
+    _renderTermPlanRows(el);
+    logsTerminal.appendChild(el);
+    logsTerminal.scrollTop = logsTerminal.scrollHeight;
+    _termPlanEl = el;
+}
+function updatePlanStepTerminal(index, status) {
+    if (!_termPlanEl || !_termPlanItems[index]) return;
+    _termPlanItems[index].status = status;
+    _renderTermPlanRows(_termPlanEl);
+    if (logsTerminal) logsTerminal.scrollTop = logsTerminal.scrollHeight;
+}
+
 async function playAgentSteps(steps, immediate = false) {
     return new Promise(resolve => {
         let delay = 0;
@@ -1527,11 +1697,13 @@ async function playAgentSteps(steps, immediate = false) {
                 }
 
                 else if (step.type === "plan") {
-                    renderPlan(step.items || []);
+                    if (window._coderConsoleActive) renderPlanTerminal(step.items || []);
+                    else renderPlan(step.items || []);
                 }
 
                 else if (step.type === "plan_update") {
-                    updatePlanStep(step.index, step.status);
+                    if (window._coderConsoleActive) updatePlanStepTerminal(step.index, step.status);
+                    else updatePlanStep(step.index, step.status);
                 }
 
                 else if (step.type === "skill_learned") {
@@ -2145,8 +2317,22 @@ if (_btnChatRetry) _btnChatRetry.addEventListener("click", async () => {
 chatForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    // Si une génération est déjà en cours, cliquer sur le bouton agit comme un bouton "Stop" !
+    // Si une génération est déjà en cours :
+    //  - message NON vide → STEERING : on réoriente le run en cours (sans le relancer) ;
+    //  - message vide → STOP (le bouton agit comme un bouton d'arrêt).
     if (activeAbortController) {
+        const steerText = chatInput.value.trim();
+        if (steerText && activeRunId) {
+            apiFetch(`/api/runs/${activeRunId}/steer`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: steerText })
+            }).then(r => r.json()).then(d => {
+                if (d && d.steering_accepted) appendUserMessage("↪ " + steerText);
+                else logToTerminal("Réorientation non prise (run déjà terminé).", "warning");
+            }).catch(() => {});
+            chatInput.value = "";
+            return;
+        }
         // Annulation côté serveur (le run s'arrête au prochain tour) + arrêt du flux.
         if (activeRunId) {
             apiFetch(`/api/runs/${activeRunId}/cancel`, { method: "POST" }).catch(() => {});
@@ -2169,9 +2355,11 @@ chatForm.addEventListener("submit", async (e) => {
         renderAttachmentChip();
     }
 
-    chatInput.disabled = true;
+    // On garde l'input ACTIF pendant le run pour permettre le STEERING (taper une consigne
+    // qui réoriente l'agent) ; vide + ⏹️ = arrêt.
+    chatInput.disabled = false;
     chatInput.value = "";
-    chatInput.placeholder = "Génération en cours... Clique sur ⏹️ pour arrêter";
+    chatInput.placeholder = "Réorienter l'agent (tape une consigne) — ou ⏹️ pour arrêter…";
     
     // Remplacer l'icône du bouton d'envoi par un bouton Stop rouge ⏹️
     chatSendBtn.innerHTML = `
@@ -2319,6 +2507,7 @@ modalTabKeys.addEventListener("click", () => switchModalTab(modalTabKeys, () => 
 if (modalTabSsh) {
     modalTabSsh.addEventListener("click", () => switchModalTab(modalTabSsh, () => {
         paneSsh.style.display = "block";
+        loadSshHostsSettings();
     }));
 }
 
@@ -3104,6 +3293,10 @@ const _MSG_FIELDS = {
     "msg-smtp-port": "SMTP_PORT", "msg-smtp-user": "SMTP_USER",
     "msg-smtp-pass": "SMTP_PASSWORD", "msg-smtp-from": "SMTP_FROM",
     "msg-email-to": "NOTIFY_EMAIL_TO",
+    // Lecture des mails (IMAP) — lecture + brouillons seulement (jamais d'envoi).
+    "msg-imap-host": "IMAP_HOST", "msg-imap-port": "IMAP_PORT",
+    "msg-imap-user": "IMAP_USERNAME", "msg-imap-pass": "IMAP_PASSWORD",
+    "msg-imap-from": "EMAIL_FROM", "msg-imap-drafts": "EMAIL_DRAFTS_FOLDER",
 };
 async function loadMessagingPane() {
     try {
@@ -3118,6 +3311,8 @@ async function loadMessagingPane() {
         }
         const ssl = document.getElementById("msg-smtp-ssl");
         if (ssl) ssl.checked = (env["SMTP_SSL"] || "").toLowerCase() === "true";
+        const issl = document.getElementById("msg-imap-ssl");
+        if (issl) issl.checked = (env["IMAP_SSL"] || "true").toLowerCase() !== "false";
     } catch (e) { /* ignore */ }
     refreshMessagingStatus();
 }
@@ -3178,6 +3373,8 @@ async function saveMessagingPane() {
     }
     const ssl = document.getElementById("msg-smtp-ssl");
     if (ssl) env["SMTP_SSL"] = ssl.checked ? "true" : "false";
+    const issl = document.getElementById("msg-imap-ssl");
+    if (issl) env["IMAP_SSL"] = issl.checked ? "true" : "false";
     if (st) st.textContent = "⏳ Enregistrement…";
     try {
         await apiFetch("/api/config/env", {
@@ -4076,6 +4273,8 @@ function openAgentFormModal(agentName = null) {
     
     document.getElementById("agent-name").value = isEdit ? agent.name : "";
     document.getElementById("agent-display-name").value = (isEdit && agent.display_name) ? agent.display_name : "";
+    const _descEl = document.getElementById("agent-description");
+    if (_descEl) _descEl.value = (isEdit && agent.description) ? agent.description : "";
     document.getElementById("agent-avatar-type").value = (isEdit && agent.avatar_type) ? agent.avatar_type : "robot_neon";
     document.getElementById("agent-model").value = isEdit ? agent.model : "gpt-4o";
     document.getElementById("agent-prompt").value = isEdit ? agent.system_prompt : "";
@@ -4179,7 +4378,9 @@ agentConfigForm.addEventListener("submit", async (e) => {
     const model = document.getElementById("agent-model").value.trim();
     const system_prompt = document.getElementById("agent-prompt").value.trim();
     const welcome_message = document.getElementById("agent-welcome").value.trim() || "";
-    
+    const descEl = document.getElementById("agent-description");
+    const description = descEl ? descEl.value.trim() : "";
+
     // Outils cochés
     const tools = [];
     document.querySelectorAll("input[name='tools']:checked").forEach(cb => {
@@ -4192,7 +4393,7 @@ agentConfigForm.addEventListener("submit", async (e) => {
         handoffs.push(cb.value);
     });
     
-    const updatedAgent = { name, display_name, welcome_message, avatar_type, model, system_prompt, tools, handoffs };
+    const updatedAgent = { name, display_name, description, welcome_message, avatar_type, model, system_prompt, tools, handoffs };
     // Préserver le flag orchestrateur lors d'une édition : sinon renommer l'orchestrateur
     // (ex: Athena → Athena) le ferait passer pour une suppression et serait refusé.
     if (origName) {
@@ -4424,37 +4625,80 @@ async function loadWorkspaceFiles() {
         }
         
         listContainer.innerHTML = "";
-        files.forEach(f => {
-            const sizeKb = (f.size / 1024).toFixed(1);
-            const item = document.createElement("div");
-            item.style.padding = "6px 8px";
-            item.style.margin = "4px 0";
-            item.style.borderRadius = "4px";
-            item.style.cursor = "pointer";
-            item.style.transition = "background-color 0.2s";
-            item.style.display = "flex";
-            item.style.justifyContent = "space-between";
-            item.style.alignItems = "center";
-            item.className = "file-item-row";
-            item.innerHTML = `
-                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80%;" title="${f.path}">📄 ${f.path}</span>
-                <span style="font-size: 0.75rem; opacity: 0.5;">${sizeKb} KB</span>
-            `;
-            
-            item.addEventListener("mouseenter", () => item.style.backgroundColor = "rgba(255,255,255,0.08)");
-            item.addEventListener("mouseleave", () => item.style.backgroundColor = "");
-            
-            item.addEventListener("click", () => {
-                document.querySelectorAll(".file-item-row").forEach(el => el.style.borderLeft = "");
-                item.style.borderLeft = "3px solid var(--accent-color)";
-                viewWorkspaceFile(f.path);
-            });
-            
-            listContainer.appendChild(item);
-        });
+        _renderFileTree(listContainer, files);
     } catch (err) {
         listContainer.innerHTML = `<div style='padding: 8px; color: var(--error-color);'>Erreur: ${err}</div>`;
     }
+}
+
+// Construit un arbre imbriqué {name, path, dir, size, children{}} depuis la liste plate.
+function _buildFileTree(files) {
+    const root = { name: "", path: "", dir: true, children: {} };
+    (files || []).forEach(f => {
+        const parts = String(f.path).split("/").filter(Boolean);
+        let node = root;
+        parts.forEach((p, i) => {
+            const isFile = i === parts.length - 1;
+            if (!node.children[p]) {
+                node.children[p] = { name: p, path: parts.slice(0, i + 1).join("/"),
+                                     dir: !isFile, size: isFile ? (f.size || 0) : 0, children: {} };
+            }
+            node = node.children[p];
+        });
+    });
+    return root;
+}
+
+// Rend l'explorateur en ARBRE repliable (dossiers d'abord). Dépliage paresseux : les
+// sous-dossiers ne sont rendus qu'au premier clic → reste fluide sur de gros projets.
+function _renderFileTree(container, files) {
+    const root = _buildFileTree(files);
+    const sortKids = (node) => Object.values(node.children).sort((a, b) =>
+        (a.dir === b.dir) ? a.name.localeCompare(b.name) : (a.dir ? -1 : 1));
+    function renderInto(node, parentEl, depth) {
+        sortKids(node).forEach(child => {
+            const row = document.createElement("div");
+            row.className = child.dir ? "tree-dir-row" : "file-item-row";
+            row.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 6px;padding-left:${8 + depth * 14}px;border-radius:4px;cursor:pointer;white-space:nowrap;`;
+            row.addEventListener("mouseenter", () => row.style.backgroundColor = "rgba(255,255,255,0.06)");
+            row.addEventListener("mouseleave", () => row.style.backgroundColor = "");
+            if (child.dir) {
+                const caret = document.createElement("span");
+                caret.textContent = "▸";
+                caret.style.cssText = "width:10px;display:inline-block;opacity:.7;transition:transform .15s;";
+                const lbl = document.createElement("span");
+                lbl.textContent = "📁 " + child.name;
+                lbl.style.cssText = "overflow:hidden;text-overflow:ellipsis;";
+                row.appendChild(caret); row.appendChild(lbl);
+                const wrap = document.createElement("div");
+                wrap.style.display = "none";
+                let built = false;
+                row.addEventListener("click", () => {
+                    const show = wrap.style.display === "none";
+                    wrap.style.display = show ? "block" : "none";
+                    caret.style.transform = show ? "rotate(90deg)" : "";
+                    if (show && !built) { renderInto(child, wrap, depth + 1); built = true; }
+                });
+                parentEl.appendChild(row); parentEl.appendChild(wrap);
+            } else {
+                const caretSpace = document.createElement("span"); caretSpace.style.width = "10px";
+                const lbl = document.createElement("span");
+                lbl.textContent = "📄 " + child.name; lbl.title = child.path;
+                lbl.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;";
+                const sz = document.createElement("span");
+                sz.textContent = (child.size / 1024).toFixed(1) + " KB";
+                sz.style.cssText = "font-size:0.72rem;opacity:0.5;";
+                row.appendChild(caretSpace); row.appendChild(lbl); row.appendChild(sz);
+                row.addEventListener("click", () => {
+                    document.querySelectorAll(".file-item-row").forEach(el => el.style.borderLeft = "");
+                    row.style.borderLeft = "3px solid var(--accent-color)";
+                    viewWorkspaceFile(child.path);
+                });
+                parentEl.appendChild(row);
+            }
+        });
+    }
+    renderInto(root, container, 0);
 }
 
 let activeSelectedFilePath = null;
@@ -5172,20 +5416,24 @@ async function executeTerminalCommand() {
     // Afficher la commande tapée dans la console avec style
     const agentSelect = document.getElementById("terminal-agent-select");
     const selectedAgent = agentSelect ? agentSelect.value : "Codeur";
-    const projSelect = document.getElementById("terminal-project-select");
-    const projectId = projSelect ? (projSelect.value || null) : null;
-    logToTerminal(`$ athena-${selectedAgent.toLowerCase()} > ${command}`, "transition");
+    const projectId = (typeof _consoleProjectId === "function") ? _consoleProjectId() : null;
+    const hostSelect = document.getElementById("terminal-host-select");
+    const hostId = hostSelect ? (hostSelect.value || null) : null;
+    const _hostLabel = (hostSelect && hostId) ? hostSelect.options[hostSelect.selectedIndex].text : "local";
+    logToTerminal(`$ athena-${selectedAgent.toLowerCase()} [${_hostLabel}] > ${command}`, "transition");
 
     try {
         const response = await apiFetch("/api/terminal/coder", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command: command, agent: selectedAgent, project_id: projectId })
+            body: JSON.stringify({ command: command, agent: selectedAgent, project_id: projectId, host_id: hostId })
         });
         
         const data = await response.json();
         
         if (response.ok) {
+            // Mode console actif : les steps de plan se rendent DANS le terminal (pas le chat).
+            window._coderConsoleActive = true;
             // Jouer les étapes d'exécution de l'Agent Codeur dans le terminal de logs
             await playAgentSteps(data.steps);
             // Recharger l'arbre des conversations
@@ -5200,6 +5448,7 @@ async function executeTerminalCommand() {
     } catch (err) {
         logToTerminal("Erreur de connexion terminal : " + (err && err.message ? err.message : err), "error");
     } finally {
+        window._coderConsoleActive = false;
         terminalCoderInput.disabled = false;
         if (btnSendTerminal) btnSendTerminal.disabled = false;
         terminalCoderInput.focus();
@@ -5233,6 +5482,39 @@ const btnExplorerConfirm = document.getElementById("btn-explorer-confirm");
 let explorerActivePath = "";
 let explorerSelectedPath = "";
 
+// Fil d'Ariane CLIQUABLE du chemin courant (chaque segment ouvre le dossier).
+function _renderExplorerBreadcrumb(fullPath) {
+    if (!explorerCurrentPathSpan) return;
+    explorerCurrentPathSpan.innerHTML = "";
+    explorerCurrentPathSpan.style.display = "flex";
+    explorerCurrentPathSpan.style.flexWrap = "wrap";
+    explorerCurrentPathSpan.style.alignItems = "center";
+    explorerCurrentPathSpan.style.gap = "2px";
+    const win = fullPath.includes("\\") && !fullPath.startsWith("/");
+    const sep = win ? "\\" : "/";
+    const parts = fullPath.split(/[\\/]/).filter(Boolean);
+    let acc = win ? "" : "/";
+    const mkSeg = (label, target) => {
+        const a = document.createElement("span");
+        a.textContent = label;
+        a.style.cssText = "cursor:pointer;padding:2px 6px;border-radius:5px;font-size:0.78rem;color:#7dd3fc;";
+        a.addEventListener("mouseenter", () => a.style.background = "rgba(255,255,255,0.08)");
+        a.addEventListener("mouseleave", () => a.style.background = "");
+        a.addEventListener("click", () => loadExplorerPath(target));
+        return a;
+    };
+    if (!win) explorerCurrentPathSpan.appendChild(mkSeg("🖥️", "/"));
+    parts.forEach((p, i) => {
+        if (i > 0 || win) {
+            const s = document.createElement("span");
+            s.textContent = sep; s.style.cssText = "opacity:0.4;font-size:0.75rem;";
+            explorerCurrentPathSpan.appendChild(s);
+        }
+        acc = win ? (acc ? acc + sep + p : p) : (acc === "/" ? "/" + p : acc + sep + p);
+        explorerCurrentPathSpan.appendChild(mkSeg(p, acc));
+    });
+}
+
 async function loadExplorerPath(path) {
     try {
         const response = await apiFetch(`/api/workspace/dirs?path=${encodeURIComponent(path)}`);
@@ -5241,21 +5523,24 @@ async function loadExplorerPath(path) {
             explorerActivePath = data.current_path;
             explorerSelectedPath = data.current_path; // Par défaut, on sélectionne le dossier actif actuel
             
-            if (explorerCurrentPathSpan) {
-                explorerCurrentPathSpan.innerText = data.current_path;
-            }
-            
+            _renderExplorerBreadcrumb(data.current_path);
+
             if (explorerDirsList) {
                 explorerDirsList.innerHTML = "";
+                // Affichage en GRILLE de tuiles (moins « CLI »).
+                explorerDirsList.style.display = "grid";
+                explorerDirsList.style.gridTemplateColumns = "repeat(auto-fill, minmax(110px, 1fr))";
+                explorerDirsList.style.gap = "10px";
+                explorerDirsList.style.padding = "8px";
                 
                 // 1. Dossier Parent ".." si disponible
                 if (data.parent_path && data.parent_path !== data.current_path) {
                     const row = document.createElement("div");
-                    row.style.cssText = "padding: 8px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; color: #38bdf8; font-family: monospace; font-size: 0.8rem; user-select: none; transition: background 0.2s;";
-                    row.innerHTML = "<span>📁</span> <strong>.. (Dossier Parent)</strong>";
-                    
-                    row.addEventListener("mouseenter", () => row.style.background = "rgba(255,255,255,0.05)");
-                    row.addEventListener("mouseleave", () => row.style.background = "");
+                    row.style.cssText = "padding:14px 8px; border-radius:10px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.2); user-select:none; transition:all .15s;";
+                    row.innerHTML = "<span style='font-size:1.9rem;'>↩️</span><span style='font-size:0.76rem;color:#7dd3fc;'>Dossier parent</span>";
+
+                    row.addEventListener("mouseenter", () => row.style.background = "rgba(56,189,248,0.14)");
+                    row.addEventListener("mouseleave", () => row.style.background = "rgba(56,189,248,0.06)");
                     row.addEventListener("click", () => {
                         // Un simple clic sélectionne le dossier parent
                         explorerSelectedPath = data.parent_path;
@@ -5280,8 +5565,9 @@ async function loadExplorerPath(path) {
                     data.subdirs.forEach(subdir => {
                         const row = document.createElement("div");
                         row.className = "explorer-dir-row";
-                        row.style.cssText = "padding: 8px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; color: #fff; font-family: monospace; font-size: 0.8rem; user-select: none; transition: all 0.2s; border: 1px solid transparent;";
-                        row.innerHTML = `<span>📁</span> <span>${subdir}</span>`;
+                        row.style.cssText = "padding:14px 8px; border-radius:10px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; color:#fff; font-size:0.78rem; user-select:none; transition:all .15s; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08);";
+                        row.title = subdir;
+                        row.innerHTML = `<span style="font-size:1.9rem;">📁</span><span style="word-break:break-word;line-height:1.2;">${subdir}</span>`;
                         
                         row.addEventListener("mouseenter", () => {
                             if (!row.classList.contains("selected")) {
@@ -7630,6 +7916,34 @@ async function _ideReloadFromDisk(path) {
 })();
 
 
+/* ===== Espace Code : redimensionnement vertical (éditeur ↕ terminal) ===== */
+(function setupCodeVSplitter() {
+    const splitter = document.getElementById("code-vsplitter");
+    const zone = document.getElementById("code-terminal-zone");
+    const view = document.getElementById("view-files");
+    if (!splitter || !zone || !view) return;
+    let dragging = false;
+    const refreshCM = () => { if (typeof _cm !== "undefined" && _cm) setTimeout(() => _cm.refresh(), 0); };
+    splitter.addEventListener("mousedown", (e) => {
+        dragging = true; splitter.style.background = "rgba(0,243,255,0.5)";
+        document.body.style.userSelect = "none"; document.body.style.cursor = "row-resize";
+        e.preventDefault();
+    });
+    window.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        const rect = view.getBoundingClientRect();
+        let h = rect.bottom - e.clientY;                       // hauteur voulue du terminal
+        h = Math.max(80, Math.min(h, rect.height - 160));      // terminal ≥80px, haut ≥160px
+        zone.style.flex = "0 0 " + Math.round(h) + "px";
+        refreshCM();
+    });
+    window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false; splitter.style.background = "rgba(255,255,255,0.08)";
+        document.body.style.userSelect = ""; document.body.style.cursor = "";
+    });
+})();
+
 /* ===== Redimensionnement / repli de l'explorateur (agrandir l'éditeur) ===== */
 (function setupColSplitter() {
     const splitter = document.getElementById("col-splitter");
@@ -7672,6 +7986,10 @@ async function _ideReloadFromDisk(path) {
 
 /* ===================== Console : arborescence projet + IDE flottant ===================== */
 function _consoleProjectId() {
+    // Unifié : la console suit le sélecteur de projet de l'EXPLORATEUR (vue Code) ; repli sur
+    // l'ancien sélecteur du terminal s'il est encore présent/utilisé.
+    const expl = document.getElementById("project-select");
+    if (expl && expl.value) return expl.value;
     const sel = document.getElementById("terminal-project-select");
     return sel && sel.value ? sel.value : null;
 }
@@ -7762,15 +8080,20 @@ function _ideWindowApp() {
 "var host=document.getElementById('host');",
 "var cm=CodeMirror(host,{lineNumbers:true,theme:'material-darker',autoCloseBrackets:true,matchBrackets:true,indentUnit:4,extraKeys:{'Ctrl-Space':function(c){c.showHint({hint:CodeMirror.hint.anyword,completeSingle:false});},'Ctrl-S':function(){saveActive();},'Cmd-S':function(){saveActive();}}});",
 "cm.setSize('100%','100%');",
+"var cmEl=cm.getWrapperElement();cmEl.style.flex='1';",
+"var prevEl=document.createElement('div');prevEl.style.cssText='flex:1;overflow:auto;display:none;';host.appendChild(prevEl);",
+"function fkind(p){var e=(p.split('.').pop()||'').toLowerCase();if(e==='pdf')return 'pdf';if(['png','jpg','jpeg','gif','webp','svg','bmp','ico'].indexOf(e)>=0)return 'image';if(['zip','tar','gz','tgz','exe','bin','so','dll','o','class','jar','woff','woff2','ttf','otf','mp3','mp4','mov','wav','ogg','webm','wasm'].indexOf(e)>=0)return 'binary';return 'text';}",
+"function renderPrev(p,t){if(t.kind==='image')prevEl.innerHTML='<div style=\"padding:12px;text-align:center;\"><img src=\"'+t._url+'\" style=\"max-width:100%;height:auto;\"></div>';else if(t.kind==='pdf')prevEl.innerHTML='<iframe src=\"'+t._url+'\" style=\"width:100%;height:100%;border:0;background:#fff;\"></iframe>';else prevEl.innerHTML='<div style=\"padding:14px;opacity:.75;\">Fichier binaire — <a style=\"color:#7aa2ff;\" href=\"'+t._url+'\" download=\"'+p.split('/').pop()+'\">télécharger</a></div>';}",
+"function showPreview(p,t){if(t._url){renderPrev(p,t);return;}prevEl.innerHTML='<div style=\"padding:14px;opacity:.6;\">Aperçu…</div>';fetch(API+'/api/workspace/download?path='+encodeURIComponent(p)+q(),{headers:H()}).then(function(r){return r.blob();}).then(function(b){if(t.kind==='image'){var e=(p.split('.').pop()||'').toLowerCase();var mm={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',bmp:'image/bmp',ico:'image/x-icon'}[e];if(mm&&!b.type)b=new Blob([b],{type:mm});}else if(t.kind==='pdf'){b=new Blob([b],{type:'application/pdf'});}if(t._url){try{URL.revokeObjectURL(t._url);}catch(e){}}t._url=URL.createObjectURL(b);if(active!==p)return;renderPrev(p,t);}).catch(function(e){prevEl.innerHTML='<div style=\"padding:14px;color:#ff5b89;\">Aperçu indisponible: '+e+'</div>';});}",
 "var tabs={}, active=null;",
 "cm.on('change',function(){var t=active&&tabs[active]; if(t&&!t._l&&!t.dirty){t.dirty=true; renderTabs();}});",
 "document.getElementById('proj').textContent = PID? ('· projet '+PID) : '· projet courant';",
 "function setStat(s){document.getElementById('stat').textContent=s||''; if(s) setTimeout(function(){document.getElementById('stat').textContent='';},2500);}",
 "function renderTabs(){var bar=document.getElementById('tabs');bar.innerHTML='';Object.keys(tabs).forEach(function(p){var d=document.createElement('div');d.className='tab'+(p===active?' act':'');var n=document.createElement('span');n.textContent=(tabs[p].dirty?'● ':'')+p.split('/').pop();n.onclick=function(){activate(p);};var x=document.createElement('span');x.textContent='×';x.onclick=function(e){e.stopPropagation();closeTab(p);};d.appendChild(n);d.appendChild(x);bar.appendChild(d);});}",
-"function activate(p){var t=tabs[p];if(!t)return;active=p;t._l=true;cm.swapDoc(t.doc);t._l=false;renderTabs();setTimeout(function(){cm.refresh();},0);}",
-"function closeTab(p){var t=tabs[p];if(t&&t.dirty&&!confirm('Modifs non enregistrées. Fermer ?'))return;delete tabs[p];if(active===p){var k=Object.keys(tabs);active=null;if(k.length)activate(k[k.length-1]);else{cm.swapDoc(CodeMirror.Doc(''));renderTabs();}}else renderTabs();}",
-"function openFile(p){if(tabs[p]){activate(p);return;}fetch(API+'/api/workspace/file?path='+encodeURIComponent(p)+q(),{headers:H()}).then(function(r){return r.json();}).then(function(d){if(d.detail){setStat('⚠️ '+d.detail);return;}tabs[p]={doc:CodeMirror.Doc(d.content,mode(p)),mtime:d.mtime||0,dirty:false};activate(p);}).catch(function(e){setStat('⚠️ '+e);});}",
-"function saveActive(){if(!active)return;var t=tabs[active];fetch(API+'/api/workspace/file',{method:'POST',headers:H(),body:JSON.stringify({path:active,content:cm.getValue(),project_id:PID||undefined})}).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}).then(function(x){if(x.ok){t.dirty=false;t.mtime=x.d.mtime||t.mtime;renderTabs();setStat('💾 enregistré');}else setStat('❌ '+(x.d.detail||'échec'));}).catch(function(e){setStat('❌ '+e);});}",
+"function activate(p){var t=tabs[p];if(!t)return;active=p;if(t.kind&&t.kind!=='text'){cmEl.style.display='none';prevEl.style.display='block';showPreview(p,t);renderTabs();return;}prevEl.style.display='none';cmEl.style.display='';t._l=true;cm.swapDoc(t.doc);t._l=false;renderTabs();setTimeout(function(){cm.refresh();},0);}",
+"function closeTab(p){var t=tabs[p];if(t&&t.dirty&&!confirm('Modifs non enregistrées. Fermer ?'))return;if(t&&t._url){try{URL.revokeObjectURL(t._url);}catch(e){}}delete tabs[p];if(active===p){var k=Object.keys(tabs);active=null;if(k.length)activate(k[k.length-1]);else{cm.swapDoc(CodeMirror.Doc(''));renderTabs();}}else renderTabs();}",
+"function openFile(p){if(tabs[p]){activate(p);return;}var k=fkind(p);if(k!=='text'){tabs[p]={kind:k,dirty:false};activate(p);return;}fetch(API+'/api/workspace/file?path='+encodeURIComponent(p)+q(),{headers:H()}).then(function(r){return r.json();}).then(function(d){if(d.detail){setStat('⚠️ '+d.detail);return;}tabs[p]={kind:'text',doc:CodeMirror.Doc(d.content,mode(p)),mtime:d.mtime||0,dirty:false};activate(p);}).catch(function(e){setStat('⚠️ '+e);});}",
+"function saveActive(){if(!active)return;var t=tabs[active];if(t&&t.kind&&t.kind!=='text'){setStat('Aperçu — non éditable');return;}fetch(API+'/api/workspace/file',{method:'POST',headers:H(),body:JSON.stringify({path:active,content:cm.getValue(),project_id:PID||undefined})}).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}).then(function(x){if(x.ok){t.dirty=false;t.mtime=x.d.mtime||t.mtime;renderTabs();setStat('💾 enregistré');}else setStat('❌ '+(x.d.detail||'échec'));}).catch(function(e){setStat('❌ '+e);});}",
 "function loadTree(){fetch(API+'/api/workspace/files'+(PID?('?project_id='+encodeURIComponent(PID)):''),{headers:H()}).then(function(r){return r.json();}).then(function(files){var box=document.getElementById('tree');if(!Array.isArray(files)||!files.length){box.innerHTML='<div style=opacity:.5>Projet vide.</div>';return;}box.innerHTML='';files.forEach(function(f){var d=document.createElement('div');d.className='f';d.textContent='📄 '+f.path;d.title=f.path;d.onclick=function(){openFile(f.path);};box.appendChild(d);});}).catch(function(){});}",
 "document.getElementById('save').onclick=saveActive;",
 "document.getElementById('refresh').onclick=loadTree;",
@@ -7794,6 +8117,49 @@ function setConsoleTreeAutoRefresh(on) {
     const d = document.getElementById("btn-ide-detach");
     const psel = document.getElementById("terminal-project-select");
     if (r) r.addEventListener("click", loadConsoleTree);
-    if (d) d.addEventListener("click", () => openIdeWindow(_consoleProjectId()));
+    if (d) d.addEventListener("click", detachCodeEditor);
     if (psel) psel.addEventListener("change", loadConsoleTree);
+    // Boutons « Détacher » (en-tête) et « Rattacher » (barre visible quand détaché).
+    const dc = document.getElementById("btn-code-detach");
+    if (dc) dc.addEventListener("click", detachCodeEditor);
+    const rc = document.getElementById("btn-code-reattach");
+    if (rc) rc.addEventListener("click", detachCodeEditor);
 })();
+
+// DÉTACHEMENT de l'éditeur : ouvre la fenêtre flottante ET retire l'éditeur de la page
+// (l'explorateur + le terminal récupèrent la place). Restauré à la fermeture de la fenêtre.
+function _setEditorDetached(on) {
+    // La fenêtre détachée contient DÉJÀ l'explorateur + l'éditeur → en page on RETIRE tout
+    // le bloc explorateur+éditeur (display:none, pas de jeu de flex fragile) ; le terminal
+    // reste alors le seul enfant qui grandit → console plein écran. Une barre « Rattacher »
+    // reste visible (le bouton de l'en-tête disparaît avec l'explorateur).
+    const expl = document.querySelector(".files-explorer-container");
+    const vsp = document.getElementById("code-vsplitter");
+    const zone = document.getElementById("code-terminal-zone");
+    const bar = document.getElementById("code-toolbar");
+    if (expl) expl.style.display = on ? "none" : "";
+    if (vsp) vsp.style.display = on ? "none" : "";
+    if (zone) zone.style.flex = on ? "1 1 auto" : "0 0 32%";    // console plein écran ↔ 32 %
+    if (bar) bar.style.display = on ? "flex" : "none";
+}
+let _ideDetachWatch = null;
+function detachCodeEditor() {
+    // Toggle : si déjà détaché et fenêtre ouverte, la refermer (= rattacher).
+    if (_ideDetachWatch && typeof _ideWin !== "undefined" && _ideWin && !_ideWin.closed) {
+        _ideWin.close();
+        _setEditorDetached(false);
+        clearInterval(_ideDetachWatch); _ideDetachWatch = null;
+        return;
+    }
+    const pid = (typeof _consoleProjectId === "function" ? _consoleProjectId() : "") || "";
+    const w = openIdeWindow(pid);
+    if (!w) return;                                          // pop-up bloqué : on garde l'éditeur en page
+    _setEditorDetached(true);
+    if (_ideDetachWatch) clearInterval(_ideDetachWatch);
+    _ideDetachWatch = setInterval(() => {
+        if (typeof _ideWin === "undefined" || !_ideWin || _ideWin.closed) {
+            _setEditorDetached(false);
+            clearInterval(_ideDetachWatch); _ideDetachWatch = null;
+        }
+    }, 1000);
+}
