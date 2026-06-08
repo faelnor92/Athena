@@ -57,6 +57,34 @@ $PythonVersion = python --version
 Write-Host "✔ Python est disponible : $PythonVersion" -ForegroundColor $Green
 
 # -------------------------------------------------------------------------
+# ÉTAPE 1b : Navigateur headless + Docker (AthenaDesign : export PDF + sandbox)
+# -------------------------------------------------------------------------
+Write-Host ""
+Write-Host "🔄 Étape 1b : Navigateur headless + Docker (AthenaDesign)..." -ForegroundColor $Yellow
+$Winget = Get-Command winget -ErrorAction SilentlyContinue
+# Navigateur : Edge (Chromium) est presque toujours présent sous Windows.
+$Edge = Test-Path "$env:ProgramFiles(x86)\Microsoft\Edge\Application\msedge.exe"
+$Chrome = (Get-Command chrome -ErrorAction SilentlyContinue) -or (Test-Path "$env:ProgramFiles\Google\Chrome\Application\chrome.exe")
+if ($Edge -or $Chrome) {
+    Write-Host "✔ Navigateur headless détecté (Edge/Chrome)." -ForegroundColor $Green
+} elseif ($Winget) {
+    Write-Host "Installation de Google Chrome via winget..."
+    winget install -e --id Google.Chrome --accept-source-agreements --accept-package-agreements 2>$null
+} else {
+    Write-Host "⚠ Aucun navigateur headless détecté — installe Chrome/Edge (export PDF AthenaDesign), ou définis CHROMIUM_BIN." -ForegroundColor $Yellow
+}
+# Docker Desktop.
+$Docker = Get-Command docker -ErrorAction SilentlyContinue
+if ($Docker) {
+    Write-Host "✔ Docker détecté." -ForegroundColor $Green
+} elseif ($Winget) {
+    Write-Host "Installation de Docker Desktop via winget (redémarrage requis ensuite)..."
+    winget install -e --id Docker.DockerDesktop --accept-source-agreements --accept-package-agreements 2>$null
+} else {
+    Write-Host "⚠ Docker absent → exécution du code AthenaDesign en mode local NON isolé. Installe Docker Desktop : https://www.docker.com/products/docker-desktop/" -ForegroundColor $Yellow
+}
+
+# -------------------------------------------------------------------------
 # ÉTAPE 2 : Environnement Virtuel Python (.venv)
 # -------------------------------------------------------------------------
 Write-Host ""

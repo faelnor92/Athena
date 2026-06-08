@@ -64,6 +64,59 @@ fi
 echo -e "${GREEN}✔ Python 3 est disponible : $(python3 --version)${NC}"
 
 # -------------------------------------------------------------------------
+# ÉTAPE 1b : Navigateur headless (Chromium) + Docker
+#   Requis pour AthenaDesign : export PDF (Chromium) et exécution sandboxée du code généré
+#   + conteneur dev (Docker). Installation best-effort selon le gestionnaire de paquets.
+# -------------------------------------------------------------------------
+echo ""
+echo -e "${YELLOW}🔄 Étape 1b : Navigateur headless + Docker (AthenaDesign)...${NC}"
+_have() { command -v "$1" &> /dev/null; }
+PKG=""
+if _have apt-get; then PKG="apt"; elif _have dnf; then PKG="dnf"; elif _have pacman; then PKG="pacman"; elif _have brew; then PKG="brew"; fi
+
+# --- Navigateur headless (Chromium / Chrome) ---
+if _have chromium || _have chromium-browser || _have google-chrome || _have google-chrome-stable || _have chrome; then
+    echo -e "${GREEN}✔ Navigateur headless détecté.${NC}"
+else
+    echo -e "Installation d'un navigateur headless (Chromium)..."
+    case "$PKG" in
+        apt) sudo apt-get update -qq && { sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium; } ;;
+        dnf) sudo dnf install -y chromium ;;
+        pacman) sudo pacman -S --noconfirm chromium ;;
+        brew) brew install --cask chromium 2>/dev/null || brew install chromium 2>/dev/null || true ;;
+        *) echo -e "${YELLOW}⚠ Gestionnaire de paquets non détecté — installe Chromium/Chrome manuellement.${NC}" ;;
+    esac
+    if _have chromium || _have chromium-browser || _have google-chrome || _have chrome; then
+        echo -e "${GREEN}✔ Navigateur headless installé.${NC}"
+    else
+        echo -e "${YELLOW}⚠ Navigateur headless absent → export PDF AthenaDesign indisponible (sinon, pointe CHROMIUM_BIN).${NC}"
+    fi
+fi
+
+# --- Docker (sandbox d'exécution + dev container) ---
+if _have docker && docker info &> /dev/null; then
+    echo -e "${GREEN}✔ Docker opérationnel.${NC}"
+elif _have docker; then
+    echo -e "${YELLOW}⚠ Docker installé mais le démon ne répond pas. Démarre-le : ${BOLD}sudo systemctl start docker${NC}${YELLOW} (et ajoute-toi au groupe : sudo usermod -aG docker \$USER).${NC}"
+else
+    echo -e "Installation de Docker..."
+    case "$PKG" in
+        apt) sudo apt-get install -y docker.io ;;
+        dnf) sudo dnf install -y docker ;;
+        pacman) sudo pacman -S --noconfirm docker ;;
+        brew) echo -e "${YELLOW}⚠ macOS : installe Docker Desktop → https://www.docker.com/products/docker-desktop/${NC}" ;;
+        *) echo -e "${YELLOW}⚠ Installe Docker manuellement (sandbox AthenaDesign + dev container).${NC}" ;;
+    esac
+    if _have docker; then
+        sudo systemctl enable --now docker 2>/dev/null || true
+        sudo usermod -aG docker "$USER" 2>/dev/null || true
+        echo -e "${GREEN}✔ Docker installé (reconnecte-toi pour appliquer le groupe 'docker').${NC}"
+    else
+        echo -e "${YELLOW}⚠ Docker absent → l'exécution du code AthenaDesign basculera en mode local NON isolé.${NC}"
+    fi
+fi
+
+# -------------------------------------------------------------------------
 # ÉTAPE 2 : Environnement Virtuel Python
 # -------------------------------------------------------------------------
 echo ""

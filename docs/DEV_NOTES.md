@@ -132,6 +132,34 @@ modèle/clés/fallback d'Athena). Tests : `test_projets_isoles_par_utilisateur`.
   AVAILABLE_TOOLS (à donner à un agent une fois activé). Tests : `tests/test_claude_code.py`.
   Attention : auth (abonnement/clé) + coût ; `bypassPermissions` possible mais risqué.
 
+## 🔒 Audit sécurité AthenaDesign + plugins (2026-06-08)
+Failles **corrigées** (commit fix(security)) :
+- **SSRF (capture web)** : `_fetch_web_text`/`_fetch_web_styles` étaient **fail-open** (garde
+  ignorée si erreur) et `_fetch_web_text` importait le mauvais module (`core.net_guard`).
+  → **fail-closed** via `tools.net_guard.is_blocked_url` (pas de vérif possible = pas de fetch).
+- **Vol de jeton via lien partagé** : `/api/athenadesign/shared/{token}/view` rendait du HTML
+  **same-origin** → le JS d'un design partagé par autrui pouvait lire `localStorage.athena_session_token`.
+  → rendu dans une **iframe `sandbox` SANS `allow-same-origin`** (origine nulle).
+- **Toggle de plugin** (`POST /api/plugins/...`, changement global = exécution de code) →
+  **admin uniquement** (`_ADMIN_PREFIX`).
+
+**Risques résiduels (gated / par conception, à connaître)** :
+1. Repli **exécution locale non isolée** d'AthenaDesign si Docker absent (`SANDBOX_MODE=off`) —
+   journalisé ; garder Docker en multi-user.
+2. `claude_code` s'exécute dans le **projet actif** (`acceptEdits`), opt-in admin — éviter
+   `bypassPermissions` et les projets non fiables.
+3. **Code-Test-Fix** lance `npm test`/`pytest` du projet (host ou dev_container) → projet non
+   fiable = `CODER_AUTOFIX=false` ou conteneur dev.
+4. **Export PDF** : Chromium rend ton HTML (file://) → lecture de fichiers locaux possible dans
+   TON propre PDF (auto-risque, faible).
+Bon par ailleurs : ownership `_can_access` partout, anti path-traversal (regex + realpath),
+`/file` & `/sandbox` authentifiés, projets isolés par utilisateur, jeton de partage 32 hex.
+
+**Install (2026-06-08)** : `install.sh`/`install.ps1` installent désormais **Docker + un
+navigateur headless (Chromium/Chrome/Edge)** en étape 1b (best-effort, multi-distro / winget) —
+requis pour l'export PDF et la sandbox d'AthenaDesign (plus « optionnel »). `requirements.txt`
+à jour (httpx, python-pptx, pypdf, requests, playwright).
+
 ## 🚧 Refonte « partie code » (en cours de décision)
 Direction pressentie (à valider) :
 - **Sous-système de code séparé du swarm conversationnel** : un agent de code dédié (indépendant des agents dynamiques) avec une **boucle agentique** propre (lire/écrire/éditer/exécuter/tester/itérer), sur un **modèle fort**.
