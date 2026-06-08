@@ -48,6 +48,7 @@ import tools.presence
 import tools.n8n_tools
 import tools.computer_use
 import tools.pipeline_tools
+import tools.claude_code_tool
 import tools.email_tools
 
 # Profondeur de DÉLÉGATION du contexte courant (anti-récursion infinie entre sous-agents).
@@ -128,6 +129,7 @@ AVAILABLE_TOOLS = {
     "trigger_workflow": tools.n8n_tools.trigger_workflow,
     "computer_use_action": tools.computer_use.computer_use_action,
     "run_rigid_pipeline": tools.pipeline_tools.run_rigid_pipeline,
+    "claude_code": tools.claude_code_tool.claude_code,  # plugin : délègue le code à Claude Code
 }
 
 # ── Filtrage d'outils par pertinence (économie de tokens) ──────────────────────

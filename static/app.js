@@ -432,6 +432,8 @@ const modalTabBehavior = document.getElementById("modal-tab-behavior");
 const paneBehavior = document.getElementById("pane-behavior");
 const modalTabMcp = document.getElementById("modal-tab-mcp");
 const paneMcp = document.getElementById("pane-mcp");
+const modalTabPlugins = document.getElementById("modal-tab-plugins");
+const panePlugins = document.getElementById("pane-plugins");
 const modalTabRoutines = document.getElementById("modal-tab-routines");
 const paneRoutines = document.getElementById("pane-routines");
 const modalTabWorkflows = document.getElementById("modal-tab-workflows");
@@ -2522,8 +2524,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabRoutines, modalTabWorkflows, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor, modalTabMessaging].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, paneRoutines, paneWorkflows, paneKnowledge, paneUsers, paneSatellites, paneDoctor, paneMessaging].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabPlugins, modalTabRoutines, modalTabWorkflows, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor, modalTabMessaging].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, panePlugins, paneRoutines, paneWorkflows, paneKnowledge, paneUsers, paneSatellites, paneDoctor, paneMessaging].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -2922,6 +2924,56 @@ if (modalTabMcp && paneMcp) {
     modalTabMcp.addEventListener("click", () => switchModalTab(modalTabMcp, () => {
         paneMcp.style.display = "block";
         loadConfigMcpPane();
+    }));
+}
+
+// ONGLET : PLUGINS (intégrations + MCP + skills)
+async function loadPluginsPane() {
+    const el = document.getElementById("plugins-list");
+    if (!el) return;
+    el.innerHTML = "Chargement…";
+    try {
+        const p = await (await apiFetch("/api/plugins")).json();
+        const cc = p.claude_code || {};
+        const ccStatus = !cc.available ? "<span style='opacity:.6'>binaire <code>claude</code> introuvable</span>"
+            : (cc.enabled ? "<span style='color:#10b981'>activé</span>" : "<span style='opacity:.6'>désactivé</span>");
+        el.innerHTML = `
+            <div class="glass" style="padding:14px;border-radius:10px;margin-bottom:10px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <strong>🤖 ${cc.name || "Claude Code"}</strong>
+                    <span style="flex:1;font-size:.8rem;">${ccStatus}</span>
+                    <label class="switch" style="font-size:.8rem;">
+                        <input type="checkbox" id="plugin-claude-code" ${cc.enabled ? "checked" : ""} ${cc.available ? "" : "disabled"}>
+                        Activer
+                    </label>
+                </div>
+                <p class="section-desc" style="margin:8px 0 0;">${cc.description || ""} Délègue le code à l'agent Claude Code (CLI), dans le projet actif. Donne l'outil <code>claude_code</code> à un agent une fois activé.</p>
+            </div>
+            <div class="glass" style="padding:14px;border-radius:10px;margin-bottom:10px;">
+                <strong>🧩 Serveurs MCP</strong> — ${(p.mcp || {}).tools || 0} outil(s) exposé(s).
+                <span style="font-size:.8rem;opacity:.7;">Gérer dans l'onglet « Serveurs MCP ».</span>
+            </div>
+            <div class="glass" style="padding:14px;border-radius:10px;">
+                <strong>📚 Compétences dynamiques</strong> — ${(p.skills || {}).count || 0} compétence(s) (dossier <code>skills/</code>).
+            </div>`;
+        const toggle = document.getElementById("plugin-claude-code");
+        if (toggle) toggle.addEventListener("change", async () => {
+            try {
+                await apiFetch("/api/plugins/claude-code", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ enabled: toggle.checked })
+                });
+                loadPluginsPane();
+            } catch (e) { /* noop */ }
+        });
+    } catch (e) {
+        el.innerHTML = "<p style='color:#ef4444'>Erreur de chargement des plugins.</p>";
+    }
+}
+if (modalTabPlugins && panePlugins) {
+    modalTabPlugins.addEventListener("click", () => switchModalTab(modalTabPlugins, () => {
+        panePlugins.style.display = "block";
+        loadPluginsPane();
     }));
 }
 

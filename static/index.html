@@ -661,6 +661,7 @@
                 <button class="modal-tab-btn" id="modal-tab-users">👥 Utilisateurs</button>
                 <button class="modal-tab-btn" id="modal-tab-doctor">🩺 Diagnostic</button>
                 <div class="modal-tab-group">Extensions</div>
+                <button class="modal-tab-btn" id="modal-tab-plugins">🔌 Plugins</button>
                 <button class="modal-tab-btn" id="modal-tab-mcp">🧩 Serveurs MCP</button>
                 <button class="modal-tab-btn" id="modal-tab-routines">🗓️ Routines</button>
                 <button class="modal-tab-btn" id="modal-tab-workflows">🛠️ Workflows</button>
@@ -969,6 +970,14 @@
                         <button type="button" id="btn-session-search" class="btn">Chercher</button>
                     </div>
                     <div id="session-search-results" style="margin-top: 10px; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto;"></div>
+                </div>
+
+                <div class="modal-pane" id="pane-plugins" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h3 style="margin: 0;">🔌 Plugins</h3>
+                    </div>
+                    <p class="section-desc" style="margin-bottom: 12px;">Étends Athena : intégrations first-class, serveurs MCP et compétences dynamiques.</p>
+                    <div id="plugins-list">Chargement…</div>
                 </div>
 
                 <div class="modal-pane" id="pane-mcp" style="display: none;">
@@ -1570,7 +1579,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
-    <script src="app.js?v=20260608_design"></script>
+    <script src="app.js?v=20260608_plugins"></script>
     <script>
         // Enregistrement du service worker (PWA installable).
         if ("serviceWorker" in navigator) {

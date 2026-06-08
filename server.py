@@ -176,6 +176,8 @@ from routers import ssh_hosts as _ssh_hosts_router
 app.include_router(_ssh_hosts_router.router)
 from routers import athenadesign as _athenadesign_router
 app.include_router(_athenadesign_router.router)
+from routers import plugins as _plugins_router
+app.include_router(_plugins_router.router)
 
 
 # Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Athena →

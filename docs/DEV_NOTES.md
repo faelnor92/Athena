@@ -113,6 +113,22 @@ modèle/clés/fallback d'Athena). Tests : `test_projets_isoles_par_utilisateur`.
 - **Atouts AthenaDesign au-dessus de Claude Design** : exécution **Python côté serveur** (vrai .pptx, matplotlib/plotly), auto-hébergé, **choix du modèle**.
 - **Restant (D4) pour égaler** : (1) **modèle fort/vision branché** (config Athena — c'est le ressort qualité) ; (2) **export PDF** ; (3) **partage/collab** ; (4) **sliders WYSIWYG** ; (5) modèles de départ (deck/landing/one-pager).
 
+## 🔌 Plugins & auto-correction (2026-06-08)
+- **Auto-correction (self-healing)** : `POST /api/athenadesign/autofix` — exécute la dernière
+  version Python ; si erreur, renvoie le traceback au modèle pour corriger, ré-exécute, ≤ N
+  essais (`ATHENADESIGN_AUTOFIX_MAX`). Les corrections = nouvelles versions. Le studio le
+  déclenche automatiquement quand « Lancer le script » échoue. Inspiré de Bolt, model-agnostic.
+  À porter aussi côté Codeur (Code-Test-Fix) — non fait.
+- **Système de plugins** : Athena étend déjà via **MCP** (serveurs externes) + **skills**
+  dynamiques. Ajout d'un onglet **Réglages > Plugins** (`routers/plugins.py`, `GET /api/plugins`
+  + toggle) qui liste MCP/skills + intégrations first-class.
+- **Plugin Claude Code** (`tools/claude_code_tool.py`, outil `claude_code`) : délègue une tâche
+  de code à l'agent **Claude Code** (CLI `claude -p` headless), **scopé au dossier du projet
+  actif** (cwd + --add-dir), permissions bornées (`acceptEdits` par défaut), opt-in
+  (`CLAUDE_CODE_ENABLED` via le toggle / shared_store ns 'plugins'), timeout. Enregistré dans
+  AVAILABLE_TOOLS (à donner à un agent une fois activé). Tests : `tests/test_claude_code.py`.
+  Attention : auth (abonnement/clé) + coût ; `bypassPermissions` possible mais risqué.
+
 ## 🚧 Refonte « partie code » (en cours de décision)
 Direction pressentie (à valider) :
 - **Sous-système de code séparé du swarm conversationnel** : un agent de code dédié (indépendant des agents dynamiques) avec une **boucle agentique** propre (lire/écrire/éditer/exécuter/tester/itérer), sur un **modèle fort**.
