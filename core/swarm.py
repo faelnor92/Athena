@@ -130,6 +130,71 @@ AVAILABLE_TOOLS = {
     "run_rigid_pipeline": tools.pipeline_tools.run_rigid_pipeline,
 }
 
+# ── Filtrage d'outils par pertinence (économie de tokens) ──────────────────────
+# Les schémas des ~47 outils pèsent ~5 000 tokens RÉ-ENVOYÉS à chaque tour. La plupart
+# des requêtes n'en utilisent que 0–2. On range les outils « lourds et spécialisés » en
+# GROUPES-DOMAINE activés par mots-clés ; tout outil HORS groupe (mémoire, infos de base,
+# planification, orchestration, skills dynamiques, MCP, transfer_/delegate_) reste TOUJOURS
+# exposé. Principe de sûreté : on ne RETIRE qu'un outil explicitement rangé dans un groupe
+# NON activé → jamais de coupe d'un outil cœur ou inconnu.
+_TOOL_GROUPS = {
+    "code": {
+        "execute_python_code", "execute_bash_command", "read_file", "write_file",
+        "edit_file", "apply_patch", "run_checks", "search_code", "find_definition",
+        "find_references", "file_outline", "git_status", "git_diff", "git_log",
+        "git_create_branch", "git_commit", "git_create_worktree", "git_list_worktrees",
+        "git_remove_worktree", "run_rigid_pipeline",
+    },
+    "domotique": {"get_ha_state", "call_ha_service", "get_current_room", "trigger_workflow"},
+    "web": {"web_search", "web_scrape", "render_page"},
+    "media": {"generate_image", "generate_artistic_image", "generate_artistic_video"},
+    "agenda": {"add_calendar_event", "list_calendar_events", "delete_calendar_event",
+               "add_list_item", "get_list_items", "toggle_list_item", "delete_list_item"},
+    "email": {"read_inbox", "read_email", "create_email_draft"},
+    "documents": {"analyze_document", "transcribe_and_summarize_meeting", "ingest_file"},
+    "skills": {"save_new_skill", "delete_skill"},
+    "computer": {"computer_use_action"},
+}
+_TOOL_GROUP_KEYWORDS = {
+    "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",
+             "fonction", "function", "fichier", "file", "git", "commit", "refactor", "compil",
+             "erreur", "debug", "débug", "dépôt", "repo", "classe", "class", "variable",
+             "lint", "patch", "branche", "branch", "terminal", "bash", "shell", "déploie"],
+    "domotique": ["lumière", "lumiere", "lampe", "allume", "éteins", "eteins", "chauffage",
+                  "volet", "prise", "salon", "chambre", "cuisine", "maison", "home assistant",
+                  "thermostat", "scène", "scene", "domotique", "radiateur", "store", "interrupteur"],
+    "web": ["cherche", "recherche", "web", "internet", "google", "actualité", "actualite",
+            "news", "nouvelle", "site", "url", "http", "lien", "en ligne", "scrape"],
+    "media": ["image", "dessine", "dessin", "photo", "illustration", "vidéo", "video", "logo",
+              "picture", "génère une image", "genere une image", "affiche"],
+    "agenda": ["agenda", "calendrier", "rendez-vous", "rdv", "événement", "evenement", "réunion",
+               "reunion", "liste", "courses", "tâche", "tache", "todo", "to-do", "rappelle",
+               "planifie", "planning", "échéance", "deadline"],
+    "email": ["mail", "email", "e-mail", "courriel", "inbox", "boîte", "boite", "brouillon",
+              "messagerie"],
+    "documents": ["document", "pdf", "résume ce", "resume ce", "analyse ce", "compte rendu",
+                  "compte-rendu", "transcris", "transcription", "ingère", "ingere"],
+    "skills": ["compétence", "competence", "skill", "nouvel outil", "apprends à"],
+    "computer": ["souris", "clic", "écran", "ecran", "screenshot", "capture"],
+}
+# Index inversé nom→groupe (un outil n'est dans qu'un seul groupe).
+_TOOL_DOMAIN = {name: grp for grp, names in _TOOL_GROUPS.items() for name in names}
+
+
+def select_tool_subset(text: str, available_names) -> set:
+    """Renvoie le sous-ensemble de noms d'outils à EXPOSER pour cette requête.
+    On active les groupes-domaine dont un mot-clé apparaît dans `text` ; on conserve
+    TOUJOURS les outils hors groupe. Voir _TOOL_GROUPS pour le détail/sûreté."""
+    text_l = (text or "").lower()
+    active = {g for g, kws in _TOOL_GROUP_KEYWORDS.items() if any(k in text_l for k in kws)}
+    keep = set()
+    for name in available_names:
+        grp = _TOOL_DOMAIN.get(name)
+        if grp is None or grp in active:
+            keep.add(name)
+    return keep
+
+
 def load_dynamic_skills() -> dict:
     """Charge dynamiquement tous les scripts Python du dossier skills/ comme des fonctions."""
     skills = {}
@@ -1238,6 +1303,12 @@ class Swarm:
         # d'exécutions réelles d'une même signature (outil|args) et on pousse à conclure.
         _call_counts = {}     # signature -> nb d'exécutions réelles dans ce run
         _repeat_limit = int(os.getenv("SWARM_REPEAT_LIMIT", "2") or 2)  # 0 = désactivé
+        # Filtrage d'outils par pertinence (économie de tokens) : décidé UNE fois par run
+        # (stabilise aussi le préfixe du prompt → aide le prefix-caching de l'endpoint).
+        _tool_filter_enabled = os.getenv("TOOL_FILTER_ENABLED", "true").lower() in ("true", "1", "yes")
+        _tool_filter_min = int(os.getenv("TOOL_FILTER_MIN", "20") or 20)  # ne filtre qu'au-delà
+        _tool_subset = None       # noms à conserver | None = filtrage non décidé/non appliqué
+        _tool_subset_done = False
 
         while True:
             # Annulation (barge-in vocal / bouton stop) : vérifiée à chaque tour.
@@ -1403,6 +1474,24 @@ class Swarm:
                                            if f.__name__.startswith("transfer_to_")
                                            or f.__name__ not in tgt_tools
                                            or f.__name__ in _orch_keep]
+
+            # Filtrage d'outils par pertinence : décidé au 1er tour à partir de la demande
+            # utilisateur, puis appliqué à chaque tour (sous-ensemble stable). On ne retire
+            # QUE des outils rangés dans un groupe-domaine non activé (sûreté).
+            if _tool_filter_enabled and current_agent.supports_tools and not _tool_subset_done:
+                _tool_subset_done = True
+                _avail = {f.__name__ for f in effective_tools}
+                if len(_avail) >= _tool_filter_min:
+                    _last_user = next((m.get("content", "") for m in reversed(messages)
+                                       if m.get("role") == "user"), "")
+                    _tool_subset = select_tool_subset(str(_last_user), _avail)
+                    _dropped = len(_avail) - len(_tool_subset)
+                    if _dropped > 0:
+                        print(f"[\033[96mSWARM\033[0m] filtrage d'outils : {len(_tool_subset)}/{len(_avail)} "
+                              f"exposés (-{_dropped} non pertinents → ~{_dropped * 110} tokens/tour économisés)")
+            if _tool_subset is not None:
+                effective_tools = [f for f in effective_tools
+                                   if f.__name__ in _tool_subset or _TOOL_DOMAIN.get(f.__name__) is None]
 
             # Enregistrer l'activation de l'agent
             steps.append({

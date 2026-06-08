@@ -82,6 +82,34 @@ def test_max_turns_borne_la_boucle(monkeypatch=None):
     print("OK: max_turns borne la boucle + synthèse finale de rattrapage")
 
 
+def test_select_tool_subset(monkeypatch=None):
+    """Le filtrage d'outils n'expose que les groupes pertinents, garde toujours le cœur,
+    et ne retire jamais un outil hors groupe (sûreté)."""
+    from core.swarm import select_tool_subset, AVAILABLE_TOOLS
+    alln = set(AVAILABLE_TOOLS.keys())
+    CORE = {"search_memory", "make_plan", "get_time", "send_notification"}  # hors groupe
+
+    # 1) Question conversationnelle → AUCUN groupe-domaine → seulement le cœur exposé.
+    sub = select_tool_subset("bonjour, qui es-tu ?", alln)
+    assert CORE <= sub, "les outils cœur doivent rester exposés"
+    assert "execute_bash_command" not in sub and "read_inbox" not in sub and "call_ha_service" not in sub, \
+        "aucun outil spécialisé ne doit être exposé pour une simple question"
+    assert len(sub) < len(alln), "le filtrage doit réduire le nombre d'outils exposés"
+
+    # 2) Demande de code → groupe code activé, email/domotique exclus.
+    sub2 = select_tool_subset("écris un script python pour trier une liste", alln)
+    assert {"edit_file", "execute_bash_command"} <= sub2, "les outils code doivent être exposés"
+    assert "read_inbox" not in sub2, "l'email ne doit pas être exposé pour du code"
+
+    # 3) Domotique → HA exposé, code exclu.
+    sub3 = select_tool_subset("allume la lumière du salon", alln)
+    assert "call_ha_service" in sub3 and "edit_file" not in sub3, "mauvais groupe activé"
+
+    # 4) Outil hors groupe (cœur) jamais retiré même sans mot-clé.
+    assert "memorize_fact" in select_tool_subset("xyz", alln), "un outil cœur ne doit jamais être filtré"
+    print("OK: select_tool_subset filtre par pertinence en gardant le cœur")
+
+
 def test_parse_text_tool_calls(monkeypatch=None):
     """Le parseur récupère un tool-call écrit en TEXTE (bloc ```json, balise <tool_call>)
     et ignore le JSON dont le nom n'est pas un outil disponible (anti faux-positif)."""
@@ -310,6 +338,7 @@ def test_annulation_arrete_le_run():
 
 if __name__ == "__main__":
     test_max_turns_borne_la_boucle()
+    test_select_tool_subset()
     test_parse_text_tool_calls()
     test_disjoncteur_repetition_coupe_les_appels_identiques()
     test_hook_auto_amelioration_archive_un_retour()
