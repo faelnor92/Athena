@@ -9,7 +9,9 @@ from tools import claude_code_tool as cc  # noqa: E402
 
 
 def test_desactive_par_defaut():
-    with mock.patch.dict(os.environ, {}, clear=False):
+    # Indépendant de l'état : ni env, ni flag shared_store → enabled() doit être False.
+    with mock.patch.dict(os.environ, {}, clear=False), \
+         mock.patch("core.shared_store.get", return_value=None):
         os.environ.pop("CLAUDE_CODE_ENABLED", None)
         out = cc.claude_code("fais X")
     assert "désactivé" in out.lower(), out
@@ -17,7 +19,7 @@ def test_desactive_par_defaut():
 
 
 def test_binaire_absent():
-    with mock.patch.dict(os.environ, {"CLAUDE_CODE_ENABLED": "true"}), \
+    with mock.patch.object(cc, "enabled", return_value=True), \
          mock.patch.object(cc, "_bin", return_value=""):
         out = cc.claude_code("fais X")
     assert "introuvable" in out.lower(), out
@@ -29,7 +31,7 @@ def test_appel_headless_ok():
         stdout = '{"result": "Tâche terminée: 2 fichiers modifiés."}'
         stderr = ""
         returncode = 0
-    with mock.patch.dict(os.environ, {"CLAUDE_CODE_ENABLED": "true"}), \
+    with mock.patch.object(cc, "enabled", return_value=True), \
          mock.patch.object(cc, "_bin", return_value="/usr/bin/claude"), \
          mock.patch.object(cc, "_project_dir", return_value="/tmp"), \
          mock.patch("subprocess.run", return_value=_R()) as run:
