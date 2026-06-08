@@ -62,6 +62,18 @@ C'est le cœur du système. Athena peut remplacer un administrateur système ou 
 - **Navigation Git & Code** : L'IA peut lire vos dépôts Git, comprendre votre code source existant et l'éditer en direct.
 - **Maintenance autonome** : Un agent nocturne peut vérifier et réparer le code source automatiquement.
 
+### 🎨 AthenaDesign Studio (Design IA)
+Un studio de design intégré (onglet **🎨 Design**). Décrivez ce que vous voulez créer, Athena le génère et l'**affiche en direct** :
+- **Types** : pages web (HTML/CSS/JS), **apps React** interactives, **diagrammes Mermaid**, et scripts **Python** (présentations **PowerPoint**, graphiques). Des **modèles de départ** (Landing, Pitch deck, Dashboard…) pré-remplissent un prompt.
+- **Votre charte (Design System)** : repliez le panneau « Design System » pour donner vos couleurs/police — à la main, en collant un CSS, ou via **« 🌐 D'une URL »** (Athena extrait la charte d'un site).
+- **Références** : joignez une image/un document (📎) ou une page web (🔗) comme inspiration.
+- **Affiner** : annotez l'aperçu, ajustez en direct (sliders couleur/arrondi/police), parcourez les versions. Si un script Python échoue, Athena **se corrige toute seule**.
+- **Partager / exporter** : bouton **Partager** (lien lecture seule), **Export PDF**, et téléchargement des `.pptx`.
+- *Astuce* : un projet Athena réunit **code et design** — vous gérez les deux au même endroit.
+
+### 🔌 Plugins (dont Claude Code)
+Dans **Réglages > 🔌 Plugins**, activez des extensions. Le **plugin Claude Code** fait appel à l'agent de code **Claude Code** (il faut le CLI `claude` installé et connecté) : une fois activé, votre **Codeur** peut lui déléguer les tâches de code complexes, directement dans le projet actif. *(Consomme votre abonnement/clé Claude.)*
+
 ### 🏠 Domotique, Contexte & Quotidien
 - **Domotique Native (Home Assistant)** : L'IA se connecte directement à votre domotique. Demandez-lui *"Éteins la lumière du salon"* ou *"Ferme les volets"* et elle le fait instantanément.
 - **Extensions MCP (Avancé)** : Athena supporte le protocole MCP. Cela lui permet de brancher des plugins complexes (comme un accès profond à la base de données de Home Assistant pour créer des automatisations, ou tout autre serveur MCP existant).

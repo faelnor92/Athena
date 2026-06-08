@@ -1,5 +1,36 @@
 # Historique des Versions (Changelog)
 
+## v0.10.0 (AthenaDesign Studio, Plugins & Auto-correction)
+Lot majeur : nouveau studio de design IA, projets unifiés code+design, plugins (Claude Code),
+auto-correction (design + code), efficacité tokens, robustesse d'orchestration et audit sécurité.
+
+### 🎨 AthenaDesign Studio (nouveau)
+- **4 types d'artefacts** : web **HTML/CSS/JS**, **React/JSX** (rendu live React+Babel+Tailwind), **Mermaid** (diagrammes), et **Python** exécuté en **sandbox Docker** (PowerPoint via python-pptx, graphiques Matplotlib/Plotly).
+- **Branché sur l'infra LLM d'Athena** (même choix de modèle/clés/fallback ; plus de chemin LLM séparé).
+- **Design System** par projet (charte couleurs/typo) : saisie, extraction d'un CSS, ou **import depuis l'URL** d'un site (capture web).
+- **Imports** : images/documents (PDF→texte via pypdf) + capture web ; **routage vision** (modèle multimodal → sinon pré-description → sinon note ; marche au max sans vision).
+- **Itération** : annotations, **sliders WYSIWYG** (accent/arrondi/police), versions, **modèles de départ**.
+- **Exports** : PDF (Chromium headless), PPTX, HTML ; **partage par lien** en lecture seule (iframe sandbox).
+- **Anti-débordement pptx déterministe** (post-traitement : word_wrap + shrink-to-fit).
+- **Sandbox durcie** : exécution du code généré via Docker (réseau coupé, cap-drop) ; repli local journalisé.
+
+### 🗂️ Projets unifiés & multi-utilisateur
+- Un **projet Athena = code + design** (même registre `core.projects`, même liste des deux côtés).
+- AthenaDesign **multi-tenant** : projets isolés par utilisateur, fichiers générés servis **authentifiés** (ownership + anti path-traversal), jeton de session propagé au studio.
+
+### 🔌 Plugins & auto-correction
+- **Onglet Réglages > Plugins** + **plugin Claude Code** (`claude_code`) : délègue le code à l'agent Claude Code (CLI), scopé au projet actif, opt-in admin, **donné automatiquement au Codeur** quand activé.
+- **Auto-correction** : scripts Python du studio (generate→run→fix) **et** Codeur **Code-Test-Fix** (`pytest`/`npm test` → corrige → revérifie, borné).
+
+### ⚙️ Orchestration & efficacité tokens
+- **Anti-boucle** : disjoncteur de répétition d'outils + rattrapage en fin de budget (réponse de synthèse) + `SWARM_MAX_TURNS` configurable.
+- **Anti-hallucination d'outil** : parseur de tool-call écrit en texte + renfort de préambule.
+- **Filtrage d'outils par pertinence** (n'expose que les schémas utiles) + **préambule compacté** → ~45 % de prompt en moins/tour. *L'optimisation ne retire jamais une capacité (résolution contre l'ensemble autorisé).*
+
+### 🔒 Sécurité & install
+- Corrigés : **SSRF** capture web (fail-closed), **vol de jeton** via lien partagé (iframe sandbox sans same-origin), toggle de plugin réservé **admin**.
+- **Install** : `install.sh`/`install.ps1` installent désormais **Docker + un navigateur headless** (requis pour la sandbox et l'export PDF). `requirements.txt` à jour (python-pptx, httpx).
+
 ## v0.9.41 (Codeur utilisable & IDE en fenêtre)
 Refonte de l'expérience de code (console + IDE) et correctifs majeurs remontés à l'usage.
 

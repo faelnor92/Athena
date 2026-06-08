@@ -1,6 +1,6 @@
 # 🎛️ Athena — Framework Multi-Agent Auto-Hébergé
 
-![Version](https://img.shields.io/badge/version-0.9.41-blue.svg)
+![Version](https://img.shields.io/badge/version-0.10.0-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 
 Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des serveurs légers ou avec des GPU modestes. Accessible via **Interface Web**, **CLI**, **Telegram** et **Vocal Local**.
@@ -41,6 +41,18 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 * **Administration SSH** : Gestion de vos serveurs distants via des commandes SSH.
 * **Créativité & Web** : Recherche web approfondie, génération d'images/vidéos (Fal, Replicate), scraping.
 * **Traitement Média & Réunions** : Capacité à résumer et transcrire des fichiers audios ou des réunions entières.
+
+### 🎨 AthenaDesign Studio
+* **Studio de design IA** : décrivez ce que vous voulez, Athena génère et **prévisualise en direct** des interfaces **HTML/CSS/JS**, des **composants React/JSX**, des **diagrammes Mermaid**, et exécute du **Python** (présentations **PowerPoint**, graphiques Matplotlib/Plotly) dans une **sandbox Docker** isolée.
+* **Design System** : appliquez votre charte (couleurs, typographie) — saisie manuelle, extraction depuis un CSS, ou **import depuis l'URL d'un site**.
+* **Imports & vision** : joignez images/documents (PDF) ou capturez une page web comme référence ; routage vision automatique (modèle multimodal si disponible, sinon dégradation propre).
+* **Itération** : annotations sur l'aperçu, **sliders WYSIWYG** (couleur/arrondi/police), versions, **auto-correction** des scripts en erreur, export **PDF/PPTX/HTML** et **partage par lien** (lecture seule, sandboxé).
+* **Projets unifiés** : un projet Athena porte à la fois le **code** et le **design**.
+
+### 🔌 Plugins & Auto-correction
+* **Onglet Plugins** : active des extensions first-class en plus des serveurs MCP et des skills.
+* **Plugin Claude Code** : délègue le code lourd à l'agent **Claude Code** (CLI), scopé au projet actif ; donné automatiquement au Codeur quand il est activé.
+* **Auto-correction (self-healing)** : le design (Python) et le **Codeur** (Code-Test-Fix : `pytest`/`npm test`) corrigent automatiquement leurs erreurs en boucle bornée.
 
 ### 🏠 Domotique & Automatisations
 * **Domotique Native (Home Assistant)** : Lecture d'état et exécution d'actions domotiques (lumières, volets, capteurs) de façon instantanée.
