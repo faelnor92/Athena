@@ -78,8 +78,10 @@ _DEFAULT_CSP = (
     "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
     "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
     "img-src 'self' data: blob:; connect-src 'self'; "
-    "frame-src 'self' blob:; "  # aperçu PDF (object URL) dans une iframe
-    "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+    "frame-src 'self' blob:; "  # aperçu PDF (object URL) + studio AthenaDesign en iframe
+    # 'self' (et non 'none') : Athena peut embarquer ses PROPRES pages (ex. AthenaDesign
+    # Studio à /athenadesign/) ; un site externe ne peut toujours pas framer Athena.
+    "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'"
 )
 _CSP = os.getenv("CONTENT_SECURITY_POLICY", _DEFAULT_CSP)
 
@@ -89,7 +91,9 @@ async def security_headers(request, call_next):
     resp = await call_next(request)
     if _SECURITY_HEADERS:
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
-        resp.headers.setdefault("X-Frame-Options", "DENY")
+        # SAMEORIGIN (et non DENY) : autorise l'embarquement same-origin (AthenaDesign Studio
+        # en iframe) tout en bloquant le framing par un site externe (anti-clickjacking).
+        resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         if _CSP:

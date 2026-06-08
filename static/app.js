@@ -486,7 +486,7 @@ function selectActiveTab(tab, view, extraAction = null) {
     const _appc = document.querySelector(".app-container");
     // Espace « Code » = view-files (explorateur + éditeur + terminal fusionnés) OU l'ancienne
     // view-console : le chat principal n'y sert pas → on le masque pour libérer l'espace.
-    const onConsole = (view === viewConsole || view === viewFiles);
+    const onConsole = (view === viewConsole || view === viewFiles || view === viewDesign);
     if (_chat) _chat.style.display = onConsole ? "none" : "";
     if (_resizer) _resizer.style.display = onConsole ? "none" : "";
     if (_appc) _appc.classList.toggle("chat-hidden", onConsole);  // grille 2 colonnes → plus de « trou »

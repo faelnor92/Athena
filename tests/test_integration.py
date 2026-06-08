@@ -46,9 +46,12 @@ def _h(tok):
 def test_security_headers_present():
     r = client.get("/")
     assert r.status_code == 200
-    assert r.headers.get("x-frame-options") == "DENY"
+    # SAMEORIGIN (et non DENY) : Athena embarque ses propres pages (AthenaDesign Studio)
+    # mais reste protégée du framing externe (anti-clickjacking).
+    assert r.headers.get("x-frame-options") == "SAMEORIGIN"
     assert r.headers.get("x-content-type-options") == "nosniff"
     assert "content-security-policy" in r.headers
+    assert "frame-ancestors 'self'" in r.headers.get("content-security-policy", "")
 
 
 def test_auth_required_without_token():
