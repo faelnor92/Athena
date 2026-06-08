@@ -12,6 +12,7 @@ OUTPUT FORMAT (follow EXACTLY, nothing else):
    ```html      for web designs (static HTML/CSS/JS)
    ```python    for scripts / PowerPoint / charts
    ```jsx       for React components / interactive apps
+   ```mermaid   for diagrams (flowchart, sequence, class, ER, gantt, state, mindmap…)
 Put ALL the code in that single block. Write NOTHING after the closing ```. Never truncate.
 Do NOT mix explanation text inside the code. Do NOT output two code blocks.
 Choose REACT (```jsx) for stateful / interactive UIs (forms with logic, tabs, todo, calculators,
@@ -24,6 +25,10 @@ REACT RULES (when you output ```jsx):
 - Use hooks via `React.useState`, `React.useEffect`, etc. (or destructure: `const {useState}=React;`).
 - Style with Tailwind utility classes (available) and/or inline styles. Make it premium and responsive.
 - The page renders <App/> automatically; do not call ReactDOM yourself.
+
+MERMAID RULES (when you output ```mermaid): write PURE Mermaid syntax only (no HTML, no
+markdown), starting with the diagram type, e.g. `flowchart TD`, `sequenceDiagram`,
+`classDiagram`, `erDiagram`, `stateDiagram-v2`, `gantt`, `mindmap`. The page renders it.
 
 DESIGN RULES:
 1. VISUAL EXCELLENCE: Never use plain basic colors (red, blue, green). Use a curated palette (HSL, Tailwind-like hues: Slate, Zinc, Indigo, Violet, Rose, Emerald).
@@ -786,11 +791,17 @@ def parse_artifact_response(text: str) -> dict:
 
     # Type : balise si fiable, sinon déduit du contenu.
     low = code.lower()
+    _mermaid_kw = (r"^(flowchart|graph\s|sequencediagram|classdiagram|statediagram(-v2)?|"
+                   r"erdiagram|gantt|mindmap|journey|pie\b|gitgraph|quadrantchart|timeline|requirementdiagram)")
+    _is_mermaid = (artifact_type == "mermaid"
+                   or bool(re.match(_mermaid_kw, code.strip().lower())))
     _is_react = (artifact_type in ("jsx", "tsx", "react")
                  or (not re.search(r"<!doctype|<html", low)
                      and re.search(r"\buse(state|effect|ref|memo|callback)\s*\(|react\.|from\s+['\"]react['\"]|export\s+default\s+function|=>\s*\(?\s*<[a-z]", code, re.I)))
     if artifact_type in ("python", "py"):
         atype = "python"
+    elif _is_mermaid:
+        atype = "mermaid"
     elif _is_react:
         atype = "react"
     elif artifact_type in ("html", "javascript", "js", "css", "xml", "svg"):
@@ -831,6 +842,23 @@ def react_scaffold(code: str) -> str:
         "function(){return React.createElement('div',{style:{padding:24}},'Aucun composant App trouvé.');}));\n"
         "ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(_C));\n"
         "</script></body></html>"
+    )
+
+
+def mermaid_scaffold(code: str) -> str:
+    """Encapsule un diagramme Mermaid dans une page autonome (mermaid.js via CDN). Le code
+    est ÉCHAPPÉ (<, >, &) car il vit dans <pre> ; mermaid lit le textContent (déséchappé)."""
+    esc = (code or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return (
+        "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+        "<script src=\"https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js\"></script>"
+        "<style>body{margin:0;padding:24px;display:flex;justify-content:center;"
+        "font-family:Inter,system-ui,sans-serif;background:#fff}.mermaid{max-width:100%}</style></head>"
+        "<body><pre class=\"mermaid\">" + esc + "</pre>"
+        "<script>try{mermaid.initialize({startOnLoad:true,theme:'default'});}catch(e){"
+        "document.body.innerHTML='<p style=\\'color:#b91c1c\\'>Erreur Mermaid: '+e.message+'</p>';}</script>"
+        "</body></html>"
     )
 
 

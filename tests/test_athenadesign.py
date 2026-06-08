@@ -27,6 +27,19 @@ def test_react_detection_et_scaffold():
     print("OK test_react_detection_et_scaffold")
 
 
+def test_mermaid_detection_et_scaffold():
+    """Type 'mermaid' détecté (balise ou mot-clé) ; scaffold mermaid.js + code échappé."""
+    from core.athenadesign_generator import parse_artifact_response, mermaid_scaffold
+    r = parse_artifact_response("Flux.\n```mermaid\nflowchart TD\n A-->B\n```")
+    assert r["type"] == "mermaid", r["type"]
+    r2 = parse_artifact_response("```\nsequenceDiagram\n A->>B: hi\n```")
+    assert r2["type"] == "mermaid"
+    sc = mermaid_scaffold("classDiagram\n A <|-- B")
+    assert "mermaid@11" in sc and 'class="mermaid"' in sc
+    assert "&lt;|--" in sc, "le code mermaid doit être échappé (vit dans <pre>)"
+    print("OK test_mermaid_detection_et_scaffold")
+
+
 def test_pptx_anti_overflow_present():
     """Le code injecté force word_wrap + shrink-to-fit sur les .pptx produits (anti-débordement
     déterministe). Le code utilisateur reste encadré entre patches."""

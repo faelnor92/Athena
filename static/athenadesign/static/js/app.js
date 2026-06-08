@@ -225,6 +225,7 @@ document.addEventListener("DOMContentLoaded", () => {
         dashboard: "Crée un dashboard analytique moderne (HTML + Chart.js via CDN) : 4 cartes KPI, 2 graphiques (ligne + barres), thème sombre glassmorphism, responsive.",
         chart: "Génère un script Python (matplotlib) qui trace [DONNÉES] avec un style moderne (couleurs soignées, grille discrète, pas de fond gris). Termine par plt.show().",
         react: "Crée un composant React interactif `App` pour [FONCTIONNALITÉ] (ex. todo list, calculateur, tableau filtrable). Utilise les hooks (React.useState/useEffect) et des classes Tailwind, design premium et responsive. Pas d'import/export.",
+        mermaid: "Crée un diagramme Mermaid pour [SUJET] (ex. flowchart d'un processus, sequenceDiagram d'une API, erDiagram d'une base). Syntaxe Mermaid pure, claire et bien structurée.",
     };
     // Sliders WYSIWYG : ajustent l'aperçu HTML EN DIRECT en injectant un <style> dans le
     // document de l'iframe (srcdoc same-origin → contentDocument accessible). Réappliqué au
@@ -991,6 +992,28 @@ document.addEventListener("DOMContentLoaded", () => {
             + '<\/script></body></html>';
     }
 
+    // Enveloppe un diagramme Mermaid dans une page autonome (mermaid.js via CDN). Code échappé
+    // (vit dans <pre>) ; mermaid lit le textContent déséchappé. Équivalent serveur : mermaid_scaffold.
+    function buildMermaidPreview(code) {
+        const esc = (code || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">'
+            + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+            + '<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"><\/script>'
+            + '<style>body{margin:0;padding:24px;display:flex;justify-content:center;'
+            + 'font-family:Inter,system-ui,sans-serif;background:#fff}.mermaid{max-width:100%}<\/style></head>'
+            + '<body><pre class="mermaid">' + esc + '</pre>'
+            + '<script>try{mermaid.initialize({startOnLoad:true,theme:"default"});}catch(e){}<\/script>'
+            + '</body></html>';
+    }
+
+    // HTML d'aperçu selon le type d'artefact web.
+    function buildWebPreview(ver) {
+        if (ver.type === "react") return buildReactPreview(ver.code);
+        if (ver.type === "mermaid") return buildMermaidPreview(ver.code);
+        return ver.code;
+    }
+    const WEB_TYPES = ["html", "react", "mermaid"];
+
     function injectConsoleBridge(htmlCode) {
         let injection = `
 <script>
@@ -1049,9 +1072,8 @@ document.addEventListener("DOMContentLoaded", () => {
     btnRefreshPreview.addEventListener("click", () => {
         if (currentVersionIndex !== null && currentProjectData) {
             const ver = currentProjectData.versions[currentVersionIndex];
-            if (ver && (ver.type === "html" || ver.type === "react")) {
-                const html = (ver.type === "react") ? buildReactPreview(ver.code) : ver.code;
-                htmlPreviewFrame.srcdoc = injectConsoleBridge(html);
+            if (ver && WEB_TYPES.includes(ver.type)) {
+                htmlPreviewFrame.srcdoc = injectConsoleBridge(buildWebPreview(ver));
                 appendConsoleLine("system", "[Aperçu] Rechargement de l'iframe...");
             }
         }
@@ -1061,7 +1083,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btnOpenExternal.addEventListener("click", () => {
         if (currentProjectId && currentVersionIndex !== null && currentProjectData) {
             const ver = currentProjectData.versions[currentVersionIndex];
-            if (ver && (ver.type === "html" || ver.type === "react")) {
+            if (ver && WEB_TYPES.includes(ver.type)) {
                 const url = `/api/athenadesign/projects/${currentProjectId}/versions/${ver.version}/raw`;
                 window.open(url, "_blank");
             }
@@ -1159,10 +1181,11 @@ document.addEventListener("DOMContentLoaded", () => {
         
         canvasEmptyState.style.display = "none";
         
-        const lang = ver.type === "python" ? "python" : (ver.type === "react" ? "javascript" : "html");
+        const lang = ver.type === "python" ? "python"
+            : (ver.type === "react" ? "javascript" : (ver.type === "mermaid" ? "markdown" : "html"));
         setEditorValue(ver.code, lang);
 
-        if (ver.type === "html" || ver.type === "react") {
+        if (WEB_TYPES.includes(ver.type)) {
             pythonPreviewContainer.style.display = "none";
             previewFrameContainer.style.display = "block";
             htmlPreviewFrame.style.display = "block";
@@ -1177,8 +1200,7 @@ document.addEventListener("DOMContentLoaded", () => {
             applyViewport(activeViewport);
 
             // React → on enveloppe le composant dans une page (React/Babel/Tailwind via CDN).
-            const previewHtml = (ver.type === "react") ? buildReactPreview(ver.code) : ver.code;
-            htmlPreviewFrame.srcdoc = injectConsoleBridge(previewHtml);
+            htmlPreviewFrame.srcdoc = injectConsoleBridge(buildWebPreview(ver));
             if (btnExportPdf) btnExportPdf.style.display = "flex";
             if (adjustToolbar) adjustToolbar.style.display = "flex";
             switchTab("preview");

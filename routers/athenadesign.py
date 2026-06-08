@@ -21,6 +21,21 @@ SANDBOX_DIR = runner.SANDBOX_DIR
 os.makedirs(SANDBOX_DIR, exist_ok=True)
 
 
+# Types d'artefacts rendus comme une page web (aperçu/PDF/partage/raw).
+_WEB_TYPES = ("html", "react", "mermaid")
+
+
+def _web_render(version: dict) -> str:
+    """Rend un artefact web en HTML autonome selon son type (react/mermaid → scaffold)."""
+    t = version.get("type")
+    code = version.get("code", "")
+    if t == "react":
+        return generator.react_scaffold(code)
+    if t == "mermaid":
+        return generator.mermaid_scaffold(code)
+    return code
+
+
 def _current_user(request: Request) -> str:
     """Utilisateur courant (posé par l'auth middleware) ; 'local' en mode sans auth."""
     u = getattr(request.state, "user", None)
@@ -343,12 +358,9 @@ async def get_raw_html(request: Request, project_id: str, version_num: int):
         raise HTTPException(status_code=404, detail="Version introuvable")
 
     version = project["versions"][idx]
-    if version.get("type") not in ("html", "react"):
-        raise HTTPException(status_code=400, detail="Seuls les artefacts web (HTML/React) peuvent être affichés en brut")
-    code = version.get("code", "")
-    if version.get("type") == "react":
-        code = generator.react_scaffold(code)
-    return HTMLResponse(content=code, status_code=200)
+    if version.get("type") not in _WEB_TYPES:
+        raise HTTPException(status_code=400, detail="Seuls les artefacts web (HTML/React/Mermaid) peuvent être affichés en brut")
+    return HTMLResponse(content=_web_render(version), status_code=200)
 
 
 @router.get("/file/{project_id}/{filename}")
@@ -424,12 +436,10 @@ async def export_pdf(request: Request, payload: dict = Body(...)):
         if isinstance(vnum, int) and 1 <= vnum <= len(versions):
             v = versions[vnum - 1]
         else:
-            v = next((x for x in reversed(versions) if x.get("type") in ("html", "react")), None)
-        if not v or v.get("type") not in ("html", "react"):
-            raise HTTPException(status_code=400, detail="Aucun design HTML/React à exporter")
-        code = v.get("code", "")
-        if v.get("type") == "react":
-            code = generator.react_scaffold(code)
+            v = next((x for x in reversed(versions) if x.get("type") in _WEB_TYPES), None)
+        if not v or v.get("type") not in _WEB_TYPES:
+            raise HTTPException(status_code=400, detail="Aucun design web (HTML/React/Mermaid) à exporter")
+        code = _web_render(v)
     chrome = browser_tools._find_chromium()
     if not chrome:
         raise HTTPException(status_code=503, detail="Export PDF indisponible : aucun navigateur "
@@ -537,10 +547,7 @@ async def shared_view(token: str):
     proj = _resolve_shared(token)
     if not proj:
         raise HTTPException(status_code=404, detail="Lien de partage invalide ou révoqué")
-    v = next((x for x in reversed(proj.get("versions", [])) if x.get("type") in ("html", "react")), None)
+    v = next((x for x in reversed(proj.get("versions", [])) if x.get("type") in _WEB_TYPES), None)
     if not v:
         return HTMLResponse("<h1>Ce design partagé n'a pas d'aperçu web.</h1>", status_code=200)
-    code = v.get("code", "")
-    if v.get("type") == "react":
-        code = generator.react_scaffold(code)
-    return HTMLResponse(content=code, status_code=200)
+    return HTMLResponse(content=_web_render(v), status_code=200)
