@@ -193,6 +193,30 @@ document.addEventListener("DOMContentLoaded", () => {
     if (btnDsSave) btnDsSave.addEventListener("click", () => saveDesignSystem(false));
     if (btnDsExtract) btnDsExtract.addEventListener("click", () => saveDesignSystem(true));
 
+    const btnDsUrl = document.getElementById("btn-ds-url");
+    if (btnDsUrl) {
+        btnDsUrl.addEventListener("click", async () => {
+            if (!currentProjectId) { appendSystemMessage && appendSystemMessage("Ouvre un projet d'abord."); return; }
+            const url = prompt("URL du site dont extraire la charte (couleurs / typographie) :");
+            if (!url || !/^https?:\/\//i.test(url)) return;
+            btnDsUrl.disabled = true;
+            const old = btnDsUrl.textContent; btnDsUrl.textContent = "⏳ Extraction…";
+            try {
+                const r = await fetch(`/api/athenadesign/projects/${currentProjectId}/design-system`, {
+                    method: "PUT", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url: url.trim() })
+                });
+                const d = await r.json();
+                if (designSystemInput) designSystemInput.value = d.design_system || "";
+                if (currentProjectData) currentProjectData.design_system = d.design_system || "";
+                if (!(d.design_system || "").trim())
+                    appendSystemMessage && appendSystemMessage("Aucune couleur/police détectée sur cette page.");
+            } catch (e) {
+                appendConsoleLine && appendConsoleLine("stderr", "[Charte URL] échec : " + e.message);
+            } finally { btnDsUrl.disabled = false; btnDsUrl.textContent = old; }
+        });
+    }
+
     // Modèles de départ : pré-remplissent un prompt riche (évite le « blank canvas »).
     const STARTER_TEMPLATES = {
         landing: "Crée une landing page moderne et responsive pour [PRODUIT] : hero plein écran (titre accrocheur, sous-titre, CTA), section 3 avantages avec icônes, témoignages, et footer. Style premium glassmorphism, palette soignée, micro-animations.",

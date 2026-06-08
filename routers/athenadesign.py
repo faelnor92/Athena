@@ -133,6 +133,38 @@ def _resolve_attachments(attachments) -> tuple:
     return ("\n\n".join(texts), images)
 
 
+def _fetch_web_styles(url: str) -> str:
+    """Récupère le HTML BRUT d'une page + ses CSS (blocs <style> et feuilles liées) pour en
+    EXTRAIRE la charte (couleurs/typo). Garde SSRF (net_guard) + bornes (taille, nb de CSS)."""
+    if not re.match(r"^https?://", url or ""):
+        return ""
+    try:
+        from tools.net_guard import is_blocked_url
+        if is_blocked_url(url):
+            return ""
+    except Exception:
+        pass
+    try:
+        import requests
+        from urllib.parse import urljoin
+        html = requests.get(url, timeout=8, headers={"User-Agent": "AthenaDesign/1.0"}).text[:300000]
+    except Exception:
+        return ""
+    css = html  # le HTML contient déjà <style> et style="…"
+    # Feuilles de style liées (limitées à 5, 200 Ko chacune).
+    for href in re.findall(r'<link[^>]+rel=["\']?stylesheet["\']?[^>]*href=["\']([^"\']+)["\']', html, re.I)[:5]:
+        try:
+            from tools.net_guard import is_blocked_url
+            cu = urljoin(url, href)
+            if is_blocked_url(cu):
+                continue
+            import requests as _rq
+            css += "\n" + _rq.get(cu, timeout=6, headers={"User-Agent": "AthenaDesign/1.0"}).text[:200000]
+        except Exception:
+            continue
+    return css
+
+
 def extract_design_system(source: str) -> str:
     """Construit une charte de départ depuis du CSS/HTML/texte : couleurs (#hex/rgb) et
     polices (font-family) les plus fréquentes. Sert le 'design system support'."""
@@ -356,6 +388,10 @@ async def set_design_system(request: Request, project_id: str, payload: dict = B
         raise HTTPException(status_code=404, detail="Projet introuvable")
     ds = (payload.get("design_system") or "").strip()
     source = payload.get("source") or ""
+    url = (payload.get("url") or "").strip()
+    if url:
+        # Capture web : on récupère HTML+CSS brut de la page et on en extrait la charte.
+        source = (source + "\n" + _fetch_web_styles(url)).strip()
     if source:
         extracted = extract_design_system(source)
         ds = (ds + ("\n" if ds and extracted else "") + extracted).strip()

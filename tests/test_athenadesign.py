@@ -68,6 +68,25 @@ def test_execute_repli_local_si_sandbox_off():
     print("OK test_execute_repli_local_si_sandbox_off")
 
 
+def test_charte_depuis_url():
+    """Extraction de charte depuis une URL : HTML inline + feuille CSS liée (réseau mocké)."""
+    import routers.athenadesign as ad
+    html = ('<html><head><link rel="stylesheet" href="/site.css">'
+            '<style>body{font-family: Outfit, sans-serif; color:#0ea5e9}</style></head><body></body></html>')
+    css = ".btn{background:#f43f5e} h1{font-family: Inter}"
+    class _R:
+        def __init__(self, t): self.text = t
+    def fake_get(u, **kw):
+        return _R(css if u.endswith("site.css") else html)
+    with mock.patch("requests.get", side_effect=fake_get), \
+         mock.patch("tools.net_guard.is_blocked_url", return_value=False):
+        raw = ad._fetch_web_styles("https://exemple.test/")
+        ds = ad.extract_design_system(raw)
+    assert "#0ea5e9" in ds and "#f43f5e" in ds, ds   # couleurs HTML inline + CSS liée
+    assert "Outfit" in ds or "Inter" in ds, ds       # typo
+    print("OK test_charte_depuis_url")
+
+
 def test_partage_lecture_seule():
     """Partage par jeton : accès public en lecture, 404 après révocation."""
     from fastapi.testclient import TestClient
