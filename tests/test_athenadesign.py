@@ -11,6 +11,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core import athenadesign_runner as r  # noqa: E402
 
 
+def test_react_detection_et_scaffold():
+    """Type 'react' détecté (balise jsx ou heuristique) + scaffold autonome (React/Babel/root)."""
+    from core.athenadesign_generator import parse_artifact_response, react_scaffold
+    r = parse_artifact_response("Compteur.\n```jsx\nfunction App(){const[n,setN]=React.useState(0);"
+                                "return <button onClick={()=>setN(n+1)}>{n}</button>}\n```")
+    assert r["type"] == "react", r["type"]
+    r2 = parse_artifact_response("X.\n```\nexport default function App(){return <div>hi</div>}\n```")
+    assert r2["type"] == "react"
+    sc = react_scaffold(r["code"])
+    assert all(x in sc for x in ["react@18", "babel", 'id="root"', "createRoot"]), "scaffold incomplet"
+    assert "import " not in sc.split("text/babel")[1], "import non retiré du composant"
+    # un vrai HTML ne doit PAS être pris pour du react
+    assert parse_artifact_response("```html\n<!DOCTYPE html><html><body>x</body></html>\n```")["type"] == "html"
+    print("OK test_react_detection_et_scaffold")
+
+
 def test_pptx_anti_overflow_present():
     """Le code injecté force word_wrap + shrink-to-fit sur les .pptx produits (anti-débordement
     déterministe). Le code utilisateur reste encadré entre patches."""

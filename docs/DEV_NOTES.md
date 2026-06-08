@@ -92,7 +92,8 @@ modèle/clés/fallback d'Athena). Tests : `test_projets_isoles_par_utilisateur`.
 ### Comparatif vs **Claude Design** (produit Anthropic — canvas, modèle vision ; cf. cldesign.txt)
 | Feature Claude Design | AthenaDesign | État |
 |---|---|---|
-| Text-to-design (decks, landing, mockups…) | prompt → HTML + Python/pptx | ✅ (périmètre + étroit : 2 types) |
+| Text-to-design (decks, landing, mockups…) | prompt → HTML + **React/JSX** + Python/pptx | ✅ (3 types : html, react, python) |
+| **React/JSX interactif** | **FAIT (2026-06-08)** : type `react`, rendu live (React18+Babel+Tailwind CDN dans l'iframe), `react_scaffold` côté serveur pour PDF/partage/raw ; détection auto (balise jsx ou heuristique hooks/export) | ✅ |
 | Chat editing + inline comments + edits directs + sliders | chat + annotations/dessin + édition code (Monaco) | ✅ sauf **sliders/WYSIWYG visuels** |
 | **Design system** (brand → couleurs/typo, applique) | **FAIT (2026-06-08)** : charte par projet injectée au prompt + extraction couleurs/typo depuis CSS/HTML (`extract_design_system`) + panneau UI | ✅ |
 | Imports multiples (image/doc, **web capture**) | **FAIT** : attachments → contexte (PDF/texte via pypdf, capture web en texte) + images ; UI 📎/🔗 | ✅ (codebase-connect = via capture/coller) |

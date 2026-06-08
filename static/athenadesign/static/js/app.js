@@ -224,6 +224,7 @@ document.addEventListener("DOMContentLoaded", () => {
         onepager: "Crée un one-pager HTML imprimable pour [SUJET] : en-tête avec titre + accroche, 3-4 sections concises, un visuel clé, et un encadré contact. Mise en page claire, typographie soignée.",
         dashboard: "Crée un dashboard analytique moderne (HTML + Chart.js via CDN) : 4 cartes KPI, 2 graphiques (ligne + barres), thème sombre glassmorphism, responsive.",
         chart: "Génère un script Python (matplotlib) qui trace [DONNÉES] avec un style moderne (couleurs soignées, grille discrète, pas de fond gris). Termine par plt.show().",
+        react: "Crée un composant React interactif `App` pour [FONCTIONNALITÉ] (ex. todo list, calculateur, tableau filtrable). Utilise les hooks (React.useState/useEffect) et des classes Tailwind, design premium et responsive. Pas d'import/export.",
     };
     // Sliders WYSIWYG : ajustent l'aperçu HTML EN DIRECT en injectant un <style> dans le
     // document de l'iframe (srcdoc same-origin → contentDocument accessible). Réappliqué au
@@ -966,6 +967,30 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(resizeCanvases, 250);
     }
 
+    // Enveloppe un composant React (JSX) dans une page autonome (React+ReactDOM+Babel+Tailwind
+    // via CDN) pour l'aperçu live. Équivalent de generator.react_scaffold côté serveur.
+    function buildReactPreview(code) {
+        const body = (code || "")
+            .replace(/^\s*import[^\n]*\n/gm, "")
+            .replace(/^\s*export\s+default\s+/gm, "")
+            .replace(/^\s*export\s+/gm, "");
+        return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">'
+            + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+            + '<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>'
+            + '<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>'
+            + '<script src="https://unpkg.com/@babel/standalone/babel.min.js"><\/script>'
+            + '<script src="https://cdn.tailwindcss.com"><\/script>'
+            + '<style>body{margin:0;font-family:Inter,system-ui,sans-serif}<\/style></head>'
+            + '<body><div id="root"></div>'
+            + '<script type="text/babel" data-presets="react">\n'
+            + 'const {useState,useEffect,useRef,useMemo,useCallback,useReducer,useContext,Fragment}=React;\n'
+            + body
+            + '\nconst _C=(typeof App!=="undefined"?App:(typeof Component!=="undefined"?Component:'
+            + 'function(){return React.createElement("div",{style:{padding:24}},"Aucun composant App trouvé.");}));\n'
+            + 'ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(_C));\n'
+            + '<\/script></body></html>';
+    }
+
     function injectConsoleBridge(htmlCode) {
         let injection = `
 <script>
@@ -1024,8 +1049,9 @@ document.addEventListener("DOMContentLoaded", () => {
     btnRefreshPreview.addEventListener("click", () => {
         if (currentVersionIndex !== null && currentProjectData) {
             const ver = currentProjectData.versions[currentVersionIndex];
-            if (ver && ver.type === "html") {
-                htmlPreviewFrame.srcdoc = injectConsoleBridge(ver.code);
+            if (ver && (ver.type === "html" || ver.type === "react")) {
+                const html = (ver.type === "react") ? buildReactPreview(ver.code) : ver.code;
+                htmlPreviewFrame.srcdoc = injectConsoleBridge(html);
                 appendConsoleLine("system", "[Aperçu] Rechargement de l'iframe...");
             }
         }
@@ -1035,7 +1061,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btnOpenExternal.addEventListener("click", () => {
         if (currentProjectId && currentVersionIndex !== null && currentProjectData) {
             const ver = currentProjectData.versions[currentVersionIndex];
-            if (ver && ver.type === "html") {
+            if (ver && (ver.type === "html" || ver.type === "react")) {
                 const url = `/api/athenadesign/projects/${currentProjectId}/versions/${ver.version}/raw`;
                 window.open(url, "_blank");
             }
@@ -1133,24 +1159,26 @@ document.addEventListener("DOMContentLoaded", () => {
         
         canvasEmptyState.style.display = "none";
         
-        const lang = ver.type === "python" ? "python" : "html";
+        const lang = ver.type === "python" ? "python" : (ver.type === "react" ? "javascript" : "html");
         setEditorValue(ver.code, lang);
-        
-        if (ver.type === "html") {
+
+        if (ver.type === "html" || ver.type === "react") {
             pythonPreviewContainer.style.display = "none";
             previewFrameContainer.style.display = "block";
             htmlPreviewFrame.style.display = "block";
             btnRunPython.style.display = "none";
-            
+
             // Show new preview utility buttons
             btnRefreshPreview.style.display = "flex";
             btnOpenExternal.style.display = "flex";
             responsiveToolbar.style.display = "flex";
-            
+
             // Apply current responsive viewport
             applyViewport(activeViewport);
-            
-            htmlPreviewFrame.srcdoc = injectConsoleBridge(ver.code);
+
+            // React → on enveloppe le composant dans une page (React/Babel/Tailwind via CDN).
+            const previewHtml = (ver.type === "react") ? buildReactPreview(ver.code) : ver.code;
+            htmlPreviewFrame.srcdoc = injectConsoleBridge(previewHtml);
             if (btnExportPdf) btnExportPdf.style.display = "flex";
             if (adjustToolbar) adjustToolbar.style.display = "flex";
             switchTab("preview");

@@ -9,10 +9,21 @@ SYSTEM_PROMPT = """You are AthenaDesign, an elite AI design companion. Your goal
 OUTPUT FORMAT (follow EXACTLY, nothing else):
 1. First, a SHORT explanation in French (2 to 4 sentences) of your design choices and how to interact with it.
 2. Then the COMPLETE code inside ONE single fenced block tagged with the language:
-   ```html      for web designs
+   ```html      for web designs (static HTML/CSS/JS)
    ```python    for scripts / PowerPoint / charts
+   ```jsx       for React components / interactive apps
 Put ALL the code in that single block. Write NOTHING after the closing ```. Never truncate.
 Do NOT mix explanation text inside the code. Do NOT output two code blocks.
+Choose REACT (```jsx) for stateful / interactive UIs (forms with logic, tabs, todo, calculators,
+dashboards with interactivity). Choose ```html for static/visual pages. Choose ```python for
+data, charts or .pptx.
+
+REACT RULES (when you output ```jsx):
+- Define a single component named `App`. Do NOT write `import` or `export` statements — React,
+  ReactDOM, the hooks and Tailwind CSS are ALREADY provided globally in the page.
+- Use hooks via `React.useState`, `React.useEffect`, etc. (or destructure: `const {useState}=React;`).
+- Style with Tailwind utility classes (available) and/or inline styles. Make it premium and responsive.
+- The page renders <App/> automatically; do not call ReactDOM yourself.
 
 DESIGN RULES:
 1. VISUAL EXCELLENCE: Never use plain basic colors (red, blue, green). Use a curated palette (HSL, Tailwind-like hues: Slate, Zinc, Indigo, Violet, Rose, Emerald).
@@ -775,8 +786,13 @@ def parse_artifact_response(text: str) -> dict:
 
     # Type : balise si fiable, sinon déduit du contenu.
     low = code.lower()
+    _is_react = (artifact_type in ("jsx", "tsx", "react")
+                 or (not re.search(r"<!doctype|<html", low)
+                     and re.search(r"\buse(state|effect|ref|memo|callback)\s*\(|react\.|from\s+['\"]react['\"]|export\s+default\s+function|=>\s*\(?\s*<[a-z]", code, re.I)))
     if artifact_type in ("python", "py"):
         atype = "python"
+    elif _is_react:
+        atype = "react"
     elif artifact_type in ("html", "javascript", "js", "css", "xml", "svg"):
         atype = "html"
     elif re.search(r"<!doctype html|<html|<body|<div|<svg", low):
@@ -791,6 +807,32 @@ def parse_artifact_response(text: str) -> dict:
     if len(explanation) > 1200:
         explanation = explanation[:1200].rstrip() + "…"
     return {"type": atype, "explanation": explanation, "code": code}
+
+def react_scaffold(code: str) -> str:
+    """Encapsule un composant React (JSX) dans une page autonome : React + ReactDOM + Babel
+    standalone + Tailwind (CDN), puis rend <App/>. On retire import/export (React est global).
+    Utilisé côté serveur (export PDF / partage / raw) ; le front a un équivalent pour l'aperçu live."""
+    body = re.sub(r"(?m)^\s*import[^\n]*\n", "", code or "")
+    body = re.sub(r"(?m)^\s*export\s+default\s+", "", body)
+    body = re.sub(r"(?m)^\s*export\s+", "", body)
+    return (
+        "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+        "<script crossorigin src=\"https://unpkg.com/react@18/umd/react.production.min.js\"></script>"
+        "<script crossorigin src=\"https://unpkg.com/react-dom@18/umd/react-dom.production.min.js\"></script>"
+        "<script src=\"https://unpkg.com/@babel/standalone/babel.min.js\"></script>"
+        "<script src=\"https://cdn.tailwindcss.com\"></script>"
+        "<style>body{margin:0;font-family:Inter,system-ui,sans-serif}</style></head>"
+        "<body><div id=\"root\"></div>"
+        "<script type=\"text/babel\" data-presets=\"react\">\n"
+        "const {useState,useEffect,useRef,useMemo,useCallback,useReducer,useContext,Fragment}=React;\n"
+        + body +
+        "\nconst _C = (typeof App!=='undefined'?App:(typeof Component!=='undefined'?Component:"
+        "function(){return React.createElement('div',{style:{padding:24}},'Aucun composant App trouvé.');}));\n"
+        "ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(_C));\n"
+        "</script></body></html>"
+    )
+
 
 def _athena_default_model() -> str:
     """Modèle d'AthenaDesign = LE MÊME CHOIX que le reste d'Athena (pas de knob dédié).
