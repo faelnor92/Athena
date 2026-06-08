@@ -1,0 +1,12 @@
+# Libs de visualisation pour AthenaDesign — nécessaires SEULEMENT si le code généré est
+# exécuté SANS Docker (repli hôte : SANDBOX_MODE=off ou démon Docker indisponible).
+#
+# En mode normal (Docker), le runner construit une image dérivée qui les installe
+# automatiquement (cf. core/athenadesign_runner.py / ATHENADESIGN_PIP) — rien à faire ici.
+#
+# Installation du repli hôte :  pip install -r requirements-design.txt
+matplotlib>=3.7
+numpy>=1.24
+pandas>=2.0
+plotly>=5.18
+python-pptx>=1.0.2

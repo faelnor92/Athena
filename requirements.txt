@@ -29,6 +29,13 @@ Pillow==9.4.0
 # --- Pièces jointes du chat (extraction de texte PDF) ----------------------
 pypdf==6.12.2
 
+# --- AthenaDesign (génération de présentations / visualisations) ------------
+python-pptx>=1.0.2
+httpx>=0.27          # appels LLM du générateur AthenaDesign (importé au démarrage)
+# Les libs de visualisation (matplotlib/numpy/pandas/plotly) ne sont PAS ici : elles sont
+# installées automatiquement dans l'image Docker du sandbox AthenaDesign. Installez-les en
+# plus (requirements-design.txt) UNIQUEMENT si vous exécutez AthenaDesign sans Docker.
+
 # --- Optionnel : transcription de réunions (lourd, tire PyTorch) ------------
 # Décommentez si vous utilisez transcribe_and_summarize_meeting :
 # openai-whisper==20250625

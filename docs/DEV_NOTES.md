@@ -41,6 +41,37 @@ Mesures réelles (table `runs`) : **~8 000 tokens/run, 8 s/run, débit médian ~
 - **Préambule système compacté ✅ FAIT (2026-06-08)** : le préambule (ré-envoyé CHAQUE tour) a été resserré sans perte fonctionnelle. (1) bloc 🧰 OUTILS = **noms seulement** (les descriptions sont déjà dans le schéma `tools` → ~5k tokens de docs dupliqués supprimés) ; (2) **règle d'identité gatée sur multi-agent** (inutile quand Athena est seule) + resserrée ; (3) RÈGLES SYSTÈME + anti-fabrication fusionnées ; (4) bloc multi-agent : **section 7 (planif) retirée** (doublon du bloc `make_plan`), débats gatés sur présence de l'outil, routage/mémoire resserrés. Mesuré live (« qui es-tu », Athena seule) : **prompt 2762 → 1960 tokens (−29 %)**, réponse identique. Cumulé au filtrage d'outils : ~3558 → ~1960 (~45 % de prompt en moins/tour).
 - **Levier 2 — prompt caching** : `_apply_prompt_cache` utilise la syntaxe `cache_control` **Anthropic** et n'est appliqué QUE sur le chemin API officielle (jamais sur l'endpoint custom — l'y envoyer casserait l'appel OpenAI-compatible). **Sur l'endpoint Unistra auto-hébergé (vLLM probable) le caching de préfixe est AUTOMATIQUE et ne réduit PAS le NOMBRE de tokens** (gain latence/compute, pas conso ; et pas de facturation par token en self-host). Donc pour la CONSO, le vrai levier reste #1 (moins d'outils) + moins de tours (déjà fait : disjoncteur/rattrapage). Le caching ne « rapporte » des tokens que sur une API payante (Anthropic) — déjà géré. Conclusion : rien à forcer côté endpoint custom ; lever 1 + préambule lean = la bonne cible.
 
+## 🎨 AthenaDesign Studio (2026-06-08)
+Studio de design/prototypage : l'utilisateur décrit ce qu'il veut, le LLM **génère du code**
+(présentations **PowerPoint** via python-pptx, visualisations matplotlib/plotly, HTML), qui
+est **exécuté** pour produire l'artefact, avec **projets + versions + commentaires** persistés
+et un front en iframe (onglet 🎨 Design). Intégré depuis une copie USB (`Athena-main`).
+
+**🎯 Barre de qualité (exigence utilisateur 2026-06-08)** : AthenaDesign doit être **aussi
+efficace que Claude Design / OpenDesign** (qualité des artefacts, fluidité d'itération,
+rendu pro). C'est l'étalon à viser — toute amélioration se juge à cette aune.
+
+**Fichiers** : `routers/athenadesign.py` (API `/api/athenadesign`), `core/athenadesign_generator.py`
+(LLM → code ; mode mock hors-ligne), `core/athenadesign_runner.py` (exécution), front
+`static/athenadesign/` + onglet dans `static/index.html`/`app.js`. Données runtime gitignorées
+(`athenadesign_projects.json`, `/sandbox/`).
+
+**Sécurité — durcissement appliqué** : la version USB exécutait le code généré en **subprocess
+hôte sans isolation** (faille : lecture `.env`, réseau, FS). Réécrit → exécution via le **sandbox
+Docker** (`tools/sandbox_runner.run_python_in_dir` : réseau coupé, `--cap-drop ALL`, FS read-only
+hors /work, limites mem/cpu/pids, UID hôte). Image dérivée auto (base + python-pptx/matplotlib/
+numpy/pandas/plotly) construite une fois et cachée (`athena-design:latest`). **Repli local non
+isolé** seulement si Docker indisponible ou `SANDBOX_MODE=off` (journalisé). Vérifié en réel :
+.pptx généré en sandbox, réseau bloqué. Env : `ATHENADESIGN_DOCKER_IMAGE`, `ATHENADESIGN_PIP`,
+`ATHENADESIGN_TIMEOUT`. Deps : `python-pptx`/`httpx` en base ; viz lourdes dans `requirements-design.txt`.
+
+**Limites connues (à durcir avant multi-utilisateur)** : (1) base de projets **GLOBALE**
+(`athenadesign_projects.json`), pas multi-tenant → à scoper par utilisateur ; (2) mount statique
+`/sandbox` **hors `/api/` donc non authentifié** → artefacts publics si l'instance est exposée
+(servir via endpoint authentifié) ; (3) le générateur fait ses propres appels httpx (Gemini…)
+avec clé passée par le front → à aligner sur `_complete`/`user_config` (clés par-utilisateur,
+litellm, caching) plutôt qu'un chemin LLM séparé.
+
 ## 🚧 Refonte « partie code » (en cours de décision)
 Direction pressentie (à valider) :
 - **Sous-système de code séparé du swarm conversationnel** : un agent de code dédié (indépendant des agents dynamiques) avec une **boucle agentique** propre (lire/écrire/éditer/exécuter/tester/itérer), sur un **modèle fort**.
