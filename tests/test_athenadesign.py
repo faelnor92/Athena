@@ -11,6 +11,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core import athenadesign_runner as r  # noqa: E402
 
 
+def test_pptx_anti_overflow_present():
+    """Le code injecté force word_wrap + shrink-to-fit sur les .pptx produits (anti-débordement
+    déterministe). Le code utilisateur reste encadré entre patches."""
+    wrapped = r._patched_code("print('hello')")
+    assert "print('hello')" in wrapped
+    assert "TEXT_TO_FIT_SHAPE" in wrapped and "word_wrap" in wrapped, "post-traitement pptx absent"
+    assert ".pptx" in wrapped
+    print("OK test_pptx_anti_overflow_present")
+
+
 def test_scan_outputs_categorise():
     import tempfile
     d = tempfile.mkdtemp(prefix="adscan_")

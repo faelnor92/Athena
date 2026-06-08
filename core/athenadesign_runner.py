@@ -42,47 +42,43 @@ def prepare_sandbox(project_id: str) -> str:
     return project_sandbox
 
 
-def _patched_code(code: str) -> str:
-    """Préfixe le code de patches qui capturent les figures matplotlib/plotly en fichiers."""
-    return f"""# --- AUTOMATIC ATHENADESIGN SANDBOX PATCHES ---
-import sys
-import os
-import io
+# Patches injectés AVANT le code généré (capture matplotlib/plotly). Chaîne normale (pas
+# f-string) → pas d'échappement d'accolades.
+_PRE_PATCHES = """# --- AUTOMATIC ATHENADESIGN SANDBOX PATCHES ---
+import sys, os, io
 
-# matplotlib en headless + capture automatique de plt.show()
 try:
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     def _patched_show(*args, **kwargs):
         fig_num = len([f for f in os.listdir('.') if f.startswith('plot_') and f.endswith('.png')]) + 1
-        filename = f"plot_{{fig_num}}.png"
+        filename = f"plot_{fig_num}.png"
         plt.savefig(filename, bbox_inches='tight', dpi=150)
         plt.close()
-        print(f"[AthenaDesign Plot Saved: {{filename}}]")
+        print(f"[AthenaDesign Plot Saved: {filename}]")
     plt.show = _patched_show
 except ImportError:
     pass
 
-# Plotly : sauvegarde HTML quand show() est appelé
 try:
     import plotly.io as pio
     from plotly.io._renderers import ExternalRenderer
     class AthenaDesignRenderer(ExternalRenderer):
         def render(self, fig):
             fig_num = len([f for f in os.listdir('.') if f.startswith('plotly_') and f.endswith('.html')]) + 1
-            filename = f"plotly_{{fig_num}}.html"
+            filename = f"plotly_{fig_num}.html"
             fig.write_html(filename)
-            print(f"[AthenaDesign Interactive Plot Saved: {{filename}}]")
+            print(f"[AthenaDesign Interactive Plot Saved: {filename}]")
     pio.renderers['athenadesign'] = AthenaDesignRenderer()
     pio.renderers.default = 'athenadesign'
 except Exception:
     pass
-
 # --- END OF PATCHES ---
+"""
 
-{code}
-
+# Patches APRÈS le code : fallback matplotlib + ANTI-DÉBORDEMENT PPTX déterministe.
+_POST_PATCHES = """
 # Figures matplotlib non sauvegardées : fallback
 try:
     if 'plt' in locals() or 'plt' in globals():
@@ -91,7 +87,47 @@ try:
             plt.show()
 except Exception:
     pass
+
+# Anti-débordement PowerPoint (déterministe, indépendant du modèle) : pour tout .pptx
+# produit, on force le texte à RENTRER dans sa boîte (word_wrap + shrink-to-fit) et on
+# ramène les formes qui sortent dans les limites de la diapo.
+try:
+    import glob as _glob
+    from pptx import Presentation as _Prs
+    from pptx.enum.text import MSO_AUTO_SIZE as _AS
+    for _f in _glob.glob('*.pptx'):
+        try:
+            _p = _Prs(_f)
+            _sw, _sh = _p.slide_width, _p.slide_height
+            for _sl in _p.slides:
+                for _shp in _sl.shapes:
+                    if _shp.has_text_frame:
+                        _tf = _shp.text_frame
+                        _tf.word_wrap = True
+                        try:
+                            _tf.auto_size = _AS.TEXT_TO_FIT_SHAPE
+                        except Exception:
+                            pass
+                    try:
+                        if _shp.left is not None and _shp.width and _shp.left + _shp.width > _sw:
+                            _shp.left = max(0, _sw - _shp.width)
+                        if _shp.top is not None and _shp.height and _shp.top + _shp.height > _sh:
+                            _shp.top = max(0, _sh - _shp.height)
+                    except Exception:
+                        pass
+            _p.save(_f)
+            print(f"[AthenaDesign PPTX ajuste: {_f}]")
+        except Exception as _e:
+            print(f"[AthenaDesign PPTX post-traitement ignore: {_e}]")
+except Exception:
+    pass
 """
+
+
+def _patched_code(code: str) -> str:
+    """Encadre le code généré : patches de capture (avant) + fallback & anti-débordement
+    pptx (après). Les fichiers produits (plots, .pptx ajusté) restent dans le sandbox."""
+    return _PRE_PATCHES + "\n" + code + "\n" + _POST_PATCHES
 
 
 def _image_exists(tag: str) -> bool:
