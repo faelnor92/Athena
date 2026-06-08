@@ -4,22 +4,24 @@ import json
 import httpx
 
 # System instructions to guide the LLM to think like Claude Design / Open Design
-SYSTEM_PROMPT = """You are AthenaDesign, an elite AI design companion. Your goal is to generate beautiful, interactive, and premium visual interfaces or Python scripts based on user requests.
+SYSTEM_PROMPT = """You are AthenaDesign, an elite AI design companion. Your goal is to generate beautiful, interactive, premium visual interfaces or Python scripts based on user requests.
 
-Your output must be structured using these XML-like tags to allow the application to parse it:
-<artifact_type>html or python</artifact_type>
-<artifact_explanation>A brief, friendly description of your design choices and how to interact with it.</artifact_explanation>
-<artifact_code>
-[Insert the complete code here. Do not truncate. Do not include markdown code block formatting like ```html inside these tags.]
-</artifact_code>
+OUTPUT FORMAT (follow EXACTLY, nothing else):
+1. First, a SHORT explanation in French (2 to 4 sentences) of your design choices and how to interact with it.
+2. Then the COMPLETE code inside ONE single fenced block tagged with the language:
+   ```html      for web designs
+   ```python    for scripts / PowerPoint / charts
+Put ALL the code in that single block. Write NOTHING after the closing ```. Never truncate.
+Do NOT mix explanation text inside the code. Do NOT output two code blocks.
 
 DESIGN RULES:
-1. VISUAL EXCELLENCE: Never use plain basic colors (red, blue, green). Use a curated palette like HSL, Tailwinds-like hues (Slate, Zinc, Indigo, Violet, Rose, Emerald).
-2. MODERN STYLING: Always use clean layout structures, round borders, beautiful typography (Google Fonts Outfit or Inter), smooth gradients, and glassmorphic panels (backdrop-filter: blur).
-3. MICRO-ANIMATIONS: Include subtle hover states (scale, shadows, glow), smooth transitions, or keyframe animations.
-4. JAVASCRIPT: For HTML designs, make them interactive! Use CDNs for Chart.js, Lucide Icons, or FontAwesome if needed. Keep the script clean.
-5. PYTHON CODE: For Python artifacts, write code that generates useful data, charts, simulations (using Matplotlib/Plotly) or programmatically constructs PowerPoint presentations (using python-pptx) saving them to the local directory. Set matplotlib styling to look clean and modern (gridlines, nice colors, no ugly grey backgrounds). Always end with plt.show() or fig.show() to render the preview if using charts.
-6. RESPONSIVENESS: Always code layouts using fluid percentages (e.g. width: 100%), viewport units (vw, vh), flexbox, or CSS grid with auto-fit and fractional units (fr) instead of fixed pixel widths (like width: 800px). Ensure designs scale down beautifully to tablet and smartphone displays without horizontal scrolling.
+1. VISUAL EXCELLENCE: Never use plain basic colors (red, blue, green). Use a curated palette (HSL, Tailwind-like hues: Slate, Zinc, Indigo, Violet, Rose, Emerald).
+2. MODERN STYLING: Clean layout, rounded borders, beautiful typography (Google Fonts Outfit or Inter), smooth gradients, glassmorphic panels (backdrop-filter: blur).
+3. MICRO-ANIMATIONS: Subtle hover states (scale, shadow, glow), smooth transitions, keyframes.
+4. SELF-CONTAINED HTML: a web artifact is ONE standalone .html file. If you use a library, you MUST load it from a CDN in the file. In particular, if you use Lucide icons (<i data-lucide="...">), you MUST add `<script src="https://unpkg.com/lucide@latest"></script>` AND call `lucide.createIcons()` after the DOM is ready — otherwise icons stay invisible. Same for Chart.js / FontAwesome. If unsure, prefer inline SVG or emoji. Never reference a library you did not load.
+5. PYTHON CODE: generate useful data, charts (Matplotlib/Plotly, clean modern styling, no grey background) or PowerPoint via python-pptx saved to the current directory. End charts with plt.show()/fig.show() to render a preview.
+6. POWERPOINT — NO OVERFLOW (critical): content MUST fit inside each slide. Slide size is 13.333 in × 7.5 in (16:9). Rules: keep ≤ 5-6 short bullet lines per slide and SPLIT long content across MULTIPLE slides; size every text box explicitly with Inches() so left+width ≤ 13.0 and top+height ≤ 7.0 (leave margins); enable wrapping and shrink-to-fit on body text frames (`tf.word_wrap = True` and `from pptx.enum.text import MSO_AUTO_SIZE; tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE`); use reasonable font sizes (title 32-40pt, body 16-20pt). Never let text run past the slide edges.
+7. RESPONSIVENESS (HTML): fluid layouts (%, vw/vh, flexbox, CSS grid auto-fit, fr units), not fixed pixel widths. Must scale to tablet/phone without horizontal scroll.
 """
 
 # Premium mock templates to run offline
@@ -719,43 +721,76 @@ print(f"Présentation PPTX générée avec succès : {output_filename}")
 }
 
 def parse_artifact_response(text: str) -> dict:
-    """Helper to extract artifact properties from XML tags returned by LLM."""
-    artifact_type = "html"
-    explanation = "Code généré par PyDesign."
+    """Extrait {type, explanation, code} de la réponse du LLM, de façon ROBUSTE.
+
+    Beaucoup de modèles (qwen3…) n'émettent PAS les balises <artifact_*> et répondent en
+    « prose + bloc de code ». On gère ces cas pour ne JAMAIS coller la prose dans le code
+    (sinon le `<!DOCTYPE html>` est précédé de texte → rendu cassé). Ordre des stratégies :
+    balises explicites → bloc fencé ```lang → détection du début du vrai code → sinon code vide
+    (la prose devient l'explication, pas du code)."""
+    text = (text or "").strip()
+    artifact_type = ""
+    explanation = ""
     code = ""
-    
-    # Try parsing artifact_type
-    type_match = re.search(r"<artifact_type>(.*?)</artifact_type>", text, re.DOTALL)
-    if type_match:
-        artifact_type = type_match.group(1).strip().lower()
-        
-    # Try parsing explanation
-    exp_match = re.search(r"<artifact_explanation>(.*?)</artifact_explanation>", text, re.DOTALL)
-    if exp_match:
-        explanation = exp_match.group(1).strip()
-        
-    # Try parsing code block
-    code_match = re.search(r"<artifact_code>(.*?)</artifact_code>", text, re.DOTALL)
-    if code_match:
-        code = code_match.group(1).strip()
+
+    # 1) Balises explicites (si le modèle les respecte).
+    t = re.search(r"<artifact_type>(.*?)</artifact_type>", text, re.DOTALL)
+    if t:
+        artifact_type = t.group(1).strip().lower()
+    e = re.search(r"<artifact_explanation>(.*?)</artifact_explanation>", text, re.DOTALL)
+    if e:
+        explanation = e.group(1).strip()
+    c = re.search(r"<artifact_code>(.*?)</artifact_code>", text, re.DOTALL)
+    if c:
+        code = c.group(1).strip()
     else:
-        # Fallback: find standard markdown code blocks
-        md_code_blocks = re.findall(r"```(?:html|python|css|javascript|py)?\n(.*?)```", text, re.DOTALL)
-        if md_code_blocks:
-            code = md_code_blocks[0].strip()
+        # 2) Bloc de code fencé ```lang … ``` (cas le plus fréquent). On prend le PLUS GROS
+        #    bloc comme code ; la prose qui le précède devient l'explication.
+        fences = list(re.finditer(r"```([a-zA-Z0-9]*)\s*\n(.*?)```", text, re.DOTALL))
+        if fences:
+            best = max(fences, key=lambda m: len(m.group(2)))
+            code = best.group(2).strip()
+            if not artifact_type and best.group(1):
+                artifact_type = best.group(1).strip().lower()
+            if not explanation:
+                explanation = text[:best.start()].strip()
         else:
-            code = text # Last fallback
-            
-    # Clean code: if LLM put code block around it anyway, strip them
+            # 3) Pas de fence : repérer le DÉBUT du vrai code (HTML ou Python) et couper.
+            m = re.search(r"(<!DOCTYPE html|<html|<\?xml|<svg\b|^\s*import\s+\w|^\s*from\s+\w+\s+import|^\s*def\s+\w)",
+                          text, re.IGNORECASE | re.MULTILINE)
+            if m and m.start() > 0:
+                explanation = text[:m.start()].strip()
+                code = text[m.start():].strip()
+            elif m:
+                code = text
+            else:
+                # 4) Rien d'identifiable comme code → on ne dumpe PAS la prose dans le code.
+                explanation = text
+                code = ""
+
+    # Nettoyage : retirer des fences résiduelles autour du code.
     if code.startswith("```"):
-        code = re.sub(r"^```[a-zA-Z]*\n", "", code)
-        code = re.sub(r"\n```$", "", code)
-        
-    return {
-        "type": "python" if "python" in artifact_type else "html",
-        "explanation": explanation,
-        "code": code
-    }
+        code = re.sub(r"^```[a-zA-Z0-9]*\s*\n?", "", code)
+        code = re.sub(r"\n?```$", "", code).strip()
+
+    # Type : balise si fiable, sinon déduit du contenu.
+    low = code.lower()
+    if artifact_type in ("python", "py"):
+        atype = "python"
+    elif artifact_type in ("html", "javascript", "js", "css", "xml", "svg"):
+        atype = "html"
+    elif re.search(r"<!doctype html|<html|<body|<div|<svg", low):
+        atype = "html"
+    elif re.search(r"\bimport\s+\w|\bdef\s+\w|from\s+pptx|matplotlib|plotly|\bprint\(", low):
+        atype = "python"
+    else:
+        atype = "html"
+
+    explanation = (explanation or "Voici votre design.").strip()
+    # L'explication ne doit jamais embarquer tout le code (garde-fou d'affichage).
+    if len(explanation) > 1200:
+        explanation = explanation[:1200].rstrip() + "…"
+    return {"type": atype, "explanation": explanation, "code": code}
 
 def _athena_default_model() -> str:
     """Modèle LLM par défaut d'AthenaDesign : ATHENADESIGN_MODEL si défini, sinon le modèle

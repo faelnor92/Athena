@@ -742,7 +742,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function injectConsoleBridge(htmlCode) {
-        const injection = `
+        let injection = `
 <script>
 (function() {
     const sendLog = (type, msg) => {
@@ -768,6 +768,16 @@ document.addEventListener("DOMContentLoaded", () => {
 })();
 </script>
 `;
+        // Filet de sécurité Lucide : si le design utilise des icônes <i data-lucide="…">
+        // mais NE charge PAS la librairie, on l'injecte (CDN) + init — sinon icônes invisibles.
+        const usesLucide = /data-lucide\s*=/i.test(htmlCode);
+        const loadsLucide = /lucide(@|\.min|\.js|\/lucide)|createIcons\s*\(/i.test(htmlCode);
+        if (usesLucide && !loadsLucide) {
+            injection += `
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>window.addEventListener('DOMContentLoaded',function(){try{lucide.createIcons();}catch(e){}});</script>
+`;
+        }
         if (htmlCode.includes('<head>')) {
             return htmlCode.replace('<head>', '<head>' + injection);
         } else if (htmlCode.includes('<body>')) {

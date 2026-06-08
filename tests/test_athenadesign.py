@@ -68,6 +68,37 @@ def test_execute_repli_local_si_sandbox_off():
     print("OK test_execute_repli_local_si_sandbox_off")
 
 
+def test_parse_artifact_separe_prose_et_code():
+    """Le parser ne doit JAMAIS coller la prose du modèle dans le code (bug observé)."""
+    from core.athenadesign_generator import parse_artifact_response
+
+    # 1) Cas réel qwen3 : prose puis HTML SANS fence ni balise.
+    raw1 = "Voici une interface premium.\nJ'ai utilisé du glassmorphism.\n<!DOCTYPE html>\n<html><body>x</body></html>"
+    r1 = parse_artifact_response(raw1)
+    assert r1["type"] == "html"
+    assert r1["code"].startswith("<!DOCTYPE html>"), r1["code"][:40]
+    assert "glassmorphism" in r1["explanation"] and "glassmorphism" not in r1["code"]
+
+    # 2) Prose + bloc fencé ```html.
+    raw2 = "Petit dashboard.\n```html\n<div>hi</div>\n```"
+    r2 = parse_artifact_response(raw2)
+    assert r2["code"] == "<div>hi</div>" and r2["explanation"] == "Petit dashboard."
+
+    # 3) Balises explicites toujours honorées.
+    raw3 = "<artifact_type>python</artifact_type><artifact_explanation>Plot</artifact_explanation><artifact_code>import x</artifact_code>"
+    r3 = parse_artifact_response(raw3)
+    assert r3["type"] == "python" and r3["code"] == "import x" and r3["explanation"] == "Plot"
+
+    # 4) Python via fence + détection de type.
+    r4 = parse_artifact_response("Génère un pptx.\n```python\nfrom pptx import Presentation\n```")
+    assert r4["type"] == "python" and "Presentation" in r4["code"]
+
+    # 5) Pure prose sans code → code vide (PAS de prose dumpée comme code).
+    r5 = parse_artifact_response("Je ne peux pas faire ça.")
+    assert r5["code"] == "" and "peux pas" in r5["explanation"]
+    print("OK test_parse_artifact_separe_prose_et_code")
+
+
 def test_generate_design_passe_par_l_infra_athena():
     """Par défaut (provider 'athena'), la génération passe par swarm._complete (infra LLM
     d'Athena : endpoint/clés/fallback), PAS par un chemin LLM externe séparé."""
