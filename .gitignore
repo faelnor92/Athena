@@ -106,6 +106,7 @@ athena_projects/
 
 # AthenaDesign : données runtime (projets + sandbox d'exécution du code généré)
 athenadesign_projects.json
+athenadesign_projects/
 /sandbox/
 
 # Lien symbolique vers une copie externe (clé USB) — ne pas versionner

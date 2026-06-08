@@ -68,6 +68,27 @@ def test_execute_repli_local_si_sandbox_off():
     print("OK test_execute_repli_local_si_sandbox_off")
 
 
+def test_projets_isoles_par_utilisateur():
+    """Multi-tenant : chaque utilisateur ne voit que SES projets (bases séparées)."""
+    import routers.athenadesign as ad
+    a, b = "testalice_x", "testbob_x"
+    try:
+        ad.write_db(a, {"p1": {"id": "p1", "name": "Alice projet"}})
+        ad.write_db(b, {"p2": {"id": "p2", "name": "Bob projet"}})
+        da, db = ad.read_db(a), ad.read_db(b)
+        assert "p1" in da and "p2" not in da, "Alice ne doit voir que ses projets"
+        assert "p2" in db and "p1" not in db, "Bob ne doit voir que ses projets"
+        # Sanitisation du nom d'utilisateur (anti chemin).
+        assert ad._safe_user("../../etc") and "/" not in ad._safe_user("../../etc")
+        print("OK test_projets_isoles_par_utilisateur")
+    finally:
+        for u in (a, b):
+            try:
+                os.remove(ad._user_file(u))
+            except OSError:
+                pass
+
+
 def test_parse_artifact_separe_prose_et_code():
     """Le parser ne doit JAMAIS coller la prose du modèle dans le code (bug observé)."""
     from core.athenadesign_generator import parse_artifact_response
