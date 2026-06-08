@@ -43,39 +43,39 @@
             <div class="dock-icons">
                 <button class="dock-btn active" id="tab-office" title="Swarm Open Space (Bureau)">
                     <span class="dock-icon">🏠</span>
-                    <span class="dock-tooltip">Open Space</span>
+                    <span class="dock-tooltip" data-i18n="dock.office">Open Space</span>
                 </button>
                 <button class="dock-btn" id="tab-cockpit" title="Tableau de bord (Cockpit)">
                     <span class="dock-icon">📊</span>
-                    <span class="dock-tooltip">Cockpit</span>
+                    <span class="dock-tooltip" data-i18n="dock.cockpit">Cockpit</span>
                 </button>
                 <button class="dock-btn" id="tab-files" title="Espace Code (explorateur + éditeur + terminal)">
                     <span class="dock-icon">🧩</span>
-                    <span class="dock-tooltip">Code</span>
+                    <span class="dock-tooltip" data-i18n="dock.code">Code</span>
                 </button>
                 <button class="dock-btn" id="tab-design" title="AthenaDesign Studio (Design & Prototypage)">
                     <span class="dock-icon">🎨</span>
-                    <span class="dock-tooltip">Design</span>
+                    <span class="dock-tooltip" data-i18n="dock.design">Design</span>
                 </button>
                 <button class="dock-btn" id="tab-agenda" title="Tâches & Agenda">
                     <span class="dock-icon">📋</span>
-                    <span class="dock-tooltip">Tâches</span>
+                    <span class="dock-tooltip" data-i18n="dock.tasks">Tâches</span>
                 </button>
 
                 <div class="dock-more-wrap">
                 <button class="dock-btn" id="dock-more-btn" title="Plus de vues">
                     <span class="dock-icon">⋯</span>
-                    <span class="dock-tooltip">Plus</span>
+                    <span class="dock-tooltip" data-i18n="dock.more">Plus</span>
                 </button>
 
                 <!-- Vues secondaires (menu déroulant) -->
                 <div id="dock-more-menu" class="dock-more-menu" style="display: none;">
-                    <button class="dock-btn" id="tab-graph"><span class="dock-icon">🕸️</span><span class="dock-tooltip">Graphe</span></button>
-                    <button class="dock-btn" id="tab-branches"><span class="dock-icon">🌿</span><span class="dock-tooltip">Branches</span></button>
-                    <button class="dock-btn" id="tab-memory"><span class="dock-icon">🧠</span><span class="dock-tooltip">Mémoire</span></button>
-                    <button class="dock-btn" id="tab-meeting"><span class="dock-icon">🎙️</span><span class="dock-tooltip">Réunions</span></button>
-                    <button class="dock-btn" id="tab-console" style="display:none;"><span class="dock-icon">💻</span><span class="dock-tooltip">Console</span></button>
-                    <button class="dock-btn" id="tab-orchestrator"><span class="dock-icon">⚡</span><span class="dock-tooltip">Orchestrateur</span></button>
+                    <button class="dock-btn" id="tab-graph"><span class="dock-icon">🕸️</span><span class="dock-tooltip" data-i18n="dock.graph">Graphe</span></button>
+                    <button class="dock-btn" id="tab-branches"><span class="dock-icon">🌿</span><span class="dock-tooltip" data-i18n="dock.branches">Branches</span></button>
+                    <button class="dock-btn" id="tab-memory"><span class="dock-icon">🧠</span><span class="dock-tooltip" data-i18n="dock.memory">Mémoire</span></button>
+                    <button class="dock-btn" id="tab-meeting"><span class="dock-icon">🎙️</span><span class="dock-tooltip" data-i18n="dock.meeting">Réunions</span></button>
+                    <button class="dock-btn" id="tab-console" style="display:none;"><span class="dock-icon">💻</span><span class="dock-tooltip" data-i18n="dock.console">Console</span></button>
+                    <button class="dock-btn" id="tab-orchestrator"><span class="dock-icon">⚡</span><span class="dock-tooltip" data-i18n="dock.orchestrator">Orchestrateur</span></button>
                 </div>
                 </div>
             </div>
@@ -83,6 +83,16 @@
             <div class="dock-separator"></div>
 
             <div class="dock-footer">
+                <select id="lang-select" title="Langue / Language" aria-label="Langue"
+                        style="width:100%;margin-bottom:8px;background:rgba(255,255,255,0.05);color:#fff;border:1px solid rgba(255,255,255,0.12);border-radius:8px;font-size:0.7rem;padding:4px;cursor:pointer;">
+                    <option value="fr">🇫🇷 FR</option>
+                    <option value="en">🇬🇧 EN</option>
+                    <option value="es">🇪🇸 ES</option>
+                    <option value="it">🇮🇹 IT</option>
+                    <option value="de">🇩🇪 DE</option>
+                    <option value="zh">🇨🇳 中文</option>
+                    <option value="ja">🇯🇵 日本語</option>
+                </select>
                 <div id="app-version-display" style="font-size: 0.6rem; opacity: 0.5; text-align: center; margin-bottom: 8px; font-weight: bold; font-family: monospace;">v0.0.0</div>
                 <button id="btn-system-update" class="dock-action-btn" title="Mise à jour disponible !" style="display: none; background-color: rgba(40, 167, 69, 0.2); border: 1px solid #28a745; margin-bottom: 8px;">
                     <span style="color: #28a745;">🚀</span>
@@ -1579,6 +1589,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
+    <script src="i18n.js?v=20260608_i18n"></script>
     <script src="app.js?v=20260608_plugins"></script>
     <script>
         // Enregistrement du service worker (PWA installable).
