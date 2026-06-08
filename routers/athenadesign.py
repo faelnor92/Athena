@@ -369,6 +369,57 @@ async def execute_endpoint(request: Request, payload: dict = Body(...)):
     execution_result = runner.execute_code(code, project_id)
     return execution_result
 
+
+@router.post("/autofix")
+async def autofix_endpoint(request: Request, payload: dict = Body(...)):
+    """Auto-correction : exécute la dernière version PYTHON ; en cas d'erreur, renvoie le
+    traceback au modèle pour corriger, ré-exécute, jusqu'à N essais (ATHENADESIGN_AUTOFIX_MAX).
+    Les corrections sont ajoutées comme nouvelles versions. Indépendant du modèle."""
+    user = _current_user(request)
+    project_id = payload.get("project_id")
+    if not project_id or not re.fullmatch(r"[a-f0-9]{6,32}", str(project_id)):
+        raise HTTPException(status_code=400, detail="project_id invalide")
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    db = read_db(user)
+    project = db.get(project_id) or _new_design(project_id)
+    db[project_id] = project
+    v = next((x for x in reversed(project.get("versions", [])) if x.get("type") == "python"), None)
+    if not v:
+        raise HTTPException(status_code=400, detail="Aucun script Python à corriger")
+
+    max_tries = int(os.getenv("ATHENADESIGN_AUTOFIX_MAX", "2") or 2)
+    code = v.get("code", "")
+    result = runner.execute_code(code, project_id)
+    attempts, fixed = 0, False
+    while not result.get("success") and attempts < max_tries:
+        attempts += 1
+        err = (result.get("stderr") or "")[-2000:]
+        fix_prompt = ("Le script Python ci-dessous a ÉCHOUÉ à l'exécution. Corrige-le pour qu'il "
+                      "fonctionne, en gardant l'intention initiale. Renvoie le script complet.\n\n"
+                      f"ERREUR:\n{err}\n\nCODE ACTUEL:\n{code}")
+        gen = await generator.generate_design(
+            prompt=fix_prompt, history=project.get("history", []),
+            provider="athena", design_system=project.get("design_system", ""))
+        new_code = (gen.get("code") or "").strip()
+        if not new_code:
+            break
+        code = new_code
+        vn = len(project["versions"]) + 1
+        project["versions"].append({
+            "version": vn, "type": gen.get("type", "python"),
+            "explanation": f"🔧 Auto-correction {attempts} — {gen.get('explanation', '')}",
+            "code": code, "prompt": "[auto-correction]", "comments": []})
+        project.setdefault("history", []).append({"role": "user", "content": "[auto-correction] " + err[:200]})
+        project["history"].append({"role": "assistant", "content": gen.get("explanation", "")})
+        result = runner.execute_code(code, project_id)
+        fixed = bool(result.get("success"))
+
+    write_db(user, db)
+    return {"success": result.get("success"), "fixed": fixed, "attempts": attempts,
+            "result": result, "versions_count": len(project["versions"]),
+            "latest_version": project["versions"][-1] if project["versions"] else None}
+
 @router.get("/projects/{project_id}/versions/{version_num}/raw", response_class=HTMLResponse)
 async def get_raw_html(request: Request, project_id: str, version_num: int):
     if not _can_access(project_id):

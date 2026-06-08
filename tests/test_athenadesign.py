@@ -126,6 +126,42 @@ def test_charte_depuis_url():
     print("OK test_charte_depuis_url")
 
 
+def test_autofix_corrige_un_script_python():
+    """Auto-correction : 1er run échoue → le modèle corrige → 2e run réussit ; version ajoutée."""
+    from fastapi.testclient import TestClient
+    from core import projects as cp
+    import routers.athenadesign as ad
+    import server
+    c = TestClient(server.app)
+    proj = cp.create_project("AutofixTest")
+    pid = proj["id"]
+    ad.write_db("local", {pid: {"id": pid, "name": "AutofixTest", "history": [],
+                "versions": [{"version": 1, "type": "python", "code": "raise ValueError()", "comments": []}]}})
+    runs = {"n": 0}
+    def fake_exec(code, project_id):
+        runs["n"] += 1
+        ok = runs["n"] >= 2  # échoue au 1er, réussit ensuite
+        return {"success": ok, "stdout": "", "stderr": "" if ok else "Traceback ValueError", "other_files": [], "plots": [], "interactive_plots": [], "sandboxed": True}
+    async def fake_gen(**kw):
+        return {"type": "python", "code": "print('ok')", "explanation": "corrigé"}
+    try:
+        with mock.patch.object(ad.runner, "execute_code", side_effect=fake_exec), \
+             mock.patch.object(ad.generator, "generate_design", side_effect=fake_gen):
+            r = c.post("/api/athenadesign/autofix", json={"project_id": pid}).json()
+        assert r["success"] is True and r["fixed"] is True, r
+        assert r["attempts"] == 1 and r["versions_count"] == 2, r
+        print("OK test_autofix_corrige_un_script_python")
+    finally:
+        try:
+            cp.delete(pid, remove_files=True)
+        except Exception:
+            pass
+        try:
+            os.remove(ad._user_file("local"))
+        except OSError:
+            pass
+
+
 def test_projets_unifies_code_et_design():
     """Unification : un projet créé via AthenaDesign est un VRAI projet Athena (visible côté
     code) et inversement un projet code apparaît dans AthenaDesign."""

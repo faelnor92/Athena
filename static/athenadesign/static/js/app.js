@@ -1383,7 +1383,30 @@ document.addEventListener("DOMContentLoaded", () => {
             
             pythonExecuting.style.display = "none";
             plotsContainer.innerHTML = "";
-            
+
+            // AUTO-CORRECTION : si l'exécution a échoué, on demande au serveur de corriger
+            // (boucle bornée : renvoie l'erreur au modèle → ré-exécute).
+            if (!result.success) {
+                appendConsoleLine("system", ">>> [Auto-correction en cours…]");
+                try {
+                    const fr = await fetch("/api/athenadesign/autofix", {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ project_id: currentProjectId })
+                    });
+                    const fx = await fr.json();
+                    if (fx.fixed) {
+                        appendConsoleLine("system", `>>> [Auto-correction réussie en ${fx.attempts} essai(s) — version ${fx.versions_count}]`);
+                        await selectProject(currentProjectId);
+                        loadVersion(currentProjectData.versions.length - 1);
+                    } else {
+                        appendConsoleLine("stderr", `>>> [Auto-correction : non résolu après ${fx.attempts || 0} essai(s)]`);
+                    }
+                } catch (e) {
+                    appendConsoleLine("stderr", "[Auto-correction] " + e.message);
+                }
+                return;
+            }
+
             const hasPlots = (result.plots && result.plots.length > 0) || (result.interactive_plots && result.interactive_plots.length > 0);
             const hasOtherFiles = (result.other_files && result.other_files.length > 0);
             

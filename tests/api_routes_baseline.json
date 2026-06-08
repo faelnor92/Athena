@@ -86,6 +86,7 @@
  "GET /api/workspace/files",
  "POST /api/agenda",
  "POST /api/agenda/sync",
+ "POST /api/athenadesign/autofix",
  "POST /api/athenadesign/chat",
  "POST /api/athenadesign/execute",
  "POST /api/athenadesign/export/pdf",
