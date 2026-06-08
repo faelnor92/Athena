@@ -1,4 +1,34 @@
 // AthenaDesign - Frontend Logic and Interactive Controls
+
+// MULTI-UTILISATEUR : le studio tourne dans une iframe SAME-ORIGIN → il partage le
+// localStorage de l'app Athena. On lit le jeton de session et on l'ajoute en Authorization
+// sur tous les appels /api (sinon 401 quand l'auth d'Athena est activée). En mode local
+// sans auth, le jeton est vide → aucun en-tête ajouté, comportement inchangé.
+(function () {
+    const _origFetch = window.fetch.bind(window);
+    const _token = () => { try { return localStorage.getItem("athena_session_token") || ""; } catch (e) { return ""; } };
+    window.fetch = function (input, init) {
+        init = init || {};
+        const url = (typeof input === "string") ? input : (input && input.url) || "";
+        const t = _token();
+        if (t && (url.startsWith("/api/") || url.startsWith("api/"))) {
+            const h = new Headers(init.headers || (typeof input !== "string" && input.headers) || {});
+            if (!h.has("Authorization")) h.set("Authorization", "Bearer " + t);
+            init.headers = h;
+        }
+        return _origFetch(input, init);
+    };
+})();
+
+// Charge un fichier généré (plot/plotly/pptx) via l'endpoint AUTHENTIFIÉ + ownership et
+// renvoie un objectURL : les <img>/<iframe>/<a> natifs ne portent pas le Bearer, donc on
+// passe par fetch (qui ajoute le token) → blob.
+async function adFileBlobUrl(projectId, filename) {
+    const r = await fetch(`/api/athenadesign/file/${projectId}/${encodeURIComponent(filename)}`);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return URL.createObjectURL(await r.blob());
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     // Check if framed inside an iframe
     if (window.self !== window.top) {
@@ -1113,16 +1143,25 @@ document.addEventListener("DOMContentLoaded", () => {
                     result.plots.forEach(plotFile => {
                         const wrap = document.createElement("div");
                         wrap.className = "plot-image-wrapper";
-                        wrap.innerHTML = `<img src="/sandbox/${currentProjectId}/${plotFile}?t=${Date.now()}" alt="Matplotlib Plot">`;
+                        const img = document.createElement("img");
+                        img.alt = "Matplotlib Plot";
+                        adFileBlobUrl(currentProjectId, plotFile)
+                            .then(u => { img.src = u; })
+                            .catch(() => { img.alt = "Erreur de chargement du graphique"; });
+                        wrap.appendChild(img);
                         plotsContainer.appendChild(wrap);
                     });
                 }
-                
+
                 if (result.interactive_plots) {
                     result.interactive_plots.forEach(plotlyFile => {
                         const wrap = document.createElement("div");
                         wrap.className = "plotly-iframe-wrapper";
-                        wrap.innerHTML = `<iframe src="/sandbox/${currentProjectId}/${plotlyFile}?t=${Date.now()}"></iframe>`;
+                        const ifr = document.createElement("iframe");
+                        adFileBlobUrl(currentProjectId, plotlyFile)
+                            .then(u => { ifr.src = u; })
+                            .catch(() => {});
+                        wrap.appendChild(ifr);
                         plotsContainer.appendChild(wrap);
                     });
                 }
@@ -1150,17 +1189,29 @@ document.addEventListener("DOMContentLoaded", () => {
                         }
                         
                         const sizeKB = (file.size / 1024).toFixed(1);
-                        
+
                         fileCard.innerHTML = `
                             <div class="file-icon"><i data-lucide="${iconName}"></i></div>
                             <div class="file-info">
                                 <div class="file-name" title="${file.name}">${file.name}</div>
                                 <div class="file-size">${sizeKB} KB</div>
                             </div>
-                            <a href="/sandbox/${currentProjectId}/${file.name}" download="${file.name}" class="file-download-btn" title="Télécharger">
+                            <button type="button" class="file-download-btn" title="Télécharger">
                                 <i data-lucide="download"></i>
-                            </a>
+                            </button>
                         `;
+                        // Téléchargement via fetch authentifié → blob (l'<a download> natif ne
+                        // porte pas le Bearer).
+                        const _pid = currentProjectId, _name = file.name;
+                        fileCard.querySelector(".file-download-btn").addEventListener("click", async () => {
+                            try {
+                                const url = await adFileBlobUrl(_pid, _name);
+                                const a = document.createElement("a");
+                                a.href = url; a.download = _name;
+                                document.body.appendChild(a); a.click(); a.remove();
+                                setTimeout(() => URL.revokeObjectURL(url), 10000);
+                            } catch (e) { appendConsoleLine("stderr", "[Téléchargement] échec : " + e.message); }
+                        });
                         filesGrid.appendChild(fileCard);
                     });
                     plotsContainer.appendChild(filesGrid);

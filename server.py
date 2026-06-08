@@ -202,12 +202,10 @@ async def _index_html():
     return _render_index()
 
 
-# AthenaDesign : fichiers générés (présentations .pptx, plots) servis en statique.
-# NB : hors /api/ donc NON couvert par l'auth middleware → artefacts de design publics
-# si l'instance est exposée. Acceptable en local/solo ; à durcir (endpoint authentifié)
-# pour un déploiement multi-utilisateur. Voir DEV_NOTES (AthenaDesign).
+# AthenaDesign : les fichiers générés (.pptx, plots) sont servis par l'endpoint AUTHENTIFIÉ
+# GET /api/athenadesign/file/{project_id}/{filename} (ownership + anti-traversal) — PLUS de
+# mount statique /sandbox public (cf. multi-utilisateur, DEV_NOTES AthenaDesign).
 os.makedirs("sandbox", exist_ok=True)
-app.mount("/sandbox", StaticFiles(directory="sandbox"), name="sandbox")
 
 # Sert les fichiers statiques de l'interface Web (le reste : assets, app.js, /index.html…)
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

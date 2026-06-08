@@ -15,6 +15,7 @@
  "DELETE /api/users/invites/{code}",
  "DELETE /api/users/{username}",
  "GET /api/agenda",
+ "GET /api/athenadesign/file/{project_id}/{filename}",
  "GET /api/athenadesign/projects",
  "GET /api/athenadesign/projects/{project_id}",
  "GET /api/athenadesign/projects/{project_id}/versions/{version_num}/raw",
