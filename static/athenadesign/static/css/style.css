@@ -1620,3 +1620,18 @@ body.framed .canvas-header {
     transition: background .15s, border-color .15s;
 }
 .starter-chip:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); }
+
+/* Panneaux déroulants de configuration (désencombrement UI) */
+.config-section { border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; margin-bottom: 8px; overflow: hidden; }
+.config-section > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px; font-size: 0.78rem; font-weight: 600; letter-spacing: .02em;
+    opacity: .85; transition: background .15s;
+}
+.config-section > summary::-webkit-details-marker { display: none; }
+.config-section > summary::after { content: "▸"; margin-left: auto; opacity: .6; transition: transform .15s; }
+.config-section[open] > summary::after { transform: rotate(90deg); }
+.config-section > summary:hover { background: rgba(255,255,255,0.05); }
+.config-section-body { padding: 4px 12px 12px; }
+.config-section .form-group { margin-bottom: 8px; }

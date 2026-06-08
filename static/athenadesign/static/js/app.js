@@ -914,6 +914,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const project = await resp.json();
             currentProjectData = project;
             if (designSystemInput) designSystemInput.value = project.design_system || "";
+            const _dsDetails = document.getElementById("design-system-group");
+            if (_dsDetails) _dsDetails.open = !!(project.design_system || "").trim();
             clearAttachments();
 
             currentProjectTitle.textContent = project.name;
