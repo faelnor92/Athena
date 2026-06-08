@@ -85,6 +85,7 @@
  "POST /api/agenda/sync",
  "POST /api/athenadesign/chat",
  "POST /api/athenadesign/execute",
+ "POST /api/athenadesign/export/pdf",
  "POST /api/athenadesign/projects/new",
  "POST /api/athenadesign/projects/{project_id}/versions/{version_num}/comments",
  "POST /api/backup/restore",

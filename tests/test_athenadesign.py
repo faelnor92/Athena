@@ -68,6 +68,30 @@ def test_execute_repli_local_si_sandbox_off():
     print("OK test_execute_repli_local_si_sandbox_off")
 
 
+def test_export_pdf_sans_chromium_renvoie_503():
+    """Export PDF : message clair (503) si aucun Chromium ; ownership conservé."""
+    from fastapi.testclient import TestClient
+    from tools import browser_tools
+    import routers.athenadesign as ad
+    import server, os
+    c = TestClient(server.app)
+    pid = c.post("/api/athenadesign/projects/new", json={"name": "X"}).json()["id"]
+    try:
+        with mock.patch.object(browser_tools, "_find_chromium", return_value=None):
+            r = c.post("/api/athenadesign/export/pdf",
+                       json={"project_id": pid, "code": "<html></html>"})
+        assert r.status_code == 503, r.status_code
+        # projet inexistant → 404 (ownership)
+        r2 = c.post("/api/athenadesign/export/pdf", json={"project_id": "deadbeef0001", "code": "<html></html>"})
+        assert r2.status_code == 404
+        print("OK test_export_pdf_sans_chromium_renvoie_503")
+    finally:
+        try:
+            os.remove(ad._user_file("local"))
+        except OSError:
+            pass
+
+
 def test_extract_design_system_et_attachments():
     """Extraction de charte (couleurs/typo) depuis CSS + résolution des pièces jointes."""
     import routers.athenadesign as ad

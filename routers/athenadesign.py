@@ -362,3 +362,53 @@ async def set_design_system(request: Request, project_id: str, payload: dict = B
     db[project_id]["design_system"] = ds[:4000]
     write_db(user, db)
     return {"design_system": db[project_id]["design_system"]}
+
+
+@router.post("/export/pdf")
+async def export_pdf(request: Request, payload: dict = Body(...)):
+    """Exporte un design HTML en PDF (Chromium headless --print-to-pdf). Ownership requis."""
+    import tempfile
+    import subprocess
+    from fastapi.responses import FileResponse
+    from tools import browser_tools
+    user = _current_user(request)
+    project_id = payload.get("project_id")
+    db = read_db(user)
+    if not project_id or project_id not in db:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    project = db[project_id]
+    # Code à exporter : explicite, sinon la version demandée, sinon la dernière HTML.
+    code = payload.get("code")
+    if not code:
+        versions = project.get("versions", [])
+        vnum = payload.get("version_num")
+        v = None
+        if isinstance(vnum, int) and 1 <= vnum <= len(versions):
+            v = versions[vnum - 1]
+        else:
+            v = next((x for x in reversed(versions) if x.get("type") == "html"), None)
+        if not v or v.get("type") != "html":
+            raise HTTPException(status_code=400, detail="Aucun design HTML à exporter")
+        code = v.get("code", "")
+    chrome = browser_tools._find_chromium()
+    if not chrome:
+        raise HTTPException(status_code=503, detail="Export PDF indisponible : aucun navigateur "
+                            "Chromium trouvé (installe chromium ou définis CHROMIUM_BIN).")
+    d = tempfile.mkdtemp(prefix="ad-pdf-")
+    html_path = os.path.join(d, "design.html")
+    pdf_path = os.path.join(d, "design.pdf")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(code)
+    try:
+        subprocess.run(
+            [chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run",
+             "--disable-extensions", f"--user-data-dir={os.path.join(d, 'profile')}",
+             "--virtual-time-budget=8000", "--no-pdf-header-footer",
+             f"--print-to-pdf={pdf_path}", f"file://{html_path}"],
+            capture_output=True, timeout=45,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Échec de l'export PDF : {e}")
+    if not os.path.isfile(pdf_path):
+        raise HTTPException(status_code=500, detail="Échec de l'export PDF (aucune sortie produite).")
+    return FileResponse(pdf_path, media_type="application/pdf", filename=f"{project.get('name', 'design')}.pdf")

@@ -71,6 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const tabBtns = document.querySelectorAll(".tab-btn");
     const tabContents = document.querySelectorAll(".tab-content");
     const btnRunPython = document.getElementById("btn-run-python");
+    const btnExportPdf = document.getElementById("btn-export-pdf");
     const btnCopy = document.getElementById("btn-copy");
     const btnDownload = document.getElementById("btn-download");
     const btnRefreshPreview = document.getElementById("btn-refresh-preview");
@@ -200,6 +201,28 @@ document.addEventListener("DOMContentLoaded", () => {
         dashboard: "Crée un dashboard analytique moderne (HTML + Chart.js via CDN) : 4 cartes KPI, 2 graphiques (ligne + barres), thème sombre glassmorphism, responsive.",
         chart: "Génère un script Python (matplotlib) qui trace [DONNÉES] avec un style moderne (couleurs soignées, grille discrète, pas de fond gris). Termine par plt.show().",
     };
+    if (btnExportPdf) {
+        btnExportPdf.addEventListener("click", async () => {
+            if (!currentProjectId) return;
+            const vnum = (currentVersionIndex != null) ? currentVersionIndex + 1 : undefined;
+            btnExportPdf.disabled = true;
+            try {
+                const r = await fetch("/api/athenadesign/export/pdf", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ project_id: currentProjectId, version_num: vnum })
+                });
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                const url = URL.createObjectURL(await r.blob());
+                const a = document.createElement("a");
+                a.href = url; a.download = (currentProjectData && currentProjectData.name ? currentProjectData.name : "design") + ".pdf";
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+            } catch (e) {
+                appendConsoleLine && appendConsoleLine("stderr", "[Export PDF] échec : " + e.message);
+            } finally { btnExportPdf.disabled = false; }
+        });
+    }
+
     document.querySelectorAll(".starter-chip").forEach(chip => {
         chip.addEventListener("click", () => {
             const tpl = STARTER_TEMPLATES[chip.getAttribute("data-tpl")];
@@ -1052,8 +1075,10 @@ document.addEventListener("DOMContentLoaded", () => {
             applyViewport(activeViewport);
             
             htmlPreviewFrame.srcdoc = injectConsoleBridge(ver.code);
+            if (btnExportPdf) btnExportPdf.style.display = "flex";
             switchTab("preview");
         } else if (ver.type === "python") {
+            if (btnExportPdf) btnExportPdf.style.display = "none";
             htmlPreviewFrame.style.display = "none";
             previewFrameContainer.style.display = "none";
             pythonPreviewContainer.style.display = "flex";
