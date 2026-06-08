@@ -83,9 +83,8 @@ Reste model-dépendant (qualité CSS/pptx) → choisir un modèle fort via la co
 **Limites connues (à durcir avant multi-utilisateur)** : (1) base de projets **GLOBALE**
 (`athenadesign_projects.json`), pas multi-tenant → à scoper par utilisateur ; (2) mount statique
 `/sandbox` **hors `/api/` donc non authentifié** → artefacts publics si l'instance est exposée
-(servir via endpoint authentifié) ; (3) le générateur fait ses propres appels httpx (Gemini…)
-avec clé passée par le front → à aligner sur `_complete`/`user_config` (clés par-utilisateur,
-litellm, caching) plutôt qu'un chemin LLM séparé.
+(servir via endpoint authentifié). ~~(3) générateur sur chemin LLM séparé~~ **RÉSOLU (2026-06-08)** :
+branché sur `swarm._complete` (choix de modèle/clés/fallback d'Athena).
 
 ## 🚧 Refonte « partie code » (en cours de décision)
 Direction pressentie (à valider) :
