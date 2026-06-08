@@ -1205,13 +1205,26 @@ class Swarm:
                 print(f"[\033[91mSWARM\033[0m] Limite d'orchestration atteinte ({max_turns} tours) — synthèse finale forcée.")
                 final_text = None
                 try:
-                    _hist = [{"role": m["role"], "content": m["content"]}
-                             for m in messages
-                             if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()]
+                    # On conserve le fil utile ET les RÉSULTATS D'OUTILS déjà obtenus (role=tool,
+                    # repliés en contexte lisible) pour que la synthèse s'appuie dessus au lieu
+                    # de prétendre ne rien avoir. On retire le schéma d'outils (aucun appel).
+                    _hist = []
+                    for m in messages:
+                        _role = m.get("role")
+                        _content = (m.get("content") or "").strip()
+                        if not _content:
+                            continue
+                        if _role in ("user", "assistant"):
+                            _hist.append({"role": _role, "content": _content})
+                        elif _role == "tool":
+                            _nm = m.get("name", "outil")
+                            _hist.append({"role": "user",
+                                          "content": f"[Résultat de l'outil {_nm}]\n{_content}"})
                     _sys = (current_agent.system_prompt or "") + (
-                        "\n\n[SYSTÈME] Budget d'outils atteint : tu ne peux PLUS appeler d'outil. "
-                        "Donne MAINTENANT ta meilleure réponse finale à l'utilisateur à partir de ce "
-                        "que tu as déjà obtenu. Si une information manque, dis-le clairement et brièvement.")
+                        "\n\n[SYSTÈME] Tu as atteint la limite d'étapes pour cette tâche. Rédige "
+                        "MAINTENANT ta réponse finale à l'utilisateur en t'appuyant sur les RÉSULTATS "
+                        "D'OUTILS DÉJÀ OBTENUS ci-dessus. N'appelle aucun outil et ne mentionne ni "
+                        "« limite » ni « budget » ; si une donnée manque vraiment, signale-le en une phrase.")
                     _resp = self._complete(
                         current_agent.model,
                         [{"role": "system", "content": _sys}] + _hist,
