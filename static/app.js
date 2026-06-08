@@ -404,6 +404,7 @@ const tabMemory = document.getElementById("tab-memory");
 const tabConsole = document.getElementById("tab-console");
 const tabMeeting = document.getElementById("tab-meeting");
 const tabOrchestrator = document.getElementById("tab-orchestrator");
+const tabDesign = document.getElementById("tab-design");
 
 const viewCockpit = document.getElementById("view-cockpit");
 const viewGraph = document.getElementById("view-graph");
@@ -415,6 +416,7 @@ const viewMemory = document.getElementById("view-memory");
 const viewConsole = document.getElementById("view-console");
 const viewMeeting = document.getElementById("view-meeting");
 const viewOrchestrator = document.getElementById("view-orchestrator");
+const viewDesign = document.getElementById("view-design");
 const logsOrchestrator = document.getElementById("logs-orchestrator");
 
 // Gestion de la Modale Paramètres
@@ -461,8 +463,8 @@ const agentsList = document.getElementById("agents-list");
 // NAVIGATION DES ONGLETS GAUCHE DOCK (OFFICE vs COCKPIT vs FILES vs AGENDA vs GRAPH vs BRANCHES vs MEMORY vs CONSOLE)
 // =========================================================================
 function selectActiveTab(tab, view, extraAction = null) {
-    const allTabs = [tabCockpit, tabGraph, tabOffice, tabFiles, tabAgenda, tabBranches, tabMemory, tabOrchestrator, tabConsole, tabMeeting];
-    const allViews = [viewCockpit, viewGraph, viewOffice, viewFiles, viewAgenda, viewBranches, viewMemory, viewOrchestrator, viewConsole, viewMeeting];
+    const allTabs = [tabCockpit, tabGraph, tabOffice, tabFiles, tabAgenda, tabBranches, tabMemory, tabOrchestrator, tabConsole, tabMeeting, tabDesign];
+    const allViews = [viewCockpit, viewGraph, viewOffice, viewFiles, viewAgenda, viewBranches, viewMemory, viewOrchestrator, viewConsole, viewMeeting, viewDesign];
     
     allTabs.forEach(t => { if (t) t.classList.remove("active"); });
     allViews.forEach(v => { if (v) v.style.display = "none"; });
@@ -517,6 +519,36 @@ if (tabOffice) {
         selectActiveTab(tabOffice, viewOffice, () => {
             rebuildOfficeFloor();
         });
+    });
+}
+
+// AthenaDesign Studio : onglet → vue (iframe). Les boutons recharger/pop-out/réessayer
+// sont câblés une seule fois à la première ouverture.
+let _athenaDesignWired = false;
+function _initAthenaDesign() {
+    if (_athenaDesignWired) return;
+    _athenaDesignWired = true;
+    const frame = document.getElementById("athenadesign-frame");
+    const status = document.getElementById("athenadesign-status");
+    const overlay = document.getElementById("athenadesign-offline-overlay");
+    const reload = document.getElementById("btn-athenadesign-reload");
+    const popout = document.getElementById("btn-athenadesign-popout");
+    const retry = document.getElementById("btn-athenadesign-retry");
+    const _src = () => (frame ? frame.getAttribute("src") : "/athenadesign/");
+    const _reload = () => { if (frame) frame.src = _src(); if (status) status.textContent = "Chargement…"; };
+    if (frame) {
+        frame.addEventListener("load", () => {
+            if (status) status.textContent = "Prêt";
+            if (overlay) overlay.style.display = "none";
+        });
+    }
+    if (reload) reload.addEventListener("click", _reload);
+    if (retry) retry.addEventListener("click", _reload);
+    if (popout) popout.addEventListener("click", () => window.open(_src(), "_blank", "noopener"));
+}
+if (tabDesign) {
+    tabDesign.addEventListener("click", () => {
+        selectActiveTab(tabDesign, viewDesign, _initAthenaDesign);
     });
 }
 

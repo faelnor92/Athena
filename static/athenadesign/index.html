@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AthenaDesign - Studio de Design IA & Python</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="static/js/lucide.min.js"></script>
+    <!-- Monaco Editor Loader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs/loader.min.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="static/css/style.css?v=20260606_v6">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar: Navigation & Configuration -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="logo-icon"><i data-lucide="sparkles"></i></span>
+                    <span class="logo-text">AthenaDesign</span>
+                </div>
+            </div>
+
+            <!-- Configuration Section -->
+            <div class="config-panel">
+                <div class="panel-section-title">
+                    <i data-lucide="sliders"></i> CONFIGURATION IA
+                </div>
+                
+                <div class="form-group">
+                    <label for="ai-provider">Moteur IA</label>
+                    <div class="custom-select-wrapper">
+                        <select id="ai-provider">
+                            <option value="mock">Mode Démo (Local/Sans Clé)</option>
+                            <option value="gemini">Google Gemini</option>
+                            <option value="anthropic">Anthropic Claude</option>
+                            <option value="openai">OpenAI GPT</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" id="api-key-group" style="display: none;">
+                    <label for="api-key">Clé API</label>
+                    <div class="input-with-icon">
+                        <i data-lucide="key" class="field-icon"></i>
+                        <input type="password" id="api-key" placeholder="Entrez votre clé API...">
+                    </div>
+                </div>
+
+                <div class="form-group" id="model-group" style="display: none;">
+                    <label for="model-name">Modèle</label>
+                    <div class="input-with-icon">
+                        <i data-lucide="cpu" class="field-icon"></i>
+                        <input type="text" id="model-name" placeholder="Ex: gemini-2.5-flash">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Projects & History list -->
+            <div class="projects-panel">
+                <div class="panel-header-row">
+                    <span class="panel-section-title"><i data-lucide="folder"></i> PROJETS</span>
+                    <button id="btn-new-project" class="icon-btn-small" title="Nouveau projet">
+                        <i data-lucide="plus"></i>
+                    </button>
+                </div>
+                <div id="projects-list" class="projects-list-container">
+                    <!-- Loaded dynamically -->
+                    <div class="project-item empty">Aucun projet</div>
+                </div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <div class="theme-toggle" id="theme-toggle-btn">
+                    <i data-lucide="sun" class="sun-icon"></i>
+                    <i data-lucide="moon" class="moon-icon"></i>
+                    <span>Changer de thème</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Chat Panel: The conversation and prompt area -->
+        <section class="chat-container">
+            <div class="chat-header">
+                <div class="chat-title-info">
+                    <h2 id="current-project-title">Nouveau Projet</h2>
+                    <span class="status-badge" id="app-status">Prêt</span>
+                </div>
+            </div>
+            
+            <div class="messages-list" id="chat-messages">
+                <!-- Initial welcoming message -->
+                <div class="message system">
+                    <div class="msg-avatar"><i data-lucide="bot"></i></div>
+                    <div class="msg-content">
+                        <p><strong>Bienvenue sur AthenaDesign Studio !</strong></p>
+                        <p>Je suis votre assistant de design. Indiquez-moi ce que vous souhaitez concevoir dans le champ ci-dessous. Vous pouvez créer :</p>
+                        <ul>
+                            <li><strong>Des interfaces web (HTML/CSS/JS)</strong> comme des tableaux de bord, formulaires ou pages vitrines.</li>
+                            <li><strong>Des scripts Python interactifs</strong> pour tracer des graphiques scientifiques (Matplotlib/Plotly) ou manipuler des données.</li>
+                            <li><strong>Des présentations PowerPoint (.pptx)</strong> épurées et professionnelles générées par script Python.</li>
+                        </ul>
+                        <p><em>Astuce : Sans clé API configurée, l'application fonctionne en mode hors-ligne avec des démos interactives instantanées (essayez de taper "dashboard", "plot" ou "powerpoint" !).</em></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <form id="chat-form">
+                    <div class="input-box-wrapper">
+                        <textarea id="prompt-input" rows="2" placeholder="Décrivez votre design ou script Python..." required></textarea>
+                        <button type="submit" id="btn-send" class="btn-send">
+                            <i data-lucide="send"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- Canvas/Artifact Panel: Where preview and code live -->
+        <main class="canvas-container">
+            <div class="canvas-header">
+                <div class="canvas-tabs">
+                    <button class="tab-btn active" data-tab="preview">
+                        <i data-lucide="eye"></i> <span>Aperçu</span>
+                    </button>
+                    <button class="tab-btn" data-tab="code">
+                        <i data-lucide="code"></i> <span>Code</span>
+                    </button>
+                    <button class="tab-btn" data-tab="console" id="tab-console-btn">
+                        <i data-lucide="terminal"></i> <span>Console & Sortie</span>
+                    </button>
+                    <button class="tab-btn" data-tab="history">
+                        <i data-lucide="history"></i> <span>Versions</span>
+                    </button>
+                </div>
+                
+                <div class="canvas-actions">
+                    <button id="btn-run-python" class="accent-btn" style="display: none;">
+                        <i data-lucide="play"></i> <span>Lancer le script</span>
+                    </button>
+                    <button id="btn-comment-mode" class="draw-btn" title="Dessiner et annoter l'aperçu pour modification">
+                        <i data-lucide="brush"></i> <span>Dessiner / Annoter</span>
+                    </button>
+                    <button id="btn-refresh-preview" class="secondary-btn" title="Rafraîchir l'aperçu" style="display: none;">
+                        <i data-lucide="refresh-cw"></i>
+                    </button>
+                    <button id="btn-open-external" class="secondary-btn" title="Ouvrir dans un nouvel onglet" style="display: none;">
+                        <i data-lucide="external-link"></i>
+                    </button>
+                    <button id="btn-copy" class="secondary-btn" title="Copier le code">
+                        <i data-lucide="copy"></i>
+                    </button>
+                    <button id="btn-download" class="secondary-btn" title="Télécharger le fichier">
+                        <i data-lucide="download"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab Content Area with Comments Sidebar -->
+            <div class="canvas-content-wrapper">
+                <div class="canvas-main-area">
+                    <!-- Preview Tab -->
+                    <div class="tab-content active" id="tab-preview">
+                        <!-- Annotation Toolbar -->
+                        <div class="annotation-toolbar" id="annotation-toolbar" style="display: none;">
+                            <div class="tool-section">
+                                <span class="tool-label">Outil :</span>
+                                <button class="tool-btn active" data-tool="point" title="Épingler un commentaire (Sans dessin)">
+                                    <i data-lucide="map-pin"></i>
+                                </button>
+                                <button class="tool-btn" data-tool="brush" title="Dessiner (Pinceau)">
+                                    <i data-lucide="brush"></i>
+                                </button>
+                                <button class="tool-btn" data-tool="rect" title="Cibler une zone (Rectangle)">
+                                    <i data-lucide="square"></i>
+                                </button>
+                            </div>
+                            <div class="divider"></div>
+                            <div class="tool-section">
+                                <span class="tool-label">Couleur :</span>
+                                <div class="color-options">
+                                    <div class="color-pill active" data-color="#ef4444" style="background-color: #ef4444;"></div>
+                                    <div class="color-pill" data-color="#3b82f6" style="background-color: #3b82f6;"></div>
+                                    <div class="color-pill" data-color="#eab308" style="background-color: #eab308;"></div>
+                                </div>
+                            </div>
+                            <div class="divider"></div>
+                            <button id="btn-clear-drawing" class="icon-btn-text" title="Effacer les tracés temporaires">
+                                <i data-lucide="eraser"></i> <span>Effacer</span>
+                            </button>
+                        </div>
+
+                        <!-- Responsive Toolbar (Multi-écrans) -->
+                        <div class="responsive-toolbar" id="responsive-toolbar" style="display: none;">
+                            <div class="resp-group">
+                                <button class="resp-btn active" data-viewport="desktop" title="Ordinateur de bureau (100%)">
+                                    <i data-lucide="monitor"></i> <span>Bureau</span>
+                                </button>
+                                <button class="resp-btn" data-viewport="tablet" title="Tablette (768px)">
+                                    <i data-lucide="tablet"></i> <span>Tablette</span>
+                                </button>
+                                <button class="resp-btn" data-viewport="mobile" title="Téléphone (375px)">
+                                    <i data-lucide="smartphone"></i> <span>Mobile</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- HTML Frame Previews with overlay inside viewport wrapper -->
+                        <div class="preview-viewport-wrapper" id="preview-viewport-wrapper">
+                            <div class="preview-frame-container" id="preview-frame-container" style="display: none;">
+                                <iframe id="html-preview-frame" class="preview-frame"></iframe>
+                                
+                                <!-- Drawing / Annotation Overlay -->
+                                <div id="annotation-overlay" class="annotation-overlay" style="display: none;">
+                                    <canvas id="drawing-canvas"></canvas>
+                                    <div id="comment-pins-container"></div>
+                                    
+                                    <!-- Floating Comment Saisie Popup -->
+                                    <div id="comment-popup" class="comment-popup" style="display: none;">
+                                        <div class="popup-header">
+                                            <span class="popup-title">Nouveau commentaire</span>
+                                            <button type="button" id="btn-close-popup" class="close-btn">&times;</button>
+                                        </div>
+                                        <textarea id="comment-text-input" placeholder="Décrivez la modification à apporter sur cette zone..."></textarea>
+                                        <div class="popup-actions">
+                                            <button type="button" id="btn-submit-comment" class="popup-submit-btn">Appliquer</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Python Output Visualizer (Matplotlib / Plotly plots) -->
+                        <div id="python-preview-container" class="python-preview-area" style="display: none;">
+                            <div class="no-execution-msg" id="python-prompt-run">
+                                <div class="icon-pulse"><i data-lucide="play-circle"></i></div>
+                                <h3>Script Python Prêt</h3>
+                                <p>Cliquez sur "Lancer le script" en haut à droite pour exécuter le code et afficher les graphiques.</p>
+                            </div>
+                            <div id="python-executing" class="executing-loader" style="display: none;">
+                                <div class="spinner"></div>
+                                <p>Exécution du code Python en cours...</p>
+                            </div>
+                            <!-- Plots Grid wrapper for annotations -->
+                            <div class="python-plots-wrapper" id="python-plots-wrapper" style="position: relative; width: 100%; display: none;">
+                                <div id="plots-container" class="plots-grid"></div>
+                                
+                                <!-- Drawing Overlay for Python Plots -->
+                                <div id="python-annotation-overlay" class="annotation-overlay" style="display: none;">
+                                    <canvas id="python-drawing-canvas"></canvas>
+                                    <div id="python-comment-pins-container"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Default Placeholder -->
+                        <div class="canvas-placeholder" id="canvas-empty-state">
+                            <div class="placeholder-art">
+                                <i data-lucide="layout"></i>
+                            </div>
+                            <h3>Espace Canvas</h3>
+                            <p>Soumettez un prompt ou chargez un projet pour générer un design.</p>
+                        </div>
+                    </div>
+
+                    <!-- Code Tab -->
+                    <div class="tab-content" id="tab-code">
+                        <div id="editor-container" class="code-editor-element">
+                            <textarea id="fallback-code-area" class="fallback-textarea" readonly></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Console Tab -->
+                    <div class="tab-content" id="tab-console">
+                        <div class="console-terminal">
+                            <div class="console-header">
+                                <span class="terminal-title"><i data-lucide="terminal"></i> Terminal d'exécution</span>
+                                <button id="btn-clear-console" class="clear-terminal-btn">Effacer</button>
+                            </div>
+                            <div class="console-body" id="console-output">
+                                <div class="console-line system">Console inactive. Lancez un script Python pour capturer la sortie.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- History Tab -->
+                    <div class="tab-content" id="tab-history">
+                        <div class="versions-history-view">
+                            <h3>Historique des versions de l'artefact</h3>
+                            <p class="subtitle">Sélectionnez une version pour restaurer le code et le rendu.</p>
+                            <div class="timeline" id="versions-timeline">
+                                <!-- Populated dynamically -->
+                                <div class="timeline-empty">Aucune version générée pour le moment</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Comments Sidebar -->
+                <aside class="comments-sidebar" id="comments-sidebar" style="display: none;">
+                    <div class="comments-sidebar-header">
+                        <h3><i data-lucide="message-square"></i> Modifications</h3>
+                    </div>
+                    <div class="comments-list" id="version-comments-list">
+                        <!-- Loaded dynamically -->
+                        <div class="comment-sidebar-empty">Aucun commentaire sur cette version.</div>
+                    </div>
+                </aside>
+            </div>
+        </main>
+    </div>
+
+    <!-- Custom Script -->
+    <script src="static/js/app.js?v=20260606_v5"></script>
+</body>
+</html>

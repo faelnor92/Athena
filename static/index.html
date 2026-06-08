@@ -53,6 +53,10 @@
                     <span class="dock-icon">🧩</span>
                     <span class="dock-tooltip">Code</span>
                 </button>
+                <button class="dock-btn" id="tab-design" title="AthenaDesign Studio (Design & Prototypage)">
+                    <span class="dock-icon">🎨</span>
+                    <span class="dock-tooltip">Design</span>
+                </button>
                 <button class="dock-btn" id="tab-agenda" title="Tâches & Agenda">
                     <span class="dock-icon">📋</span>
                     <span class="dock-tooltip">Tâches</span>
@@ -305,6 +309,34 @@
                     <div id="code-vsplitter" title="Glisser pour redimensionner le terminal" style="flex:0 0 auto; height:8px; margin:4px 0; cursor:row-resize; border-radius:4px; background:rgba(255,255,255,0.08);"></div>
                     <!-- ESPACE CODE : terminal codeur rapatrié ici (relocation JS depuis view-console) -->
                     <div id="code-terminal-zone" style="flex: 0 0 32%; min-height: 0; display: flex; flex-direction: column;"></div>
+                </div>
+
+                <!-- PANEL J: ATHENADESIGN STUDIO (IFRAME) -->
+                <div class="viewport-panel" id="view-design" style="display: none; flex-direction: column; min-height: 0;">
+                    <div class="athenadesign-container" style="flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative;">
+                        <div class="athenadesign-toolbar glass" style="display: flex; align-items: center; gap: 10px; padding: 6px 14px; flex-shrink: 0;">
+                            <span style="font-size: 1.1rem;">🎨</span>
+                            <h4 class="view-panel-title" style="margin: 0; font-size: 0.9rem;">Athena Design Studio</h4>
+                            <span style="flex: 1;"></span>
+                            <span id="athenadesign-status" style="font-size: 0.72rem; opacity: 0.6;">Connexion…</span>
+                            <button id="btn-athenadesign-reload" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Recharger Athena Design">🔄 Recharger</button>
+                            <button id="btn-athenadesign-popout" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem;" title="Ouvrir dans un nouvel onglet">⧉ Pop-out</button>
+                        </div>
+                        <div style="flex: 1; min-height: 0; position: relative; border-radius: 0 0 10px 10px; overflow: hidden;">
+                            <iframe id="athenadesign-frame"
+                                    src="/athenadesign/?v=20260606_v6"
+                                    style="width: 100%; height: 100%; border: none; background: #0a0f1e;"
+                                    allow="clipboard-read; clipboard-write"
+                                    loading="lazy">
+                            </iframe>
+                            <div id="athenadesign-offline-overlay" style="display: none; position: absolute; inset: 0; background: rgba(10,15,30,0.95); flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: #fff; backdrop-filter: blur(6px);">
+                                <span style="font-size: 3rem;">🎨</span>
+                                <h3 style="margin: 0; color: var(--accent-cyan, #00f0ff);">Athena Design Studio</h3>
+                                <p style="opacity: 0.6; text-align: center; max-width: 400px; font-size: 0.85rem; line-height: 1.5;">Le routeur Athena Design n'a pas pu être chargé à l'adresse <code style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">/athenadesign/</code>.<br>Vérifiez les journaux du serveur Athena.</p>
+                                <button id="btn-athenadesign-retry" class="btn btn-primary" style="margin-top: 8px; padding: 8px 20px; font-weight: bold; border-radius: 8px;">🔄 Réessayer</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- PANEL D: TASKS / INTERACTIVE LISTS -->
