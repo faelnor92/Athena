@@ -113,6 +113,9 @@ _ADMIN_PREFIX = (
     ("GET", "/api/users"), ("POST", "/api/users"), ("DELETE", "/api/users/"),
     # Registre multi-hôtes SSH (surface sensible) : admin uniquement.
     ("GET", "/api/ssh/hosts"), ("POST", "/api/ssh/hosts"), ("DELETE", "/api/ssh/hosts/"),
+    # Plugins : activer/désactiver est un changement GLOBAL (ex. Claude Code = exécution de
+    # code) → admin uniquement (sans effet en mode local : rôle admin par défaut).
+    ("POST", "/api/plugins/"),
 )
 
 

@@ -139,14 +139,18 @@ def _fetch_web_text(url: str) -> str:
             return str(web_tools.web_scrape(url))[:8000]
     except Exception:
         pass
+    if not re.match(r"^https?://", url or ""):
+        return ""
+    # Garde SSRF FAIL-CLOSED : si on ne peut pas vérifier l'URL, on ne fetch pas.
+    try:
+        from tools.net_guard import is_blocked_url
+        if is_blocked_url(url):
+            return ""
+    except Exception:
+        return ""
     try:
         import requests
-        from core.net_guard import assert_safe_url  # garde SSRF si dispo
-        try:
-            assert_safe_url(url)
-        except Exception:
-            pass
-        html = requests.get(url, timeout=8).text
+        html = requests.get(url, timeout=8, headers={"User-Agent": "AthenaDesign/1.0"}).text
         return re.sub(r"<[^>]+>", " ", html)[:8000]
     except Exception:
         return ""
@@ -181,12 +185,13 @@ def _fetch_web_styles(url: str) -> str:
     EXTRAIRE la charte (couleurs/typo). Garde SSRF (net_guard) + bornes (taille, nb de CSS)."""
     if not re.match(r"^https?://", url or ""):
         return ""
+    # Garde SSRF FAIL-CLOSED : pas de vérif possible → on ne fetch pas.
     try:
         from tools.net_guard import is_blocked_url
         if is_blocked_url(url):
             return ""
     except Exception:
-        pass
+        return ""
     try:
         import requests
         from urllib.parse import urljoin
@@ -617,11 +622,24 @@ async def shared_project(token: str):
 
 @router.get("/shared/{token}/view", response_class=HTMLResponse)
 async def shared_view(token: str):
-    """PUBLIC : rend le dernier design HTML partagé comme page autonome."""
+    """PUBLIC : rend le dernier design web partagé. SÉCURITÉ : le design (potentiellement créé
+    par un autre utilisateur) est rendu dans une IFRAME SANDBOX sans `allow-same-origin` → son
+    JavaScript s'exécute dans une origine nulle et ne peut PAS lire le localStorage d'Athena
+    (jeton de session). Neutralise le vol de jeton via un lien partagé."""
     proj = _resolve_shared(token)
     if not proj:
         raise HTTPException(status_code=404, detail="Lien de partage invalide ou révoqué")
     v = next((x for x in reversed(proj.get("versions", [])) if x.get("type") in _WEB_TYPES), None)
     if not v:
         return HTMLResponse("<h1>Ce design partagé n'a pas d'aperçu web.</h1>", status_code=200)
-    return HTMLResponse(content=_web_render(v), status_code=200)
+    inner = _web_render(v)
+    esc = inner.replace("&", "&amp;").replace('"', "&quot;")
+    wrapper = (
+        "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+        "<title>Design partagé</title><style>html,body{margin:0;height:100%}"
+        "iframe{border:0;width:100%;height:100vh;display:block}</style></head><body>"
+        f"<iframe sandbox=\"allow-scripts allow-popups allow-forms allow-modals\" srcdoc=\"{esc}\"></iframe>"
+        "</body></html>"
+    )
+    return HTMLResponse(content=wrapper, status_code=200)
