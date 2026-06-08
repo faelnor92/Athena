@@ -127,3 +127,54 @@ def run_bash(command: str, timeout: int = 15, workdir: Optional[str] = None) -> 
     if workdir and workdir not in (".", ""):
         command = f"cd {shlex.quote(workdir)} && {command}"
     return _execute(["bash", "-lc", command], stdin_data="", timeout=timeout)
+
+
+def run_python_in_dir(code: str, host_dir: str, image: Optional[str] = None,
+                      timeout: int = 30, allow_network: bool = False) -> Tuple[str, str, int]:
+    """Exécute du code Python dans un conteneur Docker en montant `host_dir` sur /work
+    (cwd=/work). Les fichiers PRODUITS par le code (pptx, images, html…) PERSISTENT dans
+    host_dir sur l'hôte → on peut les récupérer après coup. Mêmes garde-fous que le reste
+    de la sandbox : réseau coupé (sauf allow_network/SANDBOX_ALLOW_NETWORK), --cap-drop ALL,
+    racine en lecture seule (hors /work + /tmp tmpfs), limites mem/cpu/pids, UID hôte.
+
+    `image` : image Docker à utiliser (défaut SANDBOX_DOCKER_IMAGE) — passer une image
+    contenant les libs nécessaires (ex. python-pptx, matplotlib) pour le code généré.
+    Le script est écrit dans host_dir/run.py pour que les chemins relatifs et os.listdir('.')
+    du code se comportent comme attendu. Renvoie (stdout, stderr, returncode)."""
+    host_dir = os.path.abspath(host_dir)
+    os.makedirs(host_dir, exist_ok=True)
+    with open(os.path.join(host_dir, "run.py"), "w", encoding="utf-8") as f:
+        f.write(code)
+    name = f"athena-sbx-{uuid.uuid4().hex[:12]}"
+    img = image or os.getenv("SANDBOX_DOCKER_IMAGE", DEFAULT_IMAGE)
+    network = "bridge" if (allow_network or os.getenv("SANDBOX_ALLOW_NETWORK", "false").lower()
+                           in ("true", "1", "yes")) else "none"
+    mem = os.getenv("SANDBOX_DESIGN_MEM_LIMIT", "512m")
+    args = [
+        "docker", "run", "--rm", "-i",
+        "--name", name,
+        "--network", network,
+        "--memory", mem, "--memory-swap", mem,
+        "--cpus", os.getenv("SANDBOX_CPUS", "1.0"),
+        "--pids-limit", os.getenv("SANDBOX_PIDS_LIMIT", "128"),
+        "--read-only",
+        "--tmpfs", "/tmp:rw,exec,size=128m",
+        "--security-opt", "no-new-privileges",
+        "--cap-drop", "ALL",
+        # HOME/MPLCONFIGDIR dans le tmpfs : matplotlib/pptx écrivent leur cache sans heurter
+        # la racine en lecture seule.
+        "-e", "HOME=/tmp", "-e", "MPLCONFIGDIR=/tmp", "-e", "XDG_CACHE_HOME=/tmp",
+        "-v", f"{host_dir}:/work",
+        "-w", "/work",
+    ]
+    if hasattr(os, "getuid"):
+        args += ["--user", f"{os.getuid()}:{os.getgid()}"]
+    cmd = args + [img, "python", "run.py"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.stdout, r.stderr, r.returncode
+    except subprocess.TimeoutExpired:
+        subprocess.run(["docker", "kill", name], capture_output=True)
+        return "", f"Erreur : délai d'exécution dépassé (Timeout de {timeout} secondes).", 124
+    except Exception as e:
+        return "", f"Erreur sandbox Docker : {e}", 1

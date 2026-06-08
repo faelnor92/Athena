@@ -100,6 +100,28 @@ def test_sandbox_runner_no_route_when_inactive():
     ex.assert_not_called()
 
 
+def test_run_python_in_dir_construit_la_commande_isolee():
+    """run_python_in_dir : écrit run.py dans host_dir et lance un conteneur ISOLÉ
+    (réseau coupé, cap-drop ALL, host_dir monté sur /work). Sans Docker réel (mock)."""
+    import tempfile
+    from tools import sandbox_runner
+    d = tempfile.mkdtemp(prefix="adtest_")
+
+    class _R:
+        stdout = "ok"; stderr = ""; returncode = 0
+    with mock.patch("subprocess.run", return_value=_R()) as run:
+        out, err, rc = sandbox_runner.run_python_in_dir("print('x')", d, image="myimg:1", timeout=20)
+    assert rc == 0 and out == "ok"
+    assert os.path.exists(os.path.join(d, "run.py")), "run.py non écrit dans host_dir"
+    cmd = run.call_args.args[0]
+    assert cmd[:3] == ["docker", "run", "--rm"], "ce n'est pas un docker run jetable"
+    assert "--network" in cmd and cmd[cmd.index("--network") + 1] == "none", "réseau non coupé"
+    assert "--cap-drop" in cmd and cmd[cmd.index("--cap-drop") + 1] == "ALL", "capacités non retirées"
+    assert "myimg:1" in cmd, "image custom non utilisée"
+    assert f"{os.path.abspath(d)}:/work" in cmd, "host_dir non monté sur /work"
+    print("OK test_run_python_in_dir_construit_la_commande_isolee")
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
