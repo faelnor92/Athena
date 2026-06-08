@@ -18,6 +18,7 @@
  "GET /api/athenadesign/file/{project_id}/{filename}",
  "GET /api/athenadesign/projects",
  "GET /api/athenadesign/projects/{project_id}",
+ "GET /api/athenadesign/projects/{project_id}/design-system",
  "GET /api/athenadesign/projects/{project_id}/versions/{version_num}/raw",
  "GET /api/audit",
  "GET /api/auth/oidc/callback",
@@ -155,5 +156,6 @@
  "POST /api/workspace/file",
  "POST /api/workspace/presence",
  "POST /api/workspace/upload",
+ "PUT /api/athenadesign/projects/{project_id}/design-system",
  "PUT /api/lists/{list_name}/{item_id}/toggle"
 ]

@@ -808,27 +808,100 @@ def _athena_default_model() -> str:
     return os.getenv("DEFAULT_MODEL", "").strip() or "qwen3"
 
 
-def _generate_via_athena(prompt: str, history: list, model_name: str = "") -> dict:
-    """Génère via l'INFRA LLM d'Athena (swarm._complete) : endpoint/clés/fallback configurés
-    dans Athena (et par-utilisateur), pas un chemin LLM séparé. Synchrone (à appeler en thread)."""
+def _model_supports_vision(model: str) -> bool:
+    """Vrai si le modèle accepte des images (multimodal). S'appuie sur litellm."""
+    try:
+        import litellm
+        return bool(litellm.supports_vision(model=model))
+    except Exception:
+        return False
+
+
+def _describe_images(images: list) -> str:
+    """Repli SANS vision côté modèle principal : si un VISION_MODEL est configuré, on lui
+    fait décrire les images → texte injecté comme contexte. Sinon chaîne vide."""
+    import os
+    vmodel = os.getenv("VISION_MODEL", "").strip()
+    if not vmodel or not images:
+        return ""
     from core.state import swarm as _sw
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    out = []
+    for i, data_url in enumerate(images[:4], 1):
+        try:
+            msg = [{"role": "user", "content": [
+                {"type": "text", "text": "Décris précisément cette image de référence design "
+                 "(couleurs, typographie, mise en page, composants, ambiance) pour qu'un autre "
+                 "modèle puisse s'en inspirer. Retranscris tout texte visible."},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]}]
+            resp = _sw._complete(vmodel, msg, tools_schema=None, allow_continuation=False, allow_fallback=False)
+            desc = (resp.choices[0].message.content or "").strip()
+            if desc:
+                out.append(f"[Image de référence {i}]\n{desc}")
+        except Exception:
+            pass
+    return "\n\n".join(out)
+
+
+def _build_system(design_system: str = "", context_text: str = "", note: str = "") -> str:
+    """Assemble le prompt système : règles AthenaDesign + charte (design system) + contexte
+    importé (docs/web/descriptions d'images) + note éventuelle."""
+    parts = [SYSTEM_PROMPT]
+    if (design_system or "").strip():
+        parts.append("=== DESIGN SYSTEM (charte à RESPECTER impérativement : couleurs, "
+                     "typographie, composants, ton) ===\n" + design_system.strip())
+    if (context_text or "").strip():
+        parts.append("=== CONTEXTE FOURNI PAR L'UTILISATEUR (références, documents, capture "
+                     "web — inspire-t'en, ne recopie pas aveuglément) ===\n" + context_text.strip())
+    if (note or "").strip():
+        parts.append(note.strip())
+    return "\n\n".join(parts)
+
+
+def _generate_via_athena(prompt: str, history: list, model_name: str = "",
+                         design_system: str = "", context_text: str = "", images: list = None) -> dict:
+    """Génère via l'INFRA LLM d'Athena (swarm._complete) : endpoint/clés/fallback d'Athena.
+    Gère la charte (design_system), le contexte importé (docs/web) et les IMAGES :
+    modèle vision direct → sinon pré-description via VISION_MODEL → sinon note (marche au max
+    sans vision). Synchrone (à appeler en thread)."""
+    from core.state import swarm as _sw
+    images = images or []
+    model = (model_name or "").strip() or _athena_default_model()
+
+    note = ""
+    user_content = prompt
+    if images:
+        if _model_supports_vision(model):
+            # Modèle multimodal : on envoie les images directement.
+            user_content = [{"type": "text", "text": prompt}] + [
+                {"type": "image_url", "image_url": {"url": u}} for u in images[:6]]
+        else:
+            desc = _describe_images(images)
+            if desc:
+                context_text = (context_text + "\n\n" + desc).strip()
+            else:
+                note = (f"[{len(images)} image(s) de référence jointe(s) mais le modèle n'est pas "
+                        "multimodal et aucun VISION_MODEL n'est configuré → non analysées. "
+                        "Demande à l'utilisateur de les décrire, ou configure un modèle vision.]")
+
+    messages = [{"role": "system", "content": _build_system(design_system, context_text, note)}]
     for m in (history or []):
         role = m.get("role")
         if role in ("user", "assistant") and m.get("content"):
             messages.append({"role": role, "content": m["content"]})
-    messages.append({"role": "user", "content": prompt})
-    model = (model_name or "").strip() or _athena_default_model()
+    messages.append({"role": "user", "content": user_content})
     resp = _sw._complete(model, messages, tools_schema=None, allow_continuation=True, allow_fallback=True)
     text = (resp.choices[0].message.content or "")
     return parse_artifact_response(text)
 
 
 async def generate_design(prompt: str, history: list, provider: str = "athena",
-                          api_key: str = "", model_name: str = "") -> dict:
+                          api_key: str = "", model_name: str = "",
+                          design_system: str = "", context_text: str = "", images: list = None) -> dict:
     """Routeur LLM. Par DÉFAUT (provider 'athena' ou non précisé), passe par l'infra LLM
     d'Athena (clés/endpoint/fallback configurés). 'mock' → templates hors-ligne. Les providers
-    externes explicites (gemini/anthropic/openai) restent possibles si une clé est fournie."""
+    externes explicites (gemini/anthropic/openai) restent possibles si une clé est fournie.
+    design_system/context_text/images : charte + contexte importé + images de référence."""
     import asyncio
 
     if provider == "mock":
@@ -850,7 +923,8 @@ async def generate_design(prompt: str, history: list, provider: str = "athena",
     # ET qu'une clé est fournie par le front.
     if provider not in ("gemini", "anthropic", "openai") or not api_key:
         try:
-            return await asyncio.to_thread(_generate_via_athena, prompt, history, model_name)
+            return await asyncio.to_thread(
+                _generate_via_athena, prompt, history, model_name, design_system, context_text, images)
         except Exception as e:
             return {"type": "html",
                     "explanation": f"⚠️ Erreur de génération via l'API d'Athena : {e}",

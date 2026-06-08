@@ -68,6 +68,62 @@ def test_execute_repli_local_si_sandbox_off():
     print("OK test_execute_repli_local_si_sandbox_off")
 
 
+def test_extract_design_system_et_attachments():
+    """Extraction de charte (couleurs/typo) depuis CSS + résolution des pièces jointes."""
+    import routers.athenadesign as ad
+    ds = ad.extract_design_system("a{color:#4f46e5} b{font-family: Inter, sans-serif} c{background:#f43f5e}")
+    assert "#4f46e5" in ds and "#f43f5e" in ds and "Inter" in ds, ds
+    ctx, imgs = ad._resolve_attachments([
+        {"kind": "text", "text": "ton premium minimaliste"},
+        {"kind": "image", "data_url": "data:image/png;base64,AAAA"},
+    ])
+    assert "premium" in ctx and len(imgs) == 1
+    print("OK test_extract_design_system_et_attachments")
+
+
+def test_design_system_et_vision_routing():
+    """design_system injecté dans le système ; images envoyées en multimodal SI le modèle
+    est vision, sinon note (marche sans vision)."""
+    from core import athenadesign_generator as g
+    from core import state
+
+    captured = {}
+    class _Msg:
+        content = "<artifact_type>html</artifact_type><artifact_explanation>ok</artifact_explanation><artifact_code><div/></artifact_code>"
+    class _Choice:
+        message = _Msg()
+    class _Resp:
+        choices = [_Choice()]
+    def fake_complete(model, messages, **kw):
+        captured["messages"] = messages
+        return _Resp()
+
+    img = "data:image/png;base64,AAAA"
+
+    # (a) Modèle VISION → image envoyée en multimodal + design_system dans le système.
+    with mock.patch.object(state.swarm, "_complete", side_effect=fake_complete), \
+         mock.patch.object(g, "_model_supports_vision", return_value=True):
+        g._generate_via_athena("fais un hero", [], design_system="Couleurs: indigo/rose; Police: Inter",
+                               images=[img])
+    sys_msg = captured["messages"][0]["content"]
+    user_msg = captured["messages"][-1]["content"]
+    assert "DESIGN SYSTEM" in sys_msg and "indigo/rose" in sys_msg, "charte non injectée"
+    assert isinstance(user_msg, list) and any(p.get("type") == "image_url" for p in user_msg), \
+        "image non envoyée en multimodal au modèle vision"
+
+    # (b) Modèle NON-vision + pas de VISION_MODEL → note, user en texte simple.
+    with mock.patch.object(state.swarm, "_complete", side_effect=fake_complete), \
+         mock.patch.object(g, "_model_supports_vision", return_value=False), \
+         mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("VISION_MODEL", None)
+        g._generate_via_athena("fais un hero", [], images=[img])
+    user_msg2 = captured["messages"][-1]["content"]
+    sys_msg2 = captured["messages"][0]["content"]
+    assert isinstance(user_msg2, str), "sans vision, le message user doit rester du texte"
+    assert "non analysées" in sys_msg2 or "multimodal" in sys_msg2, "note vision absente"
+    print("OK test_design_system_et_vision_routing")
+
+
 def test_projets_isoles_par_utilisateur():
     """Multi-tenant : chaque utilisateur ne voit que SES projets (bases séparées)."""
     import routers.athenadesign as ad

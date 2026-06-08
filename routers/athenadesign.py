@@ -64,6 +64,93 @@ def write_db(user: str, data: dict):
         json.dump(data, f, indent=2, ensure_ascii=False)
     os.replace(tmp, path)  # écriture atomique
 
+
+# ── Imports (références → contexte) : images, documents, capture web ──────────
+def _extract_doc(data_url: str, name: str) -> str:
+    """Texte d'un document fourni en data URL (PDF via pypdf, sinon décodage texte)."""
+    import base64
+    try:
+        b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
+        raw = base64.b64decode(b64)
+    except Exception:
+        return ""
+    if name.lower().endswith(".pdf") or raw[:4] == b"%PDF":
+        try:
+            import io
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(raw))
+            return "\n".join((p.extract_text() or "") for p in reader.pages[:20])
+        except Exception:
+            return ""
+    try:
+        return raw.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def _fetch_web_text(url: str) -> str:
+    """Récupère le contenu d'une page (capture web) en TEXTE → contexte sans vision."""
+    try:
+        from tools import web_tools
+        if hasattr(web_tools, "web_scrape"):
+            return str(web_tools.web_scrape(url))[:8000]
+    except Exception:
+        pass
+    try:
+        import requests
+        from core.net_guard import assert_safe_url  # garde SSRF si dispo
+        try:
+            assert_safe_url(url)
+        except Exception:
+            pass
+        html = requests.get(url, timeout=8).text
+        return re.sub(r"<[^>]+>", " ", html)[:8000]
+    except Exception:
+        return ""
+
+
+def _resolve_attachments(attachments) -> tuple:
+    """Transforme les pièces jointes en (contexte_texte, images_data_urls). Les docs/web
+    deviennent du TEXTE (utilisable SANS vision) ; les images restent des data URLs."""
+    texts, images = [], []
+    for a in (attachments or [])[:8]:
+        if not isinstance(a, dict):
+            continue
+        kind = (a.get("kind") or "").lower()
+        name = a.get("name") or ""
+        if kind == "image" and a.get("data_url"):
+            images.append(a["data_url"])
+        elif kind == "web" and a.get("url"):
+            txt = _fetch_web_text(a["url"])
+            if txt:
+                texts.append(f"[Capture web : {a['url']}]\n{txt}")
+        elif kind == "document":
+            txt = a.get("text") or _extract_doc(a.get("data_url", ""), name)
+            if txt:
+                texts.append(f"[Document : {name}]\n{txt[:8000]}")
+        elif kind == "text" and a.get("text"):
+            texts.append(f"[Référence]\n{a['text'][:8000]}")
+    return ("\n\n".join(texts), images)
+
+
+def extract_design_system(source: str) -> str:
+    """Construit une charte de départ depuis du CSS/HTML/texte : couleurs (#hex/rgb) et
+    polices (font-family) les plus fréquentes. Sert le 'design system support'."""
+    if not source:
+        return ""
+    from collections import Counter
+    colors = Counter(re.findall(r"#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b", source))
+    fonts = Counter(re.findall(r"font-family\s*:\s*([^;\}\n]+)", source, re.IGNORECASE))
+    lines = []
+    if colors:
+        top = ", ".join(c for c, _ in colors.most_common(8))
+        lines.append(f"Couleurs de marque : {top}")
+    if fonts:
+        top = "; ".join(f.strip().strip('\"\'') for f, _ in fonts.most_common(3))
+        lines.append(f"Typographie : {top}")
+    return "\n".join(lines)
+
+
 @router.get("/projects")
 async def get_projects(request: Request):
     db = read_db(_current_user(request))
@@ -124,12 +211,19 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
 
     project = db[project_id]
 
+    # Imports (références) + charte du projet → contexte de génération.
+    context_text, images = _resolve_attachments(payload.get("attachments"))
+    design_system = project.get("design_system", "")
+
     result = await generator.generate_design(
         prompt=prompt,
         history=project["history"],
         provider=provider,
         api_key=api_key,
-        model_name=model_name
+        model_name=model_name,
+        design_system=design_system,
+        context_text=context_text,
+        images=images,
     )
 
     project["history"].append({"role": "user", "content": prompt})
@@ -242,3 +336,29 @@ async def get_sandbox_file(request: Request, project_id: str, filename: str):
     if not os.path.isfile(real):
         raise HTTPException(status_code=404, detail="Fichier introuvable")
     return FileResponse(real)
+
+
+@router.get("/projects/{project_id}/design-system")
+async def get_design_system(request: Request, project_id: str):
+    db = read_db(_current_user(request))
+    if project_id not in db:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    return {"design_system": db[project_id].get("design_system", "")}
+
+
+@router.put("/projects/{project_id}/design-system")
+async def set_design_system(request: Request, project_id: str, payload: dict = Body(...)):
+    """Définit la charte du projet. `design_system` = texte direct ; `source` = CSS/HTML/site
+    dont on EXTRAIT couleurs+typo (design system support). Les deux peuvent être combinés."""
+    user = _current_user(request)
+    db = read_db(user)
+    if project_id not in db:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    ds = (payload.get("design_system") or "").strip()
+    source = payload.get("source") or ""
+    if source:
+        extracted = extract_design_system(source)
+        ds = (ds + ("\n" if ds and extracted else "") + extracted).strip()
+    db[project_id]["design_system"] = ds[:4000]
+    write_db(user, db)
+    return {"design_system": db[project_id]["design_system"]}
