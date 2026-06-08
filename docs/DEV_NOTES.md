@@ -94,13 +94,14 @@ modèle/clés/fallback d'Athena). Tests : `test_projets_isoles_par_utilisateur`.
 |---|---|---|
 | Text-to-design (decks, landing, mockups…) | prompt → HTML + Python/pptx | ✅ (périmètre + étroit : 2 types) |
 | Chat editing + inline comments + edits directs + sliders | chat + annotations/dessin + édition code (Monaco) | ✅ sauf **sliders/WYSIWYG visuels** |
-| **Design system** (lit codebase/brand → couleurs/typo/composants, applique) | — | ❌ **gros différenciateur manquant** |
-| Imports multiples (image/doc, **codebase**, **web capture**) | texte seul | ❌ (imports à ajouter) |
-| Collaboration / partage org (lien, co-édition) | comptes multi-tenant (isolation) ; pas de partage | ⚠️ partiel |
-| Export (URL, PDF, **PPTX**, **HTML**, Canva, handoff Code) | PPTX ✅, HTML ✅ ; PDF/Canva ❌ ; handoff Code possible (Codeur) | ⚠️ partiel |
-| Modèle **vision** (Opus 4.7) | modèle Athena (qwen3 par défaut, non-vision) | ❌ **écart #1 = qualité+vision** |
+| **Design system** (brand → couleurs/typo, applique) | **FAIT (2026-06-08)** : charte par projet injectée au prompt + extraction couleurs/typo depuis CSS/HTML (`extract_design_system`) + panneau UI | ✅ |
+| Imports multiples (image/doc, **web capture**) | **FAIT** : attachments → contexte (PDF/texte via pypdf, capture web en texte) + images ; UI 📎/🔗 | ✅ (codebase-connect = via capture/coller) |
+| Modèle **vision** | **FAIT (routage)** : modèle vision direct (litellm.supports_vision) → sinon pré-description via VISION_MODEL → sinon note ; **marche au max sans vision** | ✅ plomberie (qualité = modèle branché) |
+| Chat editing + inline comments + edits + sliders | chat + annotations/dessin + édition code (Monaco) | ✅ sauf **sliders/WYSIWYG visuels** (D4) |
+| Collaboration / partage org (lien, co-édition) | comptes multi-tenant (isolation) ; pas de partage | ⚠️ partiel (D4) |
+| Export (URL, **PDF**, **PPTX**, **HTML**, Canva, handoff Code) | PPTX ✅, HTML ✅ ; **PDF/Canva** ❌ ; handoff Code possible | ⚠️ partiel (D4 : PDF) |
 - **Atouts AthenaDesign au-dessus de Claude Design** : exécution **Python côté serveur** (vrai .pptx, matplotlib/plotly), auto-hébergé, **choix du modèle**.
-- **Pour viser Claude Design**, par valeur : (1) **modèle fort + vision** (config Athena) ; (2) **design system** (ingestion brand/codebase) ; (3) **imports** (image/doc/web capture) ; (4) sliders WYSIWYG ; (5) partage/collab.
+- **Restant (D4) pour égaler** : (1) **modèle fort/vision branché** (config Athena — c'est le ressort qualité) ; (2) **export PDF** ; (3) **partage/collab** ; (4) **sliders WYSIWYG** ; (5) modèles de départ (deck/landing/one-pager).
 
 ## 🚧 Refonte « partie code » (en cours de décision)
 Direction pressentie (à valider) :
