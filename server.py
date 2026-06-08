@@ -170,6 +170,8 @@ from routers import pipelines as _pipelines_router
 app.include_router(_pipelines_router.router)
 from routers import ssh_hosts as _ssh_hosts_router
 app.include_router(_ssh_hosts_router.router)
+from routers import athenadesign as _athenadesign_router
+app.include_router(_athenadesign_router.router)
 
 
 # Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Athena →
@@ -195,6 +197,13 @@ async def _index():
 async def _index_html():
     return _render_index()
 
+
+# AthenaDesign : fichiers générés (présentations .pptx, plots) servis en statique.
+# NB : hors /api/ donc NON couvert par l'auth middleware → artefacts de design publics
+# si l'instance est exposée. Acceptable en local/solo ; à durcir (endpoint authentifié)
+# pour un déploiement multi-utilisateur. Voir DEV_NOTES (AthenaDesign).
+os.makedirs("sandbox", exist_ok=True)
+app.mount("/sandbox", StaticFiles(directory="sandbox"), name="sandbox")
 
 # Sert les fichiers statiques de l'interface Web (le reste : assets, app.js, /index.html…)
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
