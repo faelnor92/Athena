@@ -1019,6 +1019,35 @@ async def terminal_coder(req: TerminalRequest):
         next_agent, new_chain, steps = await asyncio.to_thread(
             functools.partial(swarm.run, coder_agent, run_chain, max_turns=max_turns,
                               locked=True, context_variables=_ctx_vars))
+
+        # CODE-TEST-FIX (auto-correction du code) : on lance les vérifications du projet ; en
+        # cas d'échec, on renvoie les erreurs au codeur pour qu'il corrige, puis on revérifie
+        # (boucle bornée). Équivalent de l'auto-correction du design, model-agnostic.
+        try:
+            from core import code_autofix
+            from tools.dev_tools import run_checks
+            from core.state import get_workspace_dir
+            if code_autofix.enabled():
+                _cmd = code_autofix.detect_check_command(get_workspace_dir())
+                _att = 0
+                while _cmd and _att < code_autofix.max_attempts():
+                    _checks = await asyncio.to_thread(run_checks, _cmd)
+                    steps.append({"type": "tool_output", "agent": coder_agent.name,
+                                  "tool": "run_checks", "output": _checks})
+                    if code_autofix.checks_passed(_checks):
+                        break
+                    _att += 1
+                    new_chain.append({"role": "user", "content":
+                        f"🔧 Code-Test-Fix : les vérifications ont ÉCHOUÉ.\n{_checks[:2000]}\n"
+                        "Corrige le code pour les faire passer (n'explique pas, agis)."})
+                    next_agent, new_chain, _s2 = await asyncio.to_thread(
+                        functools.partial(swarm.run, coder_agent, new_chain, max_turns=max_turns,
+                                          locked=True, context_variables=_ctx_vars))
+                    steps += _s2
+        except Exception:
+            import logging
+            logging.getLogger("athena.server").exception("Code-Test-Fix échoué")
+
         # S'assurer de rester sur l'orchestrateur au niveau de la session globale
         session.active_agent = _orch_agent()
 

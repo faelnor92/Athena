@@ -118,7 +118,10 @@ modèle/clés/fallback d'Athena). Tests : `test_projets_isoles_par_utilisateur`.
   version Python ; si erreur, renvoie le traceback au modèle pour corriger, ré-exécute, ≤ N
   essais (`ATHENADESIGN_AUTOFIX_MAX`). Les corrections = nouvelles versions. Le studio le
   déclenche automatiquement quand « Lancer le script » échoue. Inspiré de Bolt, model-agnostic.
-  À porter aussi côté Codeur (Code-Test-Fix) — non fait.
+- **Code-Test-Fix (Codeur) ✅ FAIT** : après un run de la console codeur, `core/code_autofix.py`
+  détecte la commande de vérif (npm test / pytest, ou `CODER_CHECK_CMD`) ; `run_checks` la lance ;
+  si ÉCHEC, on renvoie les erreurs au codeur pour corriger, puis on revérifie, ≤ `CODER_AUTOFIX_MAX`
+  (2). Gates `CODER_AUTOFIX`. Branché dans routers/chat.py (flux console). Tests : `test_code_autofix`.
 - **Système de plugins** : Athena étend déjà via **MCP** (serveurs externes) + **skills**
   dynamiques. Ajout d'un onglet **Réglages > Plugins** (`routers/plugins.py`, `GET /api/plugins`
   + toggle) qui liste MCP/skills + intégrations first-class.
