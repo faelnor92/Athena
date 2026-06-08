@@ -24,7 +24,7 @@ paramiko==5.0.0
 cryptography>=38.0.4
 
 # --- Génération / traitement d'images --------------------------------------
-Pillow==9.4.0
+Pillow==11.0.0
 
 # --- Pièces jointes du chat (extraction de texte PDF) ----------------------
 pypdf==6.12.2
