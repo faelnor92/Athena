@@ -67,8 +67,10 @@ isolé** seulement si Docker indisponible ou `SANDBOX_MODE=off` (journalisé). V
 
 **Branché sur l'infra LLM d'Athena (2026-06-08)** : `generate_design` passe par `swarm._complete`
 (provider `athena` par défaut) → endpoint/clés/fallback d'Athena, plus de chemin LLM séparé.
-Modèle = `ATHENADESIGN_MODEL` sinon celui de l'orchestrateur → **pour viser Claude Design,
-pointer ce var sur un modèle fort** (qwen3 produit du CSS médiocre + ignore le format).
+**Modèle = LE MÊME CHOIX que le reste d'Athena** (pas de knob dédié) : on part du modèle de
+l'orchestrateur et `_complete` applique l'override `LLM_MODEL` du user_config → choisir un
+modèle fort via la config Athena habituelle améliore directement AthenaDesign (qwen3 = CSS
+médiocre / format ignoré, d'où la plomberie robuste ci-dessous).
 
 **Correctifs d'usage (2026-06-08)** : (1) `parse_artifact_response` robuste — qwen3 n'émet pas
 les balises `<artifact_*>` → on séparait mal et la **prose finissait dans le code** (devant le
@@ -76,7 +78,7 @@ les balises `<artifact_*>` → on séparait mal et la **prose finissait dans le 
 dumpe plus la prose comme code. (2) **Lucide** : prompt « page auto-suffisante » + injection CDN
 de secours dans l'aperçu si `data-lucide` sans lib. (3) **pptx débordement** : règle prompt
 (≤5-6 lignes/slide, multi-slides, boîtes dimensionnées, word_wrap+auto_size, polices bornées).
-Reste model-dépendant (qualité CSS/pptx) → cf. levier `ATHENADESIGN_MODEL`.
+Reste model-dépendant (qualité CSS/pptx) → choisir un modèle fort via la config modèle d'Athena.
 
 **Limites connues (à durcir avant multi-utilisateur)** : (1) base de projets **GLOBALE**
 (`athenadesign_projects.json`), pas multi-tenant → à scoper par utilisateur ; (2) mount statique

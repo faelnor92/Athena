@@ -793,12 +793,9 @@ def parse_artifact_response(text: str) -> dict:
     return {"type": atype, "explanation": explanation, "code": code}
 
 def _athena_default_model() -> str:
-    """Modèle LLM par défaut d'AthenaDesign : ATHENADESIGN_MODEL si défini, sinon le modèle
-    de l'orchestrateur (config Athena), sinon un repli raisonnable."""
-    import os
-    forced = os.getenv("ATHENADESIGN_MODEL", "").strip()
-    if forced:
-        return forced
+    """Modèle d'AthenaDesign = LE MÊME CHOIX que le reste d'Athena (pas de knob dédié).
+    On part du modèle de l'orchestrateur ; `swarm._complete` applique ensuite l'override
+    `LLM_MODEL` de la config utilisateur → le choix de modèle global s'applique tel quel."""
     try:
         from core.state import swarm as _sw
         orch = getattr(_sw, "orchestrator_name", "Athena")
@@ -807,6 +804,7 @@ def _athena_default_model() -> str:
             return agent.model
     except Exception:
         pass
+    import os
     return os.getenv("DEFAULT_MODEL", "").strip() or "qwen3"
 
 
