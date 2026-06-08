@@ -58,6 +58,19 @@
                         <input type="text" id="model-name" placeholder="Ex: gemini-2.5-flash">
                     </div>
                 </div>
+
+                <div class="form-group" id="design-system-group">
+                    <label for="design-system-input" style="display:flex;align-items:center;gap:6px;">
+                        <i data-lucide="palette"></i> Design System (charte)
+                    </label>
+                    <textarea id="design-system-input" rows="3"
+                              placeholder="Couleurs, typographie, ton… ou colle du CSS / une URL et clique Extraire."
+                              style="width:100%;resize:vertical;"></textarea>
+                    <div style="display:flex;gap:6px;margin-top:6px;">
+                        <button type="button" id="btn-ds-save" class="accent-btn" style="flex:1;">Enregistrer</button>
+                        <button type="button" id="btn-ds-extract" class="draw-btn" title="Extraire couleurs+typo d'un CSS/HTML collé ci-dessus">Extraire</button>
+                    </div>
+                </div>
             </div>
 
             <!-- Projects & History list -->
@@ -110,8 +123,16 @@
             </div>
 
             <div class="chat-input-area">
+                <div id="attachments-bar" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:6px;"></div>
                 <form id="chat-form">
                     <div class="input-box-wrapper">
+                        <button type="button" id="btn-attach-file" class="btn-icon" title="Joindre une image ou un document (référence)" style="flex-shrink:0;">
+                            <i data-lucide="paperclip"></i>
+                        </button>
+                        <button type="button" id="btn-attach-web" class="btn-icon" title="Capturer une page web comme référence" style="flex-shrink:0;">
+                            <i data-lucide="globe"></i>
+                        </button>
+                        <input type="file" id="attach-file-input" accept="image/*,.pdf,.txt,.md,.css,.html,.json" multiple style="display:none;">
                         <textarea id="prompt-input" rows="2" placeholder="Décrivez votre design ou script Python..." required></textarea>
                         <button type="submit" id="btn-send" class="btn-send">
                             <i data-lucide="send"></i>
@@ -316,6 +337,6 @@
     </div>
 
     <!-- Custom Script -->
-    <script src="static/js/app.js?v=20260608_fix1"></script>
+    <script src="static/js/app.js?v=20260608_design2"></script>
 </body>
 </html>

@@ -116,6 +116,81 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentProjectId = null;
     let currentProjectData = null;
     let currentVersionIndex = null; // 0-indexed in currentProjectData.versions
+
+    // ── Imports (références) + Design System ──────────────────────────────────
+    let pendingAttachments = [];
+    const attachmentsBar = document.getElementById("attachments-bar");
+    const attachFileInput = document.getElementById("attach-file-input");
+    const btnAttachFile = document.getElementById("btn-attach-file");
+    const btnAttachWeb = document.getElementById("btn-attach-web");
+    const designSystemInput = document.getElementById("design-system-input");
+    const btnDsSave = document.getElementById("btn-ds-save");
+    const btnDsExtract = document.getElementById("btn-ds-extract");
+
+    function renderAttachments() {
+        if (!attachmentsBar) return;
+        attachmentsBar.innerHTML = "";
+        attachmentsBar.style.display = pendingAttachments.length ? "flex" : "none";
+        pendingAttachments.forEach((a, i) => {
+            const chip = document.createElement("span");
+            chip.className = "attachment-chip";
+            chip.style.cssText = "display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:0.72rem;";
+            const label = a.kind === "image" ? "🖼️" : (a.kind === "web" ? "🔗" : "📄");
+            chip.textContent = `${label} ${a.name || a.url || a.kind}`;
+            const x = document.createElement("button");
+            x.type = "button"; x.textContent = "✕";
+            x.style.cssText = "background:none;border:none;color:inherit;cursor:pointer;font-size:0.7rem;";
+            x.addEventListener("click", () => { pendingAttachments.splice(i, 1); renderAttachments(); });
+            chip.appendChild(x);
+            attachmentsBar.appendChild(chip);
+        });
+    }
+    function clearAttachments() { pendingAttachments = []; renderAttachments(); }
+
+    if (btnAttachFile && attachFileInput) {
+        btnAttachFile.addEventListener("click", () => attachFileInput.click());
+        attachFileInput.addEventListener("change", () => {
+            Array.from(attachFileInput.files || []).slice(0, 8).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const isImg = (file.type || "").startsWith("image/");
+                    pendingAttachments.push({
+                        kind: isImg ? "image" : "document",
+                        name: file.name,
+                        data_url: reader.result
+                    });
+                    renderAttachments();
+                };
+                reader.readAsDataURL(file);
+            });
+            attachFileInput.value = "";
+        });
+    }
+    if (btnAttachWeb) {
+        btnAttachWeb.addEventListener("click", () => {
+            const url = prompt("URL de la page à utiliser comme référence (capture web) :");
+            if (url && /^https?:\/\//i.test(url)) {
+                pendingAttachments.push({ kind: "web", url: url.trim() });
+                renderAttachments();
+            }
+        });
+    }
+
+    async function saveDesignSystem(useSource) {
+        if (!currentProjectId) { appendSystemMessage && appendSystemMessage("Crée/ouvre un projet d'abord."); return; }
+        const val = designSystemInput ? designSystemInput.value : "";
+        const body = useSource ? { source: val } : { design_system: val };
+        try {
+            const r = await fetch(`/api/athenadesign/projects/${currentProjectId}/design-system`, {
+                method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+            });
+            const d = await r.json();
+            if (designSystemInput) designSystemInput.value = d.design_system || "";
+            if (currentProjectData) currentProjectData.design_system = d.design_system || "";
+        } catch (e) { /* silencieux */ }
+    }
+    if (btnDsSave) btnDsSave.addEventListener("click", () => saveDesignSystem(false));
+    if (btnDsExtract) btnDsExtract.addEventListener("click", () => saveDesignSystem(true));
     let editor = null;
     let fallbackMode = false;
     let currentCode = "";
@@ -722,7 +797,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const resp = await fetch(`/api/athenadesign/projects/${projectId}`);
             const project = await resp.json();
             currentProjectData = project;
-            
+            if (designSystemInput) designSystemInput.value = project.design_system || "";
+            clearAttachments();
+
             currentProjectTitle.textContent = project.name;
             
             document.querySelectorAll(".project-item").forEach(item => {
@@ -1055,15 +1132,17 @@ document.addEventListener("DOMContentLoaded", () => {
             prompt: promptText,
             provider: aiProviderSelect.value,
             api_key: apiKeyInput.value,
-            model_name: modelNameInput.value
+            model_name: modelNameInput.value,
+            attachments: pendingAttachments.slice()
         };
-        
+
         try {
             const resp = await fetch("/api/athenadesign/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
+            clearAttachments();
             
             if (!resp.ok) throw new Error("Server error");
             const data = await resp.json();
