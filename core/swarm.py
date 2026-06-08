@@ -1117,7 +1117,7 @@ class Swarm:
         except Exception as e:
             print(f"[\033[91mAuto-compétence erreur\033[0m] {e}")
 
-    def run(self, starting_agent: Agent, messages: list, max_turns: int = 10,
+    def run(self, starting_agent: Agent, messages: list, max_turns: int = None,
             max_seconds: float = None, max_tokens: int = None, locked: bool = False,
             lock_delegation: bool = False, context_variables: dict = None) -> Tuple[Agent, list, list]:
         """
@@ -1125,6 +1125,7 @@ class Swarm:
         Retourne l'agent final actif, les messages mis à jour, et l'historique des étapes (steps).
 
         max_turns   : nombre maximum d'itérations (appels LLM) avant arrêt forcé.
+                      None → SWARM_MAX_TURNS (défaut 20). Le chat principal le laisse à None.
         max_seconds : budget temps mur (défaut env SWARM_MAX_SECONDS, 0 = illimité).
         max_tokens  : budget tokens cumulés (défaut env SWARM_MAX_TOKENS, 0 = illimité).
         locked      : Si True, retire les handoffs 'transfer_to_' (on reste sur l'agent
@@ -1133,6 +1134,8 @@ class Swarm:
         lock_delegation : Si True (en plus de locked), retire AUSSI 'delegate_to_' → aucune
                       bascule possible vers un autre agent. Réservé au pipeline rigide.
         """
+        if max_turns is None:
+            max_turns = int(os.getenv("SWARM_MAX_TURNS", "20") or 20)
         if max_seconds is None:
             max_seconds = float(os.getenv("SWARM_MAX_SECONDS", "0") or 0)
         if max_tokens is None:
@@ -1153,6 +1156,11 @@ class Swarm:
         skill_failures = []  # échecs de compétences dynamiques → réparées en fin de run
         _route_done = False   # routeur de délégation : décidé une seule fois par run
         _route_target = None  # spécialiste ciblé (nom) | "" (aucun) | None (non décidé)
+        # Disjoncteur anti-répétition (model-agnostic) : un modèle faible (qwen3) rappelle
+        # souvent le MÊME outil avec les MÊMES arguments sans progresser → on borne le nombre
+        # d'exécutions réelles d'une même signature (outil|args) et on pousse à conclure.
+        _call_counts = {}     # signature -> nb d'exécutions réelles dans ce run
+        _repeat_limit = int(os.getenv("SWARM_REPEAT_LIMIT", "2") or 2)  # 0 = désactivé
 
         while True:
             # Annulation (barge-in vocal / bouton stop) : vérifiée à chaque tour.
@@ -1189,24 +1197,34 @@ class Swarm:
                 steps.append({"type": "message", "agent": current_agent.name, "content": budget_msg})
                 messages.append({"role": "assistant", "name": current_agent.name, "content": budget_msg})
                 break
-            # Garde-fou anti-boucle infinie : on borne le nombre de tours.
+            # Garde-fou anti-boucle infinie : on borne le nombre de tours. Plutôt qu'une
+            # erreur sèche, on RATTRAPE avec un dernier appel SANS OUTILS pour forcer une
+            # réponse finale synthétique (l'utilisateur obtient une réponse, pas une limite).
+            # Repli sur le message d'erreur si la synthèse échoue.
             if turn >= max_turns:
-                limit_msg = (
-                    f"⚠️ Limite d'orchestration atteinte ({max_turns} tours). "
-                    "Arrêt de l'essaim pour éviter une boucle infinie ; la tâche est "
-                    "peut-être incomplète. Reformulez ou augmentez max_turns si nécessaire."
-                )
-                print(f"[\033[91mSWARM\033[0m] {limit_msg}")
-                steps.append({
-                    "type": "message",
-                    "agent": current_agent.name,
-                    "content": limit_msg
-                })
-                messages.append({
-                    "role": "assistant",
-                    "name": current_agent.name,
-                    "content": limit_msg
-                })
+                print(f"[\033[91mSWARM\033[0m] Limite d'orchestration atteinte ({max_turns} tours) — synthèse finale forcée.")
+                final_text = None
+                try:
+                    _hist = [{"role": m["role"], "content": m["content"]}
+                             for m in messages
+                             if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()]
+                    _sys = (current_agent.system_prompt or "") + (
+                        "\n\n[SYSTÈME] Budget d'outils atteint : tu ne peux PLUS appeler d'outil. "
+                        "Donne MAINTENANT ta meilleure réponse finale à l'utilisateur à partir de ce "
+                        "que tu as déjà obtenu. Si une information manque, dis-le clairement et brièvement.")
+                    _resp = self._complete(
+                        current_agent.model,
+                        [{"role": "system", "content": _sys}] + _hist,
+                        tools_schema=None, allow_continuation=False, allow_fallback=False)
+                    final_text = (_resp.choices[0].message.content or "").strip() or None
+                except Exception as _e:
+                    print(f"[\033[91mSWARM\033[0m] synthèse finale indisponible ({_e})")
+                if not final_text:
+                    final_text = (
+                        f"⚠️ Limite d'orchestration atteinte ({max_turns} tours). La tâche est "
+                        "peut-être incomplète. Reformulez ou augmentez SWARM_MAX_TURNS si nécessaire.")
+                steps.append({"type": "message", "agent": current_agent.name, "content": final_text})
+                messages.append({"role": "assistant", "name": current_agent.name, "content": final_text})
                 break
             turn += 1
             # 1. Outils effectifs du tour, calculés LOCALEMENT (on ne mute pas
@@ -1778,7 +1796,7 @@ class Swarm:
                 tool_calls = _kept
 
             # 1. Préparation : résolution + coercition + validation + gate HITL.
-            prepared = []  # (tool_call, func_name, args, func, blocked, call_args, arg_error)
+            prepared = []  # (tool_call, func_name, args, func, blocked, call_args, arg_error, is_repeat)
             for tool_call in tool_calls:
                 func_name = tool_call.function.name
                 try:
@@ -1816,7 +1834,20 @@ class Swarm:
                             call_args["context_variables"] = context_variables
                     except (TypeError, ValueError):
                         pass
-                prepared.append((tool_call, func_name, args, func, blocked, call_args, arg_error))
+                # Disjoncteur anti-répétition : si la MÊME signature (outil|args) a déjà été
+                # exécutée _repeat_limit fois dans ce run, on ne ré-exécute PAS (résultat
+                # identique) et on renverra un rappel pour pousser le modèle à conclure.
+                is_repeat = False
+                if func is not None and not arg_error and not blocked and _repeat_limit > 0:
+                    try:
+                        _sig = func_name + "|" + json.dumps(args, sort_keys=True, default=str)
+                    except Exception:
+                        _sig = func_name + "|?"
+                    if _call_counts.get(_sig, 0) >= _repeat_limit:
+                        is_repeat = True
+                    else:
+                        _call_counts[_sig] = _call_counts.get(_sig, 0) + 1
+                prepared.append((tool_call, func_name, args, func, blocked, call_args, arg_error, is_repeat))
 
             def _run_tool(fn, a):
                 # Cache TTL des outils idempotents (web_search, etc.).
@@ -1873,7 +1904,8 @@ class Swarm:
             #    que les étapes des sous-agents remontent dans le même run.
             #    Les outils bloqués (approbation requise) ne sont PAS exécutés.
             results = [None] * len(prepared)
-            runnable = [i for i, p in enumerate(prepared) if p[3] is not None and not p[4] and not p[6]]
+            runnable = [i for i, p in enumerate(prepared)
+                        if p[3] is not None and not p[4] and not p[6] and not p[7]]
             max_parallel = int(os.getenv("SWARM_MAX_PARALLEL", "4"))
 
             if len(runnable) > 1 and max_parallel > 1:
@@ -1890,7 +1922,7 @@ class Swarm:
 
             # 3. Traitement SÉQUENTIEL et ORDONNÉ des résultats (préserve la logique
             #    de l'essaim : handoffs/transferts gérés dans l'ordre).
-            for i, (tool_call, func_name, args, func, blocked, call_args, arg_error) in enumerate(prepared):
+            for i, (tool_call, func_name, args, func, blocked, call_args, arg_error, is_repeat) in enumerate(prepared):
                 if func is None:
                     err_msg = f"Erreur: Outil {func_name} introuvable ou non autorisé."
                     messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": err_msg})
@@ -1909,6 +1941,18 @@ class Swarm:
                     steps.append({"type": "approval_required", "agent": current_agent.name, "tool": func_name, "args": args})
                     messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": msg})
                     steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": msg})
+                    continue
+
+                if is_repeat:
+                    # Appel identique déjà exécuté : on ne relance pas, on rappelle au modèle
+                    # d'utiliser le résultat précédent ou de conclure (anti-boucle qwen3).
+                    nudge = (
+                        f"⚠️ Tu as DÉJÀ appelé `{func_name}` avec ces mêmes arguments dans cette "
+                        "tâche et le résultat n'a pas changé. NE rappelle PLUS cet outil : utilise "
+                        "le résultat précédent, ou donne ta réponse finale à l'utilisateur maintenant.")
+                    print(f"[\033[93mSWARM\033[0m] appel répété ignoré : {func_name}")
+                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": nudge})
+                    steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": nudge})
                     continue
 
                 result = results[i]

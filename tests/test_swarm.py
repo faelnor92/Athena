@@ -67,14 +67,50 @@ def test_max_turns_borne_la_boucle(monkeypatch=None):
     agent.tools = [noop_tool]
     s.agents = {"Tester": agent}
 
+    # Désactive le disjoncteur de répétition pour isoler le test du budget de tours.
+    os.environ["SWARM_REPEAT_LIMIT"] = "0"
     _, messages, steps = s.run(agent, [{"role": "user", "content": "salut"}], max_turns=3)
+    os.environ.pop("SWARM_REPEAT_LIMIT", None)
 
-    # La completion ne doit avoir été appelée que max_turns fois
-    assert calls["n"] == 3, f"attendu 3 appels, obtenu {calls['n']}"
-    # Un message de limite doit avoir été produit
-    assert any("Limite d'orchestration" in str(s_.get("content", "")) for s_ in steps), \
-        "le message de limite d'orchestration est absent des steps"
-    print("OK: max_turns borne bien la boucle d'orchestration")
+    # La boucle est bornée : max_turns appels DANS la boucle + 1 appel de SYNTHÈSE finale
+    # (rattrapage sans outils → l'utilisateur obtient une réponse, pas une erreur de limite).
+    assert calls["n"] == 4, f"attendu 4 appels (3 boucle + 1 synthèse), obtenu {calls['n']}"
+    # Le rattrapage a produit une réponse finale d'assistant (synthèse réussie ici).
+    assert messages[-1].get("role") == "assistant" and (messages[-1].get("content") or "").strip(), \
+        "la synthèse finale (réponse d'assistant) est absente"
+    print("OK: max_turns borne la boucle + synthèse finale de rattrapage")
+
+
+def test_disjoncteur_repetition_coupe_les_appels_identiques(monkeypatch=None):
+    """Le même outil rappelé avec les mêmes arguments ne doit être EXÉCUTÉ qu'un nombre
+    borné de fois (SWARM_REPEAT_LIMIT) ; au-delà, on renvoie un rappel sans ré-exécuter."""
+    os.environ["SELF_IMPROVE"] = "false"
+    os.environ["SWARM_REPEAT_LIMIT"] = "2"
+    calls = {"n": 0}
+    swarm_mod.completion = _fake_completion_factory(calls)
+
+    runs = {"n": 0}
+    def counting_tool():
+        """Outil de test qui compte ses exécutions réelles."""
+        runs["n"] += 1
+        return "ok"
+
+    s = Swarm.__new__(Swarm)
+    agent = Agent(name="Tester", system_prompt="test", model="gpt-4o")
+    agent.tools = [counting_tool]
+    s.agents = {"Tester": agent}
+    # Le fake appelle TOUJOURS "noop_tool" ; on aligne l'outil compté sur ce nom.
+    counting_tool.__name__ = "noop_tool"
+
+    _, messages, steps = s.run(agent, [{"role": "user", "content": "go"}], max_turns=6)
+    os.environ.pop("SWARM_REPEAT_LIMIT", None)
+
+    # L'outil n'a été RÉELLEMENT exécuté que SWARM_REPEAT_LIMIT fois, malgré 6 tours.
+    assert runs["n"] == 2, f"attendu 2 exécutions réelles, obtenu {runs['n']}"
+    # Et un rappel anti-répétition a été émis.
+    assert any("DÉJÀ appelé" in str(s_.get("output", "")) for s_ in steps), \
+        "le rappel anti-répétition est absent des steps"
+    print("OK: le disjoncteur borne les appels d'outil identiques")
 
 
 def test_hook_auto_amelioration_archive_un_retour():
@@ -246,6 +282,7 @@ def test_annulation_arrete_le_run():
 
 if __name__ == "__main__":
     test_max_turns_borne_la_boucle()
+    test_disjoncteur_repetition_coupe_les_appels_identiques()
     test_hook_auto_amelioration_archive_un_retour()
     test_outils_multiples_executes_en_parallele()
     test_annulation_arrete_le_run()
