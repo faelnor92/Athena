@@ -80,11 +80,27 @@ de secours dans l'aperçu si `data-lucide` sans lib. (3) **pptx débordement** :
 (≤5-6 lignes/slide, multi-slides, boîtes dimensionnées, word_wrap+auto_size, polices bornées).
 Reste model-dépendant (qualité CSS/pptx) → choisir un modèle fort via la config modèle d'Athena.
 
-**Limites connues (à durcir avant multi-utilisateur)** : (1) base de projets **GLOBALE**
-(`athenadesign_projects.json`), pas multi-tenant → à scoper par utilisateur ; (2) mount statique
-`/sandbox` **hors `/api/` donc non authentifié** → artefacts publics si l'instance est exposée
-(servir via endpoint authentifié). ~~(3) générateur sur chemin LLM séparé~~ **RÉSOLU (2026-06-08)** :
-branché sur `swarm._complete` (choix de modèle/clés/fallback d'Athena).
+**MULTI-UTILISATEUR — FAIT (2026-06-08)** : ~~(1) base de projets globale~~ → **par utilisateur**
+(`athenadesign_projects/<user>.json`, ownership : un projet n'est accessible qu'à son
+propriétaire ; migration douce du fichier global vers local/admin). ~~(2) mount /sandbox public~~
+→ **endpoint authentifié** `GET /api/athenadesign/file/{pid}/{name}` (auth middleware + ownership
++ anti-traversal) ; le sous-app envoie le jeton (`athena_session_token` du localStorage same-origin)
+sur tous ses `/api`, et charge plots/pptx via fetch→blob (les `<img>/<a>` natifs ne portent pas le
+Bearer). ~~(3) générateur sur chemin LLM séparé~~ → branché sur `swarm._complete` (choix de
+modèle/clés/fallback d'Athena). Tests : `test_projets_isoles_par_utilisateur`.
+
+### Comparatif vs **Claude Design** (produit Anthropic — canvas, modèle vision ; cf. cldesign.txt)
+| Feature Claude Design | AthenaDesign | État |
+|---|---|---|
+| Text-to-design (decks, landing, mockups…) | prompt → HTML + Python/pptx | ✅ (périmètre + étroit : 2 types) |
+| Chat editing + inline comments + edits directs + sliders | chat + annotations/dessin + édition code (Monaco) | ✅ sauf **sliders/WYSIWYG visuels** |
+| **Design system** (lit codebase/brand → couleurs/typo/composants, applique) | — | ❌ **gros différenciateur manquant** |
+| Imports multiples (image/doc, **codebase**, **web capture**) | texte seul | ❌ (imports à ajouter) |
+| Collaboration / partage org (lien, co-édition) | comptes multi-tenant (isolation) ; pas de partage | ⚠️ partiel |
+| Export (URL, PDF, **PPTX**, **HTML**, Canva, handoff Code) | PPTX ✅, HTML ✅ ; PDF/Canva ❌ ; handoff Code possible (Codeur) | ⚠️ partiel |
+| Modèle **vision** (Opus 4.7) | modèle Athena (qwen3 par défaut, non-vision) | ❌ **écart #1 = qualité+vision** |
+- **Atouts AthenaDesign au-dessus de Claude Design** : exécution **Python côté serveur** (vrai .pptx, matplotlib/plotly), auto-hébergé, **choix du modèle**.
+- **Pour viser Claude Design**, par valeur : (1) **modèle fort + vision** (config Athena) ; (2) **design system** (ingestion brand/codebase) ; (3) **imports** (image/doc/web capture) ; (4) sliders WYSIWYG ; (5) partage/collab.
 
 ## 🚧 Refonte « partie code » (en cours de décision)
 Direction pressentie (à valider) :
