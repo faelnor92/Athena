@@ -4,6 +4,8 @@
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
+**Langues :** Français (ce fichier) · [English](README.en.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Deutsch](README.de.md) · [中文](README.zh.md) · [日本語](README.ja.md)
+
 Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des serveurs légers ou avec des GPU modestes. Accessible via **Interface Web**, **CLI**, **Telegram** et **Vocal Local**.
 
 📖 **[Lisez le Guide Utilisateur Complet](docs/USER_GUIDE.md)** pour apprendre comment installer, configurer et utiliser Athena pas à pas.
