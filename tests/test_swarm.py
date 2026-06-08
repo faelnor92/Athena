@@ -82,6 +82,53 @@ def test_max_turns_borne_la_boucle(monkeypatch=None):
     print("OK: max_turns borne la boucle + synthèse finale de rattrapage")
 
 
+def test_filtre_n_empeche_pas_execution(monkeypatch=None):
+    """SÛRETÉ : un outil masqué par le filtre de pertinence reste EXÉCUTABLE si le modèle
+    l'appelle quand même (le filtre n'agit que sur l'exposition des schémas, pas la capacité)."""
+    os.environ["SELF_IMPROVE"] = "false"
+    os.environ["TOOL_FILTER_ENABLED"] = "true"
+    os.environ["TOOL_FILTER_MIN"] = "1"   # filtre toujours actif
+
+    ran = {"n": 0}
+    def edit_file(path="x"):
+        """Outil du groupe 'code' — masqué pour un message non-code, mais doit rester exécutable."""
+        ran["n"] += 1
+        return "edited"
+
+    # Fake : tour 1 → appelle edit_file ; tour 2 → réponse finale sans outil.
+    state = {"i": 0}
+    class _F:
+        name = "edit_file"; arguments = "{}"
+    class _TC:
+        id = "c1"; function = _F()
+    class _Usage:
+        prompt_tokens = 1; completion_tokens = 1
+    def _fake(**kw):
+        state["i"] += 1
+        first = state["i"] == 1
+        tcs = [_TC()] if first else None
+        content = "" if first else "voilà, c'est fait"
+        class _Msg:
+            def __init__(s): s.content = content; s.tool_calls = tcs
+            def model_dump(s, exclude_none=True): return {"role": "assistant", "content": content}
+        class _Choice: message = _Msg()
+        class _Resp: choices = [_Choice()]; usage = _Usage()
+        return _Resp()
+    swarm_mod.completion = _fake
+
+    s = Swarm.__new__(Swarm)
+    agent = Agent(name="Tester", system_prompt="test", model="gpt-4o")
+    agent.tools = [edit_file]
+    s.agents = {"Tester": agent}
+    _, _msgs, steps = s.run(agent, [{"role": "user", "content": "bonjour, comment vas-tu ?"}], max_turns=4)
+
+    os.environ.pop("TOOL_FILTER_ENABLED", None); os.environ.pop("TOOL_FILTER_MIN", None)
+    assert ran["n"] == 1, f"l'outil masqué aurait dû s'exécuter quand appelé (exéc={ran['n']})"
+    assert not any("introuvable" in str(s_.get("output", "")) for s_ in steps), \
+        "un outil autorisé mais masqué ne doit pas être déclaré introuvable"
+    print("OK: le filtre n'empêche jamais l'exécution d'un outil autorisé")
+
+
 def test_select_tool_subset(monkeypatch=None):
     """Le filtrage d'outils n'expose que les groupes pertinents, garde toujours le cœur,
     et ne retire jamais un outil hors groupe (sûreté)."""
@@ -338,6 +385,7 @@ def test_annulation_arrete_le_run():
 
 if __name__ == "__main__":
     test_max_turns_borne_la_boucle()
+    test_filtre_n_empeche_pas_execution()
     test_select_tool_subset()
     test_parse_text_tool_calls()
     test_disjoncteur_repetition_coupe_les_appels_identiques()

@@ -1478,9 +1478,15 @@ class Swarm:
             # Filtrage d'outils par pertinence : décidé au 1er tour à partir de la demande
             # utilisateur, puis appliqué à chaque tour (sous-ensemble stable). On ne retire
             # QUE des outils rangés dans un groupe-domaine non activé (sûreté).
+            # IMPORTANT : le filtre n'agit QUE sur les schémas EXPOSÉS au modèle (économie de
+            # tokens), PAS sur ce qu'on accepte d'EXÉCUTER. `_secured_tools` (post-sécurité,
+            # PRÉ-filtre) reste la référence pour résoudre/exécuter un appel → si le modèle
+            # appelle quand même un outil masqué qu'il a le droit d'utiliser, on l'exécute.
+            # Conséquence : zéro perte de capacité, le filtre ne réduit jamais l'efficacité.
+            _secured_tools = list(effective_tools)
             if _tool_filter_enabled and current_agent.supports_tools and not _tool_subset_done:
                 _tool_subset_done = True
-                _avail = {f.__name__ for f in effective_tools}
+                _avail = {f.__name__ for f in _secured_tools}
                 if len(_avail) >= _tool_filter_min:
                     _last_user = next((m.get("content", "") for m in reversed(messages)
                                        if m.get("role") == "user"), "")
@@ -1860,8 +1866,10 @@ class Swarm:
             # structuré ? (qwen3 le fait par intermittence.) Si oui, on le récupère.
             _rescued_tcs = []
             if not getattr(message, "tool_calls", None) and getattr(message, "content", None):
+                # On récupère contre l'ensemble AUTORISÉ (pré-filtre) : un outil masqué par
+                # le filtre de pertinence reste exécutable s'il est appelé explicitement.
                 _rescued_tcs = parse_text_tool_calls(
-                    message.content, {f.__name__ for f in effective_tools})
+                    message.content, {f.__name__ for f in _secured_tools})
             msg_dict = message.model_dump(exclude_none=True)
             msg_dict["name"] = current_agent.name
             if _rescued_tcs:
@@ -2018,7 +2026,11 @@ class Swarm:
                     "tool": func_name,
                     "args": args
                 })
-                func = next((f for f in effective_tools if f.__name__ == func_name), None)
+                # Résolution contre l'ensemble AUTORISÉ (`_secured_tools`, pré-filtre) et non
+                # le seul ensemble exposé : un outil masqué par le filtre de pertinence reste
+                # exécutable si le modèle l'appelle explicitement → le filtre ne coûte jamais
+                # une capacité (il n'économise que des tokens d'exposition).
+                func = next((f for f in _secured_tools if f.__name__ == func_name), None)
                 blocked = False
                 call_args = args
                 arg_error = None
