@@ -201,6 +201,22 @@ document.addEventListener("DOMContentLoaded", () => {
         dashboard: "Crée un dashboard analytique moderne (HTML + Chart.js via CDN) : 4 cartes KPI, 2 graphiques (ligne + barres), thème sombre glassmorphism, responsive.",
         chart: "Génère un script Python (matplotlib) qui trace [DONNÉES] avec un style moderne (couleurs soignées, grille discrète, pas de fond gris). Termine par plt.show().",
     };
+    const btnShare = document.getElementById("btn-share");
+    if (btnShare) {
+        btnShare.addEventListener("click", async () => {
+            if (!currentProjectId) { appendSystemMessage && appendSystemMessage("Ouvre un projet d'abord."); return; }
+            try {
+                const r = await fetch(`/api/athenadesign/projects/${currentProjectId}/share`, { method: "POST" });
+                const d = await r.json();
+                const link = window.location.origin + d.url;
+                try { await navigator.clipboard.writeText(link); } catch (e) {}
+                window.prompt("Lien de partage (lecture seule) — copié :", link);
+            } catch (e) {
+                appendConsoleLine && appendConsoleLine("stderr", "[Partage] échec : " + e.message);
+            }
+        });
+    }
+
     if (btnExportPdf) {
         btnExportPdf.addEventListener("click", async () => {
             if (!currentProjectId) return;

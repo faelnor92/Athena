@@ -1,5 +1,6 @@
 [
  "DELETE /api/agenda/{event_id}",
+ "DELETE /api/athenadesign/projects/{project_id}/share",
  "DELETE /api/config/mcp/servers/{name}",
  "DELETE /api/config/satellites/{name}",
  "DELETE /api/config/skills/{skill_name}",
@@ -20,6 +21,8 @@
  "GET /api/athenadesign/projects/{project_id}",
  "GET /api/athenadesign/projects/{project_id}/design-system",
  "GET /api/athenadesign/projects/{project_id}/versions/{version_num}/raw",
+ "GET /api/athenadesign/shared/{token}",
+ "GET /api/athenadesign/shared/{token}/view",
  "GET /api/audit",
  "GET /api/auth/oidc/callback",
  "GET /api/auth/oidc/login",
@@ -87,6 +90,7 @@
  "POST /api/athenadesign/execute",
  "POST /api/athenadesign/export/pdf",
  "POST /api/athenadesign/projects/new",
+ "POST /api/athenadesign/projects/{project_id}/share",
  "POST /api/athenadesign/projects/{project_id}/versions/{version_num}/comments",
  "POST /api/backup/restore",
  "POST /api/chat",

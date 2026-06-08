@@ -68,6 +68,31 @@ def test_execute_repli_local_si_sandbox_off():
     print("OK test_execute_repli_local_si_sandbox_off")
 
 
+def test_partage_lecture_seule():
+    """Partage par jeton : accès public en lecture, 404 après révocation."""
+    from fastapi.testclient import TestClient
+    import routers.athenadesign as ad
+    import server, os
+    c = TestClient(server.app)
+    pid = c.post("/api/athenadesign/projects/new", json={"name": "Shr"}).json()["id"]
+    c.post("/api/athenadesign/chat", json={"project_id": pid, "prompt": "dashboard", "provider": "mock"})
+    try:
+        tok = c.post(f"/api/athenadesign/projects/{pid}/share").json()["token"]
+        assert len(tok) == 32
+        assert c.get(f"/api/athenadesign/shared/{tok}").status_code == 200
+        assert c.get(f"/api/athenadesign/shared/{tok}/view").status_code == 200
+        assert c.get("/api/athenadesign/shared/deadbeef/view").status_code == 404
+        c.delete(f"/api/athenadesign/projects/{pid}/share")
+        assert c.get(f"/api/athenadesign/shared/{tok}/view").status_code == 404, "révocation inefficace"
+        print("OK test_partage_lecture_seule")
+    finally:
+        for p in (ad._user_file("local"), ad._SHARED_INDEX):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
 def test_export_pdf_sans_chromium_renvoie_503():
     """Export PDF : message clair (503) si aucun Chromium ; ownership conservé."""
     from fastapi.testclient import TestClient

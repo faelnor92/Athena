@@ -134,7 +134,9 @@ async def auth_middleware(request: Request, call_next):
     # flux OIDC, et webhooks entrants (protégés par leur propre secret).
     path = request.url.path
     public = (path == "/api/login" or path == "/api/register"
-              or path.startswith("/api/auth/oidc/") or path.startswith("/api/hooks/"))
+              or path.startswith("/api/auth/oidc/") or path.startswith("/api/hooks/")
+              # Partage AthenaDesign en lecture seule par jeton (non énumérable).
+              or path.startswith("/api/athenadesign/shared/"))
     if _auth_active() and path.startswith("/api/") and not public:
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):

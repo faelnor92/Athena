@@ -412,3 +412,92 @@ async def export_pdf(request: Request, payload: dict = Body(...)):
     if not os.path.isfile(pdf_path):
         raise HTTPException(status_code=500, detail="Échec de l'export PDF (aucune sortie produite).")
     return FileResponse(pdf_path, media_type="application/pdf", filename=f"{project.get('name', 'design')}.pdf")
+
+
+# ── Partage en lecture seule par jeton (non énumérable) ───────────────────────
+_SHARED_INDEX = os.path.join(BASE_DIR, "athenadesign_shared.json")
+
+
+def _read_shared() -> dict:
+    try:
+        with open(_SHARED_INDEX, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _write_shared(data: dict):
+    tmp = _SHARED_INDEX + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.replace(tmp, _SHARED_INDEX)
+
+
+def _resolve_shared(token: str):
+    """token → projet (ou None). Vérifie que le projet porte TOUJOURS ce jeton (révocation)."""
+    if not re.fullmatch(r"[a-f0-9]{8,64}", str(token or "")):
+        return None
+    ent = _read_shared().get(token)
+    if not ent:
+        return None
+    proj = read_db(ent.get("user", "")).get(ent.get("pid", ""))
+    if not proj or proj.get("share_token") != token:
+        return None
+    return proj
+
+
+@router.post("/projects/{project_id}/share")
+async def share_project(request: Request, project_id: str):
+    user = _current_user(request)
+    db = read_db(user)
+    if project_id not in db:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    proj = db[project_id]
+    token = proj.get("share_token")
+    if not token:
+        token = uuid.uuid4().hex
+        proj["share_token"] = token
+        write_db(user, db)
+        idx = _read_shared()
+        idx[token] = {"user": user, "pid": project_id}
+        _write_shared(idx)
+    return {"token": token, "url": f"/api/athenadesign/shared/{token}/view"}
+
+
+@router.delete("/projects/{project_id}/share")
+async def unshare_project(request: Request, project_id: str):
+    user = _current_user(request)
+    db = read_db(user)
+    if project_id not in db:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    token = db[project_id].pop("share_token", None)
+    write_db(user, db)
+    if token:
+        idx = _read_shared()
+        idx.pop(token, None)
+        _write_shared(idx)
+    return {"ok": True}
+
+
+@router.get("/shared/{token}")
+async def shared_project(token: str):
+    """PUBLIC (lecture seule) : métadonnées + dernière version d'un projet partagé."""
+    proj = _resolve_shared(token)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Lien de partage invalide ou révoqué")
+    versions = proj.get("versions", [])
+    return {"name": proj.get("name", "Design partagé"),
+            "version": versions[-1] if versions else None,
+            "versions_count": len(versions)}
+
+
+@router.get("/shared/{token}/view", response_class=HTMLResponse)
+async def shared_view(token: str):
+    """PUBLIC : rend le dernier design HTML partagé comme page autonome."""
+    proj = _resolve_shared(token)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Lien de partage invalide ou révoqué")
+    v = next((x for x in reversed(proj.get("versions", [])) if x.get("type") == "html"), None)
+    if not v:
+        return HTMLResponse("<h1>Ce design partagé n'a pas d'aperçu HTML.</h1>", status_code=200)
+    return HTMLResponse(content=v.get("code", ""), status_code=200)
