@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Body, Request
 from fastapi.responses import HTMLResponse
 from core import athenadesign_runner as runner
 from core import athenadesign_generator as generator
+from core import projects as code_projects  # PROJETS UNIFIÉS : même registre que la partie code
 
 router = APIRouter(prefix="/api/athenadesign", tags=["AthenaDesign"])
 
@@ -19,6 +20,33 @@ _LEGACY_FILE = os.path.join(BASE_DIR, "athenadesign_projects.json")  # ancienne 
 # Ensure sandbox directory exists
 SANDBOX_DIR = runner.SANDBOX_DIR
 os.makedirs(SANDBOX_DIR, exist_ok=True)
+
+
+# ── PROJETS UNIFIÉS code + design ─────────────────────────────────────────────
+# La LISTE et la CRÉATION de projets délèguent à core.projects (le registre des projets de
+# code) → un projet Athena porte à la fois le code (dossier) ET le design. Les données de
+# design (versions/history/charte) restent indexées par le MÊME id de projet.
+def _accessible_ids() -> set:
+    try:
+        return {p.get("id") for p in code_projects.list_projects()}
+    except Exception:
+        return set()
+
+
+def _can_access(project_id: str) -> bool:
+    return project_id in _accessible_ids()
+
+
+def _project_name(project_id: str) -> str:
+    try:
+        p = next((x for x in code_projects.list_projects() if x.get("id") == project_id), None)
+        return (p or {}).get("name", "Projet")
+    except Exception:
+        return "Projet"
+
+
+def _new_design(project_id: str) -> dict:
+    return {"id": project_id, "name": _project_name(project_id), "history": [], "versions": []}
 
 
 # Types d'artefacts rendus comme une page web (aperçu/PDF/partage/raw).
@@ -200,40 +228,38 @@ def extract_design_system(source: str) -> str:
 
 @router.get("/projects")
 async def get_projects(request: Request):
-    db = read_db(_current_user(request))
+    user = _current_user(request)
+    db = read_db(user)
+    # La liste = les projets Athena (partagés avec la partie code). versions_count = design.
     return [
         {
-            "id": pid,
-            "name": pdata.get("name", "Sans titre"),
-            "updated_at": pdata.get("updated_at", ""),
-            "versions_count": len(pdata.get("versions", []))
-        } for pid, pdata in db.items()
+            "id": p.get("id"),
+            "name": p.get("name", "Sans titre"),
+            "updated_at": (db.get(p.get("id"), {}) or {}).get("updated_at", ""),
+            "versions_count": len((db.get(p.get("id"), {}) or {}).get("versions", [])),
+            "role": p.get("role"),
+        } for p in code_projects.list_projects()
     ]
 
 @router.post("/projects/new")
 async def create_project(request: Request, payload: dict = Body(...)):
     user = _current_user(request)
-    project_id = str(uuid.uuid4().hex[:12])
-    name = payload.get("name", f"Projet {project_id[:4]}")
-
+    name = payload.get("name") or "Nouveau projet"
+    # Crée un VRAI projet Athena (dossier code) → partagé avec l'espace Code.
+    proj = code_projects.create_project(name)
+    if not proj:
+        raise HTTPException(status_code=400, detail="Création du projet impossible")
     db = read_db(user)
-    db[project_id] = {
-        "id": project_id,
-        "name": name,
-        "created_at": uuid.uuid4().hex,
-        "updated_at": uuid.uuid4().hex,
-        "history": [],
-        "versions": []
-    }
+    db[proj["id"]] = _new_design(proj["id"])
     write_db(user, db)
-    return db[project_id]
+    return db[proj["id"]]
 
 @router.get("/projects/{project_id}")
 async def get_project(request: Request, project_id: str):
-    db = read_db(_current_user(request))
-    if project_id not in db:
+    if not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
-    return db[project_id]
+    db = read_db(_current_user(request))
+    return db.get(project_id) or _new_design(project_id)
 
 @router.post("/chat")
 async def chat_endpoint(request: Request, payload: dict = Body(...)):
@@ -247,16 +273,12 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
     model_name = payload.get("model_name", "")
 
     db = read_db(user)
-    if not project_id or project_id not in db:
-        project_id = str(uuid.uuid4().hex[:12])
-        db[project_id] = {
-            "id": project_id,
-            "name": f"Conversation {project_id[:4]}",
-            "history": [],
-            "versions": []
-        }
-
-    project = db[project_id]
+    # Projet inexistant/non accessible → on crée un VRAI projet Athena (code+design).
+    if not project_id or not _can_access(project_id):
+        proj = code_projects.create_project(f"Design {prompt[:24]}".strip() if prompt else "Design")
+        project_id = proj["id"] if proj else str(uuid.uuid4().hex[:8])
+    project = db.get(project_id) or _new_design(project_id)
+    db[project_id] = project
 
     # Imports (références) + charte du projet → contexte de génération.
     context_text, images = _resolve_attachments(payload.get("attachments"))
@@ -298,10 +320,11 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
 @router.post("/projects/{project_id}/versions/{version_num}/comments")
 async def save_comment(request: Request, project_id: str, version_num: int, comment: dict = Body(...)):
     user = _current_user(request)
-    db = read_db(user)
-    if project_id not in db:
+    if not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
-    project = db[project_id]
+    db = read_db(user)
+    project = db.get(project_id) or _new_design(project_id)
+    db[project_id] = project
 
     idx = version_num - 1
     if idx < 0 or idx >= len(project["versions"]):
@@ -340,7 +363,7 @@ async def execute_endpoint(request: Request, payload: dict = Body(...)):
     # ET appartenir à l'utilisateur courant (un user n'exécute que dans SES projets).
     if not re.fullmatch(r"[a-f0-9]{6,32}", str(project_id)):
         raise HTTPException(status_code=400, detail="project_id invalide")
-    if project_id not in read_db(_current_user(request)):
+    if not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
 
     execution_result = runner.execute_code(code, project_id)
@@ -348,10 +371,9 @@ async def execute_endpoint(request: Request, payload: dict = Body(...)):
 
 @router.get("/projects/{project_id}/versions/{version_num}/raw", response_class=HTMLResponse)
 async def get_raw_html(request: Request, project_id: str, version_num: int):
-    db = read_db(_current_user(request))
-    if project_id not in db:
+    if not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
-    project = db[project_id]
+    project = read_db(_current_user(request)).get(project_id) or _new_design(project_id)
 
     idx = version_num - 1
     if idx < 0 or idx >= len(project["versions"]):
@@ -371,7 +393,7 @@ async def get_sandbox_file(request: Request, project_id: str, filename: str):
     from fastapi.responses import FileResponse
     if not re.fullmatch(r"[a-f0-9]{6,32}", str(project_id)):
         raise HTTPException(status_code=400, detail="project_id invalide")
-    if project_id not in read_db(_current_user(request)):
+    if not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", str(filename)) or filename in (".", ".."):
         raise HTTPException(status_code=400, detail="nom de fichier invalide")
@@ -386,10 +408,10 @@ async def get_sandbox_file(request: Request, project_id: str, filename: str):
 
 @router.get("/projects/{project_id}/design-system")
 async def get_design_system(request: Request, project_id: str):
-    db = read_db(_current_user(request))
-    if project_id not in db:
+    if not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
-    return {"design_system": db[project_id].get("design_system", "")}
+    db = read_db(_current_user(request))
+    return {"design_system": (db.get(project_id) or {}).get("design_system", "")}
 
 
 @router.put("/projects/{project_id}/design-system")
@@ -397,9 +419,10 @@ async def set_design_system(request: Request, project_id: str, payload: dict = B
     """Définit la charte du projet. `design_system` = texte direct ; `source` = CSS/HTML/site
     dont on EXTRAIT couleurs+typo (design system support). Les deux peuvent être combinés."""
     user = _current_user(request)
-    db = read_db(user)
-    if project_id not in db:
+    if not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
+    db = read_db(user)
+    db.setdefault(project_id, _new_design(project_id))
     ds = (payload.get("design_system") or "").strip()
     source = payload.get("source") or ""
     url = (payload.get("url") or "").strip()
@@ -423,10 +446,9 @@ async def export_pdf(request: Request, payload: dict = Body(...)):
     from tools import browser_tools
     user = _current_user(request)
     project_id = payload.get("project_id")
-    db = read_db(user)
-    if not project_id or project_id not in db:
+    if not project_id or not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
-    project = db[project_id]
+    project = read_db(user).get(project_id) or _new_design(project_id)
     # Code à exporter : explicite, sinon la version demandée, sinon la dernière HTML.
     code = payload.get("code")
     if not code:
@@ -499,10 +521,11 @@ def _resolve_shared(token: str):
 @router.post("/projects/{project_id}/share")
 async def share_project(request: Request, project_id: str):
     user = _current_user(request)
-    db = read_db(user)
-    if project_id not in db:
+    if not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
-    proj = db[project_id]
+    db = read_db(user)
+    proj = db.get(project_id) or _new_design(project_id)
+    db[project_id] = proj
     token = proj.get("share_token")
     if not token:
         token = uuid.uuid4().hex
@@ -517,10 +540,10 @@ async def share_project(request: Request, project_id: str):
 @router.delete("/projects/{project_id}/share")
 async def unshare_project(request: Request, project_id: str):
     user = _current_user(request)
-    db = read_db(user)
-    if project_id not in db:
+    if not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
-    token = db[project_id].pop("share_token", None)
+    db = read_db(user)
+    token = (db.get(project_id) or {}).pop("share_token", None) if project_id in db else None
     write_db(user, db)
     if token:
         idx = _read_shared()

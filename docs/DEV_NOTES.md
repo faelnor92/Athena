@@ -80,6 +80,15 @@ de secours dans l'aperçu si `data-lucide` sans lib. (3) **pptx débordement** :
 (≤5-6 lignes/slide, multi-slides, boîtes dimensionnées, word_wrap+auto_size, polices bornées).
 Reste model-dépendant (qualité CSS/pptx) → choisir un modèle fort via la config modèle d'Athena.
 
+**PROJETS UNIFIÉS code + design — FAIT (2026-06-08)** : la LISTE et la CRÉATION de projets
+AthenaDesign délèguent à `core.projects` (registre des projets de code) → **un projet Athena
+porte le code (dossier) ET le design**, même id, même liste (visible des deux côtés). Données
+design (versions/history/charte) indexées par le MÊME id dans le store par-utilisateur ; accès
+borné par `_can_access` (= appartenance au registre code). Pas d'auto-migration (effet de bord
+sur GET écarté). Limite : les designs « legacy » (avant unification, dans le fichier racine
+`athenadesign_projects.json`) n'apparaissent plus tant qu'aucun projet code ne porte leur id —
+données conservées mais non listées. Tests : `test_projets_unifies_code_et_design`.
+
 **MULTI-UTILISATEUR — FAIT (2026-06-08)** : ~~(1) base de projets globale~~ → **par utilisateur**
 (`athenadesign_projects/<user>.json`, ownership : un projet n'est accessible qu'à son
 propriétaire ; migration douce du fichier global vers local/admin). ~~(2) mount /sandbox public~~

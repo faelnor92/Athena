@@ -126,6 +126,37 @@ def test_charte_depuis_url():
     print("OK test_charte_depuis_url")
 
 
+def test_projets_unifies_code_et_design():
+    """Unification : un projet créé via AthenaDesign est un VRAI projet Athena (visible côté
+    code) et inversement un projet code apparaît dans AthenaDesign."""
+    from fastapi.testclient import TestClient
+    from core import projects as cp
+    import server
+    c = TestClient(server.app)
+    created = []
+    try:
+        pid = c.post("/api/athenadesign/projects/new", json={"name": "UnifTest"}).json()["id"]
+        created.append(pid)
+        assert pid in {p["id"] for p in cp.list_projects()}, "projet design absent du registre code"
+        cproj = cp.create_project("CodeOnly")
+        created.append(cproj["id"])
+        ad_ids = {p["id"] for p in c.get("/api/athenadesign/projects").json()}
+        assert cproj["id"] in ad_ids, "projet code absent d'AthenaDesign"
+        # accès refusé à un id inexistant
+        assert c.get("/api/athenadesign/projects/deadbeef00").status_code == 404
+        print("OK test_projets_unifies_code_et_design")
+    finally:
+        for x in created:
+            try:
+                cp.delete(x, remove_files=True)
+            except Exception:
+                pass
+        try:
+            os.remove(__import__("routers.athenadesign", fromlist=["_user_file"])._user_file("local"))
+        except Exception:
+            pass
+
+
 def test_partage_lecture_seule():
     """Partage par jeton : accès public en lecture, 404 après révocation."""
     from fastapi.testclient import TestClient
@@ -144,6 +175,11 @@ def test_partage_lecture_seule():
         assert c.get(f"/api/athenadesign/shared/{tok}/view").status_code == 404, "révocation inefficace"
         print("OK test_partage_lecture_seule")
     finally:
+        from core import projects as _cp
+        try:
+            _cp.delete(pid, remove_files=True)
+        except Exception:
+            pass
         for p in (ad._user_file("local"), ad._SHARED_INDEX):
             try:
                 os.remove(p)
@@ -169,6 +205,11 @@ def test_export_pdf_sans_chromium_renvoie_503():
         assert r2.status_code == 404
         print("OK test_export_pdf_sans_chromium_renvoie_503")
     finally:
+        from core import projects as _cp
+        try:
+            _cp.delete(pid, remove_files=True)
+        except Exception:
+            pass
         try:
             os.remove(ad._user_file("local"))
         except OSError:
