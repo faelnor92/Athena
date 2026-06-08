@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.10.1 (Internationalisation)
+Athena parle désormais la langue de l'utilisateur — interface **et** réponses des agents.
+
+### 🌍 Multilingue (fr/en/es/it/de/zh/ja)
+- **Réponses des agents dans la langue de l'UI** : la langue d'interface est transmise au serveur (en-tête `X-Athena-Lang`), portée par une ContextVar (`_current_lang`) et injectée dans le **préambule système** — les agents répondent dans la langue choisie, *sauf demande contraire* (noms d'outils/fichiers/code inchangés). En-tête envoyé par le wrapper `apiFetch` et par le studio AthenaDesign (iframe same-origin).
+- **Infra i18n légère** (`static/i18n.js`, sans dépendance) : FR comme langue de base, traductions par dictionnaire, repli propre sur le FR, sélecteur de langue dans le dock, détection navigateur + persistance `localStorage`.
+- **Couverture UI** : navigation (dock) + **onglets et groupes des Réglages** traduits dans les 6 langues.
+- **Documentation traduite** : `README` et **guide utilisateur** (`docs/USER_GUIDE.*`) disponibles en anglais, espagnol, italien, allemand, chinois et japonais (sélecteur de langue en tête).
+
 ## v0.10.0 (AthenaDesign Studio, Plugins & Auto-correction)
 Lot majeur : nouveau studio de design IA, projets unifiés code+design, plugins (Claude Code),
 auto-correction (design + code), efficacité tokens, robustesse d'orchestration et audit sécurité.
