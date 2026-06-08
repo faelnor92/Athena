@@ -1515,22 +1515,17 @@ class Swarm:
             _tool_names = {getattr(f, "__name__", "") for f in getattr(current_agent, "tools", [])}
             system_prompt += (
                 "\n\n=== RÈGLES SYSTÈME ===\n"
-                "- N'invente JAMAIS le résultat d'un outil : si un outil échoue ou ne renvoie rien, "
-                "rapporte l'erreur ou l'absence de résultat telle quelle. Ne prétends pas avoir agi sans l'avoir fait.\n"
-                "- Sois concis et orienté action : agis via les outils plutôt que de longues explications.\n"
+                "- N'invente jamais un résultat d'outil ni le fait d'avoir agi : si un outil échoue ou ne "
+                "renvoie rien, dis-le tel quel.\n"
+                "- Concis et orienté action : agis via les outils plutôt que de longues explications.\n"
             )
-            # Renfort anti-fabrication (levier B) : uniquement si l'agent DISPOSE d'outils —
-            # une donnée du monde réel qu'il ne possède pas DOIT venir d'un appel d'outil,
-            # jamais d'une valeur inventée (météo, recherche web, état domotique, prix…).
+            # Renfort anti-fabrication (levier B) : si l'agent a des outils, une donnée réelle
+            # qu'il ne possède pas DOIT venir d'un appel d'outil, jamais d'une valeur inventée.
             if _tool_names:
                 system_prompt += (
-                    "- Pour toute DONNÉE FACTUELLE du monde réel que tu ne possèdes pas avec certitude "
-                    "(météo, actualités/recherche web, état domotique, heure si non fournie, prix, etc.), "
-                    "tu DOIS appeler l'outil correspondant et attendre son résultat. N'invente JAMAIS de "
-                    "valeurs plausibles (température, chiffres, liens, faits). Aucun résultat d'outil = tu "
-                    "le dis, tu ne fabriques rien.\n"
-                    "- Pour appeler un outil, utilise le MÉCANISME d'appel d'outil natif — n'écris pas "
-                    "l'appel sous forme de texte ou de JSON dans ta réponse.\n"
+                    "- Donnée réelle non possédée avec certitude (météo, web, domotique, heure, prix…) : "
+                    "appelle l'outil et attends son résultat, n'invente pas. Appelle via le mécanisme "
+                    "natif, pas en JSON/texte dans ta réponse.\n"
                 )
             # État partagé du run (context_variables) : visible par l'agent (lecture), tenu à
             # jour par les outils. Rendu compact ; les valeurs trop longues sont tronquées.
@@ -1577,14 +1572,14 @@ class Swarm:
                 except Exception:
                     pass
 
-            # Renforcement strict de l'identité de l'agent pour éviter les hallucinations (usurpation d'identité)
-            system_prompt += (
-                f"\n\n🛑 RÈGLE D'IDENTITÉ ABSOLUE :\n"
-                f"Tu es exclusivement l'agent {current_agent.name} ({current_agent.display_name or current_agent.name}). "
-                f"L'historique de la conversation contient des messages d'autres agents de l'équipe. "
-                f"Tu NE DOIS JAMAIS prétendre être un autre agent ou reprendre le nom d'un de tes collègues. "
-                f"Reste strictement dans ton rôle de {current_agent.name} et garde ta propre identité.\n"
-            )
+            # Règle d'identité : utile UNIQUEMENT en multi-agent (l'historique peut alors
+            # contenir des messages de collègues). Inutile quand l'orchestrateur est seul.
+            if len(self.agents) > 1:
+                system_prompt += (
+                    f"\n\n🛑 IDENTITÉ : tu es exclusivement {current_agent.name} "
+                    f"({current_agent.display_name or current_agent.name}). L'historique peut contenir des "
+                    f"messages d'autres agents — ne reprends jamais leur nom ni leur rôle.\n"
+                )
 
             # Ne forcer la présentation que si aucun message de cet agent n'est déjà présent dans l'historique
             has_agent_spoken = any(msg.get("role") == "assistant" and msg.get("name") == current_agent.name for msg in messages)
@@ -1677,20 +1672,15 @@ class Swarm:
             # que soit son prompt métier. Surface chaque outil (nom + description) pour que
             # le modèle (même léger) sache qu'il PEUT l'utiliser et ne dise jamais « je ne
             # peux pas » alors qu'il a l'outil. Les transferts sont gérés par le routage.
+            # Noms d'outils SEULEMENT (les descriptions sont déjà dans le schéma envoyé au
+            # modèle) : rappelle au modèle ce qu'il PEUT faire sans dupliquer ~5k tokens de docs.
             if effective_tools and current_agent.supports_tools:
-                _tool_lines = []
-                for _f in effective_tools:
-                    _n = getattr(_f, "__name__", "")
-                    if _n.startswith("transfer_to_") or not _n:
-                        continue
-                    _doc = (getattr(_f, "__doc__", "") or "").strip().replace("\n", " ")
-                    _doc = " ".join(_doc.split())[:90]
-                    _tool_lines.append(f"- {_n} : {_doc}" if _doc else f"- {_n}")
-                if _tool_lines:
+                _tool_names_list = [n for _f in effective_tools
+                                    if (n := getattr(_f, "__name__", "")) and not n.startswith("transfer_to_")]
+                if _tool_names_list:
                     system_prompt += (
-                        "\n🧰 OUTILS À TA DISPOSITION (utilise-les dès qu'ils sont pertinents ; "
-                        "ne dis JAMAIS que tu ne peux pas faire ce qu'un de ces outils permet) :\n"
-                        + "\n".join(_tool_lines) + "\n")
+                        "\n🧰 OUTILS DISPONIBLES (détails dans le schéma ; ne dis JAMAIS « je ne peux pas » "
+                        "pour ce qu'un de ces outils permet — appelle-le) : " + ", ".join(_tool_names_list) + "\n")
 
             # Expressivité vocale (optionnelle) : autorise une balise d'émotion en TÊTE
             # de réponse, retirée du texte affiché et exploitée par le TTS expressif.
@@ -1775,13 +1765,12 @@ class Swarm:
             # répondre directement, pas refuser le travail).
             _orch = getattr(self, "orchestrator_name", "Athena")
             if current_agent.name == _orch and len(self.agents) > 1:
-                system_prompt += "\n\n⚙️ ROUTAGE DE L'ESSAIM (délègue UNIQUEMENT si nécessaire) :\n"
-                system_prompt += f"Tu es {current_agent.name}, l'orchestrateur. Tu réponds TOI-MÊME, sans déléguer, à : "
-                system_prompt += "ta présentation/identité, les questions générales ou conversationnelles, et tout ce qui relève de TES propres outils "
-                system_prompt += "(mémoire, agenda, listes, domotique, recherche web, notifications, images). "
-                system_prompt += "Tu ne délègues QUE si la demande exige EXPLICITEMENT le métier d'un des agents ci-dessous "
-                system_prompt += "(ex. écrire/déboguer du code, rédiger un roman, traduire un texte…) — et alors à UN SEUL agent pertinent. "
-                system_prompt += "Ne délègue jamais une simple question (comme « qui es-tu ? ») et n'invente pas d'agent inexistant.\n\n"
+                system_prompt += (
+                    "\n\n⚙️ ROUTAGE — tu réponds TOI-MÊME (sans déléguer) à ta présentation, aux "
+                    "questions générales/conversationnelles et à tout ce que TES outils couvrent "
+                    "(mémoire, agenda, listes, domotique, web, notifications, images). Tu ne délègues "
+                    "QUE si la demande exige explicitement le métier d'un agent ci-dessous, et à UN SEUL. "
+                    "Jamais pour « qui es-tu ? » ; n'invente pas d'agent.\n")
 
                 for other_name, other_agent in self.agents.items():
                     if other_name == _orch:
@@ -1791,23 +1780,20 @@ class Swarm:
                     if other_agent.system_prompt:
                         sentences = [s.strip() for s in other_agent.system_prompt.replace("\n", " ").split(".") if s.strip()]
                         agent_desc = ". ".join(sentences[:2]) + "."
-                    system_prompt += f"   - **{other_agent.display_name or other_name}** — {agent_desc} → délègue via `transfer_to_{other_name}` (ou `query_agent('{other_name}', …)`).\n"
+                    system_prompt += f"   - **{other_agent.display_name or other_name}** — {agent_desc} → `transfer_to_{other_name}` ou `query_agent('{other_name}', …)`.\n"
 
-                system_prompt += "\nMULTI-TÂCHES : si la demande couvre PLUSIEURS domaines à la fois, utilise `query_agent` pour CHAQUE spécialiste concerné, puis fais une synthèse — n'utilise pas `transfer_to_` dans ce cas (cela perdrait les autres résultats).\n"
-                system_prompt += "SUIVI : si l'utilisateur demande une modification d'un livrable produit récemment par un spécialiste, re-transfère à ce spécialiste.\n"
-                system_prompt += "LIVRAISON : quand un spécialiste te renvoie son travail, recopie-le INTÉGRALEMENT dans ta réponse.\n"
-                
-                system_prompt += "\n3.1 GESTION DES DÉBATS & TABLES RONDES (TRÈS IMPORTANT) :\n"
-                system_prompt += "   Si l'utilisateur te demande d'organiser un débat, une confrontation, une table ronde ou une discussion/collaboration entre plusieurs agents (ex: 'organise un débat entre toi, le codeur et l'auteur', 'faites une confrontation sur PostgreSQL vs MongoDB') :\n"
-                system_prompt += "   - Tu DOIS obligatoirement appeler l'outil `debate_between_agents` immédiatement.\n"
-                system_prompt += "   - Appelle directement l'outil avec les bons paramètres (`agents`, `subject`, `turns`), sans préambule.\n"
-
-                system_prompt += "\n6. GESTION DE LA MÉMOIRE & APPRENTISSAGE PROACTIF (TRÈS IMPORTANT) :\n"
-                system_prompt += "   - Si l'utilisateur te demande de retenir un fait, une préférence ou une information globale sur lui ou son environnement, appelle l'outil `memorize_fact` immédiatement.\n"
-                system_prompt += "   - SOIS PROACTIF : si tu détectes au fil des conversations une préférence utilisateur clé, un prénom, un choix technologique majeur, une configuration ou un élément durable de son projet, utilise automatiquement `memorize_fact` pour le mémoriser dans sa base de connaissances, sans attendre qu'il te le demande explicitement ! C'est ce qui fait que ta mémoire à long terme s'enrichit et vit d'elle-même.\n"
-
-                system_prompt += "\n7. PLANIFICATION DES TÂCHES COMPLEXES :\n"
-                system_prompt += "   Pour une demande qui se décompose en PLUSIEURS étapes (ex: une mission multi-agents, un projet), appelle d'abord `make_plan` avec la liste des étapes (une par ligne) pour l'afficher à l'utilisateur, puis appelle `update_plan_step(step=N, status='done')` au fur et à mesure de l'avancement. Cela rend ton raisonnement transparent et suivi.\n"
+                system_prompt += (
+                    "MULTI-TÂCHES (plusieurs domaines) : `query_agent` pour CHAQUE spécialiste puis "
+                    "synthèse (pas `transfer_to_`, qui perdrait les autres). SUIVI : modif d'un livrable "
+                    "récent → re-transfère au même spécialiste. LIVRAISON : recopie INTÉGRALEMENT le "
+                    "travail rendu par un spécialiste.\n")
+                if "debate_between_agents" in _tool_names:
+                    system_prompt += (
+                        "DÉBAT/TABLE RONDE demandé (« organise un débat entre… ») : appelle "
+                        "`debate_between_agents(agents, subject, turns)` immédiatement, sans préambule.\n")
+                system_prompt += (
+                    "MÉMOIRE PROACTIVE : retiens via `memorize_fact` toute info durable (préférence, "
+                    "prénom, choix technique, config) dès que tu la détectes, sans attendre qu'on te le demande.\n")
 
             # Épuration préventive de l'historique des tours passés (évite les bugs d'IDs d'outils VLLM/Mistral)
             # On ne garde que les messages utilisateur et assistant contenant du texte pour l'historique passé,
