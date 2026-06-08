@@ -11,9 +11,12 @@
         init = init || {};
         const url = (typeof input === "string") ? input : (input && input.url) || "";
         const t = _token();
-        if (t && (url.startsWith("/api/") || url.startsWith("api/"))) {
+        if (url.startsWith("/api/") || url.startsWith("api/")) {
             const h = new Headers(init.headers || (typeof input !== "string" && input.headers) || {});
-            if (!h.has("Authorization")) h.set("Authorization", "Bearer " + t);
+            if (t && !h.has("Authorization")) h.set("Authorization", "Bearer " + t);
+            // Langue d'interface partagée (iframe same-origin) → réponses des agents dans
+            // la bonne langue. Repli "fr" si non défini.
+            try { if (!h.has("X-Athena-Lang")) h.set("X-Athena-Lang", localStorage.getItem("athena_lang") || "fr"); } catch (e) {}
             init.headers = h;
         }
         return _origFetch(input, init);

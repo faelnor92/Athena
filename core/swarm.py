@@ -1534,6 +1534,21 @@ class Swarm:
                 "renvoie rien, dis-le tel quel.\n"
                 "- Concis et orienté action : agis via les outils plutôt que de longues explications.\n"
             )
+            # Langue de réponse : suit la langue d'INTERFACE de l'utilisateur (en-tête posé par le
+            # serveur). On ne contraint que si l'utilisateur n'a pas explicitement demandé une
+            # autre langue dans sa requête — d'où la formulation « sauf demande contraire ».
+            try:
+                from core.state import _current_lang, LANG_NAMES
+                _lang = (_current_lang.get() or "fr")
+                _lname = LANG_NAMES.get(_lang)
+                if _lname and _lang != "fr":
+                    system_prompt += (
+                        f"- LANGUE : réponds à l'utilisateur en {_lname}, sauf s'il demande "
+                        f"explicitement une autre langue. Les noms d'outils, de fichiers et le code "
+                        f"restent inchangés.\n"
+                    )
+            except Exception:
+                pass
             # Renfort anti-fabrication (levier B) : si l'agent a des outils, une donnée réelle
             # qu'il ne possède pas DOIT venir d'un appel d'outil, jamais d'une valeur inventée.
             if _tool_names:

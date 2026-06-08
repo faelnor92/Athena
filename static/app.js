@@ -32,6 +32,13 @@ async function apiFetch(url, options = {}) {
     if (sessionToken) {
         options.headers["Authorization"] = `Bearer ${sessionToken}`;
     }
+    // Langue d'interface → en-tête lu par le serveur pour faire RÉPONDRE les agents
+    // dans la langue de l'utilisateur (cf. core/swarm.py, préambule système).
+    try {
+        const _l = (window.AthenaI18n && window.AthenaI18n.current && window.AthenaI18n.current())
+            || localStorage.getItem("athena_lang") || "fr";
+        if (_l) options.headers["X-Athena-Lang"] = _l;
+    } catch (e) { /* ignore */ }
     let response;
     try {
         response = await fetch(url, options);

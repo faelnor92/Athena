@@ -1,5 +1,7 @@
 # 📖 Guide Utilisateur d'Athena
 
+🌍 **Langues** : Français · [English](USER_GUIDE.en.md) · [Español](USER_GUIDE.es.md) · [Italiano](USER_GUIDE.it.md) · [Deutsch](USER_GUIDE.de.md) · [中文](USER_GUIDE.zh.md) · [日本語](USER_GUIDE.ja.md)
+
 Bienvenue ! Si vous lisez ce guide, c'est que vous venez d'installer **Athena**, votre chef d'orchestre d'Intelligence Artificielle multi-agents. Ce document est pensé pour vous aider à prendre en main l'outil.
 
 ---

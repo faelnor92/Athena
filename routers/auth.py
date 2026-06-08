@@ -136,6 +136,14 @@ async def auth_middleware(request: Request, call_next):
     # Endpoints PUBLICS (pas de session requise) : login, inscription par invitation,
     # flux OIDC, et webhooks entrants (protégés par leur propre secret).
     path = request.url.path
+    # Langue d'interface (en-tête posé par le front) → ContextVar, pour faire répondre les
+    # agents dans la langue de l'utilisateur. Indépendant de l'auth (vaut aussi en mode local).
+    try:
+        from core.state import _current_lang, LANG_NAMES
+        _hl = (request.headers.get("X-Athena-Lang") or "").strip().lower()[:2]
+        _current_lang.set(_hl if _hl in LANG_NAMES else "fr")
+    except Exception:
+        pass
     public = (path == "/api/login" or path == "/api/register"
               or path.startswith("/api/auth/oidc/") or path.startswith("/api/hooks/")
               # Partage AthenaDesign en lecture seule par jeton (non énumérable).

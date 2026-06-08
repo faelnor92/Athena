@@ -169,6 +169,15 @@ _current_username = contextvars.ContextVar("current_username", default=None)
 # Rôle de l'appelant courant ("admin"/"user"/None). None = mode local/no-auth → traité
 # comme admin (aucune restriction). Sert au RBAC par outil (ADMIN_ONLY_TOOLS).
 _current_role = contextvars.ContextVar("current_role", default=None)
+# Langue d'INTERFACE de l'appelant (code ISO court : fr/en/es/it/de/zh/ja). Posée par le
+# serveur depuis l'en-tête X-Athena-Lang, propagée au thread swarm. Sert à faire RÉPONDRE
+# les agents dans la langue de l'utilisateur (cf. préambule système). None → fr par défaut.
+_current_lang = contextvars.ContextVar("current_lang", default=None)
+# Noms de langue (dans la langue cible) pour la directive de réponse du préambule système.
+LANG_NAMES = {
+    "fr": "français", "en": "English", "es": "español", "it": "italiano",
+    "de": "Deutsch", "zh": "中文（简体）", "ja": "日本語",
+}
 
 def _scope_cid(client_id: str) -> str:
     client_id = (client_id or "web").strip() or "web"
