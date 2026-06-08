@@ -201,6 +201,40 @@ document.addEventListener("DOMContentLoaded", () => {
         dashboard: "Crée un dashboard analytique moderne (HTML + Chart.js via CDN) : 4 cartes KPI, 2 graphiques (ligne + barres), thème sombre glassmorphism, responsive.",
         chart: "Génère un script Python (matplotlib) qui trace [DONNÉES] avec un style moderne (couleurs soignées, grille discrète, pas de fond gris). Termine par plt.show().",
     };
+    // Sliders WYSIWYG : ajustent l'aperçu HTML EN DIRECT en injectant un <style> dans le
+    // document de l'iframe (srcdoc same-origin → contentDocument accessible). Réappliqué au
+    // (re)chargement de l'iframe.
+    const adjustToolbar = document.getElementById("adjust-toolbar");
+    const adjAccent = document.getElementById("adj-accent");
+    const adjRadius = document.getElementById("adj-radius");
+    const adjFont = document.getElementById("adj-font");
+    const adjReset = document.getElementById("adj-reset");
+    function applyAdjustments() {
+        try {
+            const doc = htmlPreviewFrame && htmlPreviewFrame.contentDocument;
+            if (!doc || !doc.head) return;
+            let s = doc.getElementById("ad-adjust");
+            if (!s) { s = doc.createElement("style"); s.id = "ad-adjust"; doc.head.appendChild(s); }
+            const accent = adjAccent.value;
+            const radius = adjRadius.value;
+            const font = (parseInt(adjFont.value, 10) || 100) / 100;
+            s.textContent =
+                `:root{--accent:${accent}!important;--primary:${accent}!important;` +
+                `--accent-color:${accent}!important;--brand:${accent}!important;--accent-cyan:${accent}!important;}\n` +
+                `html{font-size:${(16 * font).toFixed(1)}px!important;}\n` +
+                `:where(button,input,select,textarea,img,.card,.btn,[class*="card"],[class*="btn"],[class*="panel"])` +
+                `{border-radius:${radius}px!important;}`;
+        } catch (e) { /* cross-origin improbable (srcdoc) */ }
+    }
+    [adjAccent, adjRadius, adjFont].forEach(el => el && el.addEventListener("input", applyAdjustments));
+    if (adjReset) adjReset.addEventListener("click", () => {
+        if (adjAccent) adjAccent.value = "#6366f1";
+        if (adjRadius) adjRadius.value = 12;
+        if (adjFont) adjFont.value = 100;
+        applyAdjustments();
+    });
+    if (htmlPreviewFrame) htmlPreviewFrame.addEventListener("load", applyAdjustments);
+
     const btnShare = document.getElementById("btn-share");
     if (btnShare) {
         btnShare.addEventListener("click", async () => {
@@ -1092,9 +1126,11 @@ document.addEventListener("DOMContentLoaded", () => {
             
             htmlPreviewFrame.srcdoc = injectConsoleBridge(ver.code);
             if (btnExportPdf) btnExportPdf.style.display = "flex";
+            if (adjustToolbar) adjustToolbar.style.display = "flex";
             switchTab("preview");
         } else if (ver.type === "python") {
             if (btnExportPdf) btnExportPdf.style.display = "none";
+            if (adjustToolbar) adjustToolbar.style.display = "none";
             htmlPreviewFrame.style.display = "none";
             previewFrameContainer.style.display = "none";
             pythonPreviewContainer.style.display = "flex";

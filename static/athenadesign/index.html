@@ -244,6 +244,20 @@
                             </div>
                         </div>
 
+                        <div class="adjust-toolbar" id="adjust-toolbar" style="display:none;align-items:center;gap:14px;flex-wrap:wrap;padding:6px 12px;font-size:0.74rem;">
+                            <span style="opacity:.6;display:inline-flex;align-items:center;gap:5px;"><i data-lucide="sliders-horizontal"></i> Ajustements live</span>
+                            <label style="display:inline-flex;align-items:center;gap:5px;">Accent
+                                <input type="color" id="adj-accent" value="#6366f1" style="width:28px;height:22px;border:none;background:none;cursor:pointer;">
+                            </label>
+                            <label style="display:inline-flex;align-items:center;gap:5px;">Arrondi
+                                <input type="range" id="adj-radius" min="0" max="32" value="12" style="width:90px;">
+                            </label>
+                            <label style="display:inline-flex;align-items:center;gap:5px;">Police
+                                <input type="range" id="adj-font" min="80" max="130" value="100" style="width:90px;">
+                            </label>
+                            <button type="button" id="adj-reset" class="starter-chip" title="Réinitialiser">↺ Reset</button>
+                        </div>
+
                         <!-- HTML Frame Previews with overlay inside viewport wrapper -->
                         <div class="preview-viewport-wrapper" id="preview-viewport-wrapper">
                             <div class="preview-frame-container" id="preview-frame-container" style="display: none;">
@@ -350,6 +364,6 @@
     </div>
 
     <!-- Custom Script -->
-    <script src="static/js/app.js?v=20260608_design2"></script>
+    <script src="static/js/app.js?v=20260608_design3"></script>
 </body>
 </html>
