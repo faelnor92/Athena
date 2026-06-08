@@ -1406,6 +1406,19 @@ class Swarm:
                         effective_tools.append(func)
                         existing.add(tool_name)
 
+            # Plugin Claude Code : si ACTIVÉ, l'outil claude_code est donné AUTOMATIQUEMENT
+            # aux agents codeurs (Codeur, ou tout agent ayant des outils d'édition de code),
+            # sans modifier leur config. Désactivé → non exposé.
+            try:
+                if tools.claude_code_tool.enabled():
+                    _names = {f.__name__ for f in effective_tools}
+                    _is_coder = (current_agent.name == "Codeur"
+                                 or bool(_names & {"write_file", "edit_file", "apply_patch", "execute_bash_command"}))
+                    if _is_coder and "claude_code" not in _names:
+                        effective_tools.append(tools.claude_code_tool.claude_code)
+            except Exception:
+                pass
+
             # Permissions par canal : on retire les outils interdits pour ce canal.
             chan = channels.current_channel.get()
             if chan:

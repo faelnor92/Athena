@@ -42,6 +42,48 @@ def test_appel_headless_ok():
     print("OK test_appel_headless_ok")
 
 
+def test_injecte_dans_le_codeur_si_active():
+    """Plugin activé → l'outil claude_code est donné AUTOMATIQUEMENT à l'agent codeur."""
+    import core.swarm as swarm_mod
+    from core.swarm import Swarm
+    from core.agent import Agent
+    from core import shared_store
+
+    captured = {}
+    class _Msg:
+        content = "ok"; tool_calls = None
+        def model_dump(self, exclude_none=True): return {"role": "assistant", "content": "ok"}
+    class _Usage:
+        prompt_tokens = 1; completion_tokens = 1
+    class _Choice:
+        message = _Msg()
+    class _Resp:
+        choices = [_Choice()]; usage = _Usage()
+    def fake(**kw):
+        captured["tools"] = kw.get("tools")
+        return _Resp()
+
+    def edit_file(path="x"):
+        """Outil d'édition de code (rend l'agent 'codeur')."""
+        return "ok"
+
+    os.environ["TOOL_FILTER_ENABLED"] = "false"  # isole de l'exposition filtrée
+    swarm_mod.completion = fake
+    shared_store.set("plugins", "claude_code_enabled", True)
+    try:
+        s = Swarm.__new__(Swarm)
+        ag = Agent(name="Codeur", system_prompt="code", model="gpt-4o")
+        ag.tools = [edit_file]
+        s.agents = {"Codeur": ag}
+        s.run(ag, [{"role": "user", "content": "corrige le bug"}], max_turns=1)
+        names = {(t.get("function") or {}).get("name") for t in (captured.get("tools") or [])}
+        assert "claude_code" in names, f"claude_code non injecté dans le codeur : {names}"
+        print("OK test_injecte_dans_le_codeur_si_active")
+    finally:
+        shared_store.delete("plugins", "claude_code_enabled")
+        os.environ.pop("TOOL_FILTER_ENABLED", None)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
