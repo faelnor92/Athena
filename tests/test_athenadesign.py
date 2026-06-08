@@ -68,6 +68,44 @@ def test_execute_repli_local_si_sandbox_off():
     print("OK test_execute_repli_local_si_sandbox_off")
 
 
+def test_generate_design_passe_par_l_infra_athena():
+    """Par défaut (provider 'athena'), la génération passe par swarm._complete (infra LLM
+    d'Athena : endpoint/clés/fallback), PAS par un chemin LLM externe séparé."""
+    import asyncio
+    from core import athenadesign_generator as g
+    from core import state
+
+    text = ("<artifact_type>python</artifact_type>"
+            "<artifact_explanation>Présentation pptx</artifact_explanation>"
+            "<artifact_code>from pptx import Presentation</artifact_code>")
+
+    class _Msg:
+        content = text
+    class _Choice:
+        message = _Msg()
+    class _Resp:
+        choices = [_Choice()]
+
+    with mock.patch.object(state.swarm, "_complete", return_value=_Resp()) as cmpl:
+        res = asyncio.run(g.generate_design("fais une présentation", [], provider="athena"))
+    assert cmpl.called, "doit appeler swarm._complete (infra Athena)"
+    assert res["type"] == "python" and "Presentation" in res["code"], res
+    assert res["explanation"] == "Présentation pptx", res
+    print("OK test_generate_design_passe_par_l_infra_athena")
+
+
+def test_generate_design_mock_n_appelle_pas_le_llm():
+    """provider='mock' → template hors-ligne, sans toucher à l'infra LLM."""
+    import asyncio
+    from core import athenadesign_generator as g
+    from core import state
+    with mock.patch.object(state.swarm, "_complete") as cmpl:
+        res = asyncio.run(g.generate_design("un dashboard", [], provider="mock"))
+    cmpl.assert_not_called()
+    assert res.get("type") in ("html", "python") and res.get("code"), res
+    print("OK test_generate_design_mock_n_appelle_pas_le_llm")
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

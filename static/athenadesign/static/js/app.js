@@ -115,7 +115,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Setup Provider Fields Toggle
     aiProviderSelect.addEventListener("change", () => {
         const provider = aiProviderSelect.value;
-        if (provider === "mock") {
+        // 'athena' = API LLM intégrée d'Athena (clés/endpoint côté serveur) → comme 'mock',
+        // aucun champ clé/modèle à saisir.
+        if (provider === "mock" || provider === "athena") {
             apiKeyGroup.style.display = "none";
             modelGroup.style.display = "none";
         } else {

@@ -69,7 +69,9 @@ async def get_project(project_id: str):
 async def chat_endpoint(payload: dict = Body(...)):
     project_id = payload.get("project_id")
     prompt = payload.get("prompt")
-    provider = payload.get("provider", "mock")
+    # Par défaut, AthenaDesign utilise l'infra LLM d'Athena (provider 'athena') — pas un
+    # chemin LLM séparé. 'mock' (hors-ligne) ou un provider externe + clé restent possibles.
+    provider = payload.get("provider") or "athena"
     api_key = payload.get("api_key", "")
     model_name = payload.get("model_name", "")
     

@@ -757,13 +757,48 @@ def parse_artifact_response(text: str) -> dict:
         "code": code
     }
 
-async def generate_design(prompt: str, history: list, provider: str, api_key: str, model_name: str) -> dict:
-    """Core LLM router. Calls designated LLM or returns polished mock template if offline."""
-    
-    # If mock/local mode requested, or credentials are empty, search mock templates
-    is_mock = not api_key or provider == "mock"
-    
-    if is_mock:
+def _athena_default_model() -> str:
+    """Modèle LLM par défaut d'AthenaDesign : ATHENADESIGN_MODEL si défini, sinon le modèle
+    de l'orchestrateur (config Athena), sinon un repli raisonnable."""
+    import os
+    forced = os.getenv("ATHENADESIGN_MODEL", "").strip()
+    if forced:
+        return forced
+    try:
+        from core.state import swarm as _sw
+        orch = getattr(_sw, "orchestrator_name", "Athena")
+        agent = _sw.agents.get(orch)
+        if agent and getattr(agent, "model", None):
+            return agent.model
+    except Exception:
+        pass
+    return os.getenv("DEFAULT_MODEL", "").strip() or "qwen3"
+
+
+def _generate_via_athena(prompt: str, history: list, model_name: str = "") -> dict:
+    """Génère via l'INFRA LLM d'Athena (swarm._complete) : endpoint/clés/fallback configurés
+    dans Athena (et par-utilisateur), pas un chemin LLM séparé. Synchrone (à appeler en thread)."""
+    from core.state import swarm as _sw
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for m in (history or []):
+        role = m.get("role")
+        if role in ("user", "assistant") and m.get("content"):
+            messages.append({"role": role, "content": m["content"]})
+    messages.append({"role": "user", "content": prompt})
+    model = (model_name or "").strip() or _athena_default_model()
+    resp = _sw._complete(model, messages, tools_schema=None, allow_continuation=True, allow_fallback=True)
+    text = (resp.choices[0].message.content or "")
+    return parse_artifact_response(text)
+
+
+async def generate_design(prompt: str, history: list, provider: str = "athena",
+                          api_key: str = "", model_name: str = "") -> dict:
+    """Routeur LLM. Par DÉFAUT (provider 'athena' ou non précisé), passe par l'infra LLM
+    d'Athena (clés/endpoint/fallback configurés). 'mock' → templates hors-ligne. Les providers
+    externes explicites (gemini/anthropic/openai) restent possibles si une clé est fournie."""
+    import asyncio
+
+    if provider == "mock":
         prompt_lower = prompt.lower()
         if "simulation" in prompt_lower or "chaos" in prompt_lower or "lorenz" in prompt_lower:
             return MOCK_TEMPLATES["simulation"]
@@ -776,8 +811,19 @@ async def generate_design(prompt: str, history: list, provider: str, api_key: st
         else:
             # Default to dashboard template
             return MOCK_TEMPLATES["dashboard"]
-            
-    # Real LLM API calls
+
+    # Par DÉFAUT : infra LLM d'Athena (swarm._complete) — endpoint/clés/fallback configurés
+    # dans Athena. On ne tombe sur un provider EXTERNE que s'il est explicitement demandé
+    # ET qu'une clé est fournie par le front.
+    if provider not in ("gemini", "anthropic", "openai") or not api_key:
+        try:
+            return await asyncio.to_thread(_generate_via_athena, prompt, history, model_name)
+        except Exception as e:
+            return {"type": "html",
+                    "explanation": f"⚠️ Erreur de génération via l'API d'Athena : {e}",
+                    "code": ""}
+
+    # Real LLM API calls (providers externes explicites avec clé fournie)
     headers = {}
     payload = {}
     url = ""
