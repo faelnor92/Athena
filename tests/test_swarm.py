@@ -5,6 +5,7 @@ Nécessite les dépendances du projet (litellm, chromadb, ...).
 """
 import os
 import sys
+import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -79,6 +80,33 @@ def test_max_turns_borne_la_boucle(monkeypatch=None):
     assert messages[-1].get("role") == "assistant" and (messages[-1].get("content") or "").strip(), \
         "la synthèse finale (réponse d'assistant) est absente"
     print("OK: max_turns borne la boucle + synthèse finale de rattrapage")
+
+
+def test_parse_text_tool_calls(monkeypatch=None):
+    """Le parseur récupère un tool-call écrit en TEXTE (bloc ```json, balise <tool_call>)
+    et ignore le JSON dont le nom n'est pas un outil disponible (anti faux-positif)."""
+    from core.swarm import parse_text_tool_calls
+    valid = {"web_search", "get_time"}
+
+    # 1) Bloc ```json avec clé "tool" + "tool_input" (format observé chez qwen3).
+    txt = 'Voici :\n```json\n[{"tool": "web_search", "tool_input": {"query": "IA 2026"}}]\n```'
+    tcs = parse_text_tool_calls(txt, valid)
+    assert len(tcs) == 1 and tcs[0].function.name == "web_search", "bloc json non récupéré"
+    assert json.loads(tcs[0].function.arguments) == {"query": "IA 2026"}, "args non préservés"
+
+    # 2) Balise <tool_call> style Hermes/Qwen.
+    txt2 = '<tool_call>{"name": "get_time", "arguments": {}}</tool_call>'
+    tcs2 = parse_text_tool_calls(txt2, valid)
+    assert len(tcs2) == 1 and tcs2[0].function.name == "get_time", "balise tool_call non récupérée"
+
+    # 3) Anti faux-positif : nom inconnu → ignoré (le modèle montre juste du JSON).
+    txt3 = '```json\n{"tool": "rm_rf", "args": {}}\n```'
+    assert parse_text_tool_calls(txt3, valid) == [], "un nom d'outil inconnu ne doit PAS être exécuté"
+
+    # 4) Texte normal sans appel → rien.
+    assert parse_text_tool_calls("Bonjour, comment vas-tu ?", valid) == [], "faux positif sur du texte"
+
+    print("OK: parse_text_tool_calls récupère les appels texte et évite les faux positifs")
 
 
 def test_disjoncteur_repetition_coupe_les_appels_identiques(monkeypatch=None):
@@ -282,6 +310,7 @@ def test_annulation_arrete_le_run():
 
 if __name__ == "__main__":
     test_max_turns_borne_la_boucle()
+    test_parse_text_tool_calls()
     test_disjoncteur_repetition_coupe_les_appels_identiques()
     test_hook_auto_amelioration_archive_un_retour()
     test_outils_multiples_executes_en_parallele()

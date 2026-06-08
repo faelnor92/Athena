@@ -320,6 +320,83 @@ def coerce_arguments(func: Callable, args: dict) -> dict:
         return args
     return {k: _coerce_value(v, props.get(k, {}).get("type")) for k, v in args.items()}
 
+
+class _TextToolCallFunc:
+    """Fonction d'un tool_call SYNTHÉTIQUE (récupéré depuis du texte). Même interface
+    que les tool_calls structurés de litellm/OpenAI : .name + .arguments (str JSON)."""
+    __slots__ = ("name", "arguments")
+    def __init__(self, name: str, arguments: str):
+        self.name = name
+        self.arguments = arguments
+
+
+class _TextToolCall:
+    __slots__ = ("id", "type", "function")
+    def __init__(self, name: str, arguments: str, idx: int):
+        self.id = f"call_text_{idx}"
+        self.type = "function"
+        self.function = _TextToolCallFunc(name, arguments)
+
+
+def parse_text_tool_calls(content: str, valid_names) -> list:
+    """RÉCUPÈRE les appels d'outils écrits en TEXTE par le modèle (qwen3 & co. émettent
+    parfois le tool-call dans le contenu — bloc ```json, balise <tool_call>… — au lieu du
+    format structuré, et l'outil n'est alors jamais exécuté). Renvoie une liste d'objets
+    tool_call synthétiques (compatibles avec la boucle), ou [].
+
+    Garde-fou anti faux-positif : on n'accepte QUE des appels dont le nom correspond à un
+    outil RÉELLEMENT disponible — sinon le modèle montre peut-être juste du JSON à l'usager.
+    """
+    if not content or not valid_names:
+        return []
+    import re as _re
+    valid = set(valid_names)
+    candidates = []
+    # 1) Balises <tool_call>{…}</tool_call> (style Hermes/Qwen).
+    candidates += _re.findall(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", content, _re.DOTALL)
+    # 2) Blocs de code ```json … ``` / ```tool_call … ``` (objet ou liste).
+    candidates += _re.findall(r"```(?:json|tool_call|tool)?\s*(\[.*?\]|\{.*?\})\s*```", content, _re.DOTALL)
+    # 3) Repli : le contenu entier est peut-être un JSON nu.
+    _stripped = content.strip()
+    if not candidates and (_stripped.startswith("{") or _stripped.startswith("[")):
+        candidates.append(_stripped)
+
+    out = []
+    for raw in candidates:
+        try:
+            data = json.loads(raw)
+        except Exception:
+            continue
+        for it in (data if isinstance(data, list) else [data]):
+            if not isinstance(it, dict):
+                continue
+            name = it.get("name") or it.get("tool") or it.get("tool_name")
+            args = it.get("arguments")
+            if args is None:
+                args = it.get("args") or it.get("parameters") or it.get("tool_input") or it.get("input")
+            # Style OpenAI imbriqué : {"function": {"name": …, "arguments": …}}.
+            fn = it.get("function")
+            if isinstance(fn, dict):
+                name = name or fn.get("name")
+                if args is None:
+                    args = fn.get("arguments")
+            if args is None:
+                args = {}
+            if not name or name not in valid:
+                continue
+            if isinstance(args, str):
+                args_str = args
+            else:
+                try:
+                    args_str = json.dumps(args, ensure_ascii=False)
+                except Exception:
+                    args_str = "{}"
+            out.append(_TextToolCall(name, args_str, len(out) + 1))
+        if out:
+            break  # un bloc valide suffit
+    return out
+
+
 class SwarmStepsList(list):
     """Liste personnalisée qui intercepte les ajouts d'étapes pour les diffuser
     en temps réel dans le run courant (isolé par ContextVar, sûr en concurrence)."""
@@ -1347,6 +1424,19 @@ class Swarm:
                 "rapporte l'erreur ou l'absence de résultat telle quelle. Ne prétends pas avoir agi sans l'avoir fait.\n"
                 "- Sois concis et orienté action : agis via les outils plutôt que de longues explications.\n"
             )
+            # Renfort anti-fabrication (levier B) : uniquement si l'agent DISPOSE d'outils —
+            # une donnée du monde réel qu'il ne possède pas DOIT venir d'un appel d'outil,
+            # jamais d'une valeur inventée (météo, recherche web, état domotique, prix…).
+            if _tool_names:
+                system_prompt += (
+                    "- Pour toute DONNÉE FACTUELLE du monde réel que tu ne possèdes pas avec certitude "
+                    "(météo, actualités/recherche web, état domotique, heure si non fournie, prix, etc.), "
+                    "tu DOIS appeler l'outil correspondant et attendre son résultat. N'invente JAMAIS de "
+                    "valeurs plausibles (température, chiffres, liens, faits). Aucun résultat d'outil = tu "
+                    "le dis, tu ne fabriques rien.\n"
+                    "- Pour appeler un outil, utilise le MÉCANISME d'appel d'outil natif — n'écris pas "
+                    "l'appel sous forme de texte ou de JSON dans ta réponse.\n"
+                )
             # État partagé du run (context_variables) : visible par l'agent (lecture), tenu à
             # jour par les outils. Rendu compact ; les valeurs trop longues sont tronquées.
             if context_variables:
@@ -1677,8 +1767,24 @@ class Swarm:
             response = self._complete(effective_model, current_messages, tools_schema, on_delta=_emit_delta)
 
             message = response.choices[0].message
+            # RESCUE : le modèle a-t-il écrit un tool-call en TEXTE plutôt qu'en format
+            # structuré ? (qwen3 le fait par intermittence.) Si oui, on le récupère.
+            _rescued_tcs = []
+            if not getattr(message, "tool_calls", None) and getattr(message, "content", None):
+                _rescued_tcs = parse_text_tool_calls(
+                    message.content, {f.__name__ for f in effective_tools})
             msg_dict = message.model_dump(exclude_none=True)
             msg_dict["name"] = current_agent.name
+            if _rescued_tcs:
+                # Persiste l'appel récupéré en format structuré et retire le JSON brut du
+                # contenu (il ne doit pas s'afficher comme une réponse à l'utilisateur).
+                msg_dict["tool_calls"] = [
+                    {"id": t.id, "type": "function",
+                     "function": {"name": t.function.name, "arguments": t.function.arguments}}
+                    for t in _rescued_tcs]
+                msg_dict.pop("content", None)
+                print(f"[\033[96mSWARM\033[0m] tool-call récupéré depuis le texte : "
+                      f"{[t.function.name for t in _rescued_tcs]}")
             messages.append(msg_dict)
             
             # Enregistrer la consommation de tokens exacte
@@ -1709,7 +1815,7 @@ class Swarm:
                 "completion_tokens": completion_tokens
             })
 
-            if message.content:
+            if message.content and not _rescued_tcs:
                 print(f"\033[92m{current_agent.name}:\033[0m {message.content}")
                 _has_tools = bool(getattr(message, "tool_calls", None))
                 # Narration COURTE qui précède un appel d'outil (« je vais utiliser… ») →
@@ -1724,7 +1830,7 @@ class Swarm:
                         "content": message.content
                     })
 
-            if not getattr(message, "tool_calls", None):
+            if not getattr(message, "tool_calls", None) and not _rescued_tcs:
                 # Fallback sémantique si le modèle n'a pas déclenché de tool_call standard
                 semantic_transitioned = False
                 if True:
@@ -1795,7 +1901,7 @@ class Swarm:
                 # Plus aucun outil appelé, on a fini le tour
                 break
                 
-            tool_calls = getattr(message, "tool_calls", None) or []
+            tool_calls = list(getattr(message, "tool_calls", None) or []) + list(_rescued_tcs)
 
             # Anti-délégation parasite : si l'orchestrateur a DÉJÀ produit une vraie réponse
             # (contenu substantiel) dans ce tour, on ignore les transferts émis en même temps
