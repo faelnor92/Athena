@@ -2,6 +2,7 @@
 
 ![Version](https://img.shields.io/badge/version-0.10.0-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des serveurs légers ou avec des GPU modestes. Accessible via **Interface Web**, **CLI**, **Telegram** et **Vocal Local**.
 
@@ -142,3 +143,7 @@ puis dans `.env` : `OPENINFERENCE_ENABLED=true` et `OTEL_EXPORTER_OTLP_ENDPOINT=
 | | **Chiffrement au repos** | **Oui (Fernet/AES-128 sur conversations + traces)** | Non | Dépend du stockage | N/A | N/A |
 | | **Isolation multi-locataires** | **Oui (mémoire/agenda/budget isolés par user)** | Non | Par workspace | N/A | N/A |
 | | **Approbation humaine (HITL)** | **Oui (interception des actions sensibles dans l'UI)** | Oui (via chat) | Basique | À coder soi-même | À coder soi-même |
+
+## 📄 Licence
+
+Distribué sous licence **MIT** — voir [LICENSE](LICENSE). Libre d'utilisation, modification et redistribution.
