@@ -1607,3 +1607,16 @@ body.framed .canvas-header {
     box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
 }
 
+
+/* Modèles de départ (quick-start chips) */
+.starter-chip {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: inherit;
+    border-radius: 14px;
+    padding: 4px 10px;
+    font-size: 0.74rem;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+}
+.starter-chip:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); }

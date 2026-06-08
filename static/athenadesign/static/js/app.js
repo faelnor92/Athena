@@ -191,6 +191,25 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (btnDsSave) btnDsSave.addEventListener("click", () => saveDesignSystem(false));
     if (btnDsExtract) btnDsExtract.addEventListener("click", () => saveDesignSystem(true));
+
+    // Modèles de départ : pré-remplissent un prompt riche (évite le « blank canvas »).
+    const STARTER_TEMPLATES = {
+        landing: "Crée une landing page moderne et responsive pour [PRODUIT] : hero plein écran (titre accrocheur, sous-titre, CTA), section 3 avantages avec icônes, témoignages, et footer. Style premium glassmorphism, palette soignée, micro-animations.",
+        deck: "Crée une présentation PowerPoint (.pptx) de 7 slides pour pitcher [PROJET] : couverture, problème, solution, marché, produit, business model, contact. Épuré et professionnel, ≤6 lignes par slide, sans débordement.",
+        onepager: "Crée un one-pager HTML imprimable pour [SUJET] : en-tête avec titre + accroche, 3-4 sections concises, un visuel clé, et un encadré contact. Mise en page claire, typographie soignée.",
+        dashboard: "Crée un dashboard analytique moderne (HTML + Chart.js via CDN) : 4 cartes KPI, 2 graphiques (ligne + barres), thème sombre glassmorphism, responsive.",
+        chart: "Génère un script Python (matplotlib) qui trace [DONNÉES] avec un style moderne (couleurs soignées, grille discrète, pas de fond gris). Termine par plt.show().",
+    };
+    document.querySelectorAll(".starter-chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+            const tpl = STARTER_TEMPLATES[chip.getAttribute("data-tpl")];
+            if (tpl && promptInput) {
+                promptInput.value = tpl;
+                promptInput.focus();
+                promptInput.setSelectionRange(tpl.indexOf("["), tpl.indexOf("]") + 1 || tpl.length);
+            }
+        });
+    });
     let editor = null;
     let fallbackMode = false;
     let currentCode = "";
