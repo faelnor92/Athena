@@ -1873,6 +1873,13 @@ class Swarm:
                     "synthèse (pas `transfer_to_`, qui perdrait les autres). SUIVI : modif d'un livrable "
                     "récent → re-transfère au même spécialiste. LIVRAISON : recopie INTÉGRALEMENT le "
                     "travail rendu par un spécialiste.\n")
+                system_prompt += (
+                    "ANNONCE : chaque fois que tu délègues (`delegate_to_…`) ou transfères "
+                    "(`transfer_to_…`), DIS-LE explicitement à l'utilisateur dans ta réponse (ex. « Je "
+                    "confie cette partie à Julie, notre juriste ») — qu'il sache qui prend la main. "
+                    "COHÉRENCE : une même catégorie de demande → le MÊME choix ; par DÉFAUT déléguer "
+                    "(`delegate_to_`, tu gardes la main et tu synthétises), `transfer_to_` seulement si "
+                    "l'utilisateur veut basculer durablement dans ce métier.\n")
                 if "debate_between_agents" in _tool_names:
                     system_prompt += (
                         "DÉBAT/TABLE RONDE demandé (« organise un débat entre… ») : appelle "
