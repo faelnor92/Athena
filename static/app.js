@@ -7164,11 +7164,16 @@ function _initLogPanel() {
   let open = false, paused = false, level = "INFO";
   const LV = { DEBUG:"#7f8c9a", INFO:"#5cc8ff", WARNING:"#ffcc66", ERROR:"#ff6b6b", CRITICAL:"#ff3b3b" };
 
-  const btn = document.createElement("button");
-  btn.textContent = "🗒 Logs";
-  btn.title = "Logs serveur (live)";
-  btn.style.cssText = "position:fixed;bottom:12px;right:12px;z-index:9998;background:#111;color:#fff;border:1px solid #444;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:12px;opacity:.85;";
-  document.body.appendChild(btn);
+  // Bouton dans le DOCK (footer, entre Réglages et la version) pour ne plus chevaucher
+  // le bouton d'envoi. Repli sur un bouton flottant si le dock ne l'expose pas.
+  let btn = document.getElementById("btn-logs");
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.textContent = "🗒 Logs";
+    btn.title = "Logs serveur (live)";
+    btn.style.cssText = "position:fixed;bottom:12px;right:12px;z-index:9998;background:#111;color:#fff;border:1px solid #444;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:12px;opacity:.85;";
+    document.body.appendChild(btn);
+  }
 
   const panel = document.createElement("div");
   panel.style.cssText = "position:fixed;bottom:52px;right:12px;width:min(640px,92vw);height:min(360px,60vh);z-index:9999;background:#0c0f14;border:1px solid #2a3340;border-radius:10px;display:none;flex-direction:column;box-shadow:0 8px 30px rgba(0,0,0,.5);font-family:ui-monospace,Menlo,Consolas,monospace;";
