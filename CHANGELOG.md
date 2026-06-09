@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.11.2 (Fiabilité de l'orchestration & finitions Open Space)
+
+### 🤖 Orchestration (swarm)
+- **Relais sémantique fiabilisé** — le swarm ne devine plus un transfert à partir de mots présents dans une **réponse longue** (« logement **social** », « l'**auteur** » = le malfaiteur, « demande à »…), qui provoquaient des relais absurdes (Juriste→Auteur, Athena→CommunityManager produisant une fiction/campagne hors-sujet). Désormais : **aucun relais deviné sur un message > 400 caractères** (une réponse complète n'est pas une intention de transfert), et un relais court ne vise qu'un agent **réellement joignable** (outil `transfer_to_`/`delegate_to_` présent).
+- **Spécialiste ciblé par `@mention` → ne délègue plus** : il répond lui-même au lieu de rebondir vers un autre agent (l'orchestrateur Athena garde, lui, son rôle d'aiguilleur).
+- **Présentation seulement à l'accueil** : sur une vraie question, l'agent répond directement au lieu de se contenter de se présenter (la phrase d'accueil n'est forcée que sur un message d'accueil).
+
+### 🏢 Open Space — finitions
+- **Plaque de nom posée sur le bureau** et plus compacte (au lieu de flotter et d'être masquée par le poste voisin).
+- **Plus de lift z-index** sur le poste actif/survolé : le bureau de l'agent actif ne masque plus la tête des agents situés devant (profondeur isométrique conservée).
+- **Métier déduit du rôle de l'agent** (= son nom : Juriste, Secretaire, Comptable…) et non plus de l'`avatar_type` — n'importe quel métier s'affiche tel quel, **sans liste codée en dur**. L'avatar reste choisi librement.
+
 ## v0.11.1 (Open Space 2.0 & refonte du dock)
 
 ### 🏢 Open Space 2.0 — bureau isométrique

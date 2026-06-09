@@ -34,15 +34,33 @@
     communitymanager:{ label: "Community", screen: "social",    act: ["Prépare un post", "Programme la campagne", "Répond aux messages"] },
     support:       { label: "Support",     screen: "prose",     act: ["Répond à un ticket", "Aide un utilisateur"] },
     scientifique:  { label: "Data",        screen: "chart",     act: ["Analyse les données", "Entraîne un modèle"] },
+    juriste:       { label: "Juriste",     screen: "review",    act: ["Analyse un contrat", "Vérifie un texte de loi", "Rédige un avis juridique"] },
     _default:      { label: "Agent",       screen: "code",      act: ["Au travail", "Traite une requête"] }
   };
 
   function roleKey(agent) {
+    // 1. MÉTIER déduit du RÔLE (description + nom), PAS de l'avatar décoratif.
+    //    (L'avatar/sprite reste choisi par l'utilisateur via spriteOf → avatar_type.)
+    var txt = ((agent.description || "") + " " + (agent.name || "") + " " +
+               (agent.display_name || "")).toLowerCase();
+    var byRole = [
+      ["juriste",          /jurid|\bdroit\b|avocat|\bloi\b|l[ée]gal|contrat|notaire/],
+      ["codeur",           /\bcod|d[ée]velop|develop|program|script|debug|logiciel|backend|frontend/],
+      ["traducteur",       /tradu|translat|linguis|interpr[èe]t/],
+      ["correcteur",       /corrig|correct|relect|relit|critique|[ée]dit|orthograph|fautes|relecture/],
+      ["auteur",           /r[ée]dig|\b[ée]cri|auteur|romanc|article|r[ée]dact|copywrit/],
+      ["communitymanager", /communi|\bsocial|r[ée]seau|marketing|influ|\bpost\b|promo|campagne/],
+      ["scientifique",     /\bdata\b|statis|graphiqu|analyse de don|scientif|machine learning|\bml\b/],
+    ];
+    for (var i = 0; i < byRole.length; i++) {
+      if (byRole[i][1].test(txt) && ROLES[byRole[i][0]]) return byRole[i][0];
+    }
+    // 2. avatar_type / nom s'ils SONT déjà une clé de rôle connue (ex. agent "Codeur").
     var k = (agent.avatar_type || agent.name || "").toLowerCase();
     if (ROLES[k]) return k;
     var n = (agent.name || "").toLowerCase();
     if (ROLES[n]) return n;
-    // mappage des avatar_type "décoratifs"
+    // 3. Dernier recours : mappage des avatar_type décoratifs.
     var map = { robot_neon: "athena", dev_purple: "codeur", writer_orange: "auteur",
       manager_gold: "correcteur", artist_pink: "communitymanager", support_green: "support",
       scientist_blue: "scientifique", translator: "traducteur" };
@@ -50,6 +68,10 @@
     return "_default";
   }
   function roleOf(agent) { return ROLES[roleKey(agent)] || ROLES._default; }
+  // Le RÔLE/MÉTIER AFFICHÉ = le nom de l'agent (ce que l'utilisateur a défini : Juriste,
+  // Secretaire, Codeur…). Générique : ne dépend d'AUCUNE liste codée en dur, donc un
+  // métier inconnu s'affiche tel quel au lieu de tomber sur « Agent ».
+  function roleLabelOf(agent) { return (agent.name || agent.display_name || "Agent"); }
 
   function colorOf(agent) {
     if (typeof window.getAgentColor === "function") return window.getAgentColor(agent.name);
@@ -329,7 +351,7 @@
         '<div class="ws-bubble">' + role.act[0] + '</div>' +
         '<div class="ws-plate">' +
           '<div class="ws-plate-name"><span class="ws-dot"></span>' + esc(disp) + '</div>' +
-          '<div class="ws-plate-role">' + role.label + '</div>' +
+          '<div class="ws-plate-role">' + esc(roleLabelOf(agent)) + '</div>' +
           '<div class="ws-plate-status">' + role.act[0] + '</div>' +
         '</div>';
 
