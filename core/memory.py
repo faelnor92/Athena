@@ -147,6 +147,11 @@ class SemanticMemory:
 
     def store(self, content: str, source: str = "user") -> str:
         """Enregistre un document/concept dans la base vectorielle."""
+        # Robustesse : le LLM peut passer un nombre (ou None) comme contenu → chromadb fait
+        # len() sur le document et lèverait « object of type 'int' has no len() ». On force
+        # une chaîne (et idem pour la source, métadonnée).
+        content = "" if content is None else str(content)
+        source = "user" if source is None else str(source)
         doc_id = str(uuid.uuid4())
         self._coll().add(
             documents=[content],
