@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.10 (Robustesse des appels d'outils)
+
+### 🐛 Robustesse
+- **Appels d'outils tolérants** : si le modèle invente un nom de paramètre (ex. `write_file(file=…)` au lieu de `path=…`) ou ajoute un argument hors-signature, on mappe les alias sûrs (`file`/`filename`/`filepath`/`file_path` → `path`) et on **ignore** les arguments inconnus au lieu de planter (« unexpected keyword argument »). Filet complémentaire à l'exposition des schémas (v0.11.9).
+
+> ℹ️ **Déploiement** : pour bénéficier des correctifs de dépendances (chromadb 1.5.9 qui répare `search_memory`/`store_document`, Playwright, etc.), lancer le serveur sur le **venv 3.13** : `.venv/bin/python server.py` (et non le `python3` système qui garde les anciennes deps).
+
 ## v0.11.9 (Fix majeur : le Codeur retrouve ses outils)
 
 ### 🐛 Correctif d'orchestration majeur
