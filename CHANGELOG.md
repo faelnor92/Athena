@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.11.3 (Relais par intention & finitions dock)
+
+### 🤖 Orchestration (swarm)
+- **Relais « par intention » (LLM) au lieu de mots-clés** : quand le modèle exprime un transfert en texte sans appeler l'outil, un petit juge LLM décide — d'après le **SENS** — s'il y a vraiment passage de main et **à qui**. Déclencheur **dynamique** (le message cite un agent réel, liste vivante) → marche pour **tout nouvel agent** (rôle imprévu), sans liste codée en dur. Fini les faux relais sur un mot du domaine (« l'auteur » = le malfaiteur) et les transferts fantômes.
+- **Joignabilité réelle** : un relais ne vise qu'un agent que l'agent courant a le **droit** de joindre (`current_agent.tools`) — corrige « transfère à Julie » (que le routeur avait bridé) tout en bloquant les relais non configurés (Juriste→Auteur).
+- **Règle de PÉRIMÈTRE** : un spécialiste reste dans **son** métier ; l'historique et la mémoire sont du **contexte**, pas sa mission → il ne propose plus le travail d'un autre agent (ex. Julie, juriste, ne propose plus de visuel de campagne récupéré de la mémoire/historique).
+
+### 🧭 Dock — finitions
+- Bouton **Logs** déplacé dans le footer du dock (entre Réglages et la version) — il ne chevauche plus le bouton d'envoi des prompts.
+- **Sélecteur de langue** déplacé sous la version.
+
 ## v0.11.2 (Fiabilité de l'orchestration & finitions Open Space)
 
 ### 🤖 Orchestration (swarm)
