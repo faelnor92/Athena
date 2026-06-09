@@ -110,14 +110,16 @@
 .ws-plate {
     position: absolute;
     left: 50%;
-    bottom: -8px;
+    /* Plaque compacte posée SUR le bureau, devant l'agent. Sans lift z-index (cf.
+       états visuels), la profondeur iso limite le recouvrement par le poste de devant. */
+    bottom: 30px;
     transform: translateX(-50%);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
-    padding: 5px 11px 6px;
-    min-width: 96px;
+    gap: 1px;
+    padding: 3px 8px 4px;
+    min-width: 70px;
     background: rgba(7, 11, 22, 0.82);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 9px;
@@ -131,7 +133,7 @@
     display: flex; align-items: center; gap: 6px;
     font-family: 'Outfit','Inter',sans-serif;
     font-weight: 700;
-    font-size: 0.78rem;
+    font-size: 0.62rem;
     color: #f1f5f9;
     line-height: 1;
 }
@@ -142,7 +144,7 @@
     flex: none;
 }
 .ws-plate-role {
-    font-size: 0.6rem;
+    font-size: 0.5rem;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -151,7 +153,7 @@
     line-height: 1;
 }
 .ws-plate-status {
-    font-size: 0.58rem;
+    font-size: 0.5rem;
     color: #94a3b8;
     line-height: 1.1;
     max-width: 150px;
@@ -192,10 +194,12 @@
 .ws:hover .ws-bubble { opacity: 1; transform: translate(-50%, -106%); }
 
 /* --- États visuels ---------------------------------------------------- */
-.ws:hover { z-index: 999 !important; }
+/* Pas de lift z-index au survol/actif : cela casserait la profondeur iso (le bureau
+   du poste levé masquerait la tête des agents situés devant). L'état est signalé par
+   l'agent qui se soulève un peu, l'anneau lumineux, la plaque et l'atténuation des autres. */
 .ws:hover .ws-agent { transform: translateX(-50%) translateY(-3px); }
 
-.ws.active { z-index: 998 !important; }
+.ws.active { /* profondeur iso conservée (cf. ci-dessus) */ }
 .ws.active .ws-ring { opacity: 1; animation: wsRingPulse 1.8s ease-in-out infinite; }
 .ws.active .ws-plate {
     border-color: var(--agent-color, #00f0ff);
