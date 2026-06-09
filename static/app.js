@@ -1619,6 +1619,15 @@ function updatePlanStepTerminal(index, status) {
 }
 
 async function playAgentSteps(steps, immediate = false) {
+    // Rafraîchit les vues impactées par les outils utilisés (liste, agenda…) — sinon l'UI
+    // reste figée et on croit à tort que l'action de l'agent n'a rien écrit.
+    try {
+        const _used = (steps || []).filter(s => s && s.type === "tool_call").map(s => s.tool || "");
+        if (_used.some(t => ["add_list_item", "toggle_list_item", "delete_list_item"].includes(t))
+            && typeof loadListItems === "function") loadListItems();
+        if (_used.some(t => ["add_calendar_event", "delete_calendar_event"].includes(t))
+            && typeof loadAgendaEvents === "function") loadAgendaEvents();
+    } catch (_e) {}
     return new Promise(resolve => {
         let delay = 0;
         

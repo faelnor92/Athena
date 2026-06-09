@@ -69,6 +69,38 @@ def current_level() -> str:
     return logging.getLevelName(logging.getLogger().level)
 
 
+def _preload_ring_from_file(path: str):
+    """Précharge le tampon mémoire avec la FIN du fichier de log au démarrage, pour que les
+    logs (panneau /api/logs) survivent à un redémarrage / crash du serveur. Parse le format
+    « %(asctime)s %(levelname)s [%(name)s] %(message)s » ; les lignes de continuation
+    (tracebacks) sont rattachées à l'enregistrement précédent."""
+    import re as _re
+    import time as _time
+    try:
+        if not os.path.exists(path):
+            return
+        n = _RING.maxlen or 800
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()[-(n * 2):]  # marge pour les messages multi-lignes
+        rx = _re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(\d+)\s+(\S+)\s+\[([^\]]+)\]\s(.*)$")
+        recs = []
+        for line in lines:
+            line = line.rstrip("\n")
+            m = rx.match(line)
+            if m:
+                try:
+                    ts = _time.mktime(_time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")) + int(m.group(2)) / 1000.0
+                except Exception:
+                    ts = _time.time()
+                recs.append({"t": ts, "level": m.group(3), "name": m.group(4), "msg": m.group(5)})
+            elif recs:
+                recs[-1]["msg"] += "\n" + line
+        for r in recs[-n:]:
+            _RING.append(r)
+    except Exception:
+        pass
+
+
 def setup_logging():
     global _CONFIGURED
     if _CONFIGURED:
@@ -100,6 +132,8 @@ def setup_logging():
         ring.setFormatter(fmt)
         ring.addFilter(_RedactionFilter())
         root.addHandler(ring)
+        # Récupère l'historique récent du fichier → résilient au redémarrage/crash.
+        _preload_ring_from_file(os.path.join(log_dir, "athena.log"))
 
     # Réduit le bruit des bibliothèques tierces très bavardes.
     for noisy in ("httpx", "httpcore", "LiteLLM", "litellm", "chromadb", "urllib3"):
