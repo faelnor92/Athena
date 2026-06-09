@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.4 (Finitions interface)
+
+### 🧭 Interface
+- Panneau **« Mon usage »** : ajout de la **moyenne tokens/req** (entre les tokens et le coût).
+- **Top bar** : retrait du compteur d'agents (« x/8 ») à côté du coût — redondant maintenant que l'Open Space affiche tout l'effectif.
+- Le **nom/logo est cliquable** → retour à l'accueil (Open Space).
+
 ## v0.11.3 (Relais par intention & finitions dock)
 
 ### 🤖 Orchestration (swarm)
