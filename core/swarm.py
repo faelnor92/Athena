@@ -1311,6 +1311,21 @@ class Swarm:
         _tool_filter_min = int(os.getenv("TOOL_FILTER_MIN", "20") or 20)  # ne filtre qu'au-delà
         _tool_subset = None       # noms à conserver | None = filtrage non décidé/non appliqué
         _tool_subset_done = False
+        # PINNED : l'utilisateur a explicitement adressé CE spécialiste via @mention → il doit
+        # RÉPONDRE lui-même, pas se débarrasser de la tâche. On lui retire transfert/délégation
+        # (sauf l'orchestrateur, qui garde son rôle d'aiguilleur). Détecté une fois par run.
+        _pinned = False
+        try:
+            _orch_name = getattr(self, "orchestrator_name", "Athena")
+            if starting_agent.name != _orch_name:
+                import re as _reP
+                _lu_pin = next((str(m.get("content", "") or "") for m in reversed(messages)
+                                if m.get("role") == "user"), "").lower()
+                _aliases = [starting_agent.name.lower()] + [
+                    w.lower() for w in (starting_agent.display_name or "").split() if len(w) > 2]
+                _pinned = any(_reP.search(r"@" + _reP.escape(a) + r"\b", _lu_pin) for a in _aliases)
+        except Exception:
+            _pinned = False
 
         while True:
             # Annulation (barge-in vocal / bouton stop) : vérifiée à chaque tour.
@@ -1455,6 +1470,14 @@ class Swarm:
             # Pipeline rigide uniquement : on retire AUSSI la délégation → aucune déviation.
             if lock_delegation:
                 effective_tools = [f for f in effective_tools if not f.__name__.startswith("delegate_to_")]
+
+            # PINNED (@mention explicite d'un spécialiste) : il répond, il ne délègue pas.
+            # On retire transfert + délégation + query/débat (l'orchestrateur n'est jamais concerné).
+            if _pinned and current_agent.name != getattr(self, "orchestrator_name", "Athena"):
+                effective_tools = [f for f in effective_tools
+                                   if not f.__name__.startswith("transfer_to_")
+                                   and not f.__name__.startswith("delegate_to_")
+                                   and f.__name__ not in ("query_agent", "debate_between_agents")]
 
             # Garde-fou anti sur-délégation : pour une question triviale/générale adressée
             # à l'orchestrateur, on RETIRE les outils de délégation pour ce tour → il répond
@@ -1618,9 +1641,26 @@ class Swarm:
 
             # Ne forcer la présentation que si aucun message de cet agent n'est déjà présent dans l'historique
             has_agent_spoken = any(msg.get("role") == "assistant" and msg.get("name") == current_agent.name for msg in messages)
+            # … ET seulement si le message courant est un simple ACCUEIL (bonjour / mention seule).
+            # Sur une vraie demande, l'agent doit RÉPONDRE (sinon il se présente au lieu de répondre).
+            import re as _reW
+            _last_user = next((str(m.get("content", "") or "") for m in reversed(messages) if m.get("role") == "user"), "")
+            _lu = _reW.sub(r"@\w+", "", _last_user).strip().lower()
+            _is_greeting = (len(_lu) <= 24) and (
+                not _lu
+                or bool(_reW.match(r"^(bonjour|salut|coucou|hello|hi|hey|bonsoir|yo|wesh|cc|ça va|ca va)\b", _lu))
+                or _lu in ("?", "...", "présente-toi", "presente toi")
+            )
             if getattr(current_agent, "welcome_message", None) and not has_agent_spoken and current_agent.name != getattr(self, "orchestrator_name", "Athena"):
-                system_prompt += f"\n\n⚠️ INSTRUCTION DE PRÉSENTATION OBLIGATOIRE :\n"
-                system_prompt += f"Tu DOIS commencer ta toute première réponse par la phrase d'introduction suivante exactement : \"{current_agent.welcome_message}\". Ne change pas un seul mot de cette phrase de présentation, commence directement par elle, puis poursuis naturellement pour répondre à l'utilisateur.\n"
+                if _is_greeting:
+                    system_prompt += f"\n\n⚠️ INSTRUCTION DE PRÉSENTATION OBLIGATOIRE :\n"
+                    system_prompt += f"Tu DOIS commencer ta toute première réponse par la phrase d'introduction suivante exactement : \"{current_agent.welcome_message}\". Ne change pas un seul mot de cette phrase de présentation, commence directement par elle, puis poursuis naturellement pour répondre à l'utilisateur.\n"
+                else:
+                    system_prompt += (
+                        "\n\n⚠️ C'est ta première intervention, mais l'utilisateur a posé une VRAIE DEMANDE. "
+                        "Tu PEUX te présenter en UNE courte phrase au début, mais tu DOIS répondre directement et "
+                        "COMPLÈTEMENT à sa demande dans le MÊME message — ne te contente jamais de te présenter.\n"
+                    )
                 
             if current_agent.name == getattr(self, "orchestrator_name", "Athena"):
                 # Date/heure courantes (l'orchestrateur peut répondre « quelle heure ? »).
@@ -1959,7 +1999,11 @@ class Swarm:
                 # Fallback sémantique si le modèle n'a pas déclenché de tool_call standard
                 semantic_transitioned = False
                 if True:
-                    if message.content:
+                    # GARDE anti faux-positif : on ne DEVINE un relais que sur un message COURT.
+                    # Une réponse longue est une vraie réponse complète — elle contient souvent des
+                    # mots du domaine ("logement social", "l'auteur" = le malfaiteur, "demande à"…)
+                    # qui déclenchaient à tort des relais (Juriste→Auteur, Athena→CommunityManager).
+                    if message.content and len(message.content.strip()) <= 400:
                         content_lower = message.content.lower()
                         
                         # Liste des mots-clés indiquant une intention de transfert ou délégation
@@ -1976,7 +2020,19 @@ class Swarm:
                             for target_agent_name, target_agent in self.agents.items():
                                 if target_agent_name == current_agent.name:
                                     continue
-                                
+
+                                # GARDE anti faux-positif : ne relayer (sémantiquement) que vers un
+                                # agent que l'agent courant a le DROIT de joindre (outil transfer_to_/
+                                # delegate_to_ présent). Sinon des mots courants du texte ("l'auteur" =
+                                # le malfaiteur, "demande à", "charge de"…) déclenchaient des relais
+                                # absurdes (ex. Juriste → Auteur). Respecte la config `handoffs`.
+                                if not any(
+                                    f.__name__ in (f"transfer_to_{target_agent_name}",
+                                                   f"delegate_to_{target_agent_name}")
+                                    for f in effective_tools
+                                ):
+                                    continue
+
                                 # Identifiants sémantiques pour cet agent
                                 agent_identifiers = [target_agent_name.lower()]
                                 if target_agent.display_name:
