@@ -1,8 +1,8 @@
 # 🎛️ Athena — 自托管多智能体框架
 
-![Version](https://img.shields.io/badge/version-0.10.1-blue.svg)
+![Version](https://img.shields.io/badge/version-0.11.0-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
 **语言：** [Français](README.md) · [English](README.en.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Deutsch](README.de.md) · 中文（本文件） · [日本語](README.ja.md)
 
@@ -148,4 +148,4 @@ docker compose --profile observability up -d         # Phoenix (UI: http://local
 
 ## 📄 许可证
 
-基于 **MIT** 许可证发布——见 [LICENSE](LICENSE)。可自由使用、修改与再分发。
+基于 **Apache 2.0** 许可证发布——见 [LICENSE](LICENSE)。可自由使用、修改与再分发。

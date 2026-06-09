@@ -152,7 +152,7 @@ def _ensure_design_image():
     with _build_lock:
         if _image_exists(_DESIGN_TAG):
             return _DESIGN_TAG, None
-        base = os.getenv("SANDBOX_DOCKER_IMAGE", "python:3.11-slim")
+        base = os.getenv("SANDBOX_DOCKER_IMAGE", "python:3.13-slim")
         pip_pkgs = os.getenv("ATHENADESIGN_PIP", _DESIGN_PIP_DEFAULT)
         dockerfile = f"FROM {base}\nRUN pip install --no-cache-dir {pip_pkgs}\n"
         logger.info("AthenaDesign : construction de l'image sandbox %s (libs: %s)…", _DESIGN_TAG, pip_pkgs)

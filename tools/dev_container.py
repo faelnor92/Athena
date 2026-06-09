@@ -18,7 +18,7 @@ Modèle d'isolation (toujours fort, mais adapté au dev) :
 
 Pilotage par variables d'environnement :
   DEV_CONTAINER_MODE     "auto" (défaut : si docker dispo) | "on" | "off"
-  SANDBOX_DEV_IMAGE      image de base (défaut: python:3.11-slim ; mettez une image
+  SANDBOX_DEV_IMAGE      image de base (défaut: python:3.13-slim ; mettez une image
                          contenant déjà git+node+toolchains pour aller plus vite)
   DEV_CONTAINER_NETWORK  "bridge" (défaut) | "none"
   DEV_CONTAINER_MEM      ex: "2g"   (défaut)
@@ -37,7 +37,7 @@ import threading
 import time
 from typing import Dict, List, Optional, Tuple
 
-DEFAULT_IMAGE = "python:3.11-slim"
+DEFAULT_IMAGE = "python:3.13-slim"
 _DERIVED_TAG = "athena-dev-base:auto"  # image dérivée (base + git) construite à la volée
 _NAME_PREFIX = "athena-dev-"
 _HOME = "/work/.athena-home"  # HOME dans le conteneur, sous le projet monté (host-owned)

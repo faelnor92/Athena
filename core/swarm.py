@@ -1524,6 +1524,11 @@ class Swarm:
             
             # Injection dynamique des informations mémorisées (Core Memory) dans Athena
             system_prompt = current_agent.system_prompt
+            # CacheAligner natif : tout ce qui change d'un tour à l'autre (timestamp, RAG…) va
+            # dans volatile_context, émis APRÈS le bloc système caché (cf. assemblage plus bas).
+            # Sinon ce contenu volatile invalide le prompt cache (cache_control ephemeral) à
+            # chaque tour. Règle : stable → bloc système caché ; volatile → hors du préfixe caché.
+            volatile_context = ""
 
             # Préambule SYSTÈME (non éditable par l'utilisateur, contrairement au prompt de
             # l'agent ci-dessus) : garanties de comportement, adaptées aux OUTILS de l'agent.
@@ -1621,7 +1626,8 @@ class Swarm:
                 # Date/heure courantes (l'orchestrateur peut répondre « quelle heure ? »).
                 try:
                     import datetime as _dt
-                    system_prompt += f"\nContexte : nous sommes le {_dt.datetime.now().strftime('%A %d %B %Y, %H:%M')} (heure du serveur).\n"
+                    # Volatile (change chaque minute) → hors du bloc caché.
+                    volatile_context += f"\nContexte : nous sommes le {_dt.datetime.now().strftime('%A %d %B %Y, %H:%M')} (heure du serveur).\n"
                 except Exception:
                     pass
                 # CODE → spécialiste. Détection DYNAMIQUE du Codeur (agent ≠ orchestrateur
@@ -1786,7 +1792,8 @@ class Swarm:
                         for res in rag_results:
                             rag_context += f"- {res}\n"
                         rag_context += "========================================================================\n"
-                        system_prompt += rag_context
+                        # Volatile (dépend du message courant) → hors du bloc caché.
+                        volatile_context += rag_context
                 except Exception as e:
                     print(f"[\033[91mRAG Erreur\033[0m] {e}")
             
@@ -1849,8 +1856,13 @@ class Swarm:
             # — n'affecte QUE la vue envoyée au LLM, pas l'historique persistant.
             clean_history = self._maybe_compact(current_agent.model, clean_history, steps)
 
-            # Injection du system prompt de l'agent actif
+            # Injection du system prompt de l'agent actif.
+            # Bloc système STABLE en tête (cacheable via cache_control) ; le contexte VOLATILE
+            # (timestamp, RAG) est émis comme message système APRÈS l'historique → hors du
+            # préfixe caché, donc il n'invalide plus le cache d'un tour à l'autre.
             current_messages = [{"role": "system", "content": system_prompt}] + clean_history
+            if volatile_context.strip():
+                current_messages.append({"role": "system", "content": volatile_context})
             
             # --- VÉRIFICATION DES QUOTAS ---
             try:

@@ -1,8 +1,8 @@
 # 🎛️ Athena — Framework Multi-Agent Auto-Hébergé
 
-![Version](https://img.shields.io/badge/version-0.10.1-blue.svg)
+![Version](https://img.shields.io/badge/version-0.11.0-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
 **Langues :** Français (ce fichier) · [English](README.en.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Deutsch](README.de.md) · [中文](README.zh.md) · [日本語](README.ja.md)
 
@@ -148,4 +148,4 @@ puis dans `.env` : `OPENINFERENCE_ENABLED=true` et `OTEL_EXPORTER_OTLP_ENDPOINT=
 
 ## 📄 Licence
 
-Distribué sous licence **MIT** — voir [LICENSE](LICENSE). Libre d'utilisation, modification et redistribution.
+Distribué sous licence **Apache 2.0** — voir [LICENSE](LICENSE). Libre d'utilisation, modification et redistribution.

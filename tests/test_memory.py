@@ -61,8 +61,9 @@ def test_compaction_historique_long():
     _, _msgs, steps = s.run(agent, history, max_turns=1)
 
     assert any(st.get("type") == "memory_compaction" for st in steps), "pas d'étape de compaction"
-    # system(1) + résumé(1) + 12 récents = 14 (au lieu de 1 + 50 = 51)
-    assert captured["main_len"] == 14, f"vue LLM non compactée: {captured['main_len']}"
+    # system stable(1) + résumé(1) + 12 récents + système volatile(1) = 15 (au lieu de 1 + 50 = 51).
+    # Le bloc système volatile (timestamp/RAG, hors préfixe caché) est ajouté par le CacheAligner.
+    assert captured["main_len"] == 15, f"vue LLM non compactée: {captured['main_len']}"
     print(f"OK: historique long compacté (vue LLM = {captured['main_len']} msgs au lieu de 51)")
 
 

@@ -21,7 +21,7 @@ code, tout en restant **user-friendly** (tout dans l'UI, install simple).
 - **Multi-tenant** : tout est par-utilisateur (mémoire, RAG `um_<user>`, agenda, listes, quotas, config). Bucket `local` en mode sans auth.
 - **État partagé multi-worker** : `core/shared_store.py` (SQLite WAL, atomique) pour comptes/quotas/sessions/routines/invites/projets/config — cohérent en `uvicorn --workers N`.
 - **Projets** : un projet = un dossier. Projet actif (par-user) → `get_workspace_dir()` → scope des outils code + explorateur. Override de contexte (`projects.set_override`) pour que la **console** cible un projet différent du chat/voix.
-- **Sandbox** : `tools/sandbox_runner.py` (Docker, image `python:3.11-slim`, réseau coupé, `-v projet:/work`). `tool_script` = exec Python en-process sandboxé par AST. Garde `can_write()` (viewer = lecture seule) sur tous les outils d'écriture.
+- **Sandbox** : `tools/sandbox_runner.py` (Docker, image `python:3.13-slim`, réseau coupé, `-v projet:/work`). `tool_script` = exec Python en-process sandboxé par AST. Garde `can_write()` (viewer = lecture seule) sur tous les outils d'écriture.
 - **Sécurité** : auth Bearer + middleware authz centralisé, throttle login partagé, 2FA TOTP, chiffrement au repos (Fernet) conv+traces, SSRF `net_guard` (web + iCal/CalDAV), en-têtes CSP, rate-limit, audit (`/api/audit`), validation admin des automatisations.
 
 ## 🐛 Bugs / limites connus (remontés à l'usage — 2026-06-04)

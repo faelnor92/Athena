@@ -13,7 +13,7 @@ Contraintes appliquées au conteneur :
 
 Pilotage par variables d'environnement :
   SANDBOX_MODE          "docker" (défaut) | "off" (exécution locale, risque assumé)
-  SANDBOX_DOCKER_IMAGE  image de base (défaut: python:3.11-slim)
+  SANDBOX_DOCKER_IMAGE  image de base (défaut: python:3.13-slim)
   SANDBOX_MEM_LIMIT     ex: "256m"
   SANDBOX_CPUS          ex: "1.0"
   SANDBOX_PIDS_LIMIT    ex: "128"
@@ -25,7 +25,7 @@ import subprocess
 import uuid
 from typing import List, Optional, Tuple
 
-DEFAULT_IMAGE = "python:3.11-slim"
+DEFAULT_IMAGE = "python:3.13-slim"
 
 
 def sandbox_mode() -> str:
