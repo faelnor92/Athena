@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.6 (Logs résilients & rafraîchissement des listes)
+
+### 🔧 Corrections
+- **Logs résilients au crash** : le tampon du panneau de logs est **préchargé depuis `logs/athena.log`** au démarrage → l'historique récent survit à un redémarrage / crash du serveur (plus de panneau vide).
+- **Listes (TODO / courses / tâches)** : la vue se **rafraîchit automatiquement** après une action d'un agent (ajout / coche / suppression). Avant, l'élément était bien enregistré côté serveur mais l'UI restait figée — d'où l'impression que « rien n'était écrit ».
+
 ## v0.11.5 (Lot de corrections — statut, MAJ, dictée, délégation)
 
 ### 🏢 Open Space
