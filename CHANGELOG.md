@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.7 (Sélecteur de listes dynamique)
+
+### 🔧 Corrections
+- **Listes** : le sélecteur affiche désormais **toutes** les listes existantes (peuplé dynamiquement via `/api/lists/names`). Avant, il était figé sur « Tâches » et « Courses » → une liste créée par un agent (ex. « **todo** », le nom exact demandé) restait **invisible** dans l'UI, alors que les éléments étaient bien enregistrés côté serveur. Complète le rafraîchissement auto de v0.11.6.
+
 ## v0.11.6 (Logs résilients & rafraîchissement des listes)
 
 ### 🔧 Corrections
