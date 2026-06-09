@@ -4,7 +4,7 @@ Le code et la configuration *modèle* sont versionnés ; **les secrets et l'éta
 ne le sont pas** (cf. `.gitignore`). Voici comment repartir d'un poste neuf.
 
 ## 1. Prérequis
-- **Python 3.11+**, **git**, et **Docker** (requis pour la sandbox d'exécution de code).
+- **Python 3.13+**, **git**, et **Docker** (requis pour la sandbox d'exécution de code).
 - Un endpoint LLM (cloud ou local) — par défaut le projet utilise `CUSTOM_LLM_API_BASE`.
 
 ## 2. Cloner
@@ -21,7 +21,7 @@ pip install -r requirements.txt
 # Optionnel — assistant vocal :
 pip install -r requirements-voice.txt
 # Sandbox : l'image est tirée au 1er usage, ou manuellement :
-docker pull python:3.11-slim
+docker pull python:3.13-slim
 ```
 
 ## 4. Configuration (à recréer — non versionnée)

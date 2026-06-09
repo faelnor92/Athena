@@ -1,11 +1,13 @@
 # --- Coeur applicatif -------------------------------------------------------
-openai==1.55.3
-litellm==1.52.12
+openai==2.41.0
+litellm==1.88.1
 python-dotenv==1.0.1
 requests==2.32.3
 pyyaml==6.0.2
 colorama==0.4.6
-chromadb==0.5.0
+# chromadb 1.x : requis pour Python 3.13 (la 0.5.0 utilise np.float_, supprimé en numpy 2,
+# et numpy<2 n'a pas de wheels 3.13). La 1.x ne dépend plus de fastapi → pas de conflit avec la stack web.
+chromadb==1.5.9
 fastapi==0.111.0
 # uvicorn relevé à >=0.31.1 (requis par mcp) ; 0.48.0 reste compatible fastapi 0.111.
 uvicorn==0.48.0
