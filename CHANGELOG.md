@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.8 (Correctif store_document)
+
+### 🔧 Corrections
+- **store_document** : ne plante plus avec « object of type 'int' has no len() » quand le contenu (ou la source) passé par le LLM est un nombre ou `None` — coercition en chaîne avant l'indexation chromadb.
+
 ## v0.11.7 (Sélecteur de listes dynamique)
 
 ### 🔧 Corrections
