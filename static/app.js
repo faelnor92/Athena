@@ -108,10 +108,12 @@ async function checkSystemUpdate() {
                 if (btnDock) btnDock.style.display = "none";
                 if (btnDoctor) btnDoctor.style.display = "none";
                 if (statusText) {
-                    if (data.current_version) {
+                    if (data.check_unavailable) {
+                        statusText.innerHTML = data.current_version
+                            ? `Version v${data.current_version} · vérification des mises à jour indisponible.`
+                            : `Vérification des mises à jour indisponible.`;
+                    } else if (data.current_version) {
                         statusText.innerHTML = `Athena est à jour (v${data.current_version}).`;
-                    } else if (data.error) {
-                        statusText.innerHTML = `Erreur de vérification : ${data.error}`;
                     }
                 }
             }
@@ -4643,13 +4645,58 @@ function initSpeech() {
             }
         });
     } else {
-        // Laisser le bouton visible et expliquer le requis HTTPS/localhost si cliqué !
+        // Web Speech API indisponible (ex. Firefox) → on BASCULE sur le STT SERVEUR,
+        // comme la Réunion : enregistrement micro (MediaRecorder) + /api/voice/transcribe.
         const btnMic = document.getElementById("btn-mic");
         if (btnMic) {
             btnMic.style.display = "block";
-            btnMic.title = "Dictée vocale non disponible";
-            btnMic.addEventListener("click", () => {
-                alert("La dictée vocale nécessite un navigateur compatible (comme Google Chrome ou Microsoft Edge) et un contexte sécurisé (connexion HTTPS ou accès via 'localhost'). Si vous utilisez une adresse IP ou un nom de domaine non sécurisé en HTTP, le navigateur bloque l'accès au microphone.");
+            btnMic.title = "Dictée vocale (transcription serveur)";
+            let micRec = null, micChunks = [], micStream = null, micActive = false;
+            btnMic.addEventListener("click", async () => {
+                if (!micActive) {
+                    try {
+                        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        micChunks = [];
+                        micRec = new MediaRecorder(micStream);
+                        micRec.ondataavailable = (ev) => { if (ev.data.size > 0) micChunks.push(ev.data); };
+                        micRec.onstop = async () => {
+                            try { micStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+                            micActive = false;
+                            btnMic.style.color = "var(--text-color)";
+                            btnMic.style.transform = "none";
+                            const oldPh = chatInput ? chatInput.placeholder : "";
+                            if (chatInput) chatInput.placeholder = "Transcription en cours…";
+                            try {
+                                const blob = new Blob(micChunks, { type: "audio/webm" });
+                                const fd = new FormData();
+                                fd.append("file", new File([blob], "dictee.webm", { type: "audio/webm" }));
+                                const r = await fetch("/api/voice/transcribe", { method: "POST", body: fd });
+                                const d = await r.json();
+                                const txt = ((d && (d.text || d.transcript)) || "").trim();
+                                if (d && d.error) { alert("Transcription : " + d.error); }
+                                else if (chatInput && txt) {
+                                    chatInput.value = (chatInput.value ? chatInput.value + " " : "") + txt;
+                                    chatInput.dispatchEvent(new Event("input"));
+                                    chatInput.focus();
+                                }
+                            } catch (e) {
+                                console.error("Transcription serveur échouée :", e);
+                                alert("Échec de la transcription. Réessaie.");
+                            } finally {
+                                if (chatInput) chatInput.placeholder = oldPh;
+                            }
+                        };
+                        micRec.start();
+                        micActive = true;
+                        btnMic.style.color = "#ef4444";
+                        btnMic.style.transform = "scale(1.3)";
+                        btnMic.title = "Enregistrement… cliquez pour arrêter et transcrire";
+                    } catch (err) {
+                        alert("Impossible d'accéder au microphone : autorise l'accès au micro (et un contexte sécurisé HTTPS ou 'localhost').");
+                    }
+                } else {
+                    if (micRec && micRec.state !== "inactive") micRec.stop();
+                }
             });
         }
     }

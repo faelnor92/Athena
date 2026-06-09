@@ -53,23 +53,25 @@ async def get_system_version():
 
 @router.get("/api/system/update_check")
 async def check_system_update():
-    """Vérifie si une nouvelle version est disponible sur GitHub."""
+    """Vérifie si une nouvelle version est disponible sur GitHub.
+    Échec silencieux si le dépôt est privé / hors-ligne (pas d'erreur alarmante côté UI)."""
     import urllib.request
     from core.platform_info import get_version
+    current_version = get_version().strip()
     try:
-        url = "https://raw.githubusercontent.com/faelnor92/athena/main/VERSION"
+        url = "https://raw.githubusercontent.com/faelnor92/Athena/main/VERSION"
         req = urllib.request.Request(url, headers={'Cache-Control': 'no-cache'})
         with urllib.request.urlopen(req, timeout=5) as response:
             latest_version = response.read().decode('utf-8').strip()
-        current_version = get_version().strip()
         has_update = (latest_version != current_version and latest_version != "")
         return {
             "update_available": has_update,
             "current_version": current_version,
             "latest_version": latest_version
         }
-    except Exception as e:
-        return {"update_available": False, "error": str(e)}
+    except Exception:
+        # Dépôt privé / hors-ligne : vérification impossible en anonyme → on n'alarme pas l'UI.
+        return {"update_available": False, "current_version": current_version, "check_unavailable": True}
 
 @router.post("/api/system/update_run")
 async def run_system_update():
