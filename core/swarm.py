@@ -1522,7 +1522,12 @@ class Swarm:
             # appelle quand même un outil masqué qu'il a le droit d'utiliser, on l'exécute.
             # Conséquence : zéro perte de capacité, le filtre ne réduit jamais l'efficacité.
             _secured_tools = list(effective_tools)
-            if _tool_filter_enabled and current_agent.supports_tools and not _tool_subset_done:
+            # IMPORTANT : on ne filtre QUE l'orchestrateur (gros jeu d'outils hétérogène). Un
+            # SPÉCIALISTE (ex. Codeur) a un jeu focalisé : le filtrer lui masque ses propres
+            # outils métier (write_file, edit_file…) → le LLM, ne voyant pas leur SCHÉMA, invente
+            # de mauvais paramètres (write_file(file=…) au lieu de path=…) et tout échoue.
+            _is_orchestrator = (current_agent.name == getattr(self, "orchestrator_name", "Athena"))
+            if _tool_filter_enabled and current_agent.supports_tools and not _tool_subset_done and _is_orchestrator:
                 _tool_subset_done = True
                 _avail = {f.__name__ for f in _secured_tools}
                 if len(_avail) >= _tool_filter_min:
@@ -1873,6 +1878,13 @@ class Swarm:
                     "synthèse (pas `transfer_to_`, qui perdrait les autres). SUIVI : modif d'un livrable "
                     "récent → re-transfère au même spécialiste. LIVRAISON : recopie INTÉGRALEMENT le "
                     "travail rendu par un spécialiste.\n")
+                system_prompt += (
+                    "ANNONCE : chaque fois que tu délègues (`delegate_to_…`) ou transfères "
+                    "(`transfer_to_…`), DIS-LE explicitement à l'utilisateur dans ta réponse (ex. « Je "
+                    "confie cette partie à Julie, notre juriste ») — qu'il sache qui prend la main. "
+                    "COHÉRENCE : une même catégorie de demande → le MÊME choix ; par DÉFAUT déléguer "
+                    "(`delegate_to_`, tu gardes la main et tu synthétises), `transfer_to_` seulement si "
+                    "l'utilisateur veut basculer durablement dans ce métier.\n")
                 if "debate_between_agents" in _tool_names:
                     system_prompt += (
                         "DÉBAT/TABLE RONDE demandé (« organise un débat entre… ») : appelle "
@@ -2180,6 +2192,24 @@ class Swarm:
                         if hit and (time.time() - hit[0]) < ttl:
                             logger.info("✓ outil '%s' (cache)", name)
                             return hit[1]
+                # Filet de sécurité : le modèle invente parfois un nom de paramètre
+                # (write_file(file=…) au lieu de path=…) ou un kwarg en trop → TypeError. On
+                # mappe quelques alias sûrs puis on ignore les arguments hors-signature (sauf si
+                # la fonction accepte **kwargs). Complète le fait d'exposer les schémas (filtre).
+                try:
+                    import inspect as _inspect
+                    _params = _inspect.signature(fn).parameters
+                    _accepts_kwargs = any(p.kind == _inspect.Parameter.VAR_KEYWORD for p in _params.values())
+                    if not _accepts_kwargs and isinstance(a, dict):
+                        for _alias in ("file", "filename", "filepath", "file_path"):
+                            if _alias in a and _alias not in _params and "path" in _params and "path" not in a:
+                                a["path"] = a.pop(_alias)
+                        _unknown = [k for k in a if k not in _params]
+                        if _unknown:
+                            logger.warning("outil '%s' : paramètre(s) hors-signature ignoré(s) %s", name, _unknown)
+                            a = {k: v for k, v in a.items() if k in _params}
+                except Exception:
+                    pass
                 t0 = time.time()
                 try:
                     res = fn(**a)

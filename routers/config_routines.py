@@ -256,6 +256,32 @@ async def trigger_hook(rid: str, request: Request, token: str = None) -> Dict[st
 # Lancement du planificateur
 start_routine_scheduler(_run_routine)
 
+@router.post("/api/voice/transcribe")
+async def voice_transcribe(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """Transcription SIMPLE (texte brut) pour la dictée du chat — Whisper local, SANS
+    résumé/diarisation (contrairement à /api/meeting/transcribe). Rapide."""
+    import uuid as _uuid
+    try:
+        content = await file.read()
+        try:
+            import whisper
+        except ImportError:
+            return {"error": "Transcription indisponible : Whisper n'est pas installé sur le serveur."}
+        os.makedirs("workspace", exist_ok=True)
+        tmp = f"workspace/temp_dictee_{_uuid.uuid4().hex}_{(file.filename or 'audio')}"
+        with open(tmp, "wb") as f:
+            f.write(content)
+        try:
+            model = whisper.load_model("base")
+            text = (model.transcribe(tmp).get("text") or "").strip()
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        return {"text": text}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @router.post("/api/meeting/transcribe")
 async def transcribe_meeting(file: UploadFile = File(...)) -> Dict[str, Any]:
     try:

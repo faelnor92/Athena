@@ -1,5 +1,52 @@
 # Historique des Versions (Changelog)
 
+## v0.11.11 (Doc d'installation)
+
+### 📦 Installation
+- **SETUP.md** : recommande explicitement un **venv isolé en Python 3.13** (`python3.13 -m venv .venv`) pour éviter tout conflit avec d'anciennes dépendances système (ex. un vieux chromadb 0.5.x qui casse la mémoire), et de **lancer avec le python du venv** (pas le `python3` système).
+- Documente l'installation **optionnelle** de `openai-whisper` (transcription de réunion + dictée vocale du chat — distinct du `faster-whisper` de l'assistant Jarvis) dans `SETUP.md` et `requirements-voice.txt`. Sans elle, la transcription bascule sur un LLM cloud si une clé est configurée.
+
+## v0.11.10 (Robustesse des appels d'outils)
+
+### 🐛 Robustesse
+- **Appels d'outils tolérants** : si le modèle invente un nom de paramètre (ex. `write_file(file=…)` au lieu de `path=…`) ou ajoute un argument hors-signature, on mappe les alias sûrs (`file`/`filename`/`filepath`/`file_path` → `path`) et on **ignore** les arguments inconnus au lieu de planter (« unexpected keyword argument »). Filet complémentaire à l'exposition des schémas (v0.11.9).
+
+> ℹ️ **Déploiement** : pour bénéficier des correctifs de dépendances (chromadb 1.5.9 qui répare `search_memory`/`store_document`, Playwright, etc.), lancer le serveur sur le **venv 3.13** : `.venv/bin/python server.py` (et non le `python3` système qui garde les anciennes deps).
+
+## v0.11.9 (Fix majeur : le Codeur retrouve ses outils)
+
+### 🐛 Correctif d'orchestration majeur
+- **Le filtre d'outils ne s'applique plus qu'à l'orchestrateur.** Avant, il s'appliquait à **tout** agent ayant >20 outils — y compris le **Codeur** — et lui **masquait ses propres outils métier** (`write_file`, `edit_file`, `execute_bash_command`…). Ne voyant pas leur **schéma**, le modèle **inventait** de mauvais paramètres (`write_file(file=…)` au lieu de `path=…`) ou des outils inexistants (`run_shell_command`) → **toutes les écritures de fichiers échouaient**, et l'agent se rabattait sur `store_document` (code stocké en mémoire au lieu d'écrire les fichiers).
+- **Conséquence corrigée** : un spécialiste (Codeur…) garde désormais **tous ses outils exposés** → il peut réellement créer/éditer des fichiers. C'était la racine des échecs « créer un site » et de plusieurs symptômes annexes.
+
+## v0.11.8 (Correctif store_document)
+
+### 🔧 Corrections
+- **store_document** : ne plante plus avec « object of type 'int' has no len() » quand le contenu (ou la source) passé par le LLM est un nombre ou `None` — coercition en chaîne avant l'indexation chromadb.
+
+## v0.11.7 (Sélecteur de listes dynamique)
+
+### 🔧 Corrections
+- **Listes** : le sélecteur affiche désormais **toutes** les listes existantes (peuplé dynamiquement via `/api/lists/names`). Avant, il était figé sur « Tâches » et « Courses » → une liste créée par un agent (ex. « **todo** », le nom exact demandé) restait **invisible** dans l'UI, alors que les éléments étaient bien enregistrés côté serveur. Complète le rafraîchissement auto de v0.11.6.
+
+## v0.11.6 (Logs résilients & rafraîchissement des listes)
+
+### 🔧 Corrections
+- **Logs résilients au crash** : le tampon du panneau de logs est **préchargé depuis `logs/athena.log`** au démarrage → l'historique récent survit à un redémarrage / crash du serveur (plus de panneau vide).
+- **Listes (TODO / courses / tâches)** : la vue se **rafraîchit automatiquement** après une action d'un agent (ajout / coche / suppression). Avant, l'élément était bien enregistré côté serveur mais l'UI restait figée — d'où l'impression que « rien n'était écrit ».
+
+## v0.11.5 (Lot de corrections — statut, MAJ, dictée, délégation)
+
+### 🏢 Open Space
+- Statut par défaut **« Au repos »** (gris) ; seul l'agent **actif** est « Actif » — plus de pastille verte permanente sur tous les agents.
+
+### 🔧 Corrections
+- **Vérification de mise à jour** : échec **silencieux** quand le dépôt est privé/hors-ligne (URL corrigée + plus d'« Erreur de vérification : HTTP 404 » alarmante).
+- **Dictée vocale dans le chat** : bascule automatique sur le **STT serveur** (Whisper, nouvel endpoint léger `/api/voice/transcribe`) quand l'API navigateur (Web Speech) est absente — marche désormais comme la Réunion (Firefox, etc.).
+
+### 🤖 Orchestration
+- Athena **annonce** désormais explicitement quand elle délègue/transfère (« Je confie ça à… ») et reste **cohérente** : déléguer par défaut, transférer seulement pour basculer durablement dans un métier.
+
 ## v0.11.4 (Finitions interface)
 
 ### 🧭 Interface

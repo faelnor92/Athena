@@ -360,13 +360,14 @@
         OpenSpace.focus(agent.name);
       });
       sceneEl.appendChild(ws);
-      applyStatus(agent.name, agent.status || "busy");
+      applyStatus(agent.name, agent.status || (agent.name === appActive() ? "busy" : "idle"));
     });
 
     // légende + aide
     view.insertAdjacentHTML("beforeend",
       '<div class="office-legend">' +
         '<span class="leg"><span class="leg-dot busy"></span><b>Actif</b></span>' +
+        '<span class="leg"><span class="leg-dot" style="background:#64748b;box-shadow:0 0 6px #64748b;"></span><b>Au repos</b></span>' +
         '<span class="leg"><span class="leg-dot paused"></span><b>En pause</b></span>' +
         '<span class="leg"><span class="leg-dot quota"></span><b>Quota</b></span>' +
       '</div>' +
@@ -382,7 +383,7 @@
   function esc(s) { return String(s).replace(/[&<>]/g, function (m) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[m]; }); }
 
   // --- Statut & activité -------------------------------------------------
-  var ST = { busy: "#22c55e", paused: "#f59e0b", quota: "#ef4444" };
+  var ST = { idle: "#64748b", busy: "#22c55e", paused: "#f59e0b", quota: "#ef4444" };
   function applyStatus(name, status) {
     var ws = document.getElementById("ws-" + name);
     if (!ws) return;
@@ -390,7 +391,7 @@
     if (status === "paused") ws.classList.add("paused");
     if (status === "quota") ws.classList.add("quota");
     var dot = ws.querySelector(".ws-dot");
-    if (dot) dot.style.setProperty("--st-color", ST[status] || ST.busy);
+    if (dot) dot.style.setProperty("--st-color", ST[status] || ST.idle);
   }
 
   function setActivity(name, text) {
@@ -406,6 +407,10 @@
     window.currentActiveAgent = name;
     if (sceneEl) sceneEl.classList.add("has-active");
     document.querySelectorAll(".ws").forEach(function (w) { w.classList.toggle("active", w.id === "ws-" + name); });
+    // Statut : seul l'agent actif est « Actif » (vert) ; les autres au repos (gris).
+    (appAgents() || []).forEach(function (a) {
+      if (!a.status) applyStatus(a.name, a.name === name ? "busy" : "idle");
+    });
     // relais vers l'app si dispo (met à jour le chat de droite)
     if (!silent && typeof window.setActiveAgentVisual === "function") {
       try { window.setActiveAgentVisual(name); } catch (e) {}
