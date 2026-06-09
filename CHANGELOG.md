@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.11.5 (Lot de corrections — statut, MAJ, dictée, délégation)
+
+### 🏢 Open Space
+- Statut par défaut **« Au repos »** (gris) ; seul l'agent **actif** est « Actif » — plus de pastille verte permanente sur tous les agents.
+
+### 🔧 Corrections
+- **Vérification de mise à jour** : échec **silencieux** quand le dépôt est privé/hors-ligne (URL corrigée + plus d'« Erreur de vérification : HTTP 404 » alarmante).
+- **Dictée vocale dans le chat** : bascule automatique sur le **STT serveur** (Whisper, nouvel endpoint léger `/api/voice/transcribe`) quand l'API navigateur (Web Speech) est absente — marche désormais comme la Réunion (Firefox, etc.).
+
+### 🤖 Orchestration
+- Athena **annonce** désormais explicitement quand elle délègue/transfère (« Je confie ça à… ») et reste **cohérente** : déléguer par défaut, transférer seulement pour basculer durablement dans un métier.
+
 ## v0.11.4 (Finitions interface)
 
 ### 🧭 Interface
