@@ -5251,8 +5251,34 @@ if (btnRefreshLists) {
     btnRefreshLists.addEventListener("click", loadListItems);
 }
 
+async function populateListSelector() {
+    // Peuple le sélecteur avec TOUTES les listes existantes (sinon une liste créée par un
+    // agent — ex. « todo » — reste invisible car absente des options statiques).
+    const sel = document.getElementById("active-list-selector");
+    if (!sel) return;
+    try {
+        const d = await (await apiFetch("/api/lists/names")).json();
+        const names = (d && d.names) || [];
+        const counts = (d && d.counts) || {};
+        const LABELS = { taches: "📝 Tâches", todo: "📝 Todo", courses: "🛒 Courses",
+                         epicerie: "🛒 Épicerie", idees: "💡 Idées", idee: "💡 Idées" };
+        const wanted = Array.from(new Set(["taches", "courses", ...names]));
+        const current = sel.value;
+        sel.innerHTML = "";
+        wanted.forEach(n => {
+            const o = document.createElement("option");
+            o.value = n;
+            const base = LABELS[n] || ("📋 " + n.charAt(0).toUpperCase() + n.slice(1));
+            o.textContent = (counts[n] != null) ? `${base} (${counts[n]})` : base;
+            sel.appendChild(o);
+        });
+        if (current && wanted.includes(current)) sel.value = current;
+    } catch (e) {}
+}
+
 async function loadListItems() {
     const listContainer = document.getElementById("list-items-container");
+    await populateListSelector();
     const activeList = document.getElementById("active-list-selector").value;
     if (!listContainer) return;
     

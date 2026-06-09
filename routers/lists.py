@@ -11,6 +11,15 @@ class ListAddItemRequest(BaseModel):
     text: str
 
 
+@router.get("/api/lists/names")
+async def get_list_names_api():
+    """Tous les noms de listes existants (+ nb d'éléments) pour peupler dynamiquement
+    le sélecteur de l'UI — sinon une liste créée par un agent (ex. « todo ») reste invisible."""
+    from tools.list_tools import read_lists
+    data = read_lists()
+    return {"names": sorted(data.keys()), "counts": {k: len(v or []) for k, v in data.items()}}
+
+
 @router.get("/api/lists")
 async def get_lists_api(list_name: str = "taches"):
     from tools.list_tools import get_list_items
