@@ -91,7 +91,7 @@ def run_ssh_command(command: str, host_id: str = None) -> tuple[str, str, int]:
     # l'ajouter aveuglément (AutoAddPolicy était vulnérable au MITM).
     # Opt-in explicite et documenté pour le premier raccordement.
     if str(cfg.get("auto_add") or "").lower() in ("true", "1", "yes"):
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507 — opt-in explicite (auto_add) ; RejectPolicy par défaut
     else:
         ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
     
