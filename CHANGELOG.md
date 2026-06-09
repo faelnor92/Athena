@@ -1,5 +1,23 @@
 # Historique des Versions (Changelog)
 
+## v0.11.0 (Python 3.13, Apache 2.0 & CacheAligner natif)
+Modernisation de la plateforme : passage à Python 3.13, mises à jour majeures des dépendances,
+bascule en licence Apache 2.0, et une optimisation native du cache de prompt sans perte.
+
+### 🐍 Python 3.13 & dépendances
+- **Python 3.11 → 3.13** partout : image Docker de l'app, CI, et images par défaut de la sandbox d'exécution de code (`sandbox_runner`, `dev_container`, `athenadesign_runner`).
+- **chromadb 0.5.0 → 1.5.9** : requis pour 3.13 (la 0.5.0 utilise `np.float_`, supprimé en numpy 2, et numpy<2 n'a pas de wheels 3.13). La 1.x ne dépend plus de fastapi → aucun conflit avec la stack web épinglée. Lecture transparente des bases `.chroma_db` existantes (aucune migration).
+- **litellm 1.52.12 → 1.88.1** et **openai 1.55.3 → 2.41.0** (openai sans usage direct, transitif via litellm).
+
+### 🔒 Sécurité CI
+- **GitHub Actions sur Node 24** : `actions/checkout@v5`, `actions/setup-python@v6` (fin du support Node 20 en septembre 2026).
+
+### ⚡ CacheAligner natif (efficacité tokens, sans perte)
+- Le **timestamp** (`%H:%M`) et le **contexte RAG** étaient inclus dans le bloc système marqué `cache_control` : ils invalidaient le **prompt cache** du provider à chaque tour (le RAG dépend du message courant). Ils sont désormais émis dans un **message système volatile après l'historique**, hors du préfixe caché. Le bloc système stable redevient byte-identique d'un tour à l'autre → **cache HIT** sur les conversations multi-tours. Aucune perte d'information (contexte repositionné près de la requête).
+
+### 📄 Licence
+- **MIT → Apache 2.0** (`LICENSE` + badges/sections des 7 README). Le sous-outil tiers `tools/mcp-servers/ha-mcp` conserve sa licence MIT propre.
+
 ## v0.10.1 (Internationalisation)
 Athena parle désormais la langue de l'utilisateur — interface **et** réponses des agents.
 

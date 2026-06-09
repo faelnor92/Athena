@@ -1,8 +1,8 @@
 # 🎛️ Athena — セルフホスト型マルチエージェント・フレームワーク
 
-![Version](https://img.shields.io/badge/version-0.10.1-blue.svg)
+![Version](https://img.shields.io/badge/version-0.11.0-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
 **言語：** [Français](README.md) · [English](README.en.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Deutsch](README.de.md) · [中文](README.zh.md) · 日本語（このファイル）
 
@@ -148,4 +148,4 @@ docker compose --profile observability up -d         # Phoenix (UI: http://local
 
 ## 📄 ライセンス
 
-**MIT** ライセンスで配布 — [LICENSE](LICENSE) を参照。自由に利用・改変・再配布できます。
+**Apache 2.0** ライセンスで配布 — [LICENSE](LICENSE) を参照。自由に利用・改変・再配布できます。
