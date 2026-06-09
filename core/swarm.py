@@ -1638,6 +1638,15 @@ class Swarm:
                     f"({current_agent.display_name or current_agent.name}). L'historique peut contenir des "
                     f"messages d'autres agents — ne reprends jamais leur nom ni leur rôle.\n"
                 )
+                if current_agent.name != getattr(self, "orchestrator_name", "Athena"):
+                    system_prompt += (
+                        "🎯 PÉRIMÈTRE : reste STRICTEMENT dans TON métier. L'historique ET la mémoire "
+                        "peuvent contenir des travaux d'AUTRES agents (posts, campagnes, code, romans, "
+                        "traductions…) : c'est du CONTEXTE, pas ta mission. Ne propose JAMAIS de réaliser "
+                        "une tâche relevant d'un autre métier (ex. un visuel ou une campagne = "
+                        "CommunityManager). Tes propositions de suite doivent relever de TON domaine ; "
+                        "pour le reste, invite l'utilisateur à revenir vers l'orchestrateur.\n"
+                    )
 
             # Ne forcer la présentation que si aucun message de cet agent n'est déjà présent dans l'historique
             has_agent_spoken = any(msg.get("role") == "assistant" and msg.get("name") == current_agent.name for msg in messages)
@@ -2005,76 +2014,75 @@ class Swarm:
                     # qui déclenchaient à tort des relais (Juriste→Auteur, Athena→CommunityManager).
                     if message.content and len(message.content.strip()) <= 400:
                         content_lower = message.content.lower()
-                        
-                        # Liste des mots-clés indiquant une intention de transfert ou délégation
-                        handoff_keywords = [
-                            "transfère", "transfert", "transférer", 
-                            "relais", "délègue", "déléguer", "délégation", 
-                            "passe la main", "passer la main", "demande à", "demander à",
-                            "charge de", "charger de"
-                        ]
-                        
-                        has_handoff_keyword = any(kw in content_lower for kw in handoff_keywords)
-                        
-                        if has_handoff_keyword:
-                            for target_agent_name, target_agent in self.agents.items():
-                                if target_agent_name == current_agent.name:
-                                    continue
 
-                                # GARDE anti faux-positif : ne relayer (sémantiquement) que vers un
-                                # agent que l'agent courant a le DROIT de joindre (outil transfer_to_/
-                                # delegate_to_ présent). Sinon des mots courants du texte ("l'auteur" =
-                                # le malfaiteur, "demande à", "charge de"…) déclenchaient des relais
-                                # absurdes (ex. Juriste → Auteur). Respecte la config `handoffs`.
-                                if not any(
-                                    f.__name__ in (f"transfer_to_{target_agent_name}",
-                                                   f"delegate_to_{target_agent_name}")
-                                    for f in effective_tools
-                                ):
-                                    continue
+                        # Agents que l'agent courant a le DROIT de joindre (handoff CONFIGURÉ).
+                        # current_agent.tools = permissions réelles (PAS effective_tools, que le
+                        # routeur peut restreindre — sinon "transfère à Julie" échouerait). Côté
+                        # spécialiste, ça bloque les relais non configurés (ex. Juriste → Auteur).
+                        reachable = [n for n, a in self.agents.items()
+                                     if n != current_agent.name and any(
+                                         getattr(f, "__name__", "") in (f"transfer_to_{n}", f"delegate_to_{n}")
+                                         for f in getattr(current_agent, "tools", []))]
 
-                                # Identifiants sémantiques pour cet agent
-                                agent_identifiers = [target_agent_name.lower()]
-                                if target_agent.display_name:
-                                    agent_identifiers.append(target_agent.display_name.lower())
-                                    for part in target_agent.display_name.lower().split():
-                                        if len(part) > 2:
-                                            agent_identifiers.append(part)
-                                            
-                                # Synonymes métier spécifiques pour maximiser la réussite
-                                if target_agent_name == "Codeur":
-                                    agent_identifiers.extend(["développeur", "dev", "codeur"])
-                                elif target_agent_name == "Auteur":
-                                    agent_identifiers.extend(["écrivain", "romancier", "auteur"])
-                                elif target_agent_name == "CommunityManager":
-                                    agent_identifiers.extend(["cm", "influenceur", "community", "social", "facebook", "instagram", "twitter", "reseaux", "réseaux", "post", "promo", "promotion", "publication", "publier", "publie"])
-                                elif target_agent_name == "Traducteur":
-                                    agent_identifiers.extend(["traducteur", "traductrice", "traduction", "traduire"])
-                                    
-                                # Si le message mentionne explicitement cet agent, on effectue le relais
-                                import re
-                                matched = False
-                                for ident in agent_identifiers:
-                                    # \b assure qu'on matche le mot exact (évite "dev" dans "développer" ou "devenir")
-                                    if re.search(rf"\b{re.escape(ident)}\b", content_lower):
-                                        matched = True
-                                        break
-                                        
-                                if matched:
-                                    previous_agent_name = current_agent.name
-                                    current_agent = target_agent
-                                    print(f"[\033[95mTRANSITION SÉMANTIQUE ULTRA-ROBUSTE\033[0m -> Passage à l'agent \033[94m{current_agent.name}\033[0m]")
-                                    steps.append({
-                                        "type": "handoff",
-                                        "from": previous_agent_name,
-                                        "to": current_agent.name
-                                    })
-                                    messages.append({
-                                        "role": "user",
-                                        "content": f"[Relais système : La demande a été transférée à l'agent {target_agent_name} ({target_agent.display_name or target_agent_name}). Veuillez répondre à l'utilisateur.]"
-                                    })
-                                    semantic_transitioned = True
-                                    break
+                        # DÉCLENCHEUR DYNAMIQUE (aucun mot-clé codé en dur) : on consulte le juge
+                        # d'intention dès que le message CITE un collègue joignable par son nom ou son
+                        # alias. La liste vient des agents RÉELS → marche pour tout nouvel agent
+                        # (rôle imprévu) sans toucher au code.
+                        import re as _reG
+                        def _mentions_agent(_n):
+                            _ids = [_n] + ([self.agents[_n].display_name] if self.agents[_n].display_name else [])
+                            return any(_reG.search(rf"\b{_reG.escape(str(_w).lower())}\b", content_lower)
+                                       for _w in _ids if _w)
+                        if reachable and any(_mentions_agent(n) for n in reachable):
+                            target_name = None
+                            if reachable:
+                                # DÉCISION PAR LE SENS, pas par mots-clés : un petit juge LLM dit si
+                                # l'assistant a vraiment décidé de passer la main, et à QUI. Un message
+                                # qui RÉPOND lui-même à la demande (même s'il cite un nom propre ou un
+                                # terme du domaine, ex. "l'auteur" = le malfaiteur) n'est PAS un relais.
+                                try:
+                                    _rmodel = os.getenv("FAST_MODEL", "").strip() or current_agent.model
+                                    _roster = "\n".join(
+                                        f"- {n}" + (f" (alias {self.agents[n].display_name})"
+                                                    if self.agents[n].display_name else "")
+                                        for n in reachable)
+                                    _rsys = (
+                                        "Tu analyses le message d'un assistant d'un système multi-agents. "
+                                        "A-t-il DÉCIDÉ de passer la main à l'un de ces collègues pour qu'il "
+                                        "traite la suite de la demande ?\n" + _roster +
+                                        "\n\nRéponds UNIQUEMENT par le NOM EXACT d'un collègue ci-dessus s'il "
+                                        "lui confie la suite, sinon « NON ». Fonde-toi sur l'INTENTION réelle, "
+                                        "pas sur des mots isolés : un message qui répond lui-même à la demande "
+                                        "(même s'il cite un nom propre ou un terme du domaine) = NON."
+                                    )
+                                    _rresp = self._complete(
+                                        _rmodel,
+                                        [{"role": "system", "content": _rsys},
+                                         {"role": "user", "content": str(message.content)[:1200]}],
+                                        tools_schema=None, allow_continuation=False, allow_fallback=False)
+                                    _rans = (_rresp.choices[0].message.content or "").strip()
+                                    import re as _reI
+                                    _rtok = _reI.sub(r"[^a-z0-9_]", "", (_rans.split() or [""])[0].lower())
+                                    target_name = next((n for n in reachable if n.lower() == _rtok), None)
+                                except Exception as _eRelay:
+                                    print(f"[Relais par intention] juge indisponible ({_eRelay}) — pas de relais.")
+                                    target_name = None
+
+                            if target_name:
+                                target_agent = self.agents[target_name]
+                                previous_agent_name = current_agent.name
+                                current_agent = target_agent
+                                print(f"[\033[95mRELAIS PAR INTENTION\033[0m -> \033[94m{current_agent.name}\033[0m]")
+                                steps.append({
+                                    "type": "handoff",
+                                    "from": previous_agent_name,
+                                    "to": current_agent.name
+                                })
+                                messages.append({
+                                    "role": "user",
+                                    "content": f"[Relais système : la demande a été transférée à l'agent {target_name} ({target_agent.display_name or target_name}). Réponds à l'utilisateur.]"
+                                })
+                                semantic_transitioned = True
                                     
                     if semantic_transitioned:
                         continue
