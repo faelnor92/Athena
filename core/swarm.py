@@ -2192,6 +2192,24 @@ class Swarm:
                         if hit and (time.time() - hit[0]) < ttl:
                             logger.info("✓ outil '%s' (cache)", name)
                             return hit[1]
+                # Filet de sécurité : le modèle invente parfois un nom de paramètre
+                # (write_file(file=…) au lieu de path=…) ou un kwarg en trop → TypeError. On
+                # mappe quelques alias sûrs puis on ignore les arguments hors-signature (sauf si
+                # la fonction accepte **kwargs). Complète le fait d'exposer les schémas (filtre).
+                try:
+                    import inspect as _inspect
+                    _params = _inspect.signature(fn).parameters
+                    _accepts_kwargs = any(p.kind == _inspect.Parameter.VAR_KEYWORD for p in _params.values())
+                    if not _accepts_kwargs and isinstance(a, dict):
+                        for _alias in ("file", "filename", "filepath", "file_path"):
+                            if _alias in a and _alias not in _params and "path" in _params and "path" not in a:
+                                a["path"] = a.pop(_alias)
+                        _unknown = [k for k in a if k not in _params]
+                        if _unknown:
+                            logger.warning("outil '%s' : paramètre(s) hors-signature ignoré(s) %s", name, _unknown)
+                            a = {k: v for k, v in a.items() if k in _params}
+                except Exception:
+                    pass
                 t0 = time.time()
                 try:
                     res = fn(**a)
