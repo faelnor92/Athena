@@ -1,7 +1,12 @@
 # Dépendances OPTIONNELLES du pipeline vocal local (voir voice/).
 # Installation : pip install -r requirements-voice.txt
+#
+# NB : la TRANSCRIPTION DE RÉUNION et la DICTÉE VOCALE DU CHAT utilisent un AUTRE moteur,
+# `openai-whisper` (import whisper), PAS le faster-whisper ci-dessous. Pour l'activer en LOCAL :
+#   pip install openai-whisper        # ⚠️ tire PyTorch (lourd)
+# (sans ça, la transcription bascule sur un LLM cloud si GEMINI_API_KEY / OPENAI_API_KEY est défini.)
 
-faster-whisper>=1.0.0      # STT local (CTranslate2)
+faster-whisper>=1.0.0      # STT local (CTranslate2) — pour l'assistant vocal « Jarvis »
 sounddevice>=0.4.6         # capture/lecture audio (PortAudio)
 numpy>=1.24                # traitement audio
 openwakeword>=0.6.0        # mot d'activation local (optionnel)
