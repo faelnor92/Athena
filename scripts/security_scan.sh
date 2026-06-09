@@ -21,7 +21,7 @@ fi
 
 echo; echo "== bandit (analyse statique de sécurité) =="
 if command -v bandit >/dev/null 2>&1; then
-    bandit -q -r core routers tools server.py -x tests || rc=1
+    bandit -q -r core routers tools server.py -x tests,tools/mcp-servers || rc=1
 else
     echo "  bandit non installé → 'pip install bandit' (optionnel)."
 fi

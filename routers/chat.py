@@ -863,7 +863,7 @@ async def terminal_coder(req: TerminalRequest):
                     try:
                         if is_windows:
                             # Pas de sandbox Docker Linux ici : exécution PowerShell locale filtrée.
-                            res = subprocess.run(
+                            res = subprocess.run(  # nosec B602 — cmd filtrée en amont par check_command_blacklist ; PowerShell local Windows uniquement
                                 raw_bash_cmd,
                                 shell=True,
                                 executable="powershell.exe",

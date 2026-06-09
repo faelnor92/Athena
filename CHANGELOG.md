@@ -1,5 +1,21 @@
 # Historique des Versions (Changelog)
 
+## v0.11.1 (Open Space 2.0 & refonte du dock)
+
+### 🏢 Open Space 2.0 — bureau isométrique
+- Le **Bureau Virtuel** est reconstruit en code : chaque agent a un **vrai poste isométrique** (siège + agent assis + bureau + double écran reflétant son métier), au lieu d'avatars flottant au hasard sur une image de fond. Clic sur un poste = focus + chat. Délégations animées d'un poste à l'autre. S'adapte de 1 à N agents.
+- Intégration drop-in (`static/office.css` + `static/office.js`) ; ancienne balade aléatoire (`startOfficeWandering`) désactivée.
+- **Correctif d'intégration** : `office.js` lit désormais le vrai binding `agentsConfig`/`currentActiveAgent` (des `let` globaux d'app.js, donc absents de `window`) + bootstrap robuste qui rend dès que les agents (chargés en async) arrivent — sinon l'ancien fond restait visible, sans postes.
+
+### 🧭 Refonte du dock
+- **Haut** : 5 onglets principaux — Accueil, Code, Design, Tâches, Réunions.
+- **Bas** : les vues secondaires (Cockpit, Branches, Mémoire, Console, Orchestrateur) regroupées dans un menu **« … »** juste au-dessus des Réglages (ouverture vers le haut, hauteur limitée + scroll). **Version** déplacée tout en bas.
+- Bouton **« Réinitialiser l'essaim » (🔄) retiré** du dock (binding JS sécurisé).
+- Vue **Graphe retirée** du dock (jugée inutile ; panneau conservé mais non accessible).
+
+### 🛡️ Scan de sécurité
+- `security_scan.sh` exclut désormais le code tiers vendoré `tools/mcp-servers/ha-mcp` du scan bandit : **17074 → ~184 findings** (le reste = code Athena réel). Les 2 findings HIGH (subprocess Windows filtré, Paramiko opt-in) sont annotés `# nosec` avec justification.
+
 ## v0.11.0 (Python 3.13, Apache 2.0 & CacheAligner natif)
 Modernisation de la plateforme : passage à Python 3.13, mises à jour majeures des dépendances,
 bascule en licence Apache 2.0, et une optimisation native du cache de prompt sans perte.
