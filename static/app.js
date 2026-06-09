@@ -7542,7 +7542,10 @@ async function loadMyUsage() {
     if (!box) return;
     try {
         const d = await (await apiFetch("/api/me/usage")).json();
-        const fmt = x => `${x.runs} req · ${x.tokens} tokens · ${Number(x.cost).toFixed(4)} €`;
+        const fmt = x => {
+            const avg = x.runs ? Math.round(x.tokens / x.runs) : 0;
+            return `${x.runs} req · ${x.tokens} tokens · <strong>${avg.toLocaleString()} tok/req</strong> · ${Number(x.cost).toFixed(4)} €`;
+        };
         box.innerHTML = `Aujourd'hui : ${fmt(d.today)}<br>30 jours : ${fmt(d.month)}<br>Total : ${fmt(d.total)}`;
     } catch (e) { box.textContent = "—"; }
 }
