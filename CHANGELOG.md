@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.11 (Doc d'installation)
+
+### 📦 Installation
+- **SETUP.md** : recommande explicitement un **venv isolé en Python 3.13** (`python3.13 -m venv .venv`) pour éviter tout conflit avec d'anciennes dépendances système (ex. un vieux chromadb 0.5.x qui casse la mémoire), et de **lancer avec le python du venv** (pas le `python3` système).
+- Documente l'installation **optionnelle** de `openai-whisper` (transcription de réunion + dictée vocale du chat — distinct du `faster-whisper` de l'assistant Jarvis) dans `SETUP.md` et `requirements-voice.txt`. Sans elle, la transcription bascule sur un LLM cloud si une clé est configurée.
+
 ## v0.11.10 (Robustesse des appels d'outils)
 
 ### 🐛 Robustesse
