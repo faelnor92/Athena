@@ -2537,3 +2537,12 @@ code[class*="language-"] {
 .mcp-market-card-btn:hover {
     background: #00cccc;
 }
+
+/* Le menu « … » (Plus) est désormais en bas du dock : il doit s'ouvrir vers le
+   HAUT (aligné en bas) sinon il sort sous l'écran. Hauteur max + scroll de sécurité. */
+.dock-footer .dock-more-menu {
+    top: auto;
+    bottom: 0;
+    max-height: 70vh;
+    overflow-y: auto;
+}

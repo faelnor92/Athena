@@ -1,0 +1,354 @@
+/* =========================================================================
+   office.css — OPEN SPACE 2.0 : bureau isométrique dessiné en code
+   Remplace l'ancien #view-office (image de fond + avatars flottants).
+   Tokens repris de style.css (--color-Athena, --bg-card, etc.).
+   ========================================================================= */
+
+/* --- Viewport --------------------------------------------------------- */
+#view-office {
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+    background:
+        radial-gradient(120% 90% at 50% 8%, #16233f 0%, #0a1326 45%, #050a17 100%);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.06));
+    isolation: isolate;
+}
+
+/* Liseré néon ambiant en bas du viewport */
+#view-office::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 120px;
+    background: linear-gradient(to top, rgba(0,240,255,0.05), transparent);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* --- Caméra (pan + zoom) ---------------------------------------------- */
+.office-stage {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    cursor: grab;
+    z-index: 1;
+}
+.office-stage.grabbing { cursor: grabbing; }
+
+.office-scene {
+    position: relative;
+    transform-origin: center center;
+    transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+}
+.office-scene.dragging { transition: none; }
+
+.office-backdrop {
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    overflow: visible;
+}
+
+/* =========================================================================
+   POSTE DE TRAVAIL (workstation)
+   Boîte 220×210 ; le chair-SVG (arrière), l'agent et le desk-SVG (avant) sont
+   tous superposés dans le même repère → l'agent est ASSIS derrière le bureau.
+   ========================================================================= */
+.ws {
+    position: absolute;
+    width: 220px;
+    height: 210px;
+    /* l'ancre (left/top) tombe au centre-bas du poste */
+    transform: translate(-50%, -62%);
+    cursor: pointer;
+    transition: filter 0.3s ease;
+}
+
+.ws-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.ws-svg-back  { z-index: 1; }   /* siège, derrière l'agent */
+.ws-svg-front { z-index: 3; }   /* bureau + écrans, devant l'agent */
+
+/* Sprite agent assis : entre le siège et le bureau, jambes masquées par le plateau */
+.ws-agent {
+    position: absolute;
+    left: 50%;
+    bottom: 66px;          /* hanches à hauteur de l'assise ; bas du corps caché */
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 2;
+    transition: filter 0.3s ease, transform 0.3s ease;
+}
+.ws-agent svg {
+    width: 60px; height: auto;
+    animation: wsBreath 3.4s ease-in-out infinite;
+}
+@keyframes wsBreath {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-2px); }
+}
+
+/* Halo de sélection au sol */
+.ws-ring {
+    position: absolute;
+    left: 50%; bottom: 2px;
+    z-index: 0;
+    width: 132px; height: 64px;
+    transform: translateX(-50%) scaleY(0.5);
+    border-radius: 50%;
+    border: 2px solid var(--agent-color, #00f0ff);
+    box-shadow: 0 0 18px var(--agent-color, #00f0ff), inset 0 0 14px var(--agent-color, #00f0ff);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Plaque nominative + statut */
+.ws-plate {
+    position: absolute;
+    left: 50%;
+    bottom: -8px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 5px 11px 6px;
+    min-width: 96px;
+    background: rgba(7, 11, 22, 0.82);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 9px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.45);
+    pointer-events: none;
+    z-index: 4;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.ws-plate-name {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'Outfit','Inter',sans-serif;
+    font-weight: 700;
+    font-size: 0.78rem;
+    color: #f1f5f9;
+    line-height: 1;
+}
+.ws-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--st-color, #64748b);
+    box-shadow: 0 0 7px var(--st-color, #64748b);
+    flex: none;
+}
+.ws-plate-role {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--agent-color, #94a3b8);
+    opacity: 0.85;
+    line-height: 1;
+}
+.ws-plate-status {
+    font-size: 0.58rem;
+    color: #94a3b8;
+    line-height: 1.1;
+    max-width: 150px;
+    text-align: center;
+}
+
+/* Bulle d'activité (au-dessus des écrans) */
+.ws-bubble {
+    position: absolute;
+    left: 50%;
+    top: -6px;
+    transform: translate(-50%, -100%);
+    padding: 5px 10px;
+    background: rgba(7, 11, 22, 0.92);
+    border: 1px solid var(--agent-color, rgba(255,255,255,0.2));
+    border-radius: 9px;
+    color: #e7eefc;
+    font-size: 0.62rem;
+    font-weight: 500;
+    white-space: nowrap;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.5), 0 0 10px color-mix(in srgb, var(--agent-color) 35%, transparent);
+    pointer-events: none;
+    z-index: 6;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.ws-bubble::after {
+    content: "";
+    position: absolute;
+    left: 50%; bottom: -5px;
+    transform: translateX(-50%) rotate(45deg);
+    width: 8px; height: 8px;
+    background: rgba(7, 11, 22, 0.92);
+    border-right: 1px solid var(--agent-color, rgba(255,255,255,0.2));
+    border-bottom: 1px solid var(--agent-color, rgba(255,255,255,0.2));
+}
+.ws.show-bubble .ws-bubble,
+.ws:hover .ws-bubble { opacity: 1; transform: translate(-50%, -106%); }
+
+/* --- États visuels ---------------------------------------------------- */
+.ws:hover { z-index: 999 !important; }
+.ws:hover .ws-agent { transform: translateX(-50%) translateY(-3px); }
+
+.ws.active { z-index: 998 !important; }
+.ws.active .ws-ring { opacity: 1; animation: wsRingPulse 1.8s ease-in-out infinite; }
+.ws.active .ws-plate {
+    border-color: var(--agent-color, #00f0ff);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.5), 0 0 16px color-mix(in srgb, var(--agent-color) 45%, transparent);
+}
+.ws.active .ws-bubble { opacity: 1; transform: translate(-50%, -106%); }
+@keyframes wsRingPulse {
+    0%, 100% { opacity: 0.55; transform: translateX(-50%) scaleY(0.5) scale(1); }
+    50%      { opacity: 1;    transform: translateX(-50%) scaleY(0.5) scale(1.07); }
+}
+
+/* Agents inactifs : légèrement atténués pour faire ressortir l'actif */
+.office-scene.has-active .ws:not(.active) .ws-agent { filter: saturate(0.7) brightness(0.85); }
+.office-scene.has-active .ws:not(.active) .ws-svg    { filter: brightness(0.9); }
+
+/* Pause / quota : désaturation + écrans éteints */
+.ws.paused .ws-agent { filter: saturate(0.45) brightness(0.8); }
+.ws.paused .ws-screenglow { opacity: 0.15 !important; animation: none !important; }
+.ws.quota .ws-screenglow { opacity: 0.1 !important; animation: none !important; }
+
+/* --- Écrans : contenu animé selon le métier ------------------------- */
+.ws-screenline {
+    transform-origin: left center;
+    animation: screenType 2.4s steps(1, end) infinite;
+}
+@keyframes screenType {
+    0%   { transform: scaleX(0.1); opacity: 0.4; }
+    50%  { transform: scaleX(1);   opacity: 1; }
+    100% { transform: scaleX(0.1); opacity: 0.4; }
+}
+.ws-screenglow { animation: screenFlicker 3.6s ease-in-out infinite; }
+@keyframes screenFlicker {
+    0%, 100% { opacity: 0.85; }
+    50%      { opacity: 1; }
+}
+.ws-cursor { animation: blink 1.1s steps(1,end) infinite; }
+@keyframes blink { 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
+
+/* Petit voyant "travaille" (typing) qui pulse */
+.ws-typing { animation: typingPulse 1s ease-in-out infinite; }
+@keyframes typingPulse { 0%,100%{opacity:0.4;} 50%{opacity:1;} }
+
+/* =========================================================================
+   DÉLÉGATION : paquet de travail qui vole d'un poste à l'autre
+   ========================================================================= */
+.deleg-packet {
+    position: absolute;
+    z-index: 900;
+    width: 30px; height: 30px;
+    margin: -15px 0 0 -15px;
+    display: grid; place-items: center;
+    border-radius: 8px;
+    background: rgba(7,11,22,0.9);
+    border: 1px solid var(--p-color, #00f0ff);
+    box-shadow: 0 0 16px var(--p-color, #00f0ff);
+    font-size: 0.95rem;
+    pointer-events: none;
+    transition: left 1.1s cubic-bezier(0.5,0,0.5,1), top 1.1s cubic-bezier(0.5,0,0.5,1), opacity 0.35s ease;
+}
+.deleg-trail {
+    position: absolute;
+    z-index: 899;
+    height: 2px;
+    transform-origin: left center;
+    background: linear-gradient(90deg, transparent, var(--p-color, #00f0ff));
+    box-shadow: 0 0 8px var(--p-color, #00f0ff);
+    pointer-events: none;
+    opacity: 0;
+}
+
+/* =========================================================================
+   CONTRÔLES CAMÉRA FLOTTANTS (repris/raffinés)
+   ========================================================================= */
+.floating-office-controls {
+    position: absolute;
+    bottom: 18px; right: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 7px;
+    border-radius: 13px;
+    z-index: 20;
+    background: rgba(7, 11, 22, 0.7);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 8px 26px rgba(0,0,0,0.5);
+}
+.floating-control-btn {
+    width: 36px; height: 36px;
+    display: grid; place-items: center;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 9px;
+    color: #e7eefc;
+    font-size: 1rem; font-weight: 700;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+.floating-control-btn:hover {
+    background: var(--color-Athena, #00f0ff);
+    border-color: var(--color-Athena, #00f0ff);
+    color: #04121a;
+    transform: scale(1.07);
+}
+
+/* Légende statuts (en haut à gauche du viewport) */
+.office-legend {
+    position: absolute;
+    top: 16px; left: 16px;
+    z-index: 20;
+    display: flex;
+    gap: 14px;
+    padding: 8px 13px;
+    border-radius: 11px;
+    background: rgba(7, 11, 22, 0.66);
+    border: 1px solid rgba(255,255,255,0.07);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.4);
+    font-size: 0.68rem;
+    color: #c7d2e4;
+}
+.office-legend .leg { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.office-legend .leg b { font-weight: 600; color: #e7eefc; }
+.leg-dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 7px currentColor; }
+.leg-dot.busy   { background:#22c55e; color:#22c55e; }
+.leg-dot.paused { background:#f59e0b; color:#f59e0b; }
+.leg-dot.quota  { background:#ef4444; color:#ef4444; }
+
+/* Bandeau d'aide discret (apparition au survol du viewport) */
+.office-hint {
+    position: absolute;
+    bottom: 18px; left: 16px;
+    z-index: 20;
+    font-size: 0.66rem;
+    color: #7c8aa3;
+    background: rgba(7,11,22,0.6);
+    border: 1px solid rgba(255,255,255,0.06);
+    padding: 6px 11px;
+    border-radius: 9px;
+    backdrop-filter: blur(10px);
+    pointer-events: none;
+}
+.office-hint kbd {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.62rem;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: #c7d2e4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ws-agent svg, .ws-screenline, .ws-screenglow, .ws-cursor, .ws.active .ws-ring, .ws-typing {
+        animation: none !important;
+    }
+}

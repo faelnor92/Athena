@@ -571,7 +571,7 @@ if (tabCockpit) {
 }
 
 if (tabGraph) {
-    tabGraph.addEventListener("click", () => {
+    tabGraph?.addEventListener("click", () => {
         selectActiveTab(tabGraph, viewGraph, () => {
             setTimeout(updateNetworkLines, 100);
         });
@@ -1267,8 +1267,9 @@ function rebuildOfficeFloor() {
     // Appliquer la transformation de caméra actuelle (Zoom / Rotation)
     applyOfficeCameraTransform();
     
-    // Démarrer la boucle de déplacement
-    startOfficeWandering();
+    // Open Space 2.0 : balade aléatoire désactivée — remplacée par les vrais
+    // postes isométriques rendus par office.js (cf. INTEGRATION.md).
+    // startOfficeWandering();
 }
 
 // =========================================================================
@@ -2501,7 +2502,7 @@ chatForm.addEventListener("submit", async (e) => {
 });
 
 // Réinitialiser la conversation
-btnReset.addEventListener("click", async () => {
+btnReset?.addEventListener("click", async () => {
     if (confirm("Réinitialiser l'essaim et vider le fil de discussion ?")) {
         try {
             await apiFetch("/api/reset", { method: "POST" });
