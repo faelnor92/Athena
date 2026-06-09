@@ -1522,7 +1522,12 @@ class Swarm:
             # appelle quand même un outil masqué qu'il a le droit d'utiliser, on l'exécute.
             # Conséquence : zéro perte de capacité, le filtre ne réduit jamais l'efficacité.
             _secured_tools = list(effective_tools)
-            if _tool_filter_enabled and current_agent.supports_tools and not _tool_subset_done:
+            # IMPORTANT : on ne filtre QUE l'orchestrateur (gros jeu d'outils hétérogène). Un
+            # SPÉCIALISTE (ex. Codeur) a un jeu focalisé : le filtrer lui masque ses propres
+            # outils métier (write_file, edit_file…) → le LLM, ne voyant pas leur SCHÉMA, invente
+            # de mauvais paramètres (write_file(file=…) au lieu de path=…) et tout échoue.
+            _is_orchestrator = (current_agent.name == getattr(self, "orchestrator_name", "Athena"))
+            if _tool_filter_enabled and current_agent.supports_tools and not _tool_subset_done and _is_orchestrator:
                 _tool_subset_done = True
                 _avail = {f.__name__ for f in _secured_tools}
                 if len(_avail) >= _tool_filter_min:
