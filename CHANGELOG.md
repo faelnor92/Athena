@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.9 (Fix majeur : le Codeur retrouve ses outils)
+
+### 🐛 Correctif d'orchestration majeur
+- **Le filtre d'outils ne s'applique plus qu'à l'orchestrateur.** Avant, il s'appliquait à **tout** agent ayant >20 outils — y compris le **Codeur** — et lui **masquait ses propres outils métier** (`write_file`, `edit_file`, `execute_bash_command`…). Ne voyant pas leur **schéma**, le modèle **inventait** de mauvais paramètres (`write_file(file=…)` au lieu de `path=…`) ou des outils inexistants (`run_shell_command`) → **toutes les écritures de fichiers échouaient**, et l'agent se rabattait sur `store_document` (code stocké en mémoire au lieu d'écrire les fichiers).
+- **Conséquence corrigée** : un spécialiste (Codeur…) garde désormais **tous ses outils exposés** → il peut réellement créer/éditer des fichiers. C'était la racine des échecs « créer un site » et de plusieurs symptômes annexes.
+
 ## v0.11.8 (Correctif store_document)
 
 ### 🔧 Corrections
