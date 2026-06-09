@@ -15,6 +15,11 @@ bascule en licence Apache 2.0, et une optimisation native du cache de prompt san
 ### ⚡ CacheAligner natif (efficacité tokens, sans perte)
 - Le **timestamp** (`%H:%M`) et le **contexte RAG** étaient inclus dans le bloc système marqué `cache_control` : ils invalidaient le **prompt cache** du provider à chaque tour (le RAG dépend du message courant). Ils sont désormais émis dans un **message système volatile après l'historique**, hors du préfixe caché. Le bloc système stable redevient byte-identique d'un tour à l'autre → **cache HIT** sur les conversations multi-tours. Aucune perte d'information (contexte repositionné près de la requête).
 
+### 🛡️ Sécurité des dépendances
+- **Stack web relevée** pour corriger les CVE starlette : **fastapi 0.111 → 0.136.3**, **starlette 0.37.2 → 1.2.1**, **sse-starlette 2.1.3 → 3.4.4** (mcp 1.27.2 reste compatible ; l'ancien conflit de pins disparaît). Corrige CVE-2024-47874, CVE-2025-54121, PYSEC-2026-161.
+- **python-dotenv 1.0.1 → 1.2.2** (CVE-2026-28684), **requests 2.32.3 → 2.34.2** (CVE-2024-47081, CVE-2026-25645), **Pillow 11.0.0 → 12.2.0** (5 CVE).
+- pip-audit : **13 vulnérabilités → 1 restante**. La restante (chromadb CVE-2026-45829 « ChromaToast ») est **non applicable** à Athena : elle touche le serveur HTTP FastAPI de chromadb, alors qu'Athena utilise le client embarqué `PersistentClient` (in-process, non exposé). Pas de correctif amont à ce jour.
+
 ### 📄 Licence
 - **MIT → Apache 2.0** (`LICENSE` + badges/sections des 7 README). Le sous-outil tiers `tools/mcp-servers/ha-mcp` conserve sa licence MIT propre.
 

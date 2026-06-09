@@ -1,32 +1,32 @@
 # --- Coeur applicatif -------------------------------------------------------
 openai==2.41.0
 litellm==1.88.1
-python-dotenv==1.0.1
-requests==2.32.3
+python-dotenv==1.2.2
+requests==2.34.2
 pyyaml==6.0.2
 colorama==0.4.6
 # chromadb 1.x : requis pour Python 3.13 (la 0.5.0 utilise np.float_, supprimé en numpy 2,
 # et numpy<2 n'a pas de wheels 3.13). La 1.x ne dépend plus de fastapi → pas de conflit avec la stack web.
 chromadb==1.5.9
-fastapi==0.111.0
-# uvicorn relevé à >=0.31.1 (requis par mcp) ; 0.48.0 reste compatible fastapi 0.111.
+fastapi==0.136.3
+# uvicorn relevé à >=0.31.1 (requis par mcp) ; 0.48.0 reste compatible.
 uvicorn==0.48.0
 pydantic==2.13.4
 python-multipart==0.0.29
 
 # --- Support MCP (Model Context Protocol) ----------------------------------
 mcp==1.27.2
-# starlette/sse-starlette ÉPINGLÉS : la dernière sse-starlette (3.x) exige
-# starlette>=0.49 et casse fastapi 0.111 (qui veut starlette<0.38).
-starlette==0.37.2
-sse-starlette==2.1.3
+# starlette/sse-starlette relevés avec fastapi 0.136 : corrige les CVE starlette
+# (CVE-2024-47874, CVE-2025-54121, PYSEC-2026-161). mcp 1.27.2 reste compatible.
+starlette==1.2.1
+sse-starlette==3.4.4
 
 # --- Exécution distante SSH -------------------------------------------------
 paramiko==5.0.0
 cryptography>=38.0.4
 
 # --- Génération / traitement d'images --------------------------------------
-Pillow==11.0.0
+Pillow==12.2.0
 
 # --- Pièces jointes du chat (extraction de texte PDF) ----------------------
 pypdf==6.12.2
