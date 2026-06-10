@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.15 (Console Code : délégation au domaine code)
+
+### 🔧 Console Code
+- **Délégation restreinte au domaine code** : la console reste sur le Codeur (`locked`) mais peut désormais **déléguer aux agents liés au code** (auditeur sécurité, debugger, SSH/déploiement, DevOps…) — jamais vers un agent non-code (Auteur, CommunityManager…) ni l'orchestrateur (qui généraliserait). Nouveau paramètre `delegate_allowlist` dans `swarm.run` (filtre `delegate_to_`/`transfer_to_` par liste blanche). Corrige le verrouillage trop strict de v0.11.14.
+
 ## v0.11.14 (Console Code verrouillée)
 
 ### 🔧 Corrections

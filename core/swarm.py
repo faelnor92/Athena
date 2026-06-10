@@ -1263,7 +1263,8 @@ class Swarm:
 
     def run(self, starting_agent: Agent, messages: list, max_turns: int = None,
             max_seconds: float = None, max_tokens: int = None, locked: bool = False,
-            lock_delegation: bool = False, context_variables: dict = None) -> Tuple[Agent, list, list]:
+            lock_delegation: bool = False, delegate_allowlist: set = None,
+            context_variables: dict = None) -> Tuple[Agent, list, list]:
         """
         Boucle principale de l'orchestrateur.
         Retourne l'agent final actif, les messages mis à jour, et l'historique des étapes (steps).
@@ -1470,6 +1471,18 @@ class Swarm:
             # Pipeline rigide uniquement : on retire AUSSI la délégation → aucune déviation.
             if lock_delegation:
                 effective_tools = [f for f in effective_tools if not f.__name__.startswith("delegate_to_")]
+            # Délégation RESTREINTE (ex. console Code) : on ne garde delegate_to_/transfer_to_
+            # QUE vers des agents autorisés (domaine code : auditeur sécurité, debugger…), jamais
+            # vers un agent non-code ni l'orchestrateur (qui généraliserait la console).
+            if delegate_allowlist is not None:
+                _allow = set(delegate_allowlist)
+                def _deleg_ok(_f):
+                    _n = getattr(_f, "__name__", "")
+                    for _pref in ("delegate_to_", "transfer_to_"):
+                        if _n.startswith(_pref):
+                            return _n[len(_pref):] in _allow
+                    return True
+                effective_tools = [f for f in effective_tools if _deleg_ok(f)]
 
             # PINNED (@mention explicite d'un spécialiste) : il répond, il ne délègue pas.
             # On retire transfert + délégation + query/débat (l'orchestrateur n'est jamais concerné).

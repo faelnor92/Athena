@@ -1015,12 +1015,24 @@ async def terminal_coder(req: TerminalRequest):
     except Exception:
         pass
     try:
-        # Exécution ciblée sur l'Agent Codeur (thread), VERROUILLÉE sur lui en FEUILLE :
-        # locked (pas de transfer_to_) + lock_delegation (pas de delegate_to_) → la console
-        # reste 100 % code et ne « part » jamais vers un autre agent (Auteur, CM…).
+        # Console = code-only mais COLLABORATIVE : locked (pas de transfer définitif → on reste
+        # sur le Codeur) + délégation RESTREINTE aux agents du DOMAINE CODE (auditeur sécurité,
+        # debugger…). Jamais vers un agent non-code (Auteur, CM…) ni l'orchestrateur.
+        _CODE_KW = ("code", "dev", "program", "script", "sécur", "secur", "audit", "debug",
+                    "débug", "test", "qualit", "lint", "refactor", "devops", "back", "front", "bug",
+                    "ssh", "deploy", "déploi", "remote", "serveur", "server", "infra", "système",
+                    "systeme", "ops", "ci/cd", "pipeline", "docker", "kubernet")
+        _code_agents = set()
+        for _n, _a in swarm.agents.items():
+            if _n == coder_agent.name:
+                continue
+            _txt = ((getattr(_a, "description", "") or "") + " " + _n + " " +
+                    (getattr(_a, "display_name", "") or "")).lower()
+            if any(k in _txt for k in _CODE_KW):
+                _code_agents.add(_n)
         next_agent, new_chain, steps = await asyncio.to_thread(
             functools.partial(swarm.run, coder_agent, run_chain, max_turns=max_turns,
-                              locked=True, lock_delegation=True, context_variables=_ctx_vars))
+                              locked=True, delegate_allowlist=_code_agents, context_variables=_ctx_vars))
 
         # CODE-TEST-FIX (auto-correction du code) : on lance les vérifications du projet ; en
         # cas d'échec, on renvoie les erreurs au codeur pour qu'il corrige, puis on revérifie
