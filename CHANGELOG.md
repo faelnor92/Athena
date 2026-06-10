@@ -1,5 +1,81 @@
 # Historique des Versions (Changelog)
 
+## v0.11.23 (Design part du code existant)
+
+### 🎯 Génération basée sur le projet ouvert (#5)
+- **Design part désormais du CODE EXISTANT du projet** au lieu d'inventer une page générique sans rapport. À l'ouverture d'un projet ayant déjà du code (ex. importé ou créé côté Code), une demande de « variante / modernisation / refonte » conserve la structure, le contenu et les fonctionnalités réels de la page et applique les modifications dessus.
+- Le générateur reçoit la **page d'entrée racine + ses CSS/JS compagnons** (bornés en taille pour maîtriser les tokens) via un nouveau paramètre `base_code`, injecté dans le prompt système comme « point de départ obligatoire ».
+- Vérifié : sur un projet « Compagnons - Animaux », la régénération conserve le thème et le contenu (chien/chat/adoption…) au lieu de produire une landing page générique.
+
+## v0.11.22 (Design : bascule « Code de base / Design »)
+
+### 🔀 Voir le code d'origine OU la sortie Design (#5)
+- Quand un projet a **à la fois un code de base** (racine, intact) **et une sortie Design** (`design/`), Design affiche un **sélecteur « Code de base / Design »** dans la barre d'outils du canvas pour basculer l'aperçu entre les deux.
+- Résout le cas signalé : après une génération, on pouvait voir la variante mais **plus l'ancien code**. On peut désormais revenir au code d'origine à tout moment (lecture seule, jamais écrasé).
+- Nouvel endpoint **`GET …/projects/{id}/sources`** → `{base, design}`.
+
+## v0.11.21 (Design → Code : sortie dans un dossier dédié)
+
+### 🔁 Pont bidirectionnel Design ↔ Code (#5)
+- **Ce que Design génère devient un vrai fichier du projet, visible côté Code** — écrit dans un **sous-dossier dédié `design/`** (`design/index.html` pour le web, `design/design.py` pour Python).
+- **Non destructif** : le **code de base à la racine n'est JAMAIS touché** (ex. un `index.html` écrit à la main ou par la partie Code reste intact). Un marqueur `.athenadesign.json` repère la sortie Design et la privilégie pour l'aperçu.
+- Combiné à v0.11.20 (Design affiche les fichiers du Code), Design et Code partagent désormais le **même projet dans les deux sens**, proprement isolés.
+
+## v0.11.20 (Design : aperçu des projets Code)
+
+### 👁️ Aperçu des fichiers du workspace (#5)
+- **Ouvrir un projet créé/édité côté Code dans Design affiche désormais sa page.** Si un projet n'a pas de « version » Design mais contient une page web dans son workspace (ex. `index.html`), Design la **prévisualise directement** (assets relatifs CSS/JS/images résolus dans le dossier du projet) et charge le code dans l'éditeur.
+- Nouveaux endpoints : **`GET …/projects/{id}/workspace-entry`** (détecte la page d'entrée) et **`GET …/projects/{id}/workspace/{path}`** (sert les fichiers du workspace, anti-traversée). Boutons « Recharger » / « Ouvrir » adaptés au mode workspace.
+
+## v0.11.19 (Import de dossier dans Design)
+
+### 📁 Import d'un dossier complet (#9)
+- Nouveau bouton **« Importer un dossier »** dans le panneau PROJETS de Design : importe un **dossier entier avec ses sous-dossiers** (`<input webkitdirectory>`) dans le projet ouvert.
+- Les fichiers atterrissent dans le **workspace du projet — PARTAGÉ avec la partie Code** (#5) : ce qui est importé dans Design est immédiatement visible et éditable côté Code.
+- Endpoint **`POST /api/athenadesign/projects/{id}/upload`** (multipart : `files` + `paths`). Sécurité : anti-traversée (chemins assainis, jamais hors du dossier projet), filtres (max 2000 fichiers, 50 Mo/fichier, exclusion auto de `.git`/`node_modules`/`__pycache__`/`.venv`/`dist`/`build`/`.next`).
+
+## v0.11.18 (Hotfix console bash)
+
+### 🐛 Correctif
+- **Console Code** : `UnboundLocalError: cannot access local variable 'get_coder_cwd'` lors d'une commande bash (`$`/`!`, ex. `/ls`). Cause : `get_coder_cwd`/`get_workspace_dir` étaient importés LOCALEMENT dans `terminal_coder`, ce qui les rendait locaux à toute la fonction (référence avant assignation sur le chemin bash). Désormais importés au niveau module.
+
+## v0.11.17 (Persistance des sessions longues + liste Design partagée)
+
+### 🔁 Reprise après rechargement (#11)
+- **Une tâche longue ne s'arrête plus si on recharge la page.** Le run ET sa finalisation (sauvegarde de la conversation + télémétrie) s'exécutent désormais dans un thread d'arrière-plan qui **survit à la déconnexion du client** : le résultat est déposé dans le registre de runs.
+- Nouvel endpoint **`GET /api/chat/reconnect?run_id=…`** : au rechargement, le frontend se **reconnecte** au run en cours (run_id mémorisé en `localStorage`), relaie les dernières étapes + la réponse finale, puis recharge l'historique canonique.
+- *Limite connue :* un **redémarrage du serveur** pendant un run reste non récupérable (registre en mémoire) ; un simple rechargement de page, lui, est désormais transparent.
+
+### 🔗 Liste Design ↔ Code (#5, partiel)
+- La liste des projets de **Design** est partagée avec celle du **Code** : elle se **rafraîchit automatiquement** à l'ouverture de l'onglet Design (via `postMessage`), pour refléter les projets créés côté Code.
+- *Reste à faire :* unification du **stockage des fichiers** (Design écrit des « versions » d'artefacts, Code une arborescence de fichiers) — refonte d'archi distincte.
+
+## v0.11.16 (Console code-only + slash-commands)
+
+### 🧭 Console Code
+- **Console réservée au code/SSH** : les actions de GESTION globales (suppression de compétence, de fait mémorisé, réinitialisation de l'essaim, mise à jour de config, clés d'API…) passent maintenant en **notifications (toasts)** au lieu de polluer le terminal de la console Code. La console n'affiche plus que ce qui concerne le code.
+- **Slash-commands (façon Claude Code)** : `/help`, `/clear` (côté client), `/ls`, `/tree`, `/status`, `/diff` (→ bash), `/test`, `/run`, `/commit [msg]`, `/fix` (→ instruction au Codeur). `/help` liste tout ; un `/…` inconnu reste une commande bash directe (comme `$`/`!`).
+
+## v0.11.15 (Console Code : délégation au domaine code)
+
+### 🔧 Console Code
+- **Délégation restreinte au domaine code** : la console reste sur le Codeur (`locked`) mais peut désormais **déléguer aux agents liés au code** (auditeur sécurité, debugger, SSH/déploiement, DevOps…) — jamais vers un agent non-code (Auteur, CommunityManager…) ni l'orchestrateur (qui généraliserait). Nouveau paramètre `delegate_allowlist` dans `swarm.run` (filtre `delegate_to_`/`transfer_to_` par liste blanche). Corrige le verrouillage trop strict de v0.11.14.
+
+## v0.11.14 (Console Code verrouillée)
+
+### 🔧 Corrections
+- **Console Code** : verrouillée en « feuille » sur le Codeur (`locked` **+ `lock_delegation`**) → elle reste **100 % code** et ne part plus vers un autre agent. Avant, le Codeur pouvait `delegate_to_` un autre métier (Auteur, CommunityManager…), d'où une console qui se comportait en « généraliste ».
+
+## v0.11.13 (Suppression de projets dans Design)
+
+### 🎨 Design
+- **Suppression de projets** : chaque projet du studio Design a maintenant un bouton 🗑️ (avec confirmation) qui supprime le projet et ses fichiers via le **registre unifié** (`DELETE /api/athenadesign/projects/{id}` → `core.projects.delete`). Avant, aucun moyen de supprimer un projet depuis Design.
+
+## v0.11.12 (Visibilité des fichiers générés)
+
+### 🔧 Corrections
+- **Onglet Code** : l'explorateur de fichiers se **rafraîchit automatiquement** après qu'un agent a écrit/édité des fichiers (`write_file`, `edit_file`, `apply_patch`). Avant, les fichiers créés (ex. par le Codeur lors d'un « crée un site ») restaient **invisibles** jusqu'à un clic manuel sur « Actualiser ». Complète le fix v0.11.9 (le Codeur peut écrire) — les fichiers apparaissent maintenant tout seuls.
+
 ## v0.11.11 (Doc d'installation)
 
 ### 📦 Installation

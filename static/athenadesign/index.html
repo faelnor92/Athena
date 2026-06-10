@@ -77,9 +77,15 @@
             <div class="projects-panel">
                 <div class="panel-header-row">
                     <span class="panel-section-title"><i data-lucide="folder"></i> PROJETS</span>
-                    <button id="btn-new-project" class="icon-btn-small" title="Nouveau projet">
-                        <i data-lucide="plus"></i>
-                    </button>
+                    <div style="display:flex; gap:4px;">
+                        <button id="btn-import-folder" class="icon-btn-small" title="Importer un dossier complet dans le projet ouvert">
+                            <i data-lucide="folder-up"></i>
+                        </button>
+                        <button id="btn-new-project" class="icon-btn-small" title="Nouveau projet">
+                            <i data-lucide="plus"></i>
+                        </button>
+                    </div>
+                    <input type="file" id="import-folder-input" webkitdirectory directory multiple style="display:none;">
                 </div>
                 <div id="projects-list" class="projects-list-container">
                     <!-- Loaded dynamically -->
@@ -170,6 +176,14 @@
                 </div>
                 
                 <div class="canvas-actions">
+                    <div id="source-toggle" style="display:none;align-items:center;gap:4px;margin-right:8px;padding-right:8px;border-right:1px solid var(--border-color,#333);">
+                        <button id="btn-src-base" class="secondary-btn" title="Voir le CODE DE BASE du projet (intact, non modifié par Design)">
+                            <i data-lucide="file-code-2"></i> <span>Code de base</span>
+                        </button>
+                        <button id="btn-src-design" class="secondary-btn" title="Voir la sortie générée par Design">
+                            <i data-lucide="sparkles"></i> <span>Design</span>
+                        </button>
+                    </div>
                     <button id="btn-run-python" class="accent-btn" style="display: none;">
                         <i data-lucide="play"></i> <span>Lancer le script</span>
                     </button>
@@ -366,6 +380,6 @@
     </div>
 
     <!-- Custom Script -->
-    <script src="static/js/app.js?v=20260608_autofix"></script>
+    <script src="static/js/app.js?v=20260610_srctoggle"></script>
 </body>
 </html>

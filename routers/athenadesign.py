@@ -2,8 +2,9 @@ import os
 import re
 import json
 import uuid
-from fastapi import APIRouter, HTTPException, Body, Request
-from fastapi.responses import HTMLResponse
+from typing import List
+from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, FileResponse
 from core import athenadesign_runner as runner
 from core import athenadesign_generator as generator
 from core import projects as code_projects  # PROJETS UNIFIÉS : même registre que la partie code
@@ -259,12 +260,262 @@ async def create_project(request: Request, payload: dict = Body(...)):
     write_db(user, db)
     return db[proj["id"]]
 
+@router.delete("/projects/{project_id}")
+async def delete_design_project(request: Request, project_id: str, remove_files: bool = True):
+    """Supprime un projet (registre UNIFIÉ avec la partie code) : dossier code + entrée
+    du registre + base design associée."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    if not code_projects.delete(project_id, remove_files=remove_files):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    try:  # nettoie aussi l'entrée design (best-effort)
+        user = _current_user(request)
+        db = read_db(user)
+        if project_id in db:
+            del db[project_id]
+            write_db(user, db)
+    except Exception:
+        pass
+    return {"status": "deleted"}
+
 @router.get("/projects/{project_id}")
 async def get_project(request: Request, project_id: str):
     if not _can_access(project_id):
         raise HTTPException(status_code=404, detail="Projet introuvable")
     db = read_db(_current_user(request))
     return db.get(project_id) or _new_design(project_id)
+
+def _project_path(project_id: str):
+    """Dossier de travail (filesystem) d'un projet, PARTAGÉ avec la partie Code.
+    None si le projet n'a pas de dossier accessible. Réutilise le registre code."""
+    try:
+        p = next((x for x in code_projects.list_projects() if x.get("id") == project_id), None)
+        path = (p or {}).get("path")
+        return os.path.realpath(path) if path else None
+    except Exception:
+        return None
+
+
+def _safe_join(base: str, rel: str):
+    """Joint base + rel en refusant toute échappée hors de base (anti-traversée)."""
+    rel = (rel or "").replace("\\", "/").lstrip("/")
+    # On retire les segments dangereux ('..', '.') tout en gardant l'arborescence.
+    parts = [seg for seg in rel.split("/") if seg not in ("", ".", "..")]
+    if not parts:
+        return None
+    dest = os.path.realpath(os.path.join(base, *parts))
+    if os.path.commonpath([dest, base]) != base:
+        return None
+    return dest
+
+
+# Limites de sécurité de l'upload de dossier.
+_UPLOAD_MAX_FILES = 2000
+_UPLOAD_MAX_BYTES = 50 * 1024 * 1024  # 50 Mo / fichier
+_UPLOAD_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".next"}
+
+
+@router.post("/projects/{project_id}/upload")
+async def upload_folder(request: Request, project_id: str,
+                        files: List[UploadFile] = File(...),
+                        paths: List[str] = Form(...)):
+    """Importe un DOSSIER COMPLET (sous-dossiers inclus) dans le workspace du projet —
+    le MÊME dossier que la partie Code (#5). Le frontend envoie chaque fichier avec son
+    chemin relatif (webkitRelativePath). Anti-traversée + filtres (poids, dossiers lourds)."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    base = _project_path(project_id)
+    if not base:
+        raise HTTPException(status_code=409, detail="Ce projet n'a pas de dossier de travail.")
+    os.makedirs(base, exist_ok=True)
+    if len(files) > _UPLOAD_MAX_FILES:
+        raise HTTPException(status_code=413, detail=f"Trop de fichiers (max {_UPLOAD_MAX_FILES}).")
+
+    written, skipped = 0, []
+    for f, rel in zip(files, paths):
+        # On ignore les répertoires lourds usuels (le premier segment est souvent le nom du dossier racine).
+        segs = (rel or "").replace("\\", "/").split("/")
+        if any(s in _UPLOAD_SKIP_DIRS for s in segs):
+            skipped.append(rel); continue
+        dest = _safe_join(base, rel)
+        if not dest:
+            skipped.append(rel); continue
+        data = await f.read()
+        if len(data) > _UPLOAD_MAX_BYTES:
+            skipped.append(rel); continue
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as out:
+            out.write(data)
+        written += 1
+    return {"uploaded": written, "skipped": len(skipped), "skipped_paths": skipped[:50]}
+
+
+# Marqueur de provenance : quel fichier du workspace est « possédé » par Design (écrit par
+# ses générations). Évite d'écraser un index.html écrit à la main / par la partie Code.
+_DESIGN_MARKER = ".athenadesign.json"
+
+
+def _design_owned_entry(base: str):
+    """Fichier que Design a lui-même écrit dans ce workspace (None si aucun)."""
+    try:
+        with open(os.path.join(base, _DESIGN_MARKER), "r", encoding="utf-8") as f:
+            return (json.load(f) or {}).get("entry")
+    except Exception:
+        return None
+
+
+def _workspace_entry(base: str):
+    """Fichier HTML « page d'entrée » prévisualisable d'un workspace : le fichier possédé
+    par Design en priorité, puis index.html, puis le premier *.htm(l) à la racine."""
+    if not base or not os.path.isdir(base):
+        return None
+    owned = _design_owned_entry(base)
+    if owned and os.path.isfile(os.path.join(base, owned)):
+        return owned
+    for cand in ("index.html", "index.htm"):
+        if os.path.isfile(os.path.join(base, cand)):
+            return cand
+    try:
+        for name in sorted(os.listdir(base)):
+            if name.lower().endswith((".html", ".htm")) and os.path.isfile(os.path.join(base, name)):
+                return name
+    except Exception:
+        pass
+    return None
+
+
+# Sous-dossier DÉDIÉ aux productions de Design dans le projet : isole le design du code de
+# base (on ne touche JAMAIS aux fichiers racine écrits à la main / par la partie Code).
+_DESIGN_SUBDIR = "design"
+
+
+def _mirror_version_to_workspace(project_id: str, version: dict):
+    """Écrit l'artefact généré par Design comme VRAI fichier dans le sous-dossier `design/`
+    du workspace du projet (partagé avec le Code, #5) → visible/éditable côté Code, SANS
+    jamais toucher au code de base à la racine. Best-effort (n'interrompt pas la génération)."""
+    base = _project_path(project_id)
+    if not base:
+        return
+    t = version.get("type")
+    try:
+        ddir = os.path.join(base, _DESIGN_SUBDIR)
+        os.makedirs(ddir, exist_ok=True)
+        if t in _WEB_TYPES:
+            with open(os.path.join(ddir, "index.html"), "w", encoding="utf-8") as f:
+                f.write(_web_render(version))
+            entry = f"{_DESIGN_SUBDIR}/index.html"
+        elif t == "python":
+            with open(os.path.join(ddir, "design.py"), "w", encoding="utf-8") as f:
+                f.write(version.get("code", ""))
+            entry = None  # pas une page web prévisualisable
+        else:
+            entry = None
+        if entry:
+            with open(os.path.join(base, _DESIGN_MARKER), "w", encoding="utf-8") as f:
+                json.dump({"entry": entry}, f)
+    except Exception:
+        pass
+
+
+def _base_html_entry(base: str):
+    """Page web du CODE DE BASE à la racine (hors sous-dossier `design/`), ignorant le
+    marqueur Design : index.html prioritaire, sinon premier *.htm(l) racine. None si aucun."""
+    if not base or not os.path.isdir(base):
+        return None
+    for cand in ("index.html", "index.htm"):
+        if os.path.isfile(os.path.join(base, cand)):
+            return cand
+    try:
+        for name in sorted(os.listdir(base)):
+            if name == _DESIGN_SUBDIR:
+                continue
+            if name.lower().endswith((".html", ".htm")) and os.path.isfile(os.path.join(base, name)):
+                return name
+    except Exception:
+        pass
+    return None
+
+
+def _read_base_code(project_id: str, max_total: int = 60000, max_file: int = 40000) -> str:
+    """Lit le CODE DE BASE du projet (page d'entrée racine + CSS/JS compagnons à la racine,
+    hors `design/`) pour le fournir au générateur comme point de départ. Bornes de taille
+    pour maîtriser les tokens. '' si le projet n'a pas de code de base."""
+    base = _project_path(project_id)
+    if not base:
+        return ""
+    entry = _base_html_entry(base)
+    if not entry:
+        return ""
+    chunks, total = [], 0
+
+    def _add(rel: str):
+        nonlocal total
+        p = _safe_join(base, rel)
+        if not p or not os.path.isfile(p):
+            return
+        try:
+            with open(p, "r", encoding="utf-8", errors="replace") as f:
+                txt = f.read(max_file + 1)
+        except Exception:
+            return
+        if len(txt) > max_file:
+            txt = txt[:max_file] + "\n/* …tronqué… */"
+        if total + len(txt) > max_total:
+            return
+        total += len(txt)
+        chunks.append(f"--- {rel} ---\n{txt}")
+
+    _add(entry)
+    try:
+        for name in sorted(os.listdir(base)):
+            if name == _DESIGN_SUBDIR:
+                continue
+            if name.lower().endswith((".css", ".js")) and os.path.isfile(os.path.join(base, name)):
+                _add(name)
+    except Exception:
+        pass
+    return "\n\n".join(chunks)
+
+
+@router.get("/projects/{project_id}/sources")
+async def project_sources(request: Request, project_id: str):
+    """Sources prévisualisables d'un projet : `base` = page du code d'origine (racine,
+    intacte) ; `design` = page générée par Design (`design/index.html`). Permet à l'UI de
+    proposer une bascule « Code de base / Design » quand les deux coexistent."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    base = _project_path(project_id)
+    design_rel = f"{_DESIGN_SUBDIR}/index.html"
+    has_design = bool(base) and os.path.isfile(os.path.join(base, design_rel))
+    return {
+        "base": _base_html_entry(base) if base else None,
+        "design": design_rel if has_design else None,
+    }
+
+
+@router.get("/projects/{project_id}/workspace-entry")
+async def workspace_entry(request: Request, project_id: str):
+    """Indique la page web prévisualisable du workspace du projet (partagé avec le Code).
+    Permet à Design d'afficher un projet créé/édité côté Code même sans 'version' Design."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    return {"entry": _workspace_entry(_project_path(project_id))}
+
+
+@router.get("/projects/{project_id}/workspace/{file_path:path}")
+async def workspace_file(request: Request, project_id: str, file_path: str):
+    """Sert un fichier du workspace du projet (aperçu live des pages + assets relatifs).
+    Anti-traversée : le chemin est assaini et confiné au dossier du projet."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    base = _project_path(project_id)
+    if not base:
+        raise HTTPException(status_code=404, detail="Pas de dossier de travail.")
+    dest = _safe_join(base, file_path)
+    if not dest or not os.path.isfile(dest):
+        raise HTTPException(status_code=404, detail="Fichier introuvable.")
+    return FileResponse(dest)
+
 
 @router.post("/chat")
 async def chat_endpoint(request: Request, payload: dict = Body(...)):
@@ -289,6 +540,10 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
     context_text, images = _resolve_attachments(payload.get("attachments"))
     design_system = project.get("design_system", "")
 
+    # CODE DE BASE du projet (page racine + CSS/JS) → le générateur PART de l'existant
+    # au lieu d'inventer une page générique (variante/refonte réelle du projet ouvert).
+    base_code = _read_base_code(project_id)
+
     result = await generator.generate_design(
         prompt=prompt,
         history=project["history"],
@@ -298,6 +553,7 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
         design_system=design_system,
         context_text=context_text,
         images=images,
+        base_code=base_code,
     )
 
     project["history"].append({"role": "user", "content": prompt})
@@ -315,6 +571,9 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
     project["versions"].append(new_version)
 
     write_db(user, db)
+
+    # Miroir : l'artefact devient un vrai fichier sous `design/` du projet (visible côté Code).
+    _mirror_version_to_workspace(project_id, new_version)
 
     return {
         "project_id": project_id,

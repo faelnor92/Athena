@@ -120,6 +120,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentProjectId = null;
     let currentProjectData = null;
     let currentVersionIndex = null; // 0-indexed in currentProjectData.versions
+    let currentWorkspacePreview = null; // {projectId, entry} quand on prévisualise les fichiers du workspace (projet Code)
+    let currentSources = { base: null, design: null }; // pages prévisualisables : code de base (racine) vs sortie Design
 
     // ── Imports (références) + Design System ──────────────────────────────────
     let pendingAttachments = [];
@@ -873,11 +875,27 @@ document.addEventListener("DOMContentLoaded", () => {
             projects.forEach(p => {
                 const item = document.createElement("div");
                 item.className = `project-item ${p.id === currentProjectId ? 'active' : ''}`;
+                item.style.display = "flex";
+                item.style.alignItems = "center";
+                item.style.gap = "6px";
                 item.innerHTML = `
-                    <div class="project-name">${p.name}</div>
-                    <div class="project-meta">${p.versions_count} versions</div>
+                    <div class="project-info" style="flex:1;min-width:0;cursor:pointer;">
+                        <div class="project-name">${p.name}</div>
+                        <div class="project-meta">${p.versions_count} versions</div>
+                    </div>
+                    <button class="project-delete-btn" title="Supprimer ce projet" style="background:none;border:none;color:#ff5c5c;cursor:pointer;font-size:0.95rem;padding:2px 6px;opacity:0.65;flex:none;">🗑️</button>
                 `;
-                item.addEventListener("click", () => selectProject(p.id));
+                item.querySelector(".project-info").addEventListener("click", () => selectProject(p.id));
+                item.querySelector(".project-delete-btn").addEventListener("click", async (e) => {
+                    e.stopPropagation();
+                    if (!confirm(`Supprimer définitivement le projet « ${p.name} » et ses fichiers ?`)) return;
+                    try {
+                        const r = await fetch(`/api/athenadesign/projects/${encodeURIComponent(p.id)}?remove_files=true`, { method: "DELETE" });
+                        if (!r.ok) { alert("Échec de la suppression du projet."); return; }
+                        if (p.id === currentProjectId) currentProjectId = null;
+                        await loadProjects();
+                    } catch (err) { alert("Erreur lors de la suppression."); }
+                });
                 projectsList.appendChild(item);
             });
         } catch (e) {
@@ -912,6 +930,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
     btnNewProject.addEventListener("click", createNewProject);
 
+    // #9 — Importer un DOSSIER complet (sous-dossiers inclus) dans le projet ouvert.
+    // Les fichiers atterrissent dans le workspace du projet, PARTAGÉ avec la partie Code (#5).
+    const btnImportFolder = document.getElementById("btn-import-folder");
+    const importFolderInput = document.getElementById("import-folder-input");
+    if (btnImportFolder && importFolderInput) {
+        btnImportFolder.addEventListener("click", () => {
+            if (!currentProjectId) {
+                appendSystemMessage && appendSystemMessage("Ouvre ou crée un projet avant d'importer un dossier.");
+                return;
+            }
+            importFolderInput.value = "";
+            importFolderInput.click();
+        });
+        importFolderInput.addEventListener("change", async () => {
+            const files = Array.from(importFolderInput.files || []);
+            if (!files.length || !currentProjectId) return;
+            appendSystemMessage && appendSystemMessage(`Import de ${files.length} fichier(s) en cours…`);
+            const fd = new FormData();
+            files.forEach(f => {
+                fd.append("files", f, f.name);
+                fd.append("paths", f.webkitRelativePath || f.name);
+            });
+            try {
+                const r = await fetch(`/api/athenadesign/projects/${currentProjectId}/upload`, { method: "POST", body: fd });
+                if (!r.ok) {
+                    const e = await r.json().catch(() => ({}));
+                    appendSystemMessage && appendSystemMessage("Échec de l'import : " + (e.detail || r.status));
+                    return;
+                }
+                const res = await r.json();
+                appendSystemMessage && appendSystemMessage(
+                    `Dossier importé : ${res.uploaded} fichier(s)${res.skipped ? `, ${res.skipped} ignoré(s)` : ""}. Fichiers partagés avec la partie Code.`);
+            } catch (err) {
+                appendSystemMessage && appendSystemMessage("Erreur réseau pendant l'import : " + err);
+            } finally {
+                importFolderInput.value = "";
+            }
+        });
+    }
+
     async function selectProject(projectId) {
         try {
             currentProjectId = projectId;
@@ -941,9 +999,23 @@ document.addEventListener("DOMContentLoaded", () => {
             if (project.versions && project.versions.length > 0) {
                 loadVersion(project.versions.length - 1);
             } else {
-                resetCanvas();
+                // Pas de version Design : si le projet (souvent créé/édité côté Code) a une page
+                // web dans son workspace PARTAGÉ (#5), on l'affiche en aperçu. Sinon canvas vide.
+                let shown = false;
+                try {
+                    const er = await fetch(`/api/athenadesign/projects/${projectId}/workspace-entry`);
+                    if (er.ok) {
+                        const ej = await er.json();
+                        if (ej && ej.entry) { showWorkspacePreview(projectId, ej.entry); shown = true; }
+                    }
+                } catch (e) { /* silencieux */ }
+                if (!shown) resetCanvas();
             }
-            
+
+            // Bascule « Code de base / Design » (visible quand le projet a À LA FOIS un code
+            // de base à la racine et une sortie Design). Mode actif déduit de ce qu'on affiche.
+            await refreshSourceToggle(projectId, (project.versions && project.versions.length > 0) ? "design" : null);
+
             await loadProjects();
         } catch (e) {
             console.error("Error loading project", e);
@@ -1073,6 +1145,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Refresh Preview Button listener
     btnRefreshPreview.addEventListener("click", () => {
+        if (currentWorkspacePreview) {
+            // Mode workspace : recharge la page depuis le dossier (cache-bust).
+            const { projectId, entry } = currentWorkspacePreview;
+            htmlPreviewFrame.src = `/api/athenadesign/projects/${projectId}/workspace/${entry}?t=${Date.now()}`;
+            appendConsoleLine("system", "[Aperçu] Rechargement depuis le workspace...");
+            return;
+        }
         if (currentVersionIndex !== null && currentProjectData) {
             const ver = currentProjectData.versions[currentVersionIndex];
             if (ver && WEB_TYPES.includes(ver.type)) {
@@ -1084,6 +1163,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Open External Button listener
     btnOpenExternal.addEventListener("click", () => {
+        if (currentWorkspacePreview) {
+            const { projectId, entry } = currentWorkspacePreview;
+            window.open(`/api/athenadesign/projects/${projectId}/workspace/${entry}`, "_blank");
+            return;
+        }
         if (currentProjectId && currentVersionIndex !== null && currentProjectData) {
             const ver = currentProjectData.versions[currentVersionIndex];
             if (ver && WEB_TYPES.includes(ver.type)) {
@@ -1093,15 +1177,88 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // Bascule de source : voir le CODE DE BASE (racine, intact) vs la sortie DESIGN.
+    document.getElementById("btn-src-base")?.addEventListener("click", () => {
+        if (!currentProjectId || !currentSources.base) return;
+        showWorkspacePreview(currentProjectId, currentSources.base);
+        setSourceToggleActive("base");
+    });
+    document.getElementById("btn-src-design")?.addEventListener("click", () => {
+        if (!currentProjectId) return;
+        if (currentProjectData && currentProjectData.versions && currentProjectData.versions.length > 0) {
+            loadVersion(currentProjectData.versions.length - 1);
+        } else if (currentSources.design) {
+            showWorkspacePreview(currentProjectId, currentSources.design);
+        }
+        setSourceToggleActive("design");
+    });
+
     // Bridge to forward messages from the HTML preview iframe
     window.addEventListener("message", (e) => {
         if (e.data && e.data.type === "iframe-log") {
             const level = e.data.level; // "stdout" or "stderr"
             appendConsoleLine(level, `[Aperçu] ${e.data.message}`);
+        } else if (e.data && e.data.type === "athena:refresh-projects") {
+            // La liste des projets est partagée avec la partie Code : l'app hôte demande
+            // un rafraîchissement à l'ouverture de l'onglet Design (projets créés ailleurs).
+            try { loadProjects(); } catch (_) {}
         }
     });
 
+    // #5 — Aperçu d'un projet via les FICHIERS de son workspace (partagé avec le Code),
+    // quand il n'a pas de « version » Design. L'iframe charge la page par URL (src) pour
+    // que les assets relatifs (CSS/JS/images) se résolvent dans le dossier du projet.
+    function showWorkspacePreview(projectId, entry) {
+        currentWorkspacePreview = { projectId, entry };
+        currentVersionIndex = null;
+        const url = `/api/athenadesign/projects/${projectId}/workspace/${entry}`;
+        canvasEmptyState.style.display = "none";
+        pythonPreviewContainer.style.display = "none";
+        previewFrameContainer.style.display = "block";
+        htmlPreviewFrame.style.display = "block";
+        btnRunPython.style.display = "none";
+        btnRefreshPreview.style.display = "flex";
+        btnOpenExternal.style.display = "flex";
+        responsiveToolbar.style.display = "flex";
+        if (btnExportPdf) btnExportPdf.style.display = "flex";
+        if (adjustToolbar) adjustToolbar.style.display = "flex";
+        applyViewport(activeViewport);
+        htmlPreviewFrame.removeAttribute("srcdoc");
+        htmlPreviewFrame.src = url;
+        // Charge aussi le code de la page dans l'éditeur (lecture).
+        fetch(url).then(r => r.ok ? r.text() : "").then(t => { if (t) setEditorValue(t, "html"); }).catch(() => {});
+        switchTab("preview");
+    }
+
+    // Bascule « Code de base / Design » : récupère les deux sources du projet et n'affiche
+    // le sélecteur que si les DEUX coexistent (sinon il n'y a rien à comparer).
+    async function refreshSourceToggle(projectId, activeMode) {
+        currentSources = { base: null, design: null };
+        try {
+            const r = await fetch(`/api/athenadesign/projects/${projectId}/sources`);
+            if (r.ok) currentSources = await r.json();
+        } catch (e) { /* silencieux */ }
+        const toggle = document.getElementById("source-toggle");
+        const hasBoth = !!(currentSources.base && currentSources.design);
+        if (toggle) toggle.style.display = hasBoth ? "flex" : "none";
+        if (!hasBoth) return;
+        setSourceToggleActive(activeMode || (currentWorkspacePreview ? "base" : "design"));
+    }
+
+    function setSourceToggleActive(mode) {
+        const map = { base: document.getElementById("btn-src-base"), design: document.getElementById("btn-src-design") };
+        Object.entries(map).forEach(([k, el]) => {
+            if (!el) return;
+            const on = (k === mode);
+            el.style.opacity = on ? "1" : "0.5";
+            el.style.fontWeight = on ? "700" : "400";
+        });
+    }
+
     function resetCanvas() {
+        currentWorkspacePreview = null;
+        const _st = document.getElementById("source-toggle");
+        if (_st) _st.style.display = "none";
         htmlPreviewFrame.style.display = "none";
         previewFrameContainer.style.display = "none";
         pythonPreviewContainer.style.display = "none";
@@ -1180,8 +1337,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!currentProjectData || !currentProjectData.versions || index >= currentProjectData.versions.length) return;
         
         currentVersionIndex = index;
+        currentWorkspacePreview = null;
         const ver = currentProjectData.versions[index];
-        
+
         canvasEmptyState.style.display = "none";
         
         const lang = ver.type === "python" ? "python"
