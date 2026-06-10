@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.12 (Visibilité des fichiers générés)
+
+### 🔧 Corrections
+- **Onglet Code** : l'explorateur de fichiers se **rafraîchit automatiquement** après qu'un agent a écrit/édité des fichiers (`write_file`, `edit_file`, `apply_patch`). Avant, les fichiers créés (ex. par le Codeur lors d'un « crée un site ») restaient **invisibles** jusqu'à un clic manuel sur « Actualiser ». Complète le fix v0.11.9 (le Codeur peut écrire) — les fichiers apparaissent maintenant tout seuls.
+
 ## v0.11.11 (Doc d'installation)
 
 ### 📦 Installation
