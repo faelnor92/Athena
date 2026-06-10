@@ -112,3 +112,8 @@ athenadesign_shared.json
 
 # Lien symbolique vers une copie externe (clé USB) — ne pas versionner
 /Athena-main
+
+# Protos / handoffs de design (référence locale, hors dépôt)
+/Athena - Open Space 2.0 (standalone).html
+/cldesign.txt
+/static/openspace_proto.html

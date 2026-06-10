@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.24 (Design : sortie multi-fichiers css/js séparés)
+
+### 🧩 Structure multi-fichiers (#5)
+- La sortie HTML de Design est désormais **éclatée en fichiers séparés** dans `design/` : `index.html` + `style.css` + `script.js`, au lieu d'un unique HTML autonome (CSS/JS en ligne). On retrouve une structure de projet classique côté Code.
+- Extraction native des `<style>`/`<script>` inline → fichiers dédiés, page reliée par `<link>`/`<script src>`. Les scripts **externes** (CDN) et types spéciaux (importmap, `application/json`) restent inline. Les fichiers obsolètes sont nettoyés si une nouvelle version n'en produit plus. L'aperçu continue de fonctionner (références relatives servies depuis le workspace).
+
 ## v0.11.23 (Design part du code existant)
 
 ### 🎯 Génération basée sur le projet ouvert (#5)
