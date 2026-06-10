@@ -1627,6 +1627,10 @@ async function playAgentSteps(steps, immediate = false) {
             && typeof loadListItems === "function") loadListItems();
         if (_used.some(t => ["add_calendar_event", "delete_calendar_event"].includes(t))
             && typeof loadAgendaEvents === "function") loadAgendaEvents();
+        // Fichiers : après que le Codeur a écrit/édité, on rafraîchit l'explorateur du projet
+        // (sinon les fichiers créés restent invisibles dans l'onglet Code).
+        if (_used.some(t => ["write_file", "edit_file", "apply_patch"].includes(t))
+            && typeof loadWorkspaceFiles === "function") loadWorkspaceFiles();
     } catch (_e) {}
     return new Promise(resolve => {
         let delay = 0;
