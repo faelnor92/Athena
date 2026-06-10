@@ -913,13 +913,22 @@ def _describe_images(images: list) -> str:
     return "\n\n".join(out)
 
 
-def _build_system(design_system: str = "", context_text: str = "", note: str = "") -> str:
-    """Assemble le prompt système : règles AthenaDesign + charte (design system) + contexte
-    importé (docs/web/descriptions d'images) + note éventuelle."""
+def _build_system(design_system: str = "", context_text: str = "", note: str = "",
+                  base_code: str = "") -> str:
+    """Assemble le prompt système : règles AthenaDesign + charte (design system) + CODE
+    EXISTANT du projet (base de travail) + contexte importé + note éventuelle."""
     parts = [SYSTEM_PROMPT]
     if (design_system or "").strip():
         parts.append("=== DESIGN SYSTEM (charte à RESPECTER impérativement : couleurs, "
                      "typographie, composants, ton) ===\n" + design_system.strip())
+    if (base_code or "").strip():
+        parts.append(
+            "=== CODE ACTUEL DU PROJET (point de départ OBLIGATOIRE) ===\n"
+            "Voici le code EXISTANT de la page du projet. Sauf demande explicite de repartir "
+            "de zéro, tu dois PARTIR DE CE CODE : conserve sa structure, son contenu et ses "
+            "fonctionnalités, et applique les modifications/améliorations demandées DESSUS "
+            "(n'invente pas une page générique sans rapport). Produis la page COMPLÈTE modifiée.\n\n"
+            + base_code.strip())
     if (context_text or "").strip():
         parts.append("=== CONTEXTE FOURNI PAR L'UTILISATEUR (références, documents, capture "
                      "web — inspire-t'en, ne recopie pas aveuglément) ===\n" + context_text.strip())
@@ -929,7 +938,8 @@ def _build_system(design_system: str = "", context_text: str = "", note: str = "
 
 
 def _generate_via_athena(prompt: str, history: list, model_name: str = "",
-                         design_system: str = "", context_text: str = "", images: list = None) -> dict:
+                         design_system: str = "", context_text: str = "", images: list = None,
+                         base_code: str = "") -> dict:
     """Génère via l'INFRA LLM d'Athena (swarm._complete) : endpoint/clés/fallback d'Athena.
     Gère la charte (design_system), le contexte importé (docs/web) et les IMAGES :
     modèle vision direct → sinon pré-description via VISION_MODEL → sinon note (marche au max
@@ -954,7 +964,7 @@ def _generate_via_athena(prompt: str, history: list, model_name: str = "",
                         "multimodal et aucun VISION_MODEL n'est configuré → non analysées. "
                         "Demande à l'utilisateur de les décrire, ou configure un modèle vision.]")
 
-    messages = [{"role": "system", "content": _build_system(design_system, context_text, note)}]
+    messages = [{"role": "system", "content": _build_system(design_system, context_text, note, base_code)}]
     for m in (history or []):
         role = m.get("role")
         if role in ("user", "assistant") and m.get("content"):
@@ -967,7 +977,8 @@ def _generate_via_athena(prompt: str, history: list, model_name: str = "",
 
 async def generate_design(prompt: str, history: list, provider: str = "athena",
                           api_key: str = "", model_name: str = "",
-                          design_system: str = "", context_text: str = "", images: list = None) -> dict:
+                          design_system: str = "", context_text: str = "", images: list = None,
+                          base_code: str = "") -> dict:
     """Routeur LLM. Par DÉFAUT (provider 'athena' ou non précisé), passe par l'infra LLM
     d'Athena (clés/endpoint/fallback configurés). 'mock' → templates hors-ligne. Les providers
     externes explicites (gemini/anthropic/openai) restent possibles si une clé est fournie.
@@ -994,7 +1005,7 @@ async def generate_design(prompt: str, history: list, provider: str = "athena",
     if provider not in ("gemini", "anthropic", "openai") or not api_key:
         try:
             return await asyncio.to_thread(
-                _generate_via_athena, prompt, history, model_name, design_system, context_text, images)
+                _generate_via_athena, prompt, history, model_name, design_system, context_text, images, base_code)
         except Exception as e:
             return {"type": "html",
                     "explanation": f"⚠️ Erreur de génération via l'API d'Athena : {e}",

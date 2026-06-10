@@ -436,6 +436,47 @@ def _base_html_entry(base: str):
     return None
 
 
+def _read_base_code(project_id: str, max_total: int = 60000, max_file: int = 40000) -> str:
+    """Lit le CODE DE BASE du projet (page d'entrée racine + CSS/JS compagnons à la racine,
+    hors `design/`) pour le fournir au générateur comme point de départ. Bornes de taille
+    pour maîtriser les tokens. '' si le projet n'a pas de code de base."""
+    base = _project_path(project_id)
+    if not base:
+        return ""
+    entry = _base_html_entry(base)
+    if not entry:
+        return ""
+    chunks, total = [], 0
+
+    def _add(rel: str):
+        nonlocal total
+        p = _safe_join(base, rel)
+        if not p or not os.path.isfile(p):
+            return
+        try:
+            with open(p, "r", encoding="utf-8", errors="replace") as f:
+                txt = f.read(max_file + 1)
+        except Exception:
+            return
+        if len(txt) > max_file:
+            txt = txt[:max_file] + "\n/* …tronqué… */"
+        if total + len(txt) > max_total:
+            return
+        total += len(txt)
+        chunks.append(f"--- {rel} ---\n{txt}")
+
+    _add(entry)
+    try:
+        for name in sorted(os.listdir(base)):
+            if name == _DESIGN_SUBDIR:
+                continue
+            if name.lower().endswith((".css", ".js")) and os.path.isfile(os.path.join(base, name)):
+                _add(name)
+    except Exception:
+        pass
+    return "\n\n".join(chunks)
+
+
 @router.get("/projects/{project_id}/sources")
 async def project_sources(request: Request, project_id: str):
     """Sources prévisualisables d'un projet : `base` = page du code d'origine (racine,
@@ -499,6 +540,10 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
     context_text, images = _resolve_attachments(payload.get("attachments"))
     design_system = project.get("design_system", "")
 
+    # CODE DE BASE du projet (page racine + CSS/JS) → le générateur PART de l'existant
+    # au lieu d'inventer une page générique (variante/refonte réelle du projet ouvert).
+    base_code = _read_base_code(project_id)
+
     result = await generator.generate_design(
         prompt=prompt,
         history=project["history"],
@@ -508,6 +553,7 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
         design_system=design_system,
         context_text=context_text,
         images=images,
+        base_code=base_code,
     )
 
     project["history"].append({"role": "user", "content": prompt})

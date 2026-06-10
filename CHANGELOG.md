@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.23 (Design part du code existant)
+
+### 🎯 Génération basée sur le projet ouvert (#5)
+- **Design part désormais du CODE EXISTANT du projet** au lieu d'inventer une page générique sans rapport. À l'ouverture d'un projet ayant déjà du code (ex. importé ou créé côté Code), une demande de « variante / modernisation / refonte » conserve la structure, le contenu et les fonctionnalités réels de la page et applique les modifications dessus.
+- Le générateur reçoit la **page d'entrée racine + ses CSS/JS compagnons** (bornés en taille pour maîtriser les tokens) via un nouveau paramètre `base_code`, injecté dans le prompt système comme « point de départ obligatoire ».
+- Vérifié : sur un projet « Compagnons - Animaux », la régénération conserve le thème et le contenu (chien/chat/adoption…) au lieu de produire une landing page générique.
+
 ## v0.11.22 (Design : bascule « Code de base / Design »)
 
 ### 🔀 Voir le code d'origine OU la sortie Design (#5)
