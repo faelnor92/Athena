@@ -2,7 +2,8 @@ import os
 import re
 import json
 import uuid
-from fastapi import APIRouter, HTTPException, Body, Request
+from typing import List
+from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from core import athenadesign_runner as runner
 from core import athenadesign_generator as generator
@@ -283,6 +284,71 @@ async def get_project(request: Request, project_id: str):
         raise HTTPException(status_code=404, detail="Projet introuvable")
     db = read_db(_current_user(request))
     return db.get(project_id) or _new_design(project_id)
+
+def _project_path(project_id: str):
+    """Dossier de travail (filesystem) d'un projet, PARTAGÉ avec la partie Code.
+    None si le projet n'a pas de dossier accessible. Réutilise le registre code."""
+    try:
+        p = next((x for x in code_projects.list_projects() if x.get("id") == project_id), None)
+        path = (p or {}).get("path")
+        return os.path.realpath(path) if path else None
+    except Exception:
+        return None
+
+
+def _safe_join(base: str, rel: str):
+    """Joint base + rel en refusant toute échappée hors de base (anti-traversée)."""
+    rel = (rel or "").replace("\\", "/").lstrip("/")
+    # On retire les segments dangereux ('..', '.') tout en gardant l'arborescence.
+    parts = [seg for seg in rel.split("/") if seg not in ("", ".", "..")]
+    if not parts:
+        return None
+    dest = os.path.realpath(os.path.join(base, *parts))
+    if os.path.commonpath([dest, base]) != base:
+        return None
+    return dest
+
+
+# Limites de sécurité de l'upload de dossier.
+_UPLOAD_MAX_FILES = 2000
+_UPLOAD_MAX_BYTES = 50 * 1024 * 1024  # 50 Mo / fichier
+_UPLOAD_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".next"}
+
+
+@router.post("/projects/{project_id}/upload")
+async def upload_folder(request: Request, project_id: str,
+                        files: List[UploadFile] = File(...),
+                        paths: List[str] = Form(...)):
+    """Importe un DOSSIER COMPLET (sous-dossiers inclus) dans le workspace du projet —
+    le MÊME dossier que la partie Code (#5). Le frontend envoie chaque fichier avec son
+    chemin relatif (webkitRelativePath). Anti-traversée + filtres (poids, dossiers lourds)."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    base = _project_path(project_id)
+    if not base:
+        raise HTTPException(status_code=409, detail="Ce projet n'a pas de dossier de travail.")
+    os.makedirs(base, exist_ok=True)
+    if len(files) > _UPLOAD_MAX_FILES:
+        raise HTTPException(status_code=413, detail=f"Trop de fichiers (max {_UPLOAD_MAX_FILES}).")
+
+    written, skipped = 0, []
+    for f, rel in zip(files, paths):
+        # On ignore les répertoires lourds usuels (le premier segment est souvent le nom du dossier racine).
+        segs = (rel or "").replace("\\", "/").split("/")
+        if any(s in _UPLOAD_SKIP_DIRS for s in segs):
+            skipped.append(rel); continue
+        dest = _safe_join(base, rel)
+        if not dest:
+            skipped.append(rel); continue
+        data = await f.read()
+        if len(data) > _UPLOAD_MAX_BYTES:
+            skipped.append(rel); continue
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as out:
+            out.write(data)
+        written += 1
+    return {"uploaded": written, "skipped": len(skipped), "skipped_paths": skipped[:50]}
+
 
 @router.post("/chat")
 async def chat_endpoint(request: Request, payload: dict = Body(...)):

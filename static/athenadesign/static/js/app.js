@@ -928,6 +928,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
     btnNewProject.addEventListener("click", createNewProject);
 
+    // #9 — Importer un DOSSIER complet (sous-dossiers inclus) dans le projet ouvert.
+    // Les fichiers atterrissent dans le workspace du projet, PARTAGÉ avec la partie Code (#5).
+    const btnImportFolder = document.getElementById("btn-import-folder");
+    const importFolderInput = document.getElementById("import-folder-input");
+    if (btnImportFolder && importFolderInput) {
+        btnImportFolder.addEventListener("click", () => {
+            if (!currentProjectId) {
+                appendSystemMessage && appendSystemMessage("Ouvre ou crée un projet avant d'importer un dossier.");
+                return;
+            }
+            importFolderInput.value = "";
+            importFolderInput.click();
+        });
+        importFolderInput.addEventListener("change", async () => {
+            const files = Array.from(importFolderInput.files || []);
+            if (!files.length || !currentProjectId) return;
+            appendSystemMessage && appendSystemMessage(`Import de ${files.length} fichier(s) en cours…`);
+            const fd = new FormData();
+            files.forEach(f => {
+                fd.append("files", f, f.name);
+                fd.append("paths", f.webkitRelativePath || f.name);
+            });
+            try {
+                const r = await fetch(`/api/athenadesign/projects/${currentProjectId}/upload`, { method: "POST", body: fd });
+                if (!r.ok) {
+                    const e = await r.json().catch(() => ({}));
+                    appendSystemMessage && appendSystemMessage("Échec de l'import : " + (e.detail || r.status));
+                    return;
+                }
+                const res = await r.json();
+                appendSystemMessage && appendSystemMessage(
+                    `Dossier importé : ${res.uploaded} fichier(s)${res.skipped ? `, ${res.skipped} ignoré(s)` : ""}. Fichiers partagés avec la partie Code.`);
+            } catch (err) {
+                appendSystemMessage && appendSystemMessage("Erreur réseau pendant l'import : " + err);
+            } finally {
+                importFolderInput.value = "";
+            }
+        });
+    }
+
     async function selectProject(projectId) {
         try {
             currentProjectId = projectId;

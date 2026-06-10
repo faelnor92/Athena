@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.19 (Import de dossier dans Design)
+
+### 📁 Import d'un dossier complet (#9)
+- Nouveau bouton **« Importer un dossier »** dans le panneau PROJETS de Design : importe un **dossier entier avec ses sous-dossiers** (`<input webkitdirectory>`) dans le projet ouvert.
+- Les fichiers atterrissent dans le **workspace du projet — PARTAGÉ avec la partie Code** (#5) : ce qui est importé dans Design est immédiatement visible et éditable côté Code.
+- Endpoint **`POST /api/athenadesign/projects/{id}/upload`** (multipart : `files` + `paths`). Sécurité : anti-traversée (chemins assainis, jamais hors du dossier projet), filtres (max 2000 fichiers, 50 Mo/fichier, exclusion auto de `.git`/`node_modules`/`__pycache__`/`.venv`/`dist`/`build`/`.next`).
+
 ## v0.11.18 (Hotfix console bash)
 
 ### 🐛 Correctif

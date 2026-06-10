@@ -77,9 +77,15 @@
             <div class="projects-panel">
                 <div class="panel-header-row">
                     <span class="panel-section-title"><i data-lucide="folder"></i> PROJETS</span>
-                    <button id="btn-new-project" class="icon-btn-small" title="Nouveau projet">
-                        <i data-lucide="plus"></i>
-                    </button>
+                    <div style="display:flex; gap:4px;">
+                        <button id="btn-import-folder" class="icon-btn-small" title="Importer un dossier complet dans le projet ouvert">
+                            <i data-lucide="folder-up"></i>
+                        </button>
+                        <button id="btn-new-project" class="icon-btn-small" title="Nouveau projet">
+                            <i data-lucide="plus"></i>
+                        </button>
+                    </div>
+                    <input type="file" id="import-folder-input" webkitdirectory directory multiple style="display:none;">
                 </div>
                 <div id="projects-list" class="projects-list-container">
                     <!-- Loaded dynamically -->
@@ -366,6 +372,6 @@
     </div>
 
     <!-- Custom Script -->
-    <script src="static/js/app.js?v=20260610_refresh"></script>
+    <script src="static/js/app.js?v=20260610_upload"></script>
 </body>
 </html>
