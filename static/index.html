@@ -814,57 +814,45 @@
 
                 <!-- ONGLET SSH : INTEGRATION TERMINAL SSH -->
                 <div class="modal-pane" id="pane-ssh" style="display: none;">
-                    <h3>🖥️ Intégration Terminal SSH (Exécution Distante)</h3>
-                    <p class="section-desc">Configure les identifiants pour exécuter toutes les commandes du cockpit et de l'Agent Codeur sur un poste de travail local ou un VPS distant via SSH.</p>
-                    
+                    <h3>🔒 Sécurité du cockpit</h3>
+                    <p class="section-desc">Mot de passe administrateur de secours (sert à se connecter en admin si aucun compte utilisateur n'existe) et garde-fou d'exposition réseau. Sans rapport avec les hôtes SSH ci-dessous.</p>
+
                     <form id="ssh-form" class="config-form">
                         <div class="form-grid">
-                            <div class="form-group">
-                                <label for="key-ssh-host">SSH Host (SSH_HOST)</label>
-                                <input type="text" id="key-ssh-host" placeholder="Ex: 192.168.1.50 ou monposte.local">
-                            </div>
-                            <div class="form-group">
-                                <label for="key-ssh-port">SSH Port (SSH_PORT)</label>
-                                <input type="text" id="key-ssh-port" placeholder="Ex: 22">
-                            </div>
-                            <div class="form-group">
-                                <label for="key-ssh-username">SSH Username (SSH_USERNAME)</label>
-                                <input type="text" id="key-ssh-username" placeholder="Ex: legrill">
-                            </div>
-                            <div class="form-group">
-                                <label for="key-ssh-password">SSH Password (SSH_PASSWORD)</label>
-                                <input type="password" id="key-ssh-password" placeholder="Laisser vide si inchangée">
-                            </div>
                             <div class="form-group" style="grid-column: span 2;">
-                                <label for="key-ssh-key-path">Chemin de la Clé Privée SSH (SSH_KEY_PATH)</label>
-                                <input type="text" id="key-ssh-key-path" placeholder="Ex: ~/.ssh/id_rsa (Alternative au mot de passe)">
-                            </div>
-                            
-                            <!-- PROTECTION DE SÉCURITÉ -->
-                            <div class="form-group" style="grid-column: span 2; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
-                                <label for="key-admin-password" style="color: var(--accent-color); font-weight: bold;">Mot de passe de protection du Cockpit (ADMIN_PASSWORD)</label>
+                                <label for="key-admin-password" style="color: var(--accent-color); font-weight: bold;">Mot de passe admin (ADMIN_PASSWORD)</label>
                                 <input type="password" id="key-admin-password" placeholder="Laisser vide pour désactiver ou inchangé">
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-primary" style="margin-top: 16px;">Sauvegarder la configuration SSH</button>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 16px;">Enregistrer</button>
                     </form>
 
                     <!-- REGISTRE MULTI-HÔTES : brancher plusieurs serveurs -->
                     <div style="margin-top: 22px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
-                        <h3 style="margin-top: 0;">🖧 Hôtes supplémentaires (multi-serveurs)</h3>
-                        <p class="section-desc">Branche plusieurs serveurs : ils apparaissent dans le sélecteur de la console Code et sont accessibles aux agents via <code>execute_bash_command(host='Nom')</code>. L'hôte ci-dessus (.env) reste le serveur « par défaut ».</p>
-                        <div id="ssh-hosts-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <h3 style="margin:0;">🖧 Hôtes SSH</h3>
+                            <span style="flex:1;"></span>
+                            <button id="btn-toggle-add-ssh" type="button" class="btn btn-secondary" style="padding:6px 12px;">＋ Ajouter un hôte SSH</button>
+                        </div>
+                        <p class="section-desc">Serveurs pilotables depuis la console Code et par les agents via <code>execute_bash_command(host='Nom')</code>. Chaque hôte peut être autorisé à d'autres utilisateurs (ex. les satellites vocaux).</p>
+
+                        <!-- Formulaire d'ajout (replié par défaut) -->
+                        <div id="newssh-form" style="display:none; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; margin-bottom:14px;">
+                            <div class="form-grid">
+                                <div class="form-group"><label for="newssh-label">Nom affiché</label><input type="text" id="newssh-label" placeholder="Ex: Immich"></div>
+                                <div class="form-group"><label for="newssh-host">Hôte</label><input type="text" id="newssh-host" placeholder="Ex: 10.0.0.5"></div>
+                                <div class="form-group"><label for="newssh-username">Utilisateur</label><input type="text" id="newssh-username" placeholder="Ex: ops"></div>
+                                <div class="form-group"><label for="newssh-port">Port</label><input type="text" id="newssh-port" placeholder="22"></div>
+                                <div class="form-group"><label for="newssh-key">Clé privée (chemin sur le serveur)</label><input type="text" id="newssh-key" placeholder="~/.ssh/id_ed25519 (recommandé)"></div>
+                                <div class="form-group"><label for="newssh-password">Mot de passe (déconseillé)</label><input type="password" id="newssh-password" placeholder="préférez une clé"></div>
+                            </div>
+                            <button id="btn-settings-add-ssh" class="btn btn-primary" style="margin-top: 8px;">Ajouter cet hôte</button>
+                        </div>
+
+                        <!-- Liste des hôtes -->
+                        <div id="ssh-hosts-list" style="display:flex; flex-direction:column; gap:6px;">
                             <div style="opacity:0.5; font-size:0.8rem;">Chargement…</div>
                         </div>
-                        <div class="form-grid">
-                            <div class="form-group"><label for="newssh-label">Nom affiché</label><input type="text" id="newssh-label" placeholder="Ex: Prod"></div>
-                            <div class="form-group"><label for="newssh-host">Hôte</label><input type="text" id="newssh-host" placeholder="Ex: 10.0.0.5"></div>
-                            <div class="form-group"><label for="newssh-username">Utilisateur</label><input type="text" id="newssh-username" placeholder="Ex: root"></div>
-                            <div class="form-group"><label for="newssh-port">Port</label><input type="text" id="newssh-port" placeholder="22"></div>
-                            <div class="form-group"><label for="newssh-key">Clé privée (chemin sur le serveur)</label><input type="text" id="newssh-key" placeholder="~/.ssh/id_ed25519 (recommandé)"></div>
-                            <div class="form-group"><label for="newssh-password">Mot de passe (déconseillé)</label><input type="password" id="newssh-password" placeholder="préférez une clé"></div>
-                        </div>
-                        <button id="btn-settings-add-ssh" class="btn btn-secondary" style="margin-top: 8px;">＋ Ajouter cet hôte</button>
                     </div>
                 </div>
 
@@ -1587,7 +1575,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260610_resume"></script>
+    <script src="app.js?v=20260610_sshclean"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>

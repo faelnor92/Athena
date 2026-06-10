@@ -1,5 +1,33 @@
 # Historique des Versions (Changelog)
 
+## v0.11.29 (Réglages SSH : retrait du legacy mono-hôte)
+
+### 🧹 Nettoyage
+- Retrait du bloc legacy **« Intégration Terminal SSH »** (hôte unique `.env` : SSH_HOST/PORT/USERNAME/PASSWORD/KEY_PATH) — redondant avec le registre multi-hôtes **par utilisateur** et incohérent avec son isolation (cet hôte était global).
+- Le **mot de passe admin** (`ADMIN_PASSWORD`) est conservé mais déplacé sous une rubrique claire **« 🔒 Sécurité du cockpit »** (c'est l'admin de secours + garde-fou d'exposition réseau, sans rapport avec le SSH).
+- Réglages → SSH ne montre donc plus que : la sécurité du cockpit, puis le bouton **« ＋ Ajouter un hôte SSH »** et la liste des hôtes (avec leurs autorisations).
+## v0.11.28 (Réglages SSH épurés)
+
+### 🧹 UI SSH simplifiée
+- Réglages → SSH : un seul bouton **« ＋ Ajouter un hôte SSH »** déplie le formulaire (replié par défaut, et se referme après ajout), et la **liste des hôtes s'affiche en dessous** (avec leurs autorisations). Plus de formulaire encombrant en permanence.
+## v0.11.27 (UI de partage SSH dans les Réglages)
+
+### 🖥️ Gestion des autorisations dans Réglages → SSH
+- Chaque hôte SSH (qui t'appartient) affiche désormais sa ligne **« Autorisé pour : »** avec les utilisateurs autorisés (puces retirables d'un clic) et un menu **« Autoriser »** (liste des utilisateurs) pour partager l'hôte — typiquement avec le **compte des satellites vocaux**.
+- Les hôtes **partagés avec toi** par un autre utilisateur s'affichent en lecture (« partagé par … ») sans contrôles de partage.
+- Branché sur les endpoints `POST/DELETE /api/ssh/hosts/{id}/share` (admin-only).
+
+## v0.11.26 (SSH : isolation par utilisateur + partage)
+
+### 🔐 Hôtes SSH privés par utilisateur
+- Le registre SSH (hôtes **ET identifiants**) est désormais **strictement scopé par utilisateur** : un compte ne voit/n'utilise que SES hôtes. Fini le registre global partagé (dangereux). Migration douce de l'ancien registre vers l'admin.
+- Conséquence : le **chat reste par utilisateur** (chaque session connectée pilote SES serveurs), et les **satellites vocaux** opèrent sous **un seul compte** (celui du `auth_token` de l'assistant vocal) → ses propres hôtes.
+
+### 🤝 Partage autorisé (ex. satellites)
+- Un propriétaire (admin) peut **autoriser un autre utilisateur** à utiliser un de ses hôtes (champ `shared_with`) — typiquement partager Immich/HA avec le **compte des satellites**.
+- Un utilisateur voit alors **ses hôtes + ceux explicitement partagés avec lui** ; un hôte d'autrui n'est résolu QUE s'il a été partagé.
+- Endpoints : `POST /api/ssh/hosts/{id}/share` et `DELETE /api/ssh/hosts/{id}/share/{username}` (admin-only).
+
 ## v0.11.25 (Agents : ciblage des serveurs SSH par leur nom)
 
 ### 🖧 « Va sur Immich » → l'agent trouve la machine seul

@@ -653,25 +653,75 @@ async function loadSshHostsSettings() {
         const r = await apiFetch("/api/ssh/hosts");
         if (!r.ok) { list.innerHTML = '<div style="opacity:0.6;font-size:0.8rem;">Réservé à l\'administrateur.</div>'; return; }
         const hosts = await r.json();
+        // Liste des utilisateurs (pour le menu d'autorisation) — best-effort.
+        let users = [];
+        try {
+            const ur = await apiFetch("/api/users");
+            if (ur.ok) {
+                const ud = await ur.json();
+                users = (ud.users || []).map(u => (typeof u === "string" ? u : (u.username || u.name || ""))).filter(Boolean);
+            }
+        } catch (e) { /* pas grave : on tombera sur un champ texte */ }
         if (!hosts || !hosts.length) { list.innerHTML = '<div style="opacity:0.6;font-size:0.8rem;">Aucun hôte configuré.</div>'; return; }
         list.innerHTML = "";
         hosts.forEach(h => {
-            const row = document.createElement("div");
-            row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:0.82rem;";
             const isEnv = h.id === "env";
+            const isShared = !!h.shared;   // hôte d'un AUTRE utilisateur, partagé avec moi
             const auth = h.has_key ? "🔑 clé" : (h.password ? "🔒 mdp" : "");
-            row.innerHTML = `<span style="font-weight:600;">🖧 ${h.label || h.host}</span>`
+            const box = document.createElement("div");
+            box.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:8px 10px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:0.82rem;";
+            // Ligne principale
+            const main = document.createElement("div");
+            main.style.cssText = "display:flex;align-items:center;gap:8px;";
+            main.innerHTML = `<span style="font-weight:600;">🖧 ${h.label || h.host}</span>`
                 + `<span style="opacity:0.6;">${h.username ? h.username + "@" : ""}${h.host}:${h.port || 22}</span>`
                 + `<span style="opacity:0.5;">${auth}</span><span style="flex:1;"></span>`
                 + (isEnv ? '<span style="opacity:0.5;font-size:0.72rem;">.env (défaut)</span>'
-                         : `<button class="btn-icon btn-del-ssh" data-id="${h.id}" style="color:#f87171;padding:2px 8px;">Supprimer</button>`);
-            list.appendChild(row);
+                   : isShared ? `<span style="opacity:0.6;font-size:0.72rem;">partagé par ${h.owner}</span>`
+                   : `<button class="btn-icon btn-del-ssh" data-id="${h.id}" style="color:#f87171;padding:2px 8px;">Supprimer</button>`);
+            box.appendChild(main);
+            // Sous-ligne AUTORISATIONS (seulement pour MES hôtes, hors .env)
+            if (!isEnv && !isShared) {
+                const sw = h.shared_with || [];
+                const share = document.createElement("div");
+                share.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-left:4px;";
+                const chips = sw.map(u => `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.18);border-radius:10px;padding:1px 6px;font-size:0.72rem;">${u}<button class="ssh-unshare" data-id="${h.id}" data-user="${u}" title="Retirer l'autorisation" style="background:none;border:none;color:#f87171;cursor:pointer;padding:0;font-size:0.9rem;line-height:1;">×</button></span>`).join("");
+                const selector = users.length
+                    ? `<select class="ssh-share-user" style="font-size:0.74rem;padding:2px 4px;"><option value="">— utilisateur —</option>${users.map(u => `<option value="${u}">${u}</option>`).join("")}</select>`
+                    : `<input class="ssh-share-user" placeholder="utilisateur" style="font-size:0.74rem;padding:2px 4px;width:110px;">`;
+                share.innerHTML = `<span style="opacity:0.55;font-size:0.72rem;">Autorisé pour :</span> `
+                    + (chips || '<span style="opacity:0.4;font-size:0.72rem;">personne</span>')
+                    + `<span style="flex:1;"></span>${selector}`
+                    + `<button class="btn-icon btn-share-ssh" data-id="${h.id}" style="color:#818cf8;padding:2px 8px;">Autoriser</button>`;
+                box.appendChild(share);
+            }
+            list.appendChild(box);
         });
+        // Suppression
         list.querySelectorAll(".btn-del-ssh").forEach(b => b.addEventListener("click", async (e) => {
             const id = e.target.getAttribute("data-id");
             if (!confirm("Supprimer cet hôte SSH ?")) return;
             const rr = await apiFetch("/api/ssh/hosts/" + encodeURIComponent(id), { method: "DELETE" });
             if (rr.ok) { loadSshHostsSettings(); if (typeof loadSshHosts === "function") loadSshHosts(); }
+            else { const d = await rr.json().catch(() => ({})); alert("Échec : " + (d.detail || rr.status)); }
+        }));
+        // Autoriser un utilisateur sur un hôte
+        list.querySelectorAll(".btn-share-ssh").forEach(b => b.addEventListener("click", async (e) => {
+            const id = e.target.getAttribute("data-id");
+            const sel = e.target.parentElement.querySelector(".ssh-share-user");
+            const username = (sel && sel.value || "").trim();
+            if (!username) { alert("Choisis un utilisateur à autoriser."); return; }
+            const rr = await apiFetch("/api/ssh/hosts/" + encodeURIComponent(id) + "/share", {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username }) });
+            if (rr.ok) loadSshHostsSettings();
+            else { const d = await rr.json().catch(() => ({})); alert("Échec : " + (d.detail || rr.status)); }
+        }));
+        // Retirer une autorisation
+        list.querySelectorAll(".ssh-unshare").forEach(b => b.addEventListener("click", async (e) => {
+            const btn = e.target.closest(".ssh-unshare");
+            const id = btn.getAttribute("data-id"), user = btn.getAttribute("data-user");
+            const rr = await apiFetch("/api/ssh/hosts/" + encodeURIComponent(id) + "/share/" + encodeURIComponent(user), { method: "DELETE" });
+            if (rr.ok) loadSshHostsSettings();
             else { const d = await rr.json().catch(() => ({})); alert("Échec : " + (d.detail || rr.status)); }
         }));
     } catch (e) { list.innerHTML = '<div style="color:#f87171;font-size:0.8rem;">Erreur : ' + e + '</div>'; }
@@ -697,7 +747,25 @@ async function loadSshHostsSettings() {
                 .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
             loadSshHostsSettings();
             if (typeof loadSshHosts === "function") loadSshHosts();
+            // Replie le formulaire après ajout réussi.
+            const form = document.getElementById("newssh-form");
+            const tgl = document.getElementById("btn-toggle-add-ssh");
+            if (form) form.style.display = "none";
+            if (tgl) tgl.textContent = "＋ Ajouter un hôte SSH";
         } catch (e) { alert("Erreur : " + e); }
+    });
+})();
+
+// Bouton « Ajouter un hôte SSH » : déplie/replie le formulaire (replié par défaut).
+(function wireToggleAddSsh() {
+    const tgl = document.getElementById("btn-toggle-add-ssh");
+    const form = document.getElementById("newssh-form");
+    if (!tgl || !form) return;
+    tgl.addEventListener("click", () => {
+        const show = form.style.display === "none";
+        form.style.display = show ? "block" : "none";
+        tgl.textContent = show ? "✕ Annuler" : "＋ Ajouter un hôte SSH";
+        if (show) { const f = document.getElementById("newssh-label"); if (f) f.focus(); }
     });
 })();
 
@@ -4035,11 +4103,6 @@ async function loadConfigEnvPane() {
         document.getElementById("key-replicate").placeholder = env.REPLICATE_API_TOKEN ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
         document.getElementById("key-custom-video-base").value = env.CUSTOM_VIDEO_API_BASE || "";
         document.getElementById("key-custom-video-key").placeholder = env.CUSTOM_VIDEO_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
-        document.getElementById("key-ssh-host").value = env.SSH_HOST || "";
-        document.getElementById("key-ssh-port").value = env.SSH_PORT || "";
-        document.getElementById("key-ssh-username").value = env.SSH_USERNAME || "";
-        document.getElementById("key-ssh-password").placeholder = env.SSH_PASSWORD ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
-        document.getElementById("key-ssh-key-path").value = env.SSH_KEY_PATH || "";
         document.getElementById("key-admin-password").placeholder = env.ADMIN_PASSWORD ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Aucun (Désactivé)";
     } catch (err) {
         pushNotification("Réglages", "Impossible de charger les clés d'API : " + err, "error");
@@ -4097,17 +4160,12 @@ document.getElementById("env-form").addEventListener("submit", async (e) => {
     }
 });
 
-// Soumission dédiée pour la configuration Terminal SSH
+// Soumission dédiée pour la sécurité du cockpit (mot de passe admin)
 const sshForm = document.getElementById("ssh-form");
 if (sshForm) {
     sshForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const sshData = {
-            SSH_HOST: document.getElementById("key-ssh-host").value,
-            SSH_PORT: document.getElementById("key-ssh-port").value,
-            SSH_USERNAME: document.getElementById("key-ssh-username").value,
-            SSH_PASSWORD: document.getElementById("key-ssh-password").value,
-            SSH_KEY_PATH: document.getElementById("key-ssh-key-path").value,
             ADMIN_PASSWORD: document.getElementById("key-admin-password").value
         };
         
