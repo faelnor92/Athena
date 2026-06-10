@@ -132,6 +132,31 @@ def run_ssh_command(command: str, host_id: str = None) -> tuple[str, str, int]:
     finally:
         ssh.close()
 
+def list_ssh_hosts() -> str:
+    """Liste les SERVEURS SSH enregistrés (VM / machines distantes) que tu peux piloter.
+
+    Appelle cet outil quand l'utilisateur te demande d'agir sur une machine par son nom
+    (ex. « va sur Immich », « redémarre Home Assistant ») afin de connaître le LABEL exact à
+    passer ensuite au paramètre `host` de execute_bash_command — ex.
+    execute_bash_command("docker restart immich_server", host="Immich").
+
+    Returns:
+        str: la liste des hôtes (label — utilisateur@hôte:port), ou un message si aucun.
+    """
+    from tools import ssh_hosts
+    hosts = ssh_hosts.list_hosts(mask=True)
+    if not hosts:
+        return "Aucun serveur SSH enregistré. (Réglages → SSH pour en ajouter.)"
+    lines = []
+    for h in hosts:
+        label = h.get("label") or h.get("host") or h.get("id")
+        user = h.get("username") or ""
+        tgt = f"{user + '@' if user else ''}{h.get('host', '')}:{h.get('port', 22)}"
+        lines.append(f"- {label}  ({tgt})")
+    return ("Serveurs SSH disponibles (utilise le LABEL comme paramètre `host` de "
+            "execute_bash_command) :\n" + "\n".join(lines))
+
+
 def execute_bash_command(command: str, user_confirmed: bool = False, host: str = "") -> str:
     """
     Exécute une commande système Bash sécurisée (locale, ou distante via SSH).

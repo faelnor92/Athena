@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.11.25 (Agents : ciblage des serveurs SSH par leur nom)
+
+### 🖧 « Va sur Immich » → l'agent trouve la machine seul
+- Les agents de code peuvent désormais **cibler un serveur SSH par son nom** dans la demande (ex. « mets à jour Immich », « redémarre Home Assistant ») au lieu de dépendre uniquement du sélecteur d'hôte de la console.
+- Nouvel outil **`list_ssh_hosts()`** : l'agent découvre les hôtes enregistrés (labels) puis exécute via `execute_bash_command(cmd, host="Immich")`.
+- Résolution d'hôte **tolérante** (`find`) : correspondance exacte (id/label) **ou sous-chaîne unique** (« immich » → « VM Immich » ; ambigu → refus).
+- La console Code expose la **liste des serveurs disponibles** dans le préambule de l'agent → il sait quelles machines il peut piloter, et peut **enchaîner plusieurs hôtes** dans une même demande.
+- Garde-fous inchangés : registre SSH admin-only, sudo encadré, approbations pour les opérations sensibles.
+
 ## v0.11.24 (Design : sortie multi-fichiers css/js séparés)
 
 ### 🧩 Structure multi-fichiers (#5)
