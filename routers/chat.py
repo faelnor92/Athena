@@ -20,7 +20,8 @@ from core.run_context import registry as run_registry, current_run_id
 from core.state import (
     swarm, _orch_name, _app_name, _orch_agent, 
     ConversationManager, _session_file, ChatSession, SessionManager, 
-    sessions, session, TELEMETRY, CODER_CWD, get_coder_cwd, set_coder_cwd, get_model_cost
+    sessions, session, TELEMETRY, CODER_CWD, get_coder_cwd, set_coder_cwd, get_model_cost,
+    get_workspace_dir
 )
 from routers.config_routines import _check_budget
 
@@ -1052,7 +1053,6 @@ async def terminal_coder(req: TerminalRequest):
     # courant (projet, répertoire) — visible dans son préambule et lisible par ses outils.
     _ctx_vars = {}
     try:
-        from core.state import get_workspace_dir, get_coder_cwd
         _active = _projects.get_active() if _proj else None
         _ctx_vars["projet"] = (_active or {}).get("name") if _active else (_proj or "workspace de base")
         _rel = os.path.relpath(get_coder_cwd(), get_workspace_dir())
@@ -1085,7 +1085,6 @@ async def terminal_coder(req: TerminalRequest):
         try:
             from core import code_autofix
             from tools.dev_tools import run_checks
-            from core.state import get_workspace_dir
             if code_autofix.enabled():
                 _cmd = code_autofix.detect_check_command(get_workspace_dir())
                 _att = 0

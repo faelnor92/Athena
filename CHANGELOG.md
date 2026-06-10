@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.18 (Hotfix console bash)
+
+### 🐛 Correctif
+- **Console Code** : `UnboundLocalError: cannot access local variable 'get_coder_cwd'` lors d'une commande bash (`$`/`!`, ex. `/ls`). Cause : `get_coder_cwd`/`get_workspace_dir` étaient importés LOCALEMENT dans `terminal_coder`, ce qui les rendait locaux à toute la fonction (référence avant assignation sur le chemin bash). Désormais importés au niveau module.
+
 ## v0.11.17 (Persistance des sessions longues + liste Design partagée)
 
 ### 🔁 Reprise après rechargement (#11)
