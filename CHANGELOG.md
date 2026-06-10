@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.21 (Design → Code : sortie dans un dossier dédié)
+
+### 🔁 Pont bidirectionnel Design ↔ Code (#5)
+- **Ce que Design génère devient un vrai fichier du projet, visible côté Code** — écrit dans un **sous-dossier dédié `design/`** (`design/index.html` pour le web, `design/design.py` pour Python).
+- **Non destructif** : le **code de base à la racine n'est JAMAIS touché** (ex. un `index.html` écrit à la main ou par la partie Code reste intact). Un marqueur `.athenadesign.json` repère la sortie Design et la privilégie pour l'aperçu.
+- Combiné à v0.11.20 (Design affiche les fichiers du Code), Design et Code partagent désormais le **même projet dans les deux sens**, proprement isolés.
+
 ## v0.11.20 (Design : aperçu des projets Code)
 
 ### 👁️ Aperçu des fichiers du workspace (#5)

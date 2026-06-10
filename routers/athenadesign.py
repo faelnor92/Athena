@@ -350,11 +350,28 @@ async def upload_folder(request: Request, project_id: str,
     return {"uploaded": written, "skipped": len(skipped), "skipped_paths": skipped[:50]}
 
 
+# Marqueur de provenance : quel fichier du workspace est « possédé » par Design (écrit par
+# ses générations). Évite d'écraser un index.html écrit à la main / par la partie Code.
+_DESIGN_MARKER = ".athenadesign.json"
+
+
+def _design_owned_entry(base: str):
+    """Fichier que Design a lui-même écrit dans ce workspace (None si aucun)."""
+    try:
+        with open(os.path.join(base, _DESIGN_MARKER), "r", encoding="utf-8") as f:
+            return (json.load(f) or {}).get("entry")
+    except Exception:
+        return None
+
+
 def _workspace_entry(base: str):
-    """Fichier HTML « page d'entrée » prévisualisable d'un workspace (index.html
-    prioritaire, sinon premier *.htm(l) à la racine). None si aucun."""
+    """Fichier HTML « page d'entrée » prévisualisable d'un workspace : le fichier possédé
+    par Design en priorité, puis index.html, puis le premier *.htm(l) à la racine."""
     if not base or not os.path.isdir(base):
         return None
+    owned = _design_owned_entry(base)
+    if owned and os.path.isfile(os.path.join(base, owned)):
+        return owned
     for cand in ("index.html", "index.htm"):
         if os.path.isfile(os.path.join(base, cand)):
             return cand
@@ -365,6 +382,39 @@ def _workspace_entry(base: str):
     except Exception:
         pass
     return None
+
+
+# Sous-dossier DÉDIÉ aux productions de Design dans le projet : isole le design du code de
+# base (on ne touche JAMAIS aux fichiers racine écrits à la main / par la partie Code).
+_DESIGN_SUBDIR = "design"
+
+
+def _mirror_version_to_workspace(project_id: str, version: dict):
+    """Écrit l'artefact généré par Design comme VRAI fichier dans le sous-dossier `design/`
+    du workspace du projet (partagé avec le Code, #5) → visible/éditable côté Code, SANS
+    jamais toucher au code de base à la racine. Best-effort (n'interrompt pas la génération)."""
+    base = _project_path(project_id)
+    if not base:
+        return
+    t = version.get("type")
+    try:
+        ddir = os.path.join(base, _DESIGN_SUBDIR)
+        os.makedirs(ddir, exist_ok=True)
+        if t in _WEB_TYPES:
+            with open(os.path.join(ddir, "index.html"), "w", encoding="utf-8") as f:
+                f.write(_web_render(version))
+            entry = f"{_DESIGN_SUBDIR}/index.html"
+        elif t == "python":
+            with open(os.path.join(ddir, "design.py"), "w", encoding="utf-8") as f:
+                f.write(version.get("code", ""))
+            entry = None  # pas une page web prévisualisable
+        else:
+            entry = None
+        if entry:
+            with open(os.path.join(base, _DESIGN_MARKER), "w", encoding="utf-8") as f:
+                json.dump({"entry": entry}, f)
+    except Exception:
+        pass
 
 
 @router.get("/projects/{project_id}/workspace-entry")
@@ -440,6 +490,9 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
     project["versions"].append(new_version)
 
     write_db(user, db)
+
+    # Miroir : l'artefact devient un vrai fichier sous `design/` du projet (visible côté Code).
+    _mirror_version_to_workspace(project_id, new_version)
 
     return {
         "project_id": project_id,
