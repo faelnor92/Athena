@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.27 (UI de partage SSH dans les Réglages)
+
+### 🖥️ Gestion des autorisations dans Réglages → SSH
+- Chaque hôte SSH (qui t'appartient) affiche désormais sa ligne **« Autorisé pour : »** avec les utilisateurs autorisés (puces retirables d'un clic) et un menu **« Autoriser »** (liste des utilisateurs) pour partager l'hôte — typiquement avec le **compte des satellites vocaux**.
+- Les hôtes **partagés avec toi** par un autre utilisateur s'affichent en lecture (« partagé par … ») sans contrôles de partage.
+- Branché sur les endpoints `POST/DELETE /api/ssh/hosts/{id}/share` (admin-only).
+
 ## v0.11.26 (SSH : isolation par utilisateur + partage)
 
 ### 🔐 Hôtes SSH privés par utilisateur
