@@ -139,13 +139,20 @@ def resolve(host_id: Optional[str] = None) -> dict:
 
 
 def find(label_or_id: str) -> Optional[str]:
-    """Renvoie l'id d'un hôte par son id OU son label (insensible à la casse), sinon None."""
+    """Renvoie l'id d'un hôte par son id OU son label (insensible à la casse). À défaut de
+    correspondance exacte, tente une correspondance par SOUS-CHAÎNE UNIQUE (label ou hôte),
+    pour qu'un agent puisse cibler « immich » → « VM Immich ». None si ambigu ou introuvable."""
     if not label_or_id:
         return None
     s = label_or_id.strip().lower()
-    for h in list_hosts(mask=False):
+    hosts = list_hosts(mask=False)
+    for h in hosts:
         if str(h.get("id", "")).lower() == s or str(h.get("label", "")).lower() == s:
             return h.get("id")
+    matches = [h for h in hosts
+               if s in str(h.get("label", "")).lower() or s in str(h.get("host", "")).lower()]
+    if len(matches) == 1:
+        return matches[0].get("id")
     return None
 
 

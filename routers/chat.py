@@ -1060,6 +1060,16 @@ async def terminal_coder(req: TerminalRequest):
     except Exception:
         pass
     try:
+        # Surface les SERVEURS SSH disponibles → l'agent peut cibler une machine par son nom
+        # (« va sur Immich ») via le paramètre `host` de execute_bash_command, sans dépendre
+        # du sélecteur d'hôte. list_ssh_hosts() donne le détail à la demande.
+        from tools import ssh_hosts as _sshh2
+        _lbls = _sshh2.labels()
+        if _lbls and _lbls != "(aucun)":
+            _ctx_vars["serveurs_ssh_disponibles"] = _lbls
+    except Exception:
+        pass
+    try:
         # Console = code-only mais COLLABORATIVE : locked (pas de transfer définitif → on reste
         # sur le Codeur) + délégation RESTREINTE aux agents du DOMAINE CODE (auditeur sécurité,
         # debugger…). Jamais vers un agent non-code (Auteur, CM…) ni l'orchestrateur.
