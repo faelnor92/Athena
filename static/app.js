@@ -2280,7 +2280,7 @@ async function deleteMemoryFact(key) {
         const response = await apiFetch(`/api/memory/${key}`, { method: "DELETE" });
         if (response.ok) {
             refreshMemory();
-            logToTerminal(`Fait mémorisé "${key}" supprimé avec succès.`, "success");
+            pushNotification("Mémoire", `Fait « ${key} » supprimé.`, "success");
         } else {
             const data = await response.json();
             alert("Erreur lors de la suppression : " + data.detail);
@@ -2524,10 +2524,10 @@ btnReset?.addEventListener("click", async () => {
             await loadConversations();
             await reloadChatHistory(true);
             setActiveAgentVisual(orchestratorName());
-            logToTerminal("Essaim réinitialisé.");
+            pushNotification("Essaim", "Essaim réinitialisé.", "success");
             document.querySelectorAll(".link-line").forEach(l => l.classList.remove("active-flow"));
         } catch (err) {
-            logToTerminal("Erreur de réinitialisation: " + err, "error");
+            pushNotification("Essaim", "Erreur de réinitialisation : " + err, "error");
         }
     }
 });
@@ -4029,7 +4029,7 @@ async function loadConfigEnvPane() {
         document.getElementById("key-ssh-key-path").value = env.SSH_KEY_PATH || "";
         document.getElementById("key-admin-password").placeholder = env.ADMIN_PASSWORD ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Aucun (Désactivé)";
     } catch (err) {
-        logToTerminal("Impossible de charger les clés d'API: " + err, "error");
+        pushNotification("Réglages", "Impossible de charger les clés d'API : " + err, "error");
     }
 }
 
@@ -4532,7 +4532,7 @@ async function saveAgentsConfigToServer(newAgentsList) {
         const res = await response.json();
         
         if (response.ok) {
-            logToTerminal("Configuration de l'essaim mise à jour à chaud avec succès !");
+            pushNotification("Réglages", "Configuration de l'essaim mise à jour à chaud.", "success");
             await reloadSwarmConfig();
             loadConfigAgentsPane();
         } else {
@@ -5582,10 +5582,46 @@ async function loadTerminalProjects() {
     } catch (e) { /* ignore */ }
 }
 
+// Slash-commands de la console Code (façon Claude Code). /help & /clear sont gérés côté
+// client ; les autres « expansent » en une commande bash ($…) ou une instruction au Codeur.
+const CONSOLE_SLASH_COMMANDS = {
+    "/help":   { desc: "Affiche les commandes disponibles" },
+    "/clear":  { desc: "Vide la console" },
+    "/ls":     { desc: "Liste les fichiers du projet", expand: "$ls -la" },
+    "/tree":   { desc: "Arborescence du projet", expand: "$find . -maxdepth 2 -not -path '*/.*' -print | sort" },
+    "/status": { desc: "git status", expand: "$git status" },
+    "/diff":   { desc: "git diff", expand: "$git --no-pager diff" },
+    "/test":   { desc: "Lance les tests et corrige les erreurs", expand: "Lance les tests du projet et corrige les éventuelles erreurs." },
+    "/run":    { desc: "Lance le projet", expand: "Détecte la commande de démarrage du projet, lance-le, et indique l'URL/la sortie." },
+    "/commit": { desc: "Commit les changements [message]", expand: "Fais un git commit de tous les changements avec un message clair et concis." },
+    "/fix":    { desc: "Corrige la dernière erreur", expand: "Analyse la dernière erreur affichée et corrige-la." },
+};
+function _runConsoleSlash(cmd) {
+    const name = cmd.split(/\s+/)[0].toLowerCase();
+    const rest = cmd.slice(name.length).trim();
+    if (name === "/help") {
+        logToTerminal("Commandes disponibles :", "system");
+        Object.entries(CONSOLE_SLASH_COMMANDS).forEach(([k, v]) => logToTerminal(`  ${k.padEnd(9)} — ${v.desc}`, "info"));
+        logToTerminal("  $<cmd> ou !<cmd>  — commande bash directe dans la sandbox du projet.", "info");
+        return "handled";
+    }
+    if (name === "/clear") { if (logsTerminal) logsTerminal.innerHTML = ""; return "handled"; }
+    const entry = CONSOLE_SLASH_COMMANDS[name];
+    if (entry && entry.expand) return rest ? `${entry.expand} ${rest}` : entry.expand;
+    return null;  // slash inconnu → laissé tel quel (« /... » = bash direct, comportement existant)
+}
+
 async function executeTerminalCommand() {
     if (!terminalCoderInput) return;
-    const command = terminalCoderInput.value.trim();
+    let command = terminalCoderInput.value.trim();
     if (!command) return;
+
+    // Slash-commands (façon Claude Code) : /help & /clear côté client ; sinon expansion.
+    if (command.startsWith("/")) {
+        const _sc = _runConsoleSlash(command);
+        if (_sc === "handled") { terminalCoderInput.value = ""; return; }
+        if (typeof _sc === "string") command = _sc;
+    }
     
     terminalCoderInput.disabled = true;
     if (btnSendTerminal) btnSendTerminal.disabled = true;
@@ -6025,7 +6061,7 @@ async function deleteSkill(name) {
         const res = await apiFetch(`/api/config/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
-            logToTerminal(`Compétence supprimée : ${name}`, "success");
+            pushNotification("Compétence supprimée", name, "success");
             if (typeof loadCockpitData === "function") loadCockpitData();
         } else {
             alert("Suppression impossible : " + (data.detail || res.status));

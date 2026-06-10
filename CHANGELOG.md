@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.16 (Console code-only + slash-commands)
+
+### 🧭 Console Code
+- **Console réservée au code/SSH** : les actions de GESTION globales (suppression de compétence, de fait mémorisé, réinitialisation de l'essaim, mise à jour de config, clés d'API…) passent maintenant en **notifications (toasts)** au lieu de polluer le terminal de la console Code. La console n'affiche plus que ce qui concerne le code.
+- **Slash-commands (façon Claude Code)** : `/help`, `/clear` (côté client), `/ls`, `/tree`, `/status`, `/diff` (→ bash), `/test`, `/run`, `/commit [msg]`, `/fix` (→ instruction au Codeur). `/help` liste tout ; un `/…` inconnu reste une commande bash directe (comme `$`/`!`).
+
 ## v0.11.15 (Console Code : délégation au domaine code)
 
 ### 🔧 Console Code
