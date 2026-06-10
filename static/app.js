@@ -747,7 +747,25 @@ async function loadSshHostsSettings() {
                 .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
             loadSshHostsSettings();
             if (typeof loadSshHosts === "function") loadSshHosts();
+            // Replie le formulaire après ajout réussi.
+            const form = document.getElementById("newssh-form");
+            const tgl = document.getElementById("btn-toggle-add-ssh");
+            if (form) form.style.display = "none";
+            if (tgl) tgl.textContent = "＋ Ajouter un hôte SSH";
         } catch (e) { alert("Erreur : " + e); }
+    });
+})();
+
+// Bouton « Ajouter un hôte SSH » : déplie/replie le formulaire (replié par défaut).
+(function wireToggleAddSsh() {
+    const tgl = document.getElementById("btn-toggle-add-ssh");
+    const form = document.getElementById("newssh-form");
+    if (!tgl || !form) return;
+    tgl.addEventListener("click", () => {
+        const show = form.style.display === "none";
+        form.style.display = show ? "block" : "none";
+        tgl.textContent = show ? "✕ Annuler" : "＋ Ajouter un hôte SSH";
+        if (show) { const f = document.getElementById("newssh-label"); if (f) f.focus(); }
     });
 })();
 

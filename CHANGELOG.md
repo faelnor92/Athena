@@ -1,5 +1,9 @@
 # Historique des Versions (Changelog)
 
+## v0.11.28 (Réglages SSH épurés)
+
+### 🧹 UI SSH simplifiée
+- Réglages → SSH : un seul bouton **« ＋ Ajouter un hôte SSH »** déplie le formulaire (replié par défaut, et se referme après ajout), et la **liste des hôtes s'affiche en dessous** (avec leurs autorisations). Plus de formulaire encombrant en permanence.
 ## v0.11.27 (UI de partage SSH dans les Réglages)
 
 ### 🖥️ Gestion des autorisations dans Réglages → SSH
