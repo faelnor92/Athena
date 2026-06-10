@@ -39,8 +39,26 @@ def active_host():
     return _active.get()
 
 
+def _user_key() -> str:
+    """Clé de registre PROPRE À L'UTILISATEUR courant : un hôte SSH (et ses identifiants)
+    n'appartient qu'à l'utilisateur qui l'a déclaré — jamais partagé entre comptes."""
+    from core import user_config
+    return f"{_KEY}::{user_config.user_slug()}"
+
+
 def _registry() -> List[dict]:
-    return list(shared_store.get(_NS, _KEY) or [])
+    cur = shared_store.get(_NS, _user_key())
+    if cur is not None:
+        return list(cur)
+    # Migration douce : l'ancien registre GLOBAL (clé historique) revient à l'admin/local
+    # à la 1ère lecture, puis devient privé. Les autres comptes démarrent vides.
+    from core import user_config
+    if user_config.current_user_key() in ("local", "admin"):
+        legacy = shared_store.get(_NS, _KEY)
+        if legacy:
+            shared_store.set(_NS, _user_key(), legacy)
+            return list(legacy)
+    return []
 
 
 def effective_id(host_id: Optional[str] = None) -> Optional[str]:
@@ -95,13 +113,80 @@ def _env_host() -> Optional[dict]:
     }
 
 
+def _all_user_registries() -> dict:
+    """{user_slug: [hôtes]} pour TOUS les comptes (clés 'registry::<slug>')."""
+    out = {}
+    pref = _KEY + "::"
+    for k, v in shared_store.items(_NS).items():
+        if isinstance(k, str) and k.startswith(pref) and isinstance(v, list):
+            out[k[len(pref):]] = v
+    return out
+
+
+def _shared_with_me() -> List[dict]:
+    """Hôtes d'AUTRES utilisateurs explicitement PARTAGÉS avec l'utilisateur courant
+    (champ `shared_with`). Permet d'autoriser le SSH d'un user sur le compte des satellites."""
+    from core import user_config
+    me = user_config.user_slug().lower()
+    out = []
+    for slug, hosts in _all_user_registries().items():
+        if slug.lower() == me:
+            continue
+        for h in hosts:
+            sw = [str(x).lower() for x in (h.get("shared_with") or [])]
+            if me in sw:
+                out.append({**h, "owner": slug, "shared": True})
+    return out
+
+
+def _accessible() -> List[dict]:
+    """Hôtes accessibles à l'utilisateur courant : les SIENS + ceux partagés avec lui."""
+    own = _registry()
+    seen = {h.get("id") for h in own}
+    return own + [h for h in _shared_with_me() if h.get("id") not in seen]
+
+
+def share_host(host_id: str, username: str) -> bool:
+    """Autorise `username` à utiliser l'hôte `host_id` de l'utilisateur COURANT (propriétaire).
+    Renvoie True si l'autorisation a été ajoutée."""
+    from core import user_config
+    grantee = user_config.user_slug(username)
+    reg = _registry()
+    changed = False
+    for h in reg:
+        if h.get("id") == host_id:
+            sw = h.setdefault("shared_with", [])
+            if grantee not in sw:
+                sw.append(grantee)
+                changed = True
+    if changed:
+        shared_store.set(_NS, _user_key(), reg)
+    return changed
+
+
+def unshare_host(host_id: str, username: str) -> bool:
+    """Retire l'autorisation de `username` sur l'hôte `host_id` de l'utilisateur courant."""
+    from core import user_config
+    grantee = user_config.user_slug(username)
+    reg = _registry()
+    changed = False
+    for h in reg:
+        if h.get("id") == host_id and grantee in (h.get("shared_with") or []):
+            h["shared_with"] = [u for u in h["shared_with"] if u != grantee]
+            changed = True
+    if changed:
+        shared_store.set(_NS, _user_key(), reg)
+    return changed
+
+
 def list_hosts(mask: bool = True) -> List[dict]:
-    """Tous les hôtes (env + registre). mask=True masque les secrets (affichage UI)."""
+    """Hôtes accessibles à l'utilisateur courant (les siens + partagés) + l'hôte .env.
+    mask=True masque les secrets (affichage UI)."""
     out = []
     env = _env_host()
     if env:
         out.append(env)
-    out.extend(_registry())
+    out.extend(_accessible())
     if mask:
         out = [{**h, "password": ("***" if h.get("password") else ""),
                 "has_key": bool(h.get("key_path"))} for h in out]
@@ -119,10 +204,12 @@ def resolve(host_id: Optional[str] = None) -> dict:
         if hid == "env":
             chosen = env
         else:
-            chosen = next((h for h in _registry() if h.get("id") == hid), None)
+            # Cherche parmi les hôtes ACCESSIBLES (les siens + ceux partagés avec lui) →
+            # un hôte d'un autre user n'est résolu QUE s'il a été explicitement partagé.
+            chosen = next((h for h in _accessible() if h.get("id") == hid), None)
     if chosen is None:
-        reg = _registry()
-        chosen = env or (reg[0] if reg else {})
+        acc = _accessible()
+        chosen = env or (acc[0] if acc else {})
     base = {
         "remote_cwd": os.getenv("SSH_REMOTE_CWD"),
         "known_hosts": os.getenv("SSH_KNOWN_HOSTS"),
@@ -177,7 +264,7 @@ def add_host(label: str, host: str, username: str = "", port=22, password: str =
         "auto_add": "true" if auto_add in (True, "true", "1", "yes") else "false",
     }
     reg.append(entry)
-    shared_store.set(_NS, _KEY, reg)
+    shared_store.set(_NS, _user_key(), reg)
     return {**entry, "password": ("***" if entry["password"] else "")}
 
 
@@ -187,5 +274,5 @@ def remove_host(host_id: str) -> bool:
     new = [h for h in reg if h.get("id") != host_id]
     if len(new) == len(reg):
         return False
-    shared_store.set(_NS, _KEY, new)
+    shared_store.set(_NS, _user_key(), new)
     return True

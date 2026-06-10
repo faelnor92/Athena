@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.11.26 (SSH : isolation par utilisateur + partage)
+
+### 🔐 Hôtes SSH privés par utilisateur
+- Le registre SSH (hôtes **ET identifiants**) est désormais **strictement scopé par utilisateur** : un compte ne voit/n'utilise que SES hôtes. Fini le registre global partagé (dangereux). Migration douce de l'ancien registre vers l'admin.
+- Conséquence : le **chat reste par utilisateur** (chaque session connectée pilote SES serveurs), et les **satellites vocaux** opèrent sous **un seul compte** (celui du `auth_token` de l'assistant vocal) → ses propres hôtes.
+
+### 🤝 Partage autorisé (ex. satellites)
+- Un propriétaire (admin) peut **autoriser un autre utilisateur** à utiliser un de ses hôtes (champ `shared_with`) — typiquement partager Immich/HA avec le **compte des satellites**.
+- Un utilisateur voit alors **ses hôtes + ceux explicitement partagés avec lui** ; un hôte d'autrui n'est résolu QUE s'il a été partagé.
+- Endpoints : `POST /api/ssh/hosts/{id}/share` et `DELETE /api/ssh/hosts/{id}/share/{username}` (admin-only).
+
 ## v0.11.25 (Agents : ciblage des serveurs SSH par leur nom)
 
 ### 🖧 « Va sur Immich » → l'agent trouve la machine seul
