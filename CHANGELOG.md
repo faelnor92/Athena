@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.14 (Console Code verrouillée)
+
+### 🔧 Corrections
+- **Console Code** : verrouillée en « feuille » sur le Codeur (`locked` **+ `lock_delegation`**) → elle reste **100 % code** et ne part plus vers un autre agent. Avant, le Codeur pouvait `delegate_to_` un autre métier (Auteur, CommunityManager…), d'où une console qui se comportait en « généraliste ».
+
 ## v0.11.13 (Suppression de projets dans Design)
 
 ### 🎨 Design
