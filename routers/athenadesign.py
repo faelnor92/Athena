@@ -259,6 +259,24 @@ async def create_project(request: Request, payload: dict = Body(...)):
     write_db(user, db)
     return db[proj["id"]]
 
+@router.delete("/projects/{project_id}")
+async def delete_design_project(request: Request, project_id: str, remove_files: bool = True):
+    """Supprime un projet (registre UNIFIÉ avec la partie code) : dossier code + entrée
+    du registre + base design associée."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    if not code_projects.delete(project_id, remove_files=remove_files):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    try:  # nettoie aussi l'entrée design (best-effort)
+        user = _current_user(request)
+        db = read_db(user)
+        if project_id in db:
+            del db[project_id]
+            write_db(user, db)
+    except Exception:
+        pass
+    return {"status": "deleted"}
+
 @router.get("/projects/{project_id}")
 async def get_project(request: Request, project_id: str):
     if not _can_access(project_id):

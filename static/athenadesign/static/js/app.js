@@ -873,11 +873,27 @@ document.addEventListener("DOMContentLoaded", () => {
             projects.forEach(p => {
                 const item = document.createElement("div");
                 item.className = `project-item ${p.id === currentProjectId ? 'active' : ''}`;
+                item.style.display = "flex";
+                item.style.alignItems = "center";
+                item.style.gap = "6px";
                 item.innerHTML = `
-                    <div class="project-name">${p.name}</div>
-                    <div class="project-meta">${p.versions_count} versions</div>
+                    <div class="project-info" style="flex:1;min-width:0;cursor:pointer;">
+                        <div class="project-name">${p.name}</div>
+                        <div class="project-meta">${p.versions_count} versions</div>
+                    </div>
+                    <button class="project-delete-btn" title="Supprimer ce projet" style="background:none;border:none;color:#ff5c5c;cursor:pointer;font-size:0.95rem;padding:2px 6px;opacity:0.65;flex:none;">🗑️</button>
                 `;
-                item.addEventListener("click", () => selectProject(p.id));
+                item.querySelector(".project-info").addEventListener("click", () => selectProject(p.id));
+                item.querySelector(".project-delete-btn").addEventListener("click", async (e) => {
+                    e.stopPropagation();
+                    if (!confirm(`Supprimer définitivement le projet « ${p.name} » et ses fichiers ?`)) return;
+                    try {
+                        const r = await fetch(`/api/athenadesign/projects/${encodeURIComponent(p.id)}?remove_files=true`, { method: "DELETE" });
+                        if (!r.ok) { alert("Échec de la suppression du projet."); return; }
+                        if (p.id === currentProjectId) currentProjectId = null;
+                        await loadProjects();
+                    } catch (err) { alert("Erreur lors de la suppression."); }
+                });
                 projectsList.appendChild(item);
             });
         } catch (e) {
