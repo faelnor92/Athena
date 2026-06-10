@@ -389,6 +389,44 @@ def _workspace_entry(base: str):
 _DESIGN_SUBDIR = "design"
 
 
+def _split_html_assets(html: str):
+    """Extrait les <style> et <script> INLINE d'une page HTML autonome vers des fichiers
+    séparés (style.css / script.js), et relie la page via <link>/<script src>. Laisse en
+    place les scripts EXTERNES (src=…) et les types spéciaux (importmap, application/json).
+    Renvoie (html_relié, css, js). Permet de retrouver une structure multi-fichiers."""
+    css_parts, js_parts = [], []
+
+    def _take_style(m):
+        css_parts.append(m.group(1))
+        return ""
+
+    out = re.sub(r"<style[^>]*>(.*?)</style>", _take_style, html, flags=re.DOTALL | re.IGNORECASE)
+
+    def _take_script(m):
+        attrs = m.group(1) or ""
+        if re.search(r"\bsrc\s*=", attrs, re.IGNORECASE):
+            return m.group(0)  # script externe (CDN…) : on n'y touche pas
+        tm = re.search(r"\btype\s*=\s*[\"']?([^\"'\s>]+)", attrs, re.IGNORECASE)
+        if tm and tm.group(1).lower() not in ("text/javascript", "module"):
+            return m.group(0)  # importmap / application/json / etc. : laissé inline
+        js_parts.append(m.group(2))
+        return ""
+
+    out = re.sub(r"<script([^>]*)>(.*?)</script>", _take_script, out, flags=re.DOTALL | re.IGNORECASE)
+
+    css = "\n\n".join(p.strip() for p in css_parts if p.strip())
+    js = "\n\n".join(p.strip() for p in js_parts if p.strip())
+    if css:
+        link = '<link rel="stylesheet" href="style.css">'
+        out = (re.sub(r"</head>", link + "\n</head>", out, count=1, flags=re.IGNORECASE)
+               if re.search(r"</head>", out, re.IGNORECASE) else link + "\n" + out)
+    if js:
+        tag = '<script src="script.js"></script>'
+        out = (re.sub(r"</body>", tag + "\n</body>", out, count=1, flags=re.IGNORECASE)
+               if re.search(r"</body>", out, re.IGNORECASE) else out + "\n" + tag)
+    return out, css, js
+
+
 def _mirror_version_to_workspace(project_id: str, version: dict):
     """Écrit l'artefact généré par Design comme VRAI fichier dans le sous-dossier `design/`
     du workspace du projet (partagé avec le Code, #5) → visible/éditable côté Code, SANS
@@ -400,7 +438,23 @@ def _mirror_version_to_workspace(project_id: str, version: dict):
     try:
         ddir = os.path.join(base, _DESIGN_SUBDIR)
         os.makedirs(ddir, exist_ok=True)
-        if t in _WEB_TYPES:
+        if t == "html":
+            # Page HTML autonome → on sépare le CSS/JS inline en fichiers dédiés pour
+            # retrouver une structure multi-fichiers (style.css / script.js) côté Code.
+            html_out, css, js = _split_html_assets(_web_render(version))
+            with open(os.path.join(ddir, "index.html"), "w", encoding="utf-8") as f:
+                f.write(html_out)
+            # Nettoie d'anciens fichiers si la nouvelle version n'en produit plus.
+            for rel, content in (("style.css", css), ("script.js", js)):
+                p = os.path.join(ddir, rel)
+                if content:
+                    with open(p, "w", encoding="utf-8") as f:
+                        f.write(content)
+                elif os.path.isfile(p):
+                    os.remove(p)
+            entry = f"{_DESIGN_SUBDIR}/index.html"
+        elif t in _WEB_TYPES:
+            # react/mermaid : scaffolds à CDN, gardés en un seul fichier autonome.
             with open(os.path.join(ddir, "index.html"), "w", encoding="utf-8") as f:
                 f.write(_web_render(version))
             entry = f"{_DESIGN_SUBDIR}/index.html"
