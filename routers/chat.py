@@ -1015,10 +1015,12 @@ async def terminal_coder(req: TerminalRequest):
     except Exception:
         pass
     try:
-        # Exécution ciblée sur l'Agent Codeur (thread), verrouillée sur lui.
+        # Exécution ciblée sur l'Agent Codeur (thread), VERROUILLÉE sur lui en FEUILLE :
+        # locked (pas de transfer_to_) + lock_delegation (pas de delegate_to_) → la console
+        # reste 100 % code et ne « part » jamais vers un autre agent (Auteur, CM…).
         next_agent, new_chain, steps = await asyncio.to_thread(
             functools.partial(swarm.run, coder_agent, run_chain, max_turns=max_turns,
-                              locked=True, context_variables=_ctx_vars))
+                              locked=True, lock_delegation=True, context_variables=_ctx_vars))
 
         # CODE-TEST-FIX (auto-correction du code) : on lance les vérifications du projet ; en
         # cas d'échec, on renvoie les erreurs au codeur pour qu'il corrige, puis on revérifie
