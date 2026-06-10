@@ -29,7 +29,7 @@ class RunRegistry:
 
     def start(self, run_id: str):
         with self._lock:
-            self._runs[run_id] = {"steps": [], "running": True, "cancelled": False, "steer": []}
+            self._runs[run_id] = {"steps": [], "running": True, "cancelled": False, "steer": [], "result": None}
             self._order.append(run_id)
             self._last_run_id = run_id
             # Purge des runs live les plus anciens (la persistance durable est en SQLite).
@@ -42,6 +42,15 @@ class RunRegistry:
             run = self._runs.get(run_id)
             if run is not None:
                 run["running"] = False
+
+    def set_result(self, run_id: str, result: Dict[str, Any]):
+        """Stocke le résultat final d'un run (réponse ou erreur) pour qu'il survive à
+        une déconnexion du client : le run s'exécute en arrière-plan et dépose ici son
+        résultat, qu'un client reconnecté (après rechargement de page) peut récupérer."""
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is not None:
+                run["result"] = result
 
     def cancel(self, run_id: str) -> bool:
         """Demande l'annulation d'un run. Renvoie True si le run existe et tourne."""
@@ -97,8 +106,9 @@ class RunRegistry:
             rid = run_id or self._last_run_id
             run = self._runs.get(rid)
             if not run:
-                return {"steps": [], "running": False, "run_id": rid}
-            return {"steps": list(run["steps"]), "running": run["running"], "run_id": rid}
+                return {"steps": [], "running": False, "run_id": rid, "result": None}
+            return {"steps": list(run["steps"]), "running": run["running"],
+                    "run_id": rid, "result": run.get("result")}
 
 
 registry = RunRegistry()

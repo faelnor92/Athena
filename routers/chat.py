@@ -428,13 +428,34 @@ async def chat_stream(req: ChatRequest):
                 return
             chain, starting_agent, original_chain_len = _chat_prepare(sess, req, run_id)
 
-            # Exécuter swarm.run dans un thread en propageant le contexte
-            # (run_id + canal + auto_approve).
+            # Le run ET sa finalisation (persistance conversation + télémétrie) tournent
+            # dans un THREAD d'arrière-plan, en propageant le contexte (run_id + canal +
+            # auto_approve). Ainsi, si le client se déconnecte (rechargement de page), le
+            # run continue, finalise, et dépose son résultat dans run_registry — d'où il
+            # peut être récupéré via /api/chat/reconnect. Le générateur SSE ci-dessous ne
+            # fait QUE relayer les étapes + le résultat ; sa propre annulation n'arrête rien.
             ctx = contextvars.copy_context()
-            holder = {}
 
             def _work():
-                holder["result"] = swarm.run(starting_agent, chain)
+                try:
+                    _next, new_chain, steps = swarm.run(starting_agent, chain)
+                    final_response, run_agent = _chat_finalize(
+                        sess, req, run_id, run_started, new_chain, steps, original_chain_len)
+                    run_registry.set_result(run_id, {"agent": run_agent, "response": final_response})
+                except Exception as e:  # noqa: BLE001
+                    logger.exception("Erreur Chat stream worker (run %s)", run_id)
+                    try:
+                        run_store.save(
+                            run_id=run_id, agent=_orch_name(), status="error",
+                            user_message=req.message, error=str(e),
+                            duration_ms=int((time.time() - run_started) * 1000),
+                            steps=run_registry.status(run_id)["steps"], created_at=run_started,
+                        )
+                    except Exception:
+                        pass
+                    run_registry.set_result(run_id, {"error": str(e)})
+                finally:
+                    run_registry.finish(run_id)
 
             loop = asyncio.get_event_loop()
             fut = loop.run_in_executor(None, lambda: ctx.run(_work))
@@ -449,32 +470,56 @@ async def chat_stream(req: ChatRequest):
                 if fut.done():
                     break
                 await asyncio.sleep(0.08)
-            # Drain des dernières étapes + propagation d'une éventuelle exception.
+            # Drain des dernières étapes puis relais du résultat déposé par _work.
             live = run_registry.status(run_id)["steps"]
             while sent < len(live):
                 yield _sse("step", live[sent])
                 sent += 1
-            exc = fut.exception()
-            if exc:
-                raise exc
-
-            _next, new_chain, steps = holder["result"]
-            final_response, run_agent = _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_chain_len)
-            yield _sse("done", {"agent": run_agent, "response": final_response})
+            res = run_registry.status(run_id).get("result") or {}
+            if res.get("error"):
+                yield _sse("error", {"detail": res["error"]})
+            else:
+                yield _sse("done", {"agent": res.get("agent"), "response": res.get("response", "")})
         except Exception as e:
             logger.exception("Erreur Chat stream (run %s)", run_id)
-            run_store.save(
-                run_id=run_id, agent=_orch_name(), status="error",
-                user_message=req.message, error=str(e),
-                duration_ms=int((time.time() - run_started) * 1000),
-                steps=run_registry.status(run_id)["steps"], created_at=run_started,
-            )
             yield _sse("error", {"detail": str(e)})
         finally:
-            run_registry.finish(run_id)
+            # NB : run_registry.finish() est appelé par _work (il survit à la déconnexion).
             current_run_id.reset(token)
             channels.current_channel.reset(chan_token)
             approvals.auto_approve_var.reset(appr_token)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.get("/api/chat/reconnect")
+async def chat_reconnect(run_id: str):
+    """Reprend le SUIVI d'un run déjà lancé (après un rechargement de page) : relaie en
+    SSE les étapes déjà bufferisées + les suivantes, puis l'événement 'done'/'error' avec
+    le résultat déposé par le worker d'arrière-plan. Si le run est inconnu (purgé ou perdu
+    à un redémarrage serveur), renvoie 'done' vide — l'historique sauvegardé fait foi."""
+    async def gen():
+        yield _sse("run", {"run_id": run_id})
+        sent = 0
+        waited = 0.0
+        while True:
+            st = run_registry.status(run_id)
+            live = st["steps"]
+            while sent < len(live):
+                yield _sse("step", live[sent])
+                sent += 1
+            if not st["running"]:
+                res = st.get("result") or {}
+                if res.get("error"):
+                    yield _sse("error", {"detail": res["error"]})
+                else:
+                    yield _sse("done", {"agent": res.get("agent"), "response": res.get("response", "")})
+                break
+            await asyncio.sleep(0.12)
+            waited += 0.12
+            if waited > 1800:  # garde-fou : 30 min max de suivi
+                yield _sse("error", {"detail": "Suivi du run interrompu (trop long)."})
+                break
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

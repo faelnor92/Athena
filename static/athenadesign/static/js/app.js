@@ -1114,6 +1114,10 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.data && e.data.type === "iframe-log") {
             const level = e.data.level; // "stdout" or "stderr"
             appendConsoleLine(level, `[Aperçu] ${e.data.message}`);
+        } else if (e.data && e.data.type === "athena:refresh-projects") {
+            // La liste des projets est partagée avec la partie Code : l'app hôte demande
+            // un rafraîchissement à l'ouverture de l'onglet Design (projets créés ailleurs).
+            try { loadProjects(); } catch (_) {}
         }
     });
 

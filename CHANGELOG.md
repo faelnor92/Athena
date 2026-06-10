@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.11.17 (Persistance des sessions longues + liste Design partagée)
+
+### 🔁 Reprise après rechargement (#11)
+- **Une tâche longue ne s'arrête plus si on recharge la page.** Le run ET sa finalisation (sauvegarde de la conversation + télémétrie) s'exécutent désormais dans un thread d'arrière-plan qui **survit à la déconnexion du client** : le résultat est déposé dans le registre de runs.
+- Nouvel endpoint **`GET /api/chat/reconnect?run_id=…`** : au rechargement, le frontend se **reconnecte** au run en cours (run_id mémorisé en `localStorage`), relaie les dernières étapes + la réponse finale, puis recharge l'historique canonique.
+- *Limite connue :* un **redémarrage du serveur** pendant un run reste non récupérable (registre en mémoire) ; un simple rechargement de page, lui, est désormais transparent.
+
+### 🔗 Liste Design ↔ Code (#5, partiel)
+- La liste des projets de **Design** est partagée avec celle du **Code** : elle se **rafraîchit automatiquement** à l'ouverture de l'onglet Design (via `postMessage`), pour refléter les projets créés côté Code.
+- *Reste à faire :* unification du **stockage des fichiers** (Design écrit des « versions » d'artefacts, Code une arborescence de fichiers) — refonte d'archi distincte.
+
 ## v0.11.16 (Console code-only + slash-commands)
 
 ### 🧭 Console Code

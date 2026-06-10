@@ -560,6 +560,12 @@ function _initAthenaDesign() {
 if (tabDesign) {
     tabDesign.addEventListener("click", () => {
         selectActiveTab(tabDesign, viewDesign, _initAthenaDesign);
+        // #5 — la liste des projets Design est partagée avec le code : on demande à l'iframe
+        // de la rafraîchir à chaque ouverture, pour refléter les projets créés côté Code.
+        const _f = document.getElementById("athenadesign-frame");
+        if (_f && _f.contentWindow) {
+            try { _f.contentWindow.postMessage({ type: "athena:refresh-projects" }, "*"); } catch (e) {}
+        }
     });
 }
 
@@ -2474,12 +2480,17 @@ chatForm.addEventListener("submit", async (e) => {
                     try { payload = JSON.parse(dataStr); } catch (e) { continue; }
                     if (ev === "run") {
                         activeRunId = payload.run_id;
+                        // Mémorise le run en cours : si la page est rechargée, on pourra
+                        // se reconnecter au run d'arrière-plan via /api/chat/reconnect.
+                        try { localStorage.setItem("athena_active_run", activeRunId); } catch (e) {}
                     } else if (ev === "step") {
                         await playAgentSteps([payload], true);   // immédiat : pas de délai cinéma en streaming
                     } else if (ev === "error") {
                         logToTerminal("Erreur essaim: " + (payload.detail || ""), "error");
+                        try { localStorage.removeItem("athena_active_run"); } catch (e) {}
                     } else if (ev === "done") {
                         finished = true;
+                        try { localStorage.removeItem("athena_active_run"); } catch (e) {}
                     }
                 }
             }
@@ -2502,6 +2513,8 @@ chatForm.addEventListener("submit", async (e) => {
     } finally {
         activeAbortController = null;
         activeRunId = null;
+        // Run terminé/interrompu côté UI : ne pas tenter de le reprendre au prochain chargement.
+        try { localStorage.removeItem("athena_active_run"); } catch (e) {}
         chatInput.disabled = false;
         chatInput.placeholder = "Parle à l'essaim...";
         
@@ -5392,6 +5405,50 @@ window.toggleListItem = toggleListItem;
 window.deleteListItem = deleteListItem;
 window.submitNewListItem = submitNewListItem;
 
+// #11 — Reprise d'un run après rechargement de page. Si un run était en cours, le worker
+// d'arrière-plan a continué côté serveur ; on se reconnecte via /api/chat/reconnect pour
+// relayer ses dernières étapes et sa réponse finale, puis on recharge l'historique canonique.
+async function resumeActiveRun() {
+    let rid = null;
+    try { rid = localStorage.getItem("athena_active_run"); } catch (e) {}
+    if (!rid) return;
+    try {
+        const response = await apiFetch("/api/chat/reconnect?run_id=" + encodeURIComponent(rid));
+        if (!response.ok || !response.body) return;
+        logToOrchestrator("Reprise de la tâche en cours en arrière-plan… ⏳", "system");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "", finished = false;
+        while (!finished) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            let sep;
+            while ((sep = buf.indexOf("\n\n")) >= 0) {
+                const block = buf.slice(0, sep);
+                buf = buf.slice(sep + 2);
+                let ev = null, dataStr = null;
+                block.split("\n").forEach(line => {
+                    if (line.startsWith("event:")) ev = line.slice(6).trim();
+                    else if (line.startsWith("data:")) dataStr = line.slice(5).trim();
+                });
+                if (!dataStr) continue;
+                let payload;
+                try { payload = JSON.parse(dataStr); } catch (e) { continue; }
+                if (ev === "step") { await playAgentSteps([payload], true); }
+                else if (ev === "error" || ev === "done") { finished = true; }
+            }
+        }
+    } catch (e) {
+        // Silencieux : la reprise est un confort ; l'historique sauvegardé fait foi.
+    } finally {
+        try { localStorage.removeItem("athena_active_run"); } catch (e) {}
+        await reloadChatHistory(true);
+        if (typeof loadConversations === "function") await loadConversations();
+        if (typeof refreshMemory === "function") refreshMemory();
+    }
+}
+
 async function init() {
     await reloadSwarmConfig();
     await refreshMemory();
@@ -5402,6 +5459,7 @@ async function init() {
     logToTerminal("Dashboard No-Code, Bureau Virtuel, Agenda et Listes connectés.");
     setActiveAgentVisual(orchestratorName());
     initSpeech();
+    resumeActiveRun();
 }
 
 init();
