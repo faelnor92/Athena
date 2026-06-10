@@ -814,39 +814,17 @@
 
                 <!-- ONGLET SSH : INTEGRATION TERMINAL SSH -->
                 <div class="modal-pane" id="pane-ssh" style="display: none;">
-                    <h3>🖥️ Intégration Terminal SSH (Exécution Distante)</h3>
-                    <p class="section-desc">Configure les identifiants pour exécuter toutes les commandes du cockpit et de l'Agent Codeur sur un poste de travail local ou un VPS distant via SSH.</p>
-                    
+                    <h3>🔒 Sécurité du cockpit</h3>
+                    <p class="section-desc">Mot de passe administrateur de secours (sert à se connecter en admin si aucun compte utilisateur n'existe) et garde-fou d'exposition réseau. Sans rapport avec les hôtes SSH ci-dessous.</p>
+
                     <form id="ssh-form" class="config-form">
                         <div class="form-grid">
-                            <div class="form-group">
-                                <label for="key-ssh-host">SSH Host (SSH_HOST)</label>
-                                <input type="text" id="key-ssh-host" placeholder="Ex: 192.168.1.50 ou monposte.local">
-                            </div>
-                            <div class="form-group">
-                                <label for="key-ssh-port">SSH Port (SSH_PORT)</label>
-                                <input type="text" id="key-ssh-port" placeholder="Ex: 22">
-                            </div>
-                            <div class="form-group">
-                                <label for="key-ssh-username">SSH Username (SSH_USERNAME)</label>
-                                <input type="text" id="key-ssh-username" placeholder="Ex: legrill">
-                            </div>
-                            <div class="form-group">
-                                <label for="key-ssh-password">SSH Password (SSH_PASSWORD)</label>
-                                <input type="password" id="key-ssh-password" placeholder="Laisser vide si inchangée">
-                            </div>
                             <div class="form-group" style="grid-column: span 2;">
-                                <label for="key-ssh-key-path">Chemin de la Clé Privée SSH (SSH_KEY_PATH)</label>
-                                <input type="text" id="key-ssh-key-path" placeholder="Ex: ~/.ssh/id_rsa (Alternative au mot de passe)">
-                            </div>
-                            
-                            <!-- PROTECTION DE SÉCURITÉ -->
-                            <div class="form-group" style="grid-column: span 2; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
-                                <label for="key-admin-password" style="color: var(--accent-color); font-weight: bold;">Mot de passe de protection du Cockpit (ADMIN_PASSWORD)</label>
+                                <label for="key-admin-password" style="color: var(--accent-color); font-weight: bold;">Mot de passe admin (ADMIN_PASSWORD)</label>
                                 <input type="password" id="key-admin-password" placeholder="Laisser vide pour désactiver ou inchangé">
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-primary" style="margin-top: 16px;">Sauvegarder la configuration SSH</button>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 16px;">Enregistrer</button>
                     </form>
 
                     <!-- REGISTRE MULTI-HÔTES : brancher plusieurs serveurs -->
@@ -1597,7 +1575,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260610_sshui"></script>
+    <script src="app.js?v=20260610_sshclean"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>

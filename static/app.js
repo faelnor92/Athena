@@ -4103,11 +4103,6 @@ async function loadConfigEnvPane() {
         document.getElementById("key-replicate").placeholder = env.REPLICATE_API_TOKEN ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
         document.getElementById("key-custom-video-base").value = env.CUSTOM_VIDEO_API_BASE || "";
         document.getElementById("key-custom-video-key").placeholder = env.CUSTOM_VIDEO_API_KEY ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
-        document.getElementById("key-ssh-host").value = env.SSH_HOST || "";
-        document.getElementById("key-ssh-port").value = env.SSH_PORT || "";
-        document.getElementById("key-ssh-username").value = env.SSH_USERNAME || "";
-        document.getElementById("key-ssh-password").placeholder = env.SSH_PASSWORD ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Non configurée";
-        document.getElementById("key-ssh-key-path").value = env.SSH_KEY_PATH || "";
         document.getElementById("key-admin-password").placeholder = env.ADMIN_PASSWORD ? "Existe (masquée) - Laisser vide pour ne pas changer" : "Aucun (Désactivé)";
     } catch (err) {
         pushNotification("Réglages", "Impossible de charger les clés d'API : " + err, "error");
@@ -4165,17 +4160,12 @@ document.getElementById("env-form").addEventListener("submit", async (e) => {
     }
 });
 
-// Soumission dédiée pour la configuration Terminal SSH
+// Soumission dédiée pour la sécurité du cockpit (mot de passe admin)
 const sshForm = document.getElementById("ssh-form");
 if (sshForm) {
     sshForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const sshData = {
-            SSH_HOST: document.getElementById("key-ssh-host").value,
-            SSH_PORT: document.getElementById("key-ssh-port").value,
-            SSH_USERNAME: document.getElementById("key-ssh-username").value,
-            SSH_PASSWORD: document.getElementById("key-ssh-password").value,
-            SSH_KEY_PATH: document.getElementById("key-ssh-key-path").value,
             ADMIN_PASSWORD: document.getElementById("key-admin-password").value
         };
         

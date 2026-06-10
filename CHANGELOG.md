@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.29 (Réglages SSH : retrait du legacy mono-hôte)
+
+### 🧹 Nettoyage
+- Retrait du bloc legacy **« Intégration Terminal SSH »** (hôte unique `.env` : SSH_HOST/PORT/USERNAME/PASSWORD/KEY_PATH) — redondant avec le registre multi-hôtes **par utilisateur** et incohérent avec son isolation (cet hôte était global).
+- Le **mot de passe admin** (`ADMIN_PASSWORD`) est conservé mais déplacé sous une rubrique claire **« 🔒 Sécurité du cockpit »** (c'est l'admin de secours + garde-fou d'exposition réseau, sans rapport avec le SSH).
+- Réglages → SSH ne montre donc plus que : la sécurité du cockpit, puis le bouton **« ＋ Ajouter un hôte SSH »** et la liste des hôtes (avec leurs autorisations).
 ## v0.11.28 (Réglages SSH épurés)
 
 ### 🧹 UI SSH simplifiée
