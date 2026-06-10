@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.20 (Design : aperçu des projets Code)
+
+### 👁️ Aperçu des fichiers du workspace (#5)
+- **Ouvrir un projet créé/édité côté Code dans Design affiche désormais sa page.** Si un projet n'a pas de « version » Design mais contient une page web dans son workspace (ex. `index.html`), Design la **prévisualise directement** (assets relatifs CSS/JS/images résolus dans le dossier du projet) et charge le code dans l'éditeur.
+- Nouveaux endpoints : **`GET …/projects/{id}/workspace-entry`** (détecte la page d'entrée) et **`GET …/projects/{id}/workspace/{path}`** (sert les fichiers du workspace, anti-traversée). Boutons « Recharger » / « Ouvrir » adaptés au mode workspace.
+
 ## v0.11.19 (Import de dossier dans Design)
 
 ### 📁 Import d'un dossier complet (#9)

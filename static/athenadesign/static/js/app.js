@@ -120,6 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentProjectId = null;
     let currentProjectData = null;
     let currentVersionIndex = null; // 0-indexed in currentProjectData.versions
+    let currentWorkspacePreview = null; // {projectId, entry} quand on prévisualise les fichiers du workspace (projet Code)
 
     // ── Imports (références) + Design System ──────────────────────────────────
     let pendingAttachments = [];
@@ -997,9 +998,19 @@ document.addEventListener("DOMContentLoaded", () => {
             if (project.versions && project.versions.length > 0) {
                 loadVersion(project.versions.length - 1);
             } else {
-                resetCanvas();
+                // Pas de version Design : si le projet (souvent créé/édité côté Code) a une page
+                // web dans son workspace PARTAGÉ (#5), on l'affiche en aperçu. Sinon canvas vide.
+                let shown = false;
+                try {
+                    const er = await fetch(`/api/athenadesign/projects/${projectId}/workspace-entry`);
+                    if (er.ok) {
+                        const ej = await er.json();
+                        if (ej && ej.entry) { showWorkspacePreview(projectId, ej.entry); shown = true; }
+                    }
+                } catch (e) { /* silencieux */ }
+                if (!shown) resetCanvas();
             }
-            
+
             await loadProjects();
         } catch (e) {
             console.error("Error loading project", e);
@@ -1129,6 +1140,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Refresh Preview Button listener
     btnRefreshPreview.addEventListener("click", () => {
+        if (currentWorkspacePreview) {
+            // Mode workspace : recharge la page depuis le dossier (cache-bust).
+            const { projectId, entry } = currentWorkspacePreview;
+            htmlPreviewFrame.src = `/api/athenadesign/projects/${projectId}/workspace/${entry}?t=${Date.now()}`;
+            appendConsoleLine("system", "[Aperçu] Rechargement depuis le workspace...");
+            return;
+        }
         if (currentVersionIndex !== null && currentProjectData) {
             const ver = currentProjectData.versions[currentVersionIndex];
             if (ver && WEB_TYPES.includes(ver.type)) {
@@ -1140,6 +1158,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Open External Button listener
     btnOpenExternal.addEventListener("click", () => {
+        if (currentWorkspacePreview) {
+            const { projectId, entry } = currentWorkspacePreview;
+            window.open(`/api/athenadesign/projects/${projectId}/workspace/${entry}`, "_blank");
+            return;
+        }
         if (currentProjectId && currentVersionIndex !== null && currentProjectData) {
             const ver = currentProjectData.versions[currentVersionIndex];
             if (ver && WEB_TYPES.includes(ver.type)) {
@@ -1161,7 +1184,33 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // #5 — Aperçu d'un projet via les FICHIERS de son workspace (partagé avec le Code),
+    // quand il n'a pas de « version » Design. L'iframe charge la page par URL (src) pour
+    // que les assets relatifs (CSS/JS/images) se résolvent dans le dossier du projet.
+    function showWorkspacePreview(projectId, entry) {
+        currentWorkspacePreview = { projectId, entry };
+        currentVersionIndex = null;
+        const url = `/api/athenadesign/projects/${projectId}/workspace/${entry}`;
+        canvasEmptyState.style.display = "none";
+        pythonPreviewContainer.style.display = "none";
+        previewFrameContainer.style.display = "block";
+        htmlPreviewFrame.style.display = "block";
+        btnRunPython.style.display = "none";
+        btnRefreshPreview.style.display = "flex";
+        btnOpenExternal.style.display = "flex";
+        responsiveToolbar.style.display = "flex";
+        if (btnExportPdf) btnExportPdf.style.display = "flex";
+        if (adjustToolbar) adjustToolbar.style.display = "flex";
+        applyViewport(activeViewport);
+        htmlPreviewFrame.removeAttribute("srcdoc");
+        htmlPreviewFrame.src = url;
+        // Charge aussi le code de la page dans l'éditeur (lecture).
+        fetch(url).then(r => r.ok ? r.text() : "").then(t => { if (t) setEditorValue(t, "html"); }).catch(() => {});
+        switchTab("preview");
+    }
+
     function resetCanvas() {
+        currentWorkspacePreview = null;
         htmlPreviewFrame.style.display = "none";
         previewFrameContainer.style.display = "none";
         pythonPreviewContainer.style.display = "none";
@@ -1240,8 +1289,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!currentProjectData || !currentProjectData.versions || index >= currentProjectData.versions.length) return;
         
         currentVersionIndex = index;
+        currentWorkspacePreview = null;
         const ver = currentProjectData.versions[index];
-        
+
         canvasEmptyState.style.display = "none";
         
         const lang = ver.type === "python" ? "python"

@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import List
 from fastapi import APIRouter, HTTPException, Body, Request, UploadFile, File, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from core import athenadesign_runner as runner
 from core import athenadesign_generator as generator
 from core import projects as code_projects  # PROJETS UNIFIÉS : même registre que la partie code
@@ -348,6 +348,47 @@ async def upload_folder(request: Request, project_id: str,
             out.write(data)
         written += 1
     return {"uploaded": written, "skipped": len(skipped), "skipped_paths": skipped[:50]}
+
+
+def _workspace_entry(base: str):
+    """Fichier HTML « page d'entrée » prévisualisable d'un workspace (index.html
+    prioritaire, sinon premier *.htm(l) à la racine). None si aucun."""
+    if not base or not os.path.isdir(base):
+        return None
+    for cand in ("index.html", "index.htm"):
+        if os.path.isfile(os.path.join(base, cand)):
+            return cand
+    try:
+        for name in sorted(os.listdir(base)):
+            if name.lower().endswith((".html", ".htm")) and os.path.isfile(os.path.join(base, name)):
+                return name
+    except Exception:
+        pass
+    return None
+
+
+@router.get("/projects/{project_id}/workspace-entry")
+async def workspace_entry(request: Request, project_id: str):
+    """Indique la page web prévisualisable du workspace du projet (partagé avec le Code).
+    Permet à Design d'afficher un projet créé/édité côté Code même sans 'version' Design."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    return {"entry": _workspace_entry(_project_path(project_id))}
+
+
+@router.get("/projects/{project_id}/workspace/{file_path:path}")
+async def workspace_file(request: Request, project_id: str, file_path: str):
+    """Sert un fichier du workspace du projet (aperçu live des pages + assets relatifs).
+    Anti-traversée : le chemin est assaini et confiné au dossier du projet."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    base = _project_path(project_id)
+    if not base:
+        raise HTTPException(status_code=404, detail="Pas de dossier de travail.")
+    dest = _safe_join(base, file_path)
+    if not dest or not os.path.isfile(dest):
+        raise HTTPException(status_code=404, detail="Fichier introuvable.")
+    return FileResponse(dest)
 
 
 @router.post("/chat")
