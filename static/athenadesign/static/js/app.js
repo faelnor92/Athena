@@ -121,6 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentProjectData = null;
     let currentVersionIndex = null; // 0-indexed in currentProjectData.versions
     let currentWorkspacePreview = null; // {projectId, entry} quand on prévisualise les fichiers du workspace (projet Code)
+    let currentSources = { base: null, design: null }; // pages prévisualisables : code de base (racine) vs sortie Design
 
     // ── Imports (références) + Design System ──────────────────────────────────
     let pendingAttachments = [];
@@ -1011,6 +1012,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!shown) resetCanvas();
             }
 
+            // Bascule « Code de base / Design » (visible quand le projet a À LA FOIS un code
+            // de base à la racine et une sortie Design). Mode actif déduit de ce qu'on affiche.
+            await refreshSourceToggle(projectId, (project.versions && project.versions.length > 0) ? "design" : null);
+
             await loadProjects();
         } catch (e) {
             console.error("Error loading project", e);
@@ -1172,6 +1177,22 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // Bascule de source : voir le CODE DE BASE (racine, intact) vs la sortie DESIGN.
+    document.getElementById("btn-src-base")?.addEventListener("click", () => {
+        if (!currentProjectId || !currentSources.base) return;
+        showWorkspacePreview(currentProjectId, currentSources.base);
+        setSourceToggleActive("base");
+    });
+    document.getElementById("btn-src-design")?.addEventListener("click", () => {
+        if (!currentProjectId) return;
+        if (currentProjectData && currentProjectData.versions && currentProjectData.versions.length > 0) {
+            loadVersion(currentProjectData.versions.length - 1);
+        } else if (currentSources.design) {
+            showWorkspacePreview(currentProjectId, currentSources.design);
+        }
+        setSourceToggleActive("design");
+    });
+
     // Bridge to forward messages from the HTML preview iframe
     window.addEventListener("message", (e) => {
         if (e.data && e.data.type === "iframe-log") {
@@ -1209,8 +1230,35 @@ document.addEventListener("DOMContentLoaded", () => {
         switchTab("preview");
     }
 
+    // Bascule « Code de base / Design » : récupère les deux sources du projet et n'affiche
+    // le sélecteur que si les DEUX coexistent (sinon il n'y a rien à comparer).
+    async function refreshSourceToggle(projectId, activeMode) {
+        currentSources = { base: null, design: null };
+        try {
+            const r = await fetch(`/api/athenadesign/projects/${projectId}/sources`);
+            if (r.ok) currentSources = await r.json();
+        } catch (e) { /* silencieux */ }
+        const toggle = document.getElementById("source-toggle");
+        const hasBoth = !!(currentSources.base && currentSources.design);
+        if (toggle) toggle.style.display = hasBoth ? "flex" : "none";
+        if (!hasBoth) return;
+        setSourceToggleActive(activeMode || (currentWorkspacePreview ? "base" : "design"));
+    }
+
+    function setSourceToggleActive(mode) {
+        const map = { base: document.getElementById("btn-src-base"), design: document.getElementById("btn-src-design") };
+        Object.entries(map).forEach(([k, el]) => {
+            if (!el) return;
+            const on = (k === mode);
+            el.style.opacity = on ? "1" : "0.5";
+            el.style.fontWeight = on ? "700" : "400";
+        });
+    }
+
     function resetCanvas() {
         currentWorkspacePreview = null;
+        const _st = document.getElementById("source-toggle");
+        if (_st) _st.style.display = "none";
         htmlPreviewFrame.style.display = "none";
         previewFrameContainer.style.display = "none";
         pythonPreviewContainer.style.display = "none";

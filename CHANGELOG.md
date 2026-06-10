@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.22 (Design : bascule « Code de base / Design »)
+
+### 🔀 Voir le code d'origine OU la sortie Design (#5)
+- Quand un projet a **à la fois un code de base** (racine, intact) **et une sortie Design** (`design/`), Design affiche un **sélecteur « Code de base / Design »** dans la barre d'outils du canvas pour basculer l'aperçu entre les deux.
+- Résout le cas signalé : après une génération, on pouvait voir la variante mais **plus l'ancien code**. On peut désormais revenir au code d'origine à tout moment (lecture seule, jamais écrasé).
+- Nouvel endpoint **`GET …/projects/{id}/sources`** → `{base, design}`.
+
 ## v0.11.21 (Design → Code : sortie dans un dossier dédié)
 
 ### 🔁 Pont bidirectionnel Design ↔ Code (#5)

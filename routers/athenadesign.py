@@ -417,6 +417,41 @@ def _mirror_version_to_workspace(project_id: str, version: dict):
         pass
 
 
+def _base_html_entry(base: str):
+    """Page web du CODE DE BASE à la racine (hors sous-dossier `design/`), ignorant le
+    marqueur Design : index.html prioritaire, sinon premier *.htm(l) racine. None si aucun."""
+    if not base or not os.path.isdir(base):
+        return None
+    for cand in ("index.html", "index.htm"):
+        if os.path.isfile(os.path.join(base, cand)):
+            return cand
+    try:
+        for name in sorted(os.listdir(base)):
+            if name == _DESIGN_SUBDIR:
+                continue
+            if name.lower().endswith((".html", ".htm")) and os.path.isfile(os.path.join(base, name)):
+                return name
+    except Exception:
+        pass
+    return None
+
+
+@router.get("/projects/{project_id}/sources")
+async def project_sources(request: Request, project_id: str):
+    """Sources prévisualisables d'un projet : `base` = page du code d'origine (racine,
+    intacte) ; `design` = page générée par Design (`design/index.html`). Permet à l'UI de
+    proposer une bascule « Code de base / Design » quand les deux coexistent."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    base = _project_path(project_id)
+    design_rel = f"{_DESIGN_SUBDIR}/index.html"
+    has_design = bool(base) and os.path.isfile(os.path.join(base, design_rel))
+    return {
+        "base": _base_html_entry(base) if base else None,
+        "design": design_rel if has_design else None,
+    }
+
+
 @router.get("/projects/{project_id}/workspace-entry")
 async def workspace_entry(request: Request, project_id: str):
     """Indique la page web prévisualisable du workspace du projet (partagé avec le Code).
