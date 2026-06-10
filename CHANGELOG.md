@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.13 (Suppression de projets dans Design)
+
+### 🎨 Design
+- **Suppression de projets** : chaque projet du studio Design a maintenant un bouton 🗑️ (avec confirmation) qui supprime le projet et ses fichiers via le **registre unifié** (`DELETE /api/athenadesign/projects/{id}` → `core.projects.delete`). Avant, aucun moyen de supprimer un projet depuis Design.
+
 ## v0.11.12 (Visibilité des fichiers générés)
 
 ### 🔧 Corrections
