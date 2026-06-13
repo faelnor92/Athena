@@ -1768,11 +1768,16 @@ class Swarm:
                         f"court purement illustratif (réponse conversationnelle, sans fichier à produire) "
                         f"peut rester en ligne.\n"
                     )
-                system_prompt += tools.memory_tools.core_mem.get_as_prompt()
+                # CACHE : la Core Memory et le profil utilisateur CHANGENT (memorize_fact,
+                # apprentissage — parfois EN COURS de run via la « mémoire proactive »). On les
+                # met donc en VOLATILE (après le préfixe caché) pour NE PAS invalider le prompt
+                # cache du gros system_prompt à chaque nouveau fait mémorisé. Petits → coût de
+                # renvoi non-caché négligeable vs le gain de garder le gros préfixe cacheable.
+                volatile_context += tools.memory_tools.core_mem.get_as_prompt()
                 # Profil utilisateur évolutif (personnalisation durable).
                 try:
                     from .user_profile import user_profile
-                    system_prompt += user_profile.as_prompt()
+                    volatile_context += user_profile.as_prompt()
                 except Exception:
                     pass
                 # Quand TRANSFÉRER vs DÉLÉGUER ? (uniquement si des spécialistes sont câblés).

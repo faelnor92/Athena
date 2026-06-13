@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.34 (Prompt caching — la mémoire ne casse plus le cache)
+
+### 🧊 Audit CacheAligner (#3 de la roadmap efficacité)
+- **Cache-buster corrigé** : la **Core Memory** (faits mémorisés) et le **profil utilisateur** étaient ajoutés au `system_prompt` STABLE → chaque `memorize_fact` (parfois EN COURS de run via la mémoire proactive) changeait le préfixe et **invalidait le prompt cache** du gros system_prompt. Ils sont désormais émis en **VOLATILE** (après le point de cache, comme le timestamp et le RAG).
+- Résultat : le gros préfixe système (persona + instructions + liste d'agents) **reste cacheable** même quand la mémoire évolue → moins de latence/coût (cache hits Anthropic, prefix caching serveur). Le coût de renvoi non-caché de la mémoire (petite) est négligeable.
+- Audit : timestamp + RAG déjà correctement en volatile ✓. Reste identifié pour plus tard (gain supplémentaire, mais plus risqué) : mettre en cache aussi le PRÉFIXE D'HISTORIQUE des longues boucles agentiques (2ᵉ point de cache).
 ## v0.11.33 (Sélection par pertinence des skills/MCP — économie de tokens)
 
 ### 🎯 Disclosure progressive (#2 de la roadmap efficacité)
