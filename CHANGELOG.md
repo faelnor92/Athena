@@ -1,5 +1,38 @@
 # Historique des Versions (Changelog)
 
+## v0.11.34 (Prompt caching — la mémoire ne casse plus le cache)
+
+### 🧊 Audit CacheAligner (#3 de la roadmap efficacité)
+- **Cache-buster corrigé** : la **Core Memory** (faits mémorisés) et le **profil utilisateur** étaient ajoutés au `system_prompt` STABLE → chaque `memorize_fact` (parfois EN COURS de run via la mémoire proactive) changeait le préfixe et **invalidait le prompt cache** du gros system_prompt. Ils sont désormais émis en **VOLATILE** (après le point de cache, comme le timestamp et le RAG).
+- Résultat : le gros préfixe système (persona + instructions + liste d'agents) **reste cacheable** même quand la mémoire évolue → moins de latence/coût (cache hits Anthropic, prefix caching serveur). Le coût de renvoi non-caché de la mémoire (petite) est négligeable.
+- Audit : timestamp + RAG déjà correctement en volatile ✓. Reste identifié pour plus tard (gain supplémentaire, mais plus risqué) : mettre en cache aussi le PRÉFIXE D'HISTORIQUE des longues boucles agentiques (2ᵉ point de cache).
+## v0.11.33 (Sélection par pertinence des skills/MCP — économie de tokens)
+
+### 🎯 Disclosure progressive (#2 de la roadmap efficacité)
+- Les outils **« extra » hors groupes** (skills auto-induites + outils MCP, souvent 20-50 par serveur) échappaient au filtre par mots-clés → **tous leurs schémas étaient injectés à chaque tour**. Désormais, au-delà de `TOOL_SEMANTIC_TOPN` (12 par défaut), on n'expose que les **top-N les plus pertinents** pour la requête (recouvrement nom+description, sans embedding → zéro coût/latence).
+- S'applique à **tout agent** recevant des extras (orchestrateur ET Codeur), **sans jamais toucher** aux outils cœur (`AVAILABLE_TOOLS`) ni à la délégation.
+- Comme le filtre keyword : on **masque le schéma, pas l'exécution** (l'outil reste appelable via `_secured_tools` ou `run_tool_script` qui expose toutes les skills) → **zéro perte de capacité**.
+- Réglable : `TOOL_SEMANTIC_TOPN` (défaut 12), gouverné par `TOOL_FILTER_ENABLED`.
+## v0.11.32 (Programmatic tool calling réellement actif)
+
+### ⚡ Orchestration par script (économie de tokens)
+- **Correctif majeur** : `run_tool_script` était mentionné dans le prompt de l'orchestrateur **mais absent de sa liste `tools:`** → l'agent ne pouvait jamais l'appeler. Le programmatic tool calling ne se déclenchait donc **jamais**. `run_tool_script` (+ `make_plan`/`update_plan_step`/`send_notification`, eux aussi mentionnés mais manquants) sont ajoutés aux outils d'Athena.
+- **Couverture élargie** : le script peut maintenant appeler aussi les outils **read-only** d'inspection — `read_file`, `file_outline`, `search_code`, `find_definition`, `find_references`, `git_status/diff/log`, `query_graph`, `analyze_document`, `read_inbox`, `read_email` — en plus du web/mémoire/agenda. Un pipeline « lis 5 fichiers + agrège » devient **une seule inférence**.
+- **Incitation renforcée** : le prompt de l'orchestrateur demande désormais explicitement de **préférer un seul `run_tool_script`** dès qu'une tâche enchaîne/agrège plusieurs appels d'outils (seule la sortie finale revient → grosse économie de contexte/tokens).
+- Sûreté inchangée : validation AST, builtins restreints, pas d'écriture/shell/SSH/exec, timeout + budget d'instructions.
+## v0.11.31 (install : pip dans le venv uv + libs système du vocal)
+
+### 🐛 Correctifs d'installation
+- **pip absent du venv** : `uv venv` n'installe pas pip → le wizard (`python -m pip`) et tout l'optionnel échouaient. Corrigé par **`uv venv --seed`** (pip/setuptools/wheel dans le venv) + filet `ensurepip` dans `setup_wizard.py` (robuste même sans `--seed`).
+- **`requirements-voice.txt` qui échoue** : ajout de l'installation automatique des **libs système** requises avant le pip — **PortAudio** (sounddevice), **espeak-ng** (pyttsx3), **ffmpeg** (audio/whisper). `install_system_deps()` gère apt/dnf/pacman + root/sudo. Idem **ffmpeg** avant l'install de Whisper. Note ajoutée dans `requirements-voice.txt` pour l'install manuelle.
+## v0.11.30 (install.sh viable sur système nu)
+
+### 📦 Installateur robuste (conteneur LXC/Debian nu)
+- **Bootstrap des paquets de base** : `install.sh` installe désormais lui-même `sudo`, `git`, `curl`, `gnupg`, les outils de build et les en-têtes Python — tout ce qui n'est pas garanti sur une base Debian/conteneur. Plus d'échec « git introuvable ».
+- **Privilèges** : détection root/sudo (`SUDO=""` si root) → fonctionne dans un **conteneur lancé en root sans sudo**.
+- **Python 3.13 via `uv`** : Debian livre 3.11 (→ vieux chromadb) ; l'installeur provisionne **Python 3.13** avec `uv` et crée le venv dessus (`uv venv --python 3.13`), sans toucher au python système. Dépendances via `uv pip install`.
+- **Docker en méthode OFFICIELLE** : remplacement de `docker.io` (distro, ancien) par le script officiel **`get.docker.com`** (docker-ce + containerd), avec activation du service et ajout au groupe `docker`.
+- SETUP.md aligné (one-liner + voie manuelle `uv`).
 ## v0.11.29 (Réglages SSH : retrait du legacy mono-hôte)
 
 ### 🧹 Nettoyage

@@ -1,6 +1,11 @@
 # Dépendances OPTIONNELLES du pipeline vocal local (voir voice/).
 # Installation : pip install -r requirements-voice.txt
 #
+# ⚠️ LIBS SYSTÈME REQUISES (sinon l'install pip échoue) — installées auto par setup_wizard.py,
+#    sinon à la main (Debian/Ubuntu) :
+#      sudo apt-get install -y portaudio19-dev libportaudio2 espeak-ng ffmpeg
+#    (PortAudio → sounddevice ; espeak-ng → pyttsx3 ; ffmpeg → traitement audio / whisper)
+#
 # NB : la TRANSCRIPTION DE RÉUNION et la DICTÉE VOCALE DU CHAT utilisent un AUTRE moteur,
 # `openai-whisper` (import whisper), PAS le faster-whisper ci-dessous. Pour l'activer en LOCAL :
 #   pip install openai-whisper        # ⚠️ tire PyTorch (lourd)
