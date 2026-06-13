@@ -29,8 +29,11 @@ pyttsx3>=2.90              # TTS de repli (si Piper indisponible)
 #   modèle voix .onnx -> VOICE_PIPER_MODEL=/chemin/fr_FR-...onnx
 # Wake word Porcupine (alternative) : pip install pvporcupine  (+ clé d'accès)
 
-# Reconnaissance du locuteur (optionnel, tire torch)
-resemblyzer>=0.1.1
+# Reconnaissance du locuteur (« qui parle ») — OPTIONNEL et LOURD : tire PyTorch ET
+# webrtcvad (module C qui se COMPILE → long/bloquant sur petite machine sans build tools).
+# N'est PAS nécessaire au wake word / STT / TTS. Décommente seulement si tu veux identifier
+# les locuteurs, après : sudo apt-get install -y build-essential python3-dev
+# resemblyzer>=0.1.1
 
 # Satellites ESPHome (ESP32-S3) directs (sans HA)
 aioesphomeapi>=24.0
