@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.36 (Éviction des gros résultats d'outils — #5)
+
+### 🗜️ Compaction + éviction (#5 de la roadmap efficacité)
+- **Déjà en place** : `_maybe_compact` résume les anciens messages et garde les K récents verbatim (vue LLM seulement). Au passage, son **résumé** passe maintenant par le petit modèle (`UTILITY_MODEL`/`FAST_MODEL`).
+- **Ajout — éviction des gros résultats** : un résultat d'outil volumineux (> `EVICT_TOOL_RESULT_MAX`, 2000 par défaut) qui n'est plus dans les `EVICT_KEEP_RECENT` derniers messages (donc **déjà exploité** par le modèle) est remplacé par un **extrait tête/queue + un pointeur** au lieu de retrimballer tout le payload à chaque tour. Les résultats récents restent intacts ; agit même si l'historique est court mais contient un gros payload. N'affecte **jamais** l'historique persistant. `EVICT_TOOL_RESULT_MAX=0` désactive.
 ## v0.11.35 (Discipline du swarm — tiering des appels utilitaires)
 
 ### 🧠 #4 de la roadmap efficacité (audit + complément)

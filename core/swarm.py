@@ -1026,7 +1026,7 @@ class Swarm:
                 f"{m.get('role')}: {m.get('content', '')}" for m in head if m.get("content")
             )[:8000]
             try:
-                resp = self._complete(model, [
+                resp = self._complete(self._utility_model(model), [
                     {"role": "system", "content": (
                         "Résume la conversation suivante en 10 lignes maximum, en français, "
                         "en conservant les faits, décisions, préférences utilisateur et le "
@@ -1049,6 +1049,32 @@ class Swarm:
             "content": f"[RÉSUMÉ DE LA CONVERSATION PRÉCÉDENTE — {len(head)} messages condensés]\n{summary}",
         }
         return [summary_msg] + tail
+
+    def _evict_large_results(self, history: list) -> list:
+        """ÉVICTION des gros résultats d'outils DÉJÀ EXPLOITÉS : un résultat d'outil
+        volumineux qui n'est plus dans les derniers échanges (donc déjà lu par le modèle)
+        est remplacé par un EXTRAIT tête+queue + un pointeur, au lieu de trimballer tout le
+        payload à chaque tour. N'agit que sur la vue LLM (jamais l'historique persistant).
+        Les résultats RÉCENTS restent intacts. EVICT_TOOL_RESULT_MAX=0 désactive."""
+        cap = int(os.getenv("EVICT_TOOL_RESULT_MAX", "2000") or 0)
+        if not cap:
+            return history
+        keep_recent = max(1, int(os.getenv("EVICT_KEEP_RECENT", "4") or 4))
+        n = len(history)
+        out = []
+        for i, m in enumerate(history):
+            c = m.get("content")
+            if (m.get("role") == "tool" and i < n - keep_recent
+                    and isinstance(c, str) and len(c) > cap):
+                name = m.get("name", "outil")
+                evicted = (f"{c[:cap // 2]}\n"
+                           f"…[résultat « {name} » tronqué : {len(c)} caractères, déjà exploité — "
+                           f"extrait tête/queue ; redemande l'outil si tu as besoin du détail]…\n"
+                           f"{c[-cap // 4:]}")
+                out.append({**m, "content": evicted})
+            else:
+                out.append(m)
+        return out
 
     def _write_experience_report(self, agent: Agent, messages: list, steps: list):
         """Hook post-tâche (auto-amélioration) : génère un court compte-rendu
@@ -1993,6 +2019,9 @@ class Swarm:
             # Mémoire avancée : compaction de l'historique long (résumé + éviction)
             # — n'affecte QUE la vue envoyée au LLM, pas l'historique persistant.
             clean_history = self._maybe_compact(current_agent.model, clean_history, steps)
+            # Éviction des gros résultats d'outils déjà exploités (complète la compaction :
+            # agit même si l'historique est court mais contient un payload volumineux).
+            clean_history = self._evict_large_results(clean_history)
 
             # Injection du system prompt de l'agent actif.
             # Bloc système STABLE en tête (cacheable via cache_control) ; le contexte VOLATILE
