@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.45 (Entraînement d'un wake word openWakeWord « athena »)
+
+### 🏋️ Pipeline d'entraînement `athena.onnx`
+- Ajout de `tools/train_wakeword/` : config (`athena.yaml`), script (`train_athena_wakeword.sh`) et README pour entraîner un **modèle openWakeWord custom « athena »** — la voie efficace/always-on (alternative au mode `stt` par transcription), utile pour les satellites multi-flux.
+- Suit le **pipeline officiel openWakeWord** : positifs synthétiques (Piper) + bruit/réverbération + négatifs pré-calculés → DNN → `athena.onnx`. README avec 2 voies (Colab officiel, ou script local GPU) + déploiement dans Athena (`VOICE_WAKE_ENGINE=openwakeword` + `VOICE_WAKE_WORD=athena`).
+- ⚠️ Nécessite un GPU (Colab) ; honnêtement non testé sans GPU/datasets — le notebook officiel reste la référence.
 ## v0.11.44 (Satellites ESP : wake word côté serveur par défaut)
 
 ### 🛰️ Wake word serveur pour les satellites ESP
