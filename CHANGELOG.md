@@ -1,5 +1,9 @@
 # Historique des Versions (Changelog)
 
+## v0.11.46 (Install vocale : resemblyzer optionnel)
+
+### 🔧 Correctif
+- **L'install vocale bloquait sur `webrtcvad`** : c'est une dépendance de **`resemblyzer`** (reconnaissance du locuteur), un module C qui doit se **compiler** → long/bloquant sur petite machine (LXC) sans build tools, et resemblyzer tire en plus **PyTorch** (lourd). Or il ne sert qu'à *identifier qui parle*, **pas** au wake word / STT / TTS. → **`resemblyzer` est désormais commenté (optionnel)** dans `requirements-voice.txt`, avec la note pour l'activer (build-essential + python3-dev). L'install vocale de base passe sans compilation.
 ## v0.11.45 (Entraînement d'un wake word openWakeWord « athena »)
 
 ### 🏋️ Pipeline d'entraînement `athena.onnx`
