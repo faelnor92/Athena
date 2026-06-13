@@ -1,5 +1,18 @@
 # Historique des Versions (Changelog)
 
+## v0.11.40 (Correctifs d'installation)
+
+### 🔧 install.sh utilisable de bout en bout
+- **Commande `athena` introuvable** : le CLI était posé dans `~/.local/bin` (hors PATH sur une base nue). Désormais installé dans **`/usr/local/bin`** quand on est root (conteneur LXC, déjà sur le PATH) ; sinon `~/.local/bin` **ajouté durablement au `.bashrc`/`.zshrc`** + activé pour la session.
+- **`python server.py` → fastapi introuvable** : fastapi vit dans le `.venv`. Message explicite (lance **`athena start`** ou **`.venv/bin/python server.py`**, JAMAIS le python système) + **vérification finale** que fastapi est bien présent dans le venv.
+- **Composants optionnels non proposés** (install via `curl|bash` = non interactif) : message indiquant comment relancer le wizard (`source .venv/bin/activate && python setup_wizard.py`).
+- **Marque** : suppression du logo ASCII et des mentions « Jarvis/Athena v2 » résiduels → bannière « ATHENA » propre.
+## v0.11.39 (Playbooks Markdown — « Agent Skills » procéduraux)
+
+### 📓 Savoir-faire procédural (complément des skills Python)
+- Nouveau type de compétence : **playbooks Markdown** (`playbooks/*.md`) — du **savoir-faire** (procédures, checklists, conventions « comment faire X »), complément des skills Python qui, eux, **calculent**.
+- **Disclosure progressive** (économie de tokens) : un **index compact** (nom + description) est toujours visible dans le contexte ; le **corps complet** n'est chargé qu'à la demande via l'outil **`load_playbook(name)`** quand un playbook est pertinent.
+- Frontmatter optionnel (`name:` / `description:`). `load_playbook` n'est exposé que si au moins un playbook existe. Index injecté dans le préfixe **stable** (cacheable). Dossier configurable via `PLAYBOOKS_DIR`. Un exemple fourni (`deployer-site-statique.md`).
 ## v0.11.38 (Création de compétences « propre », sans bruit)
 
 ### 🧬 Induction de skill seuillée
