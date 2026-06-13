@@ -1,5 +1,13 @@
 # Historique des Versions (Changelog)
 
+## v0.11.37 (RAG sobre — #6, fin de la roadmap efficacité)
+
+### 🔎 RAG sobre (#6)
+- Le **RAG automatique en arrière-plan** (chunks mémoire pré-injectés) tournait et se ré-injectait **à CHAQUE tour** de la boucle agentique (alors que le message utilisateur ne change pas) → re-recherche + re-paste des mêmes chunks inutiles. Désormais **injecté UNE seule fois par run** ; si l'agent a besoin de re-chercher, il a l'outil `search_memory`.
+- Top-k déjà minimal (2) ; nouveau knob **`RAG_BACKGROUND_TOPK`** (défaut 2 ; **0 = désactive le RAG auto** → 100 % via `search_memory`, le mode le plus sobre).
+
+### ✅ Roadmap efficacité tokens — complète
+1 Programmatic tool calling · 2 Disclosure progressive skills/MCP · 3 Prompt caching · 4 Discipline du swarm · 5 Compaction + éviction · 6 RAG sobre — **tous traités**.
 ## v0.11.36 (Éviction des gros résultats d'outils — #5)
 
 ### 🗜️ Compaction + éviction (#5 de la roadmap efficacité)

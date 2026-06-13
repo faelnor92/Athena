@@ -1356,6 +1356,7 @@ class Swarm:
         turn = 0
         started_at = time.time()
         tokens_used = 0
+        _rag_injected = False     # RAG sobre : on n'injecte les chunks qu'UNE fois par run
         skill_failures = []  # échecs de compétences dynamiques → réparées en fin de run
         _route_done = False   # routeur de délégation : décidé une seule fois par run
         _route_target = None  # spécialiste ciblé (nom) | "" (aucun) | None (non décidé)
@@ -1938,12 +1939,17 @@ class Swarm:
             system_prompt += "Si tu vois une mention `@` ciblant un AUTRE agent dans le message ou dans la suite d'instructions de l'utilisateur, tu as l'obligation absolue d'effectuer ton propre travail (ex: traduire si tu es la traductrice Sofia, rédiger si tu es l'auteur Émilie), PUIS de transférer immédiatement la main à cet autre agent via ta fonction de transfert appropriée pour qu'il exécute sa partie du travail.\n"
 
             
-            # RAG Automatique en arrière-plan
+            # RAG Automatique en arrière-plan — SOBRE : injecté UNE seule fois par run (pas à
+            # CHAQUE tour de la boucle agentique, où le message utilisateur ne change pas →
+            # re-chercher + ré-injecter les mêmes chunks était du gaspillage). Si l'agent a
+            # besoin de re-chercher en mémoire plus tard, il dispose de l'outil search_memory.
+            _rag_k = int(os.getenv("RAG_BACKGROUND_TOPK", "2") or 0)  # 0 = RAG auto désactivé
             user_messages = [m for m in messages if m.get("role") == "user"]
-            if user_messages:
+            if user_messages and not _rag_injected and _rag_k > 0:
+                _rag_injected = True
                 last_user_msg = user_messages[-1]["content"]
                 try:
-                    rag_results = tools.memory_tools.semantic_mem.search(last_user_msg, limit=2)
+                    rag_results = tools.memory_tools.semantic_mem.search(last_user_msg, limit=_rag_k)
                     if rag_results:
                         rag_context = "\n=== CONNAISSANCES PERTINENTES RETROUVÉES EN MÉMOIRE (RAG ARRIÈRE-PLAN) ===\n"
                         for res in rag_results:
