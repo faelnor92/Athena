@@ -199,6 +199,28 @@ def select_tool_subset(text: str, available_names) -> set:
     return keep
 
 
+def select_relevant_funcs(text, funcs, top_n):
+    """Top-N fonctions les plus PERTINENTES pour `text`, par recouvrement de tokens sur
+    (nom + 1re ligne de docstring). Utilisé pour borner les outils « extra » non groupés
+    (skills auto-induites + outils MCP, souvent 20-50 par serveur) sans gonfler le contexte.
+    Sans embedding : zéro coût/latence, déterministe. Les fonctions sans recouvrement
+    gardent un score 0 et sont départagées par leur ordre d'origine (tri stable)."""
+    import re
+    _word = re.compile(r"[a-zà-ÿ0-9_]{3,}", re.IGNORECASE)
+    def _toks(s):
+        return {w.lower() for w in _word.findall(s or "")}
+    q = _toks(text)
+    scored = []
+    for i, f in enumerate(funcs):
+        name = getattr(f, "__name__", "")
+        head = (getattr(f, "__doc__", "") or "").strip().split("\n", 1)[0]
+        # le nom (mots dé-soulignés) compte double : signal fort de pertinence.
+        score = len(q & _toks(name + " " + head)) + len(q & _toks(name.replace("_", " ")))
+        scored.append((-score, i, f))
+    scored.sort()
+    return [f for _, _, f in scored[:top_n]]
+
+
 def load_dynamic_skills() -> dict:
     """Charge dynamiquement tous les scripts Python du dossier skills/ comme des fonctions."""
     skills = {}
@@ -1556,6 +1578,33 @@ class Swarm:
             if _tool_subset is not None:
                 effective_tools = [f for f in effective_tools
                                    if f.__name__ in _tool_subset or _TOOL_DOMAIN.get(f.__name__) is None]
+
+            # Sélection par PERTINENCE des outils « extra » (skills + MCP) : hors groupes,
+            # ils échappent à select_tool_subset → ils prolifèrent (skills auto-induites,
+            # 20-50 outils par serveur MCP). On n'expose que les top-N pertinents pour la
+            # requête. Comme le filtre keyword : on masque le SCHÉMA, pas l'exécution (l'outil
+            # reste dans _secured_tools → appelable), donc zéro perte de capacité. S'applique
+            # à TOUT agent ayant des extras (orchestrateur ET Codeur) ; ne touche JAMAIS les
+            # outils CŒUR (AVAILABLE_TOOLS) ni la délégation.
+            if _tool_filter_enabled:
+                _core_names = set(AVAILABLE_TOOLS.keys())
+                def _is_extra(_n):
+                    return (_n not in _core_names
+                            and not _n.startswith(("delegate_to_", "transfer_to_"))
+                            and _n != "claude_code")
+                _extras = [f for f in effective_tools if _is_extra(f.__name__)]
+                _topn = int(os.getenv("TOOL_SEMANTIC_TOPN", "12") or 12)
+                if len(_extras) > _topn:
+                    _req = next((m.get("content", "") for m in reversed(messages)
+                                 if m.get("role") == "user"), "")
+                    _keep_extra = {f.__name__ for f in select_relevant_funcs(str(_req), _extras, _topn)}
+                    _before_n = len(effective_tools)
+                    effective_tools = [f for f in effective_tools
+                                       if not _is_extra(f.__name__) or f.__name__ in _keep_extra]
+                    _cut = _before_n - len(effective_tools)
+                    if _cut > 0:
+                        print(f"[\033[96mSWARM\033[0m] sélection skills/MCP : {len(_keep_extra)}/{len(_extras)} "
+                              f"exposés (-{_cut} → ~{_cut * 110} tokens/tour économisés)")
 
             # Enregistrer l'activation de l'agent
             steps.append({

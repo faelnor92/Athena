@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.33 (Sélection par pertinence des skills/MCP — économie de tokens)
+
+### 🎯 Disclosure progressive (#2 de la roadmap efficacité)
+- Les outils **« extra » hors groupes** (skills auto-induites + outils MCP, souvent 20-50 par serveur) échappaient au filtre par mots-clés → **tous leurs schémas étaient injectés à chaque tour**. Désormais, au-delà de `TOOL_SEMANTIC_TOPN` (12 par défaut), on n'expose que les **top-N les plus pertinents** pour la requête (recouvrement nom+description, sans embedding → zéro coût/latence).
+- S'applique à **tout agent** recevant des extras (orchestrateur ET Codeur), **sans jamais toucher** aux outils cœur (`AVAILABLE_TOOLS`) ni à la délégation.
+- Comme le filtre keyword : on **masque le schéma, pas l'exécution** (l'outil reste appelable via `_secured_tools` ou `run_tool_script` qui expose toutes les skills) → **zéro perte de capacité**.
+- Réglable : `TOOL_SEMANTIC_TOPN` (défaut 12), gouverné par `TOOL_FILTER_ENABLED`.
 ## v0.11.32 (Programmatic tool calling réellement actif)
 
 ### ⚡ Orchestration par script (économie de tokens)
