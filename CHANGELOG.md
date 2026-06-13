@@ -1,5 +1,30 @@
 # Historique des Versions (Changelog)
 
+## v0.11.45 (Entraînement d'un wake word openWakeWord « athena »)
+
+### 🏋️ Pipeline d'entraînement `athena.onnx`
+- Ajout de `tools/train_wakeword/` : config (`athena.yaml`), script (`train_athena_wakeword.sh`) et README pour entraîner un **modèle openWakeWord custom « athena »** — la voie efficace/always-on (alternative au mode `stt` par transcription), utile pour les satellites multi-flux.
+- Suit le **pipeline officiel openWakeWord** : positifs synthétiques (Piper) + bruit/réverbération + négatifs pré-calculés → DNN → `athena.onnx`. README avec 2 voies (Colab officiel, ou script local GPU) + déploiement dans Athena (`VOICE_WAKE_ENGINE=openwakeword` + `VOICE_WAKE_WORD=athena`).
+- ⚠️ Nécessite un GPU (Colab) ; honnêtement non testé sans GPU/datasets — le notebook officiel reste la référence.
+## v0.11.44 (Satellites ESP : wake word côté serveur par défaut)
+
+### 🛰️ Wake word serveur pour les satellites ESP
+- Le générateur de config ESPHome passe en **`mode: server` par défaut** (au lieu de `embedded`/micro_wake_word) : l'ESP **streame en continu**, c'est **Athena** qui détecte le mot d'activation. Cohérent avec l'architecture décidée (pas de micro_wake_word on-device).
+- Le moteur côté serveur suit **`VOICE_WAKE_ENGINE`** (« stt » par défaut → mot custom « athena » par transcription ; « openwakeword » pour un modèle efficace). Commentaires de la config corrigés (n'imposent plus « openWakeWord »).
+## v0.11.43 (Wake word « Athena » par transcription, défaut cohérent)
+
+### 🗣️ Mot d'activation custom (« Athena ») fonctionnel par défaut
+- **Combo par défaut cassé corrigé** : le défaut était `openwakeword` + `hey athena`, or openwakeword ne connaît QUE des mots **pré-entraînés** (alexa, hey_jarvis…) — **pas « athena »** → dire « Athena » ne déclenchait rien.
+- **Nouveau défaut : `VOICE_WAKE_ENGINE=stt`** → détecte le mot custom (« athena » + variantes) en **transcrivant une fenêtre glissante** (faster-whisper), sans aucun modèle. Marche immédiatement pour « Athena ».
+- `.env.example` documente enfin l'option **`stt`** + le caveat openwakeword (mots pré-entraînés) + `OWW_INFERENCE_FRAMEWORK`.
+- Pour l'efficacité (satellites / always-on) : openwakeword reste dispo avec `hey_jarvis`, ou un modèle custom « athena » à entraîner.
+## v0.11.42 (openwakeword compatible Python 3.13 — backend ONNX)
+
+### 🎙️ Wake word sur Python 3.13
+- **openwakeword échouait** : son `install_requires` force `tflite-runtime`, qui n'a **aucun wheel pour Python ≥3.10** (dont 3.13) → l'install du pipeline vocal entier avortait. Or openwakeword tourne aussi en **ONNX** (onnxruntime a des wheels 3.13).
+- **Fix** : `setup_wizard.py` installe openwakeword **à part** (`--no-deps` + onnxruntime/scipy/scikit-learn) puis **télécharge les modèles** ; le runtime (`voice/wakeword.py`) utilise désormais **`inference_framework='onnx'`** par défaut (surchargeable via `OWW_INFERENCE_FRAMEWORK`).
+- **Install vocale résiliente** : `requirements-voice.txt` s'installe paquet par paquet en cas d'échec groupé (un paquet incompatible n'avorte plus tout le vocal). openwakeword retiré du fichier (géré spécialement, recette documentée dedans).
+- Vérifié de bout en bout sur Python **3.13** : import OK, modèles téléchargés, `Model(onnx)` → wakewords (alexa, hey_jarvis, hey_mycroft…).
 ## v0.11.41 (Install interactive sous curl|bash + accès distant + marque)
 
 ### 🔧 Correctifs d'installation

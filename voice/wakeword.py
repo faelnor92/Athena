@@ -59,7 +59,11 @@ class WakeWord:
                 raise WakeWordUnavailable(
                     "openwakeword non installé (`pip install openwakeword`)."
                 ) from e
-            self._impl = ("oww", Model())
+            import os
+            # Backend ONNX par défaut : tflite-runtime n'a pas de wheel pour Python ≥3.10
+            # (dont 3.13), alors qu'onnxruntime oui. Surchargeable via OWW_INFERENCE_FRAMEWORK.
+            _fw = os.getenv("OWW_INFERENCE_FRAMEWORK", "onnx")
+            self._impl = ("oww", Model(inference_framework=_fw))
         elif self.engine == "porcupine":
             try:
                 import pvporcupine

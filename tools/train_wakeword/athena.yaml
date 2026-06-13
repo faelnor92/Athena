@@ -1,0 +1,41 @@
+# Config d'entraînement openWakeWord pour le mot « athena ».
+# Suit le format du pipeline officiel (dscripka/openWakeWord →
+# notebooks/automatic_model_training.ipynb). Si un champ a changé dans TA version
+# d'openWakeWord, compare avec examples/custom_model.yml du dépôt cloné.
+
+# --- Cible ---------------------------------------------------------------
+target_phrase:
+  - "athena"
+  - "hey athena"
+model_name: "athena"
+
+# --- Volumes (réduis si peu de temps/VRAM ; augmente pour + de robustesse) ---
+n_samples: 30000           # clips positifs générés (Piper)
+n_samples_val: 2000        # positifs de validation
+steps: 50000               # itérations d'entraînement
+max_negative_weight: 1500
+target_accuracy: 0.7
+target_recall: 0.5
+
+# --- Génération des positifs (piper-sample-generator) --------------------
+piper_sample_generator_path: "./piper-sample-generator"
+# Modèle de voix Piper (.pt) utilisé pour synthétiser « athena » en de nombreuses
+# voix/vitesses. en_US-libritts_r-medium = multi-voix (idéal pour la variété).
+tts_model_path: "./piper-sample-generator/models/en_US-libritts_r-medium.pt"
+tts_batch_size: 50
+# Variabilité de la TTS (accents/vitesses) → robustesse du wake word.
+augmentation_rounds: 1
+
+# --- Données négatives / bruit / réverbération (téléchargées par le script) ---
+background_paths:
+  - "./data/audioset_16k"
+  - "./data/fma_16k"
+rir_paths:
+  - "./data/mit_rirs"
+# Features pré-calculées (gros fichiers .npy) : négatifs massifs + validation FP.
+false_positive_validation_data_path: "./data/validation_set_features.npy"
+feature_data_files:
+  ACAV100M_sample: "./data/openwakeword_features_ACAV100M_2000_hrs_16bit.npy"
+
+# --- Sortie --------------------------------------------------------------
+output_dir: "./athena_model"     # contiendra athena.onnx (+ .tflite)
