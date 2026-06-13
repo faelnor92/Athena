@@ -3,28 +3,34 @@
 Le code et la configuration *modèle* sont versionnés ; **les secrets et l'état local
 ne le sont pas** (cf. `.gitignore`). Voici comment repartir d'un poste neuf.
 
-## 1. Prérequis
-- **Python 3.13+**, **git**, et **Docker** (requis pour la sandbox d'exécution de code).
+## 1. Installation rapide (recommandée)
+`install.sh` provisionne **tout** sur un système nu — y compris un **conteneur LXC/Docker Debian** : `sudo`, `git`, `curl`, outils de build, **Docker** (script officiel `get.docker.com`), **Python 3.13 via `uv`**, le venv et les dépendances.
+```bash
+# En 1 ligne (clone + installe) :
+curl -fsSL https://raw.githubusercontent.com/faelnor92/athena/main/install.sh | bash
+# ou, dépôt déjà cloné :
+./install.sh
+```
+> Debian/Ubuntu ne packagent pas Python 3.13 → `install.sh` l'installe via **uv** (sans toucher au python système). Lancé en **root** (conteneur), il se passe de `sudo`.
+
+## 2. Installation manuelle
+### Prérequis
+- **git**, **curl**, **Docker** (sandbox d'exécution de code), et **uv** (provisionne Python 3.13).
 - Un endpoint LLM (cloud ou local) — par défaut le projet utilise `CUSTOM_LLM_API_BASE`.
 
-## 2. Cloner
+### Cloner + dépendances
 ```bash
-git clone <URL_DU_DEPOT> athena
-cd athena
-```
-
-## 3. Dépendances
-```bash
-# RECOMMANDÉ : un environnement virtuel ISOLÉ en Python 3.13. Évite tout conflit
-# avec d'anciennes versions installées au niveau système (ex. un vieux chromadb 0.5.x
-# qui casse la mémoire). NE PAS installer au niveau système.
-python3.13 -m venv .venv
+git clone <URL_DU_DEPOT> athena && cd athena
+# uv : installe Python 3.13 + crée un venv ISOLÉ (évite un vieux chromadb 0.5.x système).
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv python install 3.13
+uv venv --python 3.13 .venv
 source .venv/bin/activate            # Windows : .venv\Scripts\activate
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 # Optionnel — assistant vocal local « Jarvis » (STT/wakeword) :
-#   pip install -r requirements-voice.txt
+#   uv pip install -r requirements-voice.txt
 # Optionnel — transcription de réunion + dictée vocale du chat (Whisper local) :
-#   pip install openai-whisper        # ⚠️ tire PyTorch (~poids important)
+#   uv pip install openai-whisper     # ⚠️ tire PyTorch (~poids important)
 #   (sinon : la transcription bascule sur un LLM cloud si GEMINI/OPENAI_API_KEY est défini)
 # Sandbox : l'image est tirée au 1er usage, ou manuellement :
 docker pull python:3.13-slim

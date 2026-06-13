@@ -1,5 +1,13 @@
 # Historique des Versions (Changelog)
 
+## v0.11.30 (install.sh viable sur système nu)
+
+### 📦 Installateur robuste (conteneur LXC/Debian nu)
+- **Bootstrap des paquets de base** : `install.sh` installe désormais lui-même `sudo`, `git`, `curl`, `gnupg`, les outils de build et les en-têtes Python — tout ce qui n'est pas garanti sur une base Debian/conteneur. Plus d'échec « git introuvable ».
+- **Privilèges** : détection root/sudo (`SUDO=""` si root) → fonctionne dans un **conteneur lancé en root sans sudo**.
+- **Python 3.13 via `uv`** : Debian livre 3.11 (→ vieux chromadb) ; l'installeur provisionne **Python 3.13** avec `uv` et crée le venv dessus (`uv venv --python 3.13`), sans toucher au python système. Dépendances via `uv pip install`.
+- **Docker en méthode OFFICIELLE** : remplacement de `docker.io` (distro, ancien) par le script officiel **`get.docker.com`** (docker-ce + containerd), avec activation du service et ajout au groupe `docker`.
+- SETUP.md aligné (one-liner + voie manuelle `uv`).
 ## v0.11.29 (Réglages SSH : retrait du legacy mono-hôte)
 
 ### 🧹 Nettoyage

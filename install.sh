@@ -33,13 +33,50 @@ echo "=========================================================================$
 echo -e "📦 Système détecté : ${MAGENTA}${BOLD}${OS_TYPE}${NC}"
 echo ""
 
+# -------------------------------------------------------------------------
+# PRIVILÈGES + GESTIONNAIRE DE PAQUETS
+#   Sur un système NU (conteneur LXC/Docker Debian lancé en root), `sudo` peut
+#   manquer. On exécute sans sudo si on est déjà root, sinon via sudo.
+# -------------------------------------------------------------------------
+_have() { command -v "$1" &> /dev/null; }
+if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
+if [ -n "$SUDO" ] && ! _have sudo; then
+    echo -e "${RED}❌ Tu n'es pas root et 'sudo' est absent. Relance en root, ou installe sudo d'abord.${NC}"
+    exit 1
+fi
+PKG=""
+if _have apt-get; then PKG="apt"; elif _have dnf; then PKG="dnf"; elif _have pacman; then PKG="pacman"; elif _have brew; then PKG="brew"; fi
+
+# -------------------------------------------------------------------------
+# ÉTAPE 0 : Paquets de BASE (système nu)
+#   Tout ce qui n'est PAS garanti sur une base Debian/conteneur : sudo, git,
+#   curl, gnupg, outils de build + en-têtes Python (compilation de wheels).
+# -------------------------------------------------------------------------
+echo -e "${YELLOW}🔄 Étape 0 : Paquets système de base...${NC}"
+case "$PKG" in
+    apt)
+        $SUDO apt-get update -qq
+        $SUDO apt-get install -y --no-install-recommends \
+            sudo ca-certificates curl gnupg git build-essential \
+            python3 python3-venv python3-pip python3-dev ;;
+    dnf)
+        $SUDO dnf install -y ca-certificates curl gnupg2 git make gcc \
+            python3 python3-pip python3-devel ;;
+    pacman)
+        $SUDO pacman -Sy --noconfirm ca-certificates curl gnupg git base-devel python python-pip ;;
+    brew)
+        _have git || brew install git
+        _have curl || brew install curl ;;
+    *)
+        echo -e "${YELLOW}⚠ Gestionnaire de paquets non reconnu — installe manuellement : git, curl, build tools.${NC}" ;;
+esac
+_have git || { echo -e "${RED}❌ git toujours absent après bootstrap. Abandon.${NC}"; exit 1; }
+echo -e "${GREEN}✔ Paquets de base prêts.${NC}"
+echo ""
+
 # Support pour l'installation en 1 ligne (curl | bash)
 if [ ! -f "server.py" ]; then
     echo -e "${YELLOW}🔄 Installation distante détectée. Clonage du dépôt dans 'athena'...${NC}"
-    if ! command -v git &> /dev/null; then
-        echo -e "${RED}❌ Erreur : git est requis pour cloner le dépôt.${NC}"
-        exit 1
-    fi
     git clone https://github.com/faelnor92/athena.git athena
     cd athena || exit 1
     chmod +x install.sh
@@ -47,21 +84,25 @@ if [ ! -f "server.py" ]; then
 fi
 
 # -------------------------------------------------------------------------
-# ÉTAPE 1 : Dépendances Système
+# ÉTAPE 1 : Python 3.13 via uv
+#   Athena exige Python 3.13 (sinon chromadb trop ancien). Or Debian 12 livre
+#   3.11 → on installe `uv` qui provisionne 3.13 indépendamment du système, sans
+#   compiler ni casser le python système.
 # -------------------------------------------------------------------------
-echo -e "${YELLOW}🔄 Étape 1 : Vérification des dépendances système...${NC}"
-
-# Python3 check
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}❌ Erreur : python3 est requis mais introuvable.${NC}"
-    if [ "$OS_TYPE" == "Darwin" ]; then
-        echo -e "Installez-le avec : ${BOLD}brew install python${NC}"
-    else
-        echo -e "Installez-le avec : ${BOLD}sudo apt install python3 python3-pip python3-venv${NC}"
-    fi
+echo -e "${YELLOW}🔄 Étape 1 : Python 3.13 (via uv)...${NC}"
+if ! _have uv; then
+    echo -e "Installation de uv (gestionnaire Python rapide)..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+fi
+# uv s'installe dans ~/.local/bin (ou ~/.cargo/bin selon la version) → on les ajoute au PATH.
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+if ! _have uv; then
+    echo -e "${RED}❌ uv introuvable après installation. Vérifie ton accès réseau.${NC}"
     exit 1
 fi
-echo -e "${GREEN}✔ Python 3 est disponible : $(python3 --version)${NC}"
+echo -e "Récupération de Python 3.13..."
+uv python install 3.13
+echo -e "${GREEN}✔ uv prêt — Python 3.13 disponible.${NC}"
 
 # -------------------------------------------------------------------------
 # ÉTAPE 1b : Navigateur headless (Chromium) + Docker
@@ -70,9 +111,7 @@ echo -e "${GREEN}✔ Python 3 est disponible : $(python3 --version)${NC}"
 # -------------------------------------------------------------------------
 echo ""
 echo -e "${YELLOW}🔄 Étape 1b : Navigateur headless + Docker (AthenaDesign)...${NC}"
-_have() { command -v "$1" &> /dev/null; }
-PKG=""
-if _have apt-get; then PKG="apt"; elif _have dnf; then PKG="dnf"; elif _have pacman; then PKG="pacman"; elif _have brew; then PKG="brew"; fi
+# (_have, SUDO et PKG sont définis plus haut dans le bootstrap.)
 
 # --- Navigateur headless (Chromium / Chrome) ---
 if _have chromium || _have chromium-browser || _have google-chrome || _have google-chrome-stable || _have chrome; then
@@ -80,9 +119,9 @@ if _have chromium || _have chromium-browser || _have google-chrome || _have goog
 else
     echo -e "Installation d'un navigateur headless (Chromium)..."
     case "$PKG" in
-        apt) sudo apt-get update -qq && { sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium; } ;;
-        dnf) sudo dnf install -y chromium ;;
-        pacman) sudo pacman -S --noconfirm chromium ;;
+        apt) $SUDO apt-get update -qq && { $SUDO apt-get install -y chromium || $SUDO apt-get install -y chromium-browser; } ;;
+        dnf) $SUDO dnf install -y chromium ;;
+        pacman) $SUDO pacman -S --noconfirm chromium ;;
         brew) brew install --cask chromium 2>/dev/null || brew install chromium 2>/dev/null || true ;;
         *) echo -e "${YELLOW}⚠ Gestionnaire de paquets non détecté — installe Chromium/Chrome manuellement.${NC}" ;;
     esac
@@ -93,26 +132,32 @@ else
     fi
 fi
 
-# --- Docker (sandbox d'exécution + dev container) ---
+# --- Docker (sandbox d'exécution + dev container) — MÉTHODE OFFICIELLE ---
+#   On utilise le script officiel get.docker.com (docker-ce + containerd),
+#   PAS le paquet distro `docker.io` (souvent ancien/incomplet).
 if _have docker && docker info &> /dev/null; then
     echo -e "${GREEN}✔ Docker opérationnel.${NC}"
 elif _have docker; then
-    echo -e "${YELLOW}⚠ Docker installé mais le démon ne répond pas. Démarre-le : ${BOLD}sudo systemctl start docker${NC}${YELLOW} (et ajoute-toi au groupe : sudo usermod -aG docker \$USER).${NC}"
+    echo -e "${YELLOW}⚠ Docker installé mais le démon ne répond pas. Démarre-le : ${BOLD}${SUDO} systemctl start docker${NC}"
+    $SUDO systemctl start docker 2>/dev/null || $SUDO service docker start 2>/dev/null || true
 else
-    echo -e "Installation de Docker..."
-    case "$PKG" in
-        apt) sudo apt-get install -y docker.io ;;
-        dnf) sudo dnf install -y docker ;;
-        pacman) sudo pacman -S --noconfirm docker ;;
-        brew) echo -e "${YELLOW}⚠ macOS : installe Docker Desktop → https://www.docker.com/products/docker-desktop/${NC}" ;;
-        *) echo -e "${YELLOW}⚠ Installe Docker manuellement (sandbox AthenaDesign + dev container).${NC}" ;;
-    esac
-    if _have docker; then
-        sudo systemctl enable --now docker 2>/dev/null || true
-        sudo usermod -aG docker "$USER" 2>/dev/null || true
-        echo -e "${GREEN}✔ Docker installé (reconnecte-toi pour appliquer le groupe 'docker').${NC}"
+    if [ "$OS_TYPE" == "Darwin" ]; then
+        echo -e "${YELLOW}⚠ macOS : installe Docker Desktop → https://www.docker.com/products/docker-desktop/${NC}"
     else
-        echo -e "${YELLOW}⚠ Docker absent → l'exécution du code AthenaDesign basculera en mode local NON isolé.${NC}"
+        echo -e "Installation de Docker (script officiel get.docker.com)..."
+        curl -fsSL https://get.docker.com | $SUDO sh
+        if _have docker; then
+            $SUDO systemctl enable --now docker 2>/dev/null || $SUDO service docker start 2>/dev/null || true
+            # Ajoute l'utilisateur courant au groupe docker (inutile si on est root).
+            if [ -n "$SUDO" ] && [ -n "$USER" ]; then
+                $SUDO usermod -aG docker "$USER" 2>/dev/null || true
+                echo -e "${GREEN}✔ Docker installé (reconnecte-toi pour appliquer le groupe 'docker').${NC}"
+            else
+                echo -e "${GREEN}✔ Docker installé.${NC}"
+            fi
+        else
+            echo -e "${YELLOW}⚠ Échec d'installation de Docker → l'exécution du code AthenaDesign basculera en mode local NON isolé.${NC}"
+        fi
     fi
 fi
 
@@ -120,15 +165,15 @@ fi
 # ÉTAPE 2 : Environnement Virtuel Python
 # -------------------------------------------------------------------------
 echo ""
-echo -e "${YELLOW}🔄 Étape 2 : Configuration de l'environnement virtuel Python (.venv)...${NC}"
+echo -e "${YELLOW}🔄 Étape 2 : Environnement virtuel Python 3.13 (.venv via uv)...${NC}"
 if [ ! -d ".venv" ]; then
-    echo -e "Création du dossier de l'environnement virtuel (.venv)..."
-    python3 -m venv .venv
+    echo -e "Création de .venv en Python 3.13..."
+    uv venv --python 3.13 .venv
     if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Erreur lors de la création de .venv. Installez python3-venv ou vérifiez vos permissions.${NC}"
+        echo -e "${RED}❌ Erreur lors de la création de .venv (uv). Vérifie l'installation de uv / Python 3.13.${NC}"
         exit 1
     fi
-    echo -e "${GREEN}✔ Environnement virtuel créé avec succès !${NC}"
+    echo -e "${GREEN}✔ Environnement virtuel Python 3.13 créé !${NC}"
 else
     echo -e "${GREEN}✔ Environnement virtuel (.venv) déjà présent.${NC}"
 fi
@@ -139,11 +184,8 @@ fi
 echo ""
 echo -e "${YELLOW}🔄 Étape 3 : Installation des dépendances Python (requirements.txt)...${NC}"
 source .venv/bin/activate
-echo -e "Mise à niveau de pip..."
-pip install --upgrade pip &> /dev/null
-
-echo -e "Installation des paquets requis..."
-pip install -r requirements.txt
+echo -e "Installation des paquets requis (uv pip)..."
+uv pip install -r requirements.txt
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Erreur lors de l'installation des dépendances.${NC}"
     exit 1
