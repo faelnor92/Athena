@@ -48,6 +48,7 @@ import tools.presence
 import tools.n8n_tools
 import tools.computer_use
 import tools.pipeline_tools
+import tools.playbooks
 import tools.claude_code_tool
 import tools.email_tools
 
@@ -107,6 +108,7 @@ AVAILABLE_TOOLS = {
     "get_plan": tools.planning_tools.get_plan,
     "create_agent": tools.agent_tools.create_agent,
     "run_tool_script": tools.tool_script.run_tool_script,
+    "load_playbook": tools.playbooks.load_playbook,
     "render_page": tools.browser_tools.render_page,
     "analyze_document": tools.document_tools.analyze_document,
     "read_file": tools.code_edit.read_file,
@@ -1499,6 +1501,11 @@ class Swarm:
                     if tool_name not in existing:
                         effective_tools.append(func)
                         existing.add(tool_name)
+                # Playbooks Markdown (savoir-faire procédural) : on expose load_playbook
+                # UNIQUEMENT s'il existe au moins un playbook (sinon outil inutile).
+                if "load_playbook" not in existing and tools.playbooks.list_playbooks():
+                    effective_tools.append(tools.playbooks.load_playbook)
+                    existing.add("load_playbook")
 
             # Plugin Claude Code : si ACTIVÉ, l'outil claude_code est donné AUTOMATIQUEMENT
             # aux agents codeurs (Codeur, ou tout agent ayant des outils d'édition de code),
@@ -1945,6 +1952,11 @@ class Swarm:
 
             # Détection automatique de l'OS / environnement d'exécution.
             system_prompt += platform_info.execution_env_hint()
+
+            # Index des PLAYBOOKS (savoir-faire procédural) si l'agent peut les charger.
+            # Stable (ne change qu'à l'ajout/retrait d'un playbook) → reste dans le préfixe caché.
+            if any(getattr(f, "__name__", "") == "load_playbook" for f in effective_tools):
+                system_prompt += tools.playbooks.index_prompt()
 
             # Rappel de citation des sources si l'agent dispose d'outils web.
             if any(getattr(f, "__name__", "") in ("web_search", "web_scrape") for f in effective_tools):

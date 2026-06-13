@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.39 (Playbooks Markdown — « Agent Skills » procéduraux)
+
+### 📓 Savoir-faire procédural (complément des skills Python)
+- Nouveau type de compétence : **playbooks Markdown** (`playbooks/*.md`) — du **savoir-faire** (procédures, checklists, conventions « comment faire X »), complément des skills Python qui, eux, **calculent**.
+- **Disclosure progressive** (économie de tokens) : un **index compact** (nom + description) est toujours visible dans le contexte ; le **corps complet** n'est chargé qu'à la demande via l'outil **`load_playbook(name)`** quand un playbook est pertinent.
+- Frontmatter optionnel (`name:` / `description:`). `load_playbook` n'est exposé que si au moins un playbook existe. Index injecté dans le préfixe **stable** (cacheable). Dossier configurable via `PLAYBOOKS_DIR`. Un exemple fourni (`deployer-site-statique.md`).
 ## v0.11.38 (Création de compétences « propre », sans bruit)
 
 ### 🧬 Induction de skill seuillée
