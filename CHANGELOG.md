@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.44 (Satellites ESP : wake word côté serveur par défaut)
+
+### 🛰️ Wake word serveur pour les satellites ESP
+- Le générateur de config ESPHome passe en **`mode: server` par défaut** (au lieu de `embedded`/micro_wake_word) : l'ESP **streame en continu**, c'est **Athena** qui détecte le mot d'activation. Cohérent avec l'architecture décidée (pas de micro_wake_word on-device).
+- Le moteur côté serveur suit **`VOICE_WAKE_ENGINE`** (« stt » par défaut → mot custom « athena » par transcription ; « openwakeword » pour un modèle efficace). Commentaires de la config corrigés (n'imposent plus « openWakeWord »).
 ## v0.11.43 (Wake word « Athena » par transcription, défaut cohérent)
 
 ### 🗣️ Mot d'activation custom (« Athena ») fonctionnel par défaut

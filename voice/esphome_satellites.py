@@ -76,7 +76,7 @@ def upsert_satellite(cfg: dict) -> list:
         entry["password"] = pwd
     # Mode de réveil : 'embedded' (microWakeWord sur l'ESP) ou 'server' (openWakeWord
     # dans Athena). En mode serveur, le manager fait tourner la détection.
-    entry["wake_mode"] = (cfg.get("wake_mode") or (existing.get("wake_mode") if existing else "") or "embedded")
+    entry["wake_mode"] = (cfg.get("wake_mode") or (existing.get("wake_mode") if existing else "") or "server")
     entry["wake_word"] = (cfg.get("wake_word") or (existing.get("wake_word") if existing else "") or "hey_athena")
     if existing:
         sats = [entry if s.get("name") == name else s for s in sats]
@@ -315,7 +315,7 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     key = (encryption_key or "").strip() or generate_encryption_key()
     modules = modules or []
 
-    act = {"mode": "embedded", "wake_word": "hey_athena"}
+    act = {"mode": "server", "wake_word": "hey_athena"}
     act.update({k: v for k, v in (activation or {}).items() if v})
     mode = act["mode"]
 
@@ -364,7 +364,9 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
             "    - voice_assistant.start_continuous:\n"
         )
         voice_block = (
-            "# --- Wake word SERVEUR : Athena (openWakeWord) écoute le flux continu ---\n"
+            "# --- Wake word SERVEUR : l'ESP streame en continu, ATHENA détecte le mot ---\n"
+            "# (moteur côté serveur selon VOICE_WAKE_ENGINE : 'stt' par défaut → mot custom\n"
+            "#  « athena » par transcription ; ou 'openwakeword' pour un modèle efficace.)\n"
             "voice_assistant:\n  microphone: mic\n  speaker: spk\n  use_wake_word: false\n"
         )
     else:
