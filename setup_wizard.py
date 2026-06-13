@@ -17,6 +17,7 @@ import os
 import sys
 import subprocess
 import shutil
+import platform
 
 C = {"cyan": "\033[0;36m", "green": "\033[0;32m", "yellow": "\033[0;33m",
      "red": "\033[0;31m", "bold": "\033[1m", "nc": "\033[0m"}
@@ -57,10 +58,51 @@ def ask_text(question, default=""):
     return ans or default
 
 
+def _ensure_pip():
+    """Garantit que pip est présent dans le venv. `uv venv` sans --seed n'installe PAS
+    pip → on l'amorce via ensurepip (module stdlib) le cas échéant."""
+    if subprocess.call([sys.executable, "-m", "pip", "--version"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) != 0:
+        say("  → amorçage de pip dans le venv (ensurepip)...", "yellow")
+        subprocess.call([sys.executable, "-m", "ensurepip", "--upgrade"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def pip_install(*args):
+    _ensure_pip()
     cmd = [sys.executable, "-m", "pip", "install", *args]
     say(f"  → {' '.join(cmd[3:])}", "yellow")
     return subprocess.call(cmd) == 0
+
+
+def _sudo_prefix():
+    """[] si root, ['sudo'] sinon (et si sudo existe)."""
+    try:
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            return []
+    except Exception:
+        pass
+    return ["sudo"] if shutil.which("sudo") else []
+
+
+def install_system_deps(apt_pkgs, dnf_pkgs=None, pacman_pkgs=None, label=""):
+    """Installe des paquets SYSTÈME requis par un composant (Linux). No-op ailleurs.
+    Best-effort : si le gestionnaire est inconnu, on laisse pip tenter (et échouer
+    proprement avec un message)."""
+    if platform.system() != "Linux":
+        if apt_pkgs:
+            say(f"  ⚠ Pense à installer manuellement ({label}) : {', '.join(apt_pkgs)}", "yellow")
+        return
+    sudo = _sudo_prefix()
+    if shutil.which("apt-get"):
+        say(f"  → libs système ({label}) : {' '.join(apt_pkgs)}", "yellow")
+        subprocess.call(sudo + ["apt-get", "install", "-y", "--no-install-recommends", *apt_pkgs])
+    elif shutil.which("dnf") and dnf_pkgs:
+        subprocess.call(sudo + ["dnf", "install", "-y", *dnf_pkgs])
+    elif shutil.which("pacman") and pacman_pkgs:
+        subprocess.call(sudo + ["pacman", "-S", "--noconfirm", *pacman_pkgs])
+    else:
+        say(f"  ⚠ Gestionnaire de paquets inconnu — installe manuellement ({label}) : {', '.join(apt_pkgs)}", "yellow")
 
 
 # --- .env --------------------------------------------------------------------
@@ -106,6 +148,13 @@ def step_optional_components():
     # 1. Assistant vocal (STT/TTS/wake word + satellites ESP32)
     if ask_yes_no("Installer l'assistant VOCAL (micro/voix, wake word, satellites ESP32) ?", default=False):
         if os.path.exists("requirements-voice.txt"):
+            # Libs SYSTÈME requises (sinon pip échoue) : PortAudio (sounddevice),
+            # espeak-ng (pyttsx3), ffmpeg (traitement audio / whisper).
+            install_system_deps(
+                ["portaudio19-dev", "libportaudio2", "espeak-ng", "ffmpeg"],
+                dnf_pkgs=["portaudio-devel", "espeak-ng", "ffmpeg"],
+                pacman_pkgs=["portaudio", "espeak-ng", "ffmpeg"],
+                label="vocal")
             ok = pip_install("-r", "requirements-voice.txt")
             say("✔ Pipeline vocal installé." if ok else "⚠ Échec d'installation du vocal.",
                 "green" if ok else "red")
@@ -130,6 +179,7 @@ def step_optional_components():
 
     # 2. Transcription de réunions (Whisper, très lourd)
     if ask_yes_no("Installer la TRANSCRIPTION de réunions (OpenAI Whisper, ~2 Go, lourd) ?", default=False):
+        install_system_deps(["ffmpeg"], dnf_pkgs=["ffmpeg"], pacman_pkgs=["ffmpeg"], label="whisper")
         ok = pip_install("openai-whisper")
         say("✔ Whisper installé." if ok else "⚠ Échec d'installation de Whisper.",
             "green" if ok else "red")

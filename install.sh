@@ -168,7 +168,9 @@ echo ""
 echo -e "${YELLOW}🔄 Étape 2 : Environnement virtuel Python 3.13 (.venv via uv)...${NC}"
 if [ ! -d ".venv" ]; then
     echo -e "Création de .venv en Python 3.13..."
-    uv venv --python 3.13 .venv
+    # --seed : installe pip/setuptools/wheel DANS le venv. Indispensable car le wizard
+    # (et l'install des composants optionnels comme la voix) utilise `python -m pip`.
+    uv venv --seed --python 3.13 .venv
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Erreur lors de la création de .venv (uv). Vérifie l'installation de uv / Python 3.13.${NC}"
         exit 1

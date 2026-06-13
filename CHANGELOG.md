@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.31 (install : pip dans le venv uv + libs système du vocal)
+
+### 🐛 Correctifs d'installation
+- **pip absent du venv** : `uv venv` n'installe pas pip → le wizard (`python -m pip`) et tout l'optionnel échouaient. Corrigé par **`uv venv --seed`** (pip/setuptools/wheel dans le venv) + filet `ensurepip` dans `setup_wizard.py` (robuste même sans `--seed`).
+- **`requirements-voice.txt` qui échoue** : ajout de l'installation automatique des **libs système** requises avant le pip — **PortAudio** (sounddevice), **espeak-ng** (pyttsx3), **ffmpeg** (audio/whisper). `install_system_deps()` gère apt/dnf/pacman + root/sudo. Idem **ffmpeg** avant l'install de Whisper. Note ajoutée dans `requirements-voice.txt` pour l'install manuelle.
 ## v0.11.30 (install.sh viable sur système nu)
 
 ### 📦 Installateur robuste (conteneur LXC/Debian nu)
