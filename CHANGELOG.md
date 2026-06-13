@@ -1,5 +1,23 @@
 # Historique des Versions (Changelog)
 
+## v0.11.37 (RAG sobre — #6, fin de la roadmap efficacité)
+
+### 🔎 RAG sobre (#6)
+- Le **RAG automatique en arrière-plan** (chunks mémoire pré-injectés) tournait et se ré-injectait **à CHAQUE tour** de la boucle agentique (alors que le message utilisateur ne change pas) → re-recherche + re-paste des mêmes chunks inutiles. Désormais **injecté UNE seule fois par run** ; si l'agent a besoin de re-chercher, il a l'outil `search_memory`.
+- Top-k déjà minimal (2) ; nouveau knob **`RAG_BACKGROUND_TOPK`** (défaut 2 ; **0 = désactive le RAG auto** → 100 % via `search_memory`, le mode le plus sobre).
+
+### ✅ Roadmap efficacité tokens — complète
+1 Programmatic tool calling · 2 Disclosure progressive skills/MCP · 3 Prompt caching · 4 Discipline du swarm · 5 Compaction + éviction · 6 RAG sobre — **tous traités**.
+## v0.11.36 (Éviction des gros résultats d'outils — #5)
+
+### 🗜️ Compaction + éviction (#5 de la roadmap efficacité)
+- **Déjà en place** : `_maybe_compact` résume les anciens messages et garde les K récents verbatim (vue LLM seulement). Au passage, son **résumé** passe maintenant par le petit modèle (`UTILITY_MODEL`/`FAST_MODEL`).
+- **Ajout — éviction des gros résultats** : un résultat d'outil volumineux (> `EVICT_TOOL_RESULT_MAX`, 2000 par défaut) qui n'est plus dans les `EVICT_KEEP_RECENT` derniers messages (donc **déjà exploité** par le modèle) est remplacé par un **extrait tête/queue + un pointeur** au lieu de retrimballer tout le payload à chaque tour. Les résultats récents restent intacts ; agit même si l'historique est court mais contient un gros payload. N'affecte **jamais** l'historique persistant. `EVICT_TOOL_RESULT_MAX=0` désactive.
+## v0.11.35 (Discipline du swarm — tiering des appels utilitaires)
+
+### 🧠 #4 de la roadmap efficacité (audit + complément)
+- **Déjà en place (confirmé par audit)** : les sous-agents renvoient un **résultat distillé** (réponse finale + métriques), jamais leur transcript complet — vrai pour `delegate_to_` ET `query_agent`. Tiering par difficulté (`_route_model`/`FAST_MODEL`) et mini-routeur/juge de relais utilisent déjà le petit modèle. Débats inter-agents = opt-in.
+- **Ajout** : nouveau knob **`UTILITY_MODEL`** pour les appels LLM **utilitaires** (jugement/extraction/classification : induction de compétence, relecture critique) → un petit modèle suffit. Priorité `UTILITY_MODEL` > `FAST_MODEL` > modèle de l'agent. Appliqué à l'induction de compétence et au relecteur critique (auto-critic).
 ## v0.11.34 (Prompt caching — la mémoire ne casse plus le cache)
 
 ### 🧊 Audit CacheAligner (#3 de la roadmap efficacité)

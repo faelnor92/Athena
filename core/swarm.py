@@ -899,6 +899,14 @@ class Swarm:
         is_hard = len(text) > 280 or any(k in text for k in hard_kw)
         return default_model if is_hard else fast
 
+    def _utility_model(self, default_model: str) -> str:
+        """Modèle pour les appels LLM UTILITAIRES (jugement, extraction, classification :
+        induction de compétence, relecture critique…). Un PETIT modèle suffit et coûte
+        bien moins. Priorité : UTILITY_MODEL > FAST_MODEL > modèle de l'agent (repli sûr)."""
+        return (os.getenv("UTILITY_MODEL", "").strip()
+                or os.getenv("FAST_MODEL", "").strip()
+                or default_model)
+
     def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None, allow_fallback: bool = True):
         """Appel LLM via litellm avec routage clé officielle / endpoint custom.
         Si on_delta est fourni et STREAM_TOKENS actif, diffuse les tokens au fil
@@ -1018,7 +1026,7 @@ class Swarm:
                 f"{m.get('role')}: {m.get('content', '')}" for m in head if m.get("content")
             )[:8000]
             try:
-                resp = self._complete(model, [
+                resp = self._complete(self._utility_model(model), [
                     {"role": "system", "content": (
                         "Résume la conversation suivante en 10 lignes maximum, en français, "
                         "en conservant les faits, décisions, préférences utilisateur et le "
@@ -1041,6 +1049,32 @@ class Swarm:
             "content": f"[RÉSUMÉ DE LA CONVERSATION PRÉCÉDENTE — {len(head)} messages condensés]\n{summary}",
         }
         return [summary_msg] + tail
+
+    def _evict_large_results(self, history: list) -> list:
+        """ÉVICTION des gros résultats d'outils DÉJÀ EXPLOITÉS : un résultat d'outil
+        volumineux qui n'est plus dans les derniers échanges (donc déjà lu par le modèle)
+        est remplacé par un EXTRAIT tête+queue + un pointeur, au lieu de trimballer tout le
+        payload à chaque tour. N'agit que sur la vue LLM (jamais l'historique persistant).
+        Les résultats RÉCENTS restent intacts. EVICT_TOOL_RESULT_MAX=0 désactive."""
+        cap = int(os.getenv("EVICT_TOOL_RESULT_MAX", "2000") or 0)
+        if not cap:
+            return history
+        keep_recent = max(1, int(os.getenv("EVICT_KEEP_RECENT", "4") or 4))
+        n = len(history)
+        out = []
+        for i, m in enumerate(history):
+            c = m.get("content")
+            if (m.get("role") == "tool" and i < n - keep_recent
+                    and isinstance(c, str) and len(c) > cap):
+                name = m.get("name", "outil")
+                evicted = (f"{c[:cap // 2]}\n"
+                           f"…[résultat « {name} » tronqué : {len(c)} caractères, déjà exploité — "
+                           f"extrait tête/queue ; redemande l'outil si tu as besoin du détail]…\n"
+                           f"{c[-cap // 4:]}")
+                out.append({**m, "content": evicted})
+            else:
+                out.append(m)
+        return out
 
     def _write_experience_report(self, agent: Agent, messages: list, steps: list):
         """Hook post-tâche (auto-amélioration) : génère un court compte-rendu
@@ -1186,7 +1220,7 @@ class Swarm:
         if not user:
             return
         try:
-            verdict = (self._complete(agent.model, [
+            verdict = (self._complete(self._utility_model(agent.model), [
                 {"role": "system", "content": (
                     "Tu es un relecteur critique. Vérifie si la RÉPONSE traite correctement et "
                     "complètement la DEMANDE, sans erreur factuelle, incohérence ni partie manquante. "
@@ -1253,7 +1287,7 @@ class Swarm:
                 'OU {"skill": false} si aucune compétence générique pertinente. '
                 "Ne crée PAS de compétence trop spécifique ou triviale."
             )
-            resp = self._complete(agent.model, [
+            resp = self._complete(self._utility_model(agent.model), [
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": transcript},
             ], tools_schema=None)
@@ -1322,6 +1356,7 @@ class Swarm:
         turn = 0
         started_at = time.time()
         tokens_used = 0
+        _rag_injected = False     # RAG sobre : on n'injecte les chunks qu'UNE fois par run
         skill_failures = []  # échecs de compétences dynamiques → réparées en fin de run
         _route_done = False   # routeur de délégation : décidé une seule fois par run
         _route_target = None  # spécialiste ciblé (nom) | "" (aucun) | None (non décidé)
@@ -1904,12 +1939,17 @@ class Swarm:
             system_prompt += "Si tu vois une mention `@` ciblant un AUTRE agent dans le message ou dans la suite d'instructions de l'utilisateur, tu as l'obligation absolue d'effectuer ton propre travail (ex: traduire si tu es la traductrice Sofia, rédiger si tu es l'auteur Émilie), PUIS de transférer immédiatement la main à cet autre agent via ta fonction de transfert appropriée pour qu'il exécute sa partie du travail.\n"
 
             
-            # RAG Automatique en arrière-plan
+            # RAG Automatique en arrière-plan — SOBRE : injecté UNE seule fois par run (pas à
+            # CHAQUE tour de la boucle agentique, où le message utilisateur ne change pas →
+            # re-chercher + ré-injecter les mêmes chunks était du gaspillage). Si l'agent a
+            # besoin de re-chercher en mémoire plus tard, il dispose de l'outil search_memory.
+            _rag_k = int(os.getenv("RAG_BACKGROUND_TOPK", "2") or 0)  # 0 = RAG auto désactivé
             user_messages = [m for m in messages if m.get("role") == "user"]
-            if user_messages:
+            if user_messages and not _rag_injected and _rag_k > 0:
+                _rag_injected = True
                 last_user_msg = user_messages[-1]["content"]
                 try:
-                    rag_results = tools.memory_tools.semantic_mem.search(last_user_msg, limit=2)
+                    rag_results = tools.memory_tools.semantic_mem.search(last_user_msg, limit=_rag_k)
                     if rag_results:
                         rag_context = "\n=== CONNAISSANCES PERTINENTES RETROUVÉES EN MÉMOIRE (RAG ARRIÈRE-PLAN) ===\n"
                         for res in rag_results:
@@ -1985,6 +2025,9 @@ class Swarm:
             # Mémoire avancée : compaction de l'historique long (résumé + éviction)
             # — n'affecte QUE la vue envoyée au LLM, pas l'historique persistant.
             clean_history = self._maybe_compact(current_agent.model, clean_history, steps)
+            # Éviction des gros résultats d'outils déjà exploités (complète la compaction :
+            # agit même si l'historique est court mais contient un payload volumineux).
+            clean_history = self._evict_large_results(clean_history)
 
             # Injection du system prompt de l'agent actif.
             # Bloc système STABLE en tête (cacheable via cache_control) ; le contexte VOLATILE
