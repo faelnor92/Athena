@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.43 (Wake word « Athena » par transcription, défaut cohérent)
+
+### 🗣️ Mot d'activation custom (« Athena ») fonctionnel par défaut
+- **Combo par défaut cassé corrigé** : le défaut était `openwakeword` + `hey athena`, or openwakeword ne connaît QUE des mots **pré-entraînés** (alexa, hey_jarvis…) — **pas « athena »** → dire « Athena » ne déclenchait rien.
+- **Nouveau défaut : `VOICE_WAKE_ENGINE=stt`** → détecte le mot custom (« athena » + variantes) en **transcrivant une fenêtre glissante** (faster-whisper), sans aucun modèle. Marche immédiatement pour « Athena ».
+- `.env.example` documente enfin l'option **`stt`** + le caveat openwakeword (mots pré-entraînés) + `OWW_INFERENCE_FRAMEWORK`.
+- Pour l'efficacité (satellites / always-on) : openwakeword reste dispo avec `hey_jarvis`, ou un modèle custom « athena » à entraîner.
 ## v0.11.42 (openwakeword compatible Python 3.13 — backend ONNX)
 
 ### 🎙️ Wake word sur Python 3.13
