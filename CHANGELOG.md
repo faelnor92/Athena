@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.40 (Correctifs d'installation)
+
+### 🔧 install.sh utilisable de bout en bout
+- **Commande `athena` introuvable** : le CLI était posé dans `~/.local/bin` (hors PATH sur une base nue). Désormais installé dans **`/usr/local/bin`** quand on est root (conteneur LXC, déjà sur le PATH) ; sinon `~/.local/bin` **ajouté durablement au `.bashrc`/`.zshrc`** + activé pour la session.
+- **`python server.py` → fastapi introuvable** : fastapi vit dans le `.venv`. Message explicite (lance **`athena start`** ou **`.venv/bin/python server.py`**, JAMAIS le python système) + **vérification finale** que fastapi est bien présent dans le venv.
+- **Composants optionnels non proposés** (install via `curl|bash` = non interactif) : message indiquant comment relancer le wizard (`source .venv/bin/activate && python setup_wizard.py`).
+- **Marque** : suppression du logo ASCII et des mentions « Jarvis/Athena v2 » résiduels → bannière « ATHENA » propre.
 ## v0.11.39 (Playbooks Markdown — « Agent Skills » procéduraux)
 
 ### 📓 Savoir-faire procédural (complément des skills Python)

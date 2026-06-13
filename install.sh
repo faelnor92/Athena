@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =========================================================================
-# INSTALLATEUR DE DÉPLOIEMENT PROFESSIONNEL - ATHENA v2
+# INSTALLATEUR DE DÉPLOIEMENT PROFESSIONNEL - ATHENA
 # Compatible : Linux & macOS (Darwin)
 # =========================================================================
 
@@ -20,15 +20,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 clear
 echo -e "${CYAN}${BOLD}"
 echo "========================================================================="
-echo "        __                 _                 ___ "
-# shellcheck disable=SC1001
-echo "     / /  ___ _ ______  __(_)__  __  __     |_  |"
-# shellcheck disable=SC1001
-echo "  _ / /  / _ \`/ __/ _ \/ / (_&-<  | |/ /    / __/ "
-# shellcheck disable=SC1001
-echo "  \___/   \_,_/_/  /_//_/_/ /___/  |___/    /____/ "
-echo "                                                 "
-echo "        CLI SYSTEM & SERVICE DEPLOYMENT ENGINE (UNIX)"
+echo "          _      _____  _   _  ___  _   _    _    "
+echo "         /_\    |_   _|| | | || __|| \ | |  /_\   "
+echo "        / _ \     | |  | |_| || _| |  \| | / _ \  "
+echo "       /_/ \_\    |_|   \___/ |___||_|\__|/_/ \_\ "
+echo "                                                  "
+echo "        ORCHESTRATEUR MULTI-AGENT — INSTALLATEUR"
 echo "=========================================================================${NC}"
 echo -e "📦 Système détecté : ${MAGENTA}${BOLD}${OS_TYPE}${NC}"
 echo ""
@@ -220,7 +217,9 @@ python3 "$SCRIPT_DIR/setup_wizard.py"
 # -------------------------------------------------------------------------
 echo ""
 echo -e "${YELLOW}🔄 Étape 5 : Création de la commande CLI globale 'athena'...${NC}"
-BIN_DIR="$HOME/.local/bin"
+# Emplacement du CLI : /usr/local/bin (DÉJÀ sur le PATH) si on est root (conteneur LXC),
+# sinon ~/.local/bin (souvent hors PATH sur une base nue → on l'ajoute au profil plus bas).
+if [ "$(id -u)" -eq 0 ]; then BIN_DIR="/usr/local/bin"; else BIN_DIR="$HOME/.local/bin"; fi
 mkdir -p "$BIN_DIR"
 
 CLI_FILE="$BIN_DIR/athena"
@@ -235,7 +234,7 @@ cd "\$APP_DIR" || exit 1
 
 case "\$1" in
     start)
-        echo -e "\033[0;36m🚀 Démarrage de l'orchestrateur Athena v2...\033[0m"
+        echo -e "\033[0;36m🚀 Démarrage de l'orchestrateur Athena...\033[0m"
         source .venv/bin/activate
         nohup python3 server.py > server.log 2>&1 &
         PID=\$!
@@ -286,7 +285,7 @@ case "\$1" in
         fi
         ;;
     *)
-        echo -e "\033[1;36mOutil de gestion Athena Swarm v2\033[0m"
+        echo -e "\033[1;36mOutil de gestion Athena (essaim multi-agent)\033[0m"
         echo -e "Usage: athena {start|stop|restart|status|logs}"
         ;;
 esac
@@ -295,11 +294,17 @@ EOF
 chmod +x "$CLI_FILE"
 echo -e "${GREEN}✔ Commande installée dans : ${BOLD}$CLI_FILE${NC}"
 
-# Suggestion PATH
+# PATH : si BIN_DIR n'est pas déjà dans le PATH (cas ~/.local/bin), on l'ajoute
+# DURABLEMENT au profil shell pour que 'athena' soit trouvable partout.
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-    echo -e "${YELLOW}👉 Note : Pour utiliser la commande 'athena' directement de n'importe où,${NC}"
-    echo -e "   ajoutez cette ligne à votre fichier ${BOLD}~/.bashrc${NC} ou ${BOLD}~/.zshrc${NC} :"
-    echo -e "   ${MAGENTA}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+    _rc="$HOME/.bashrc"; [ -n "${ZSH_VERSION:-}" ] && _rc="$HOME/.zshrc"
+    touch "$_rc"
+    if ! grep -q "$BIN_DIR" "$_rc" 2>/dev/null; then
+        printf '\nexport PATH="%s:$PATH"\n' "$BIN_DIR" >> "$_rc"
+        echo -e "${GREEN}✔ PATH mis à jour dans ${BOLD}$_rc${NC}"
+    fi
+    export PATH="$BIN_DIR:$PATH"
+    echo -e "${YELLOW}👉 Ouvre un NOUVEAU terminal (ou : ${BOLD}source $_rc${NC}${YELLOW}) pour que 'athena' soit dispo partout.${NC}"
 fi
 
 # -------------------------------------------------------------------------
@@ -430,16 +435,32 @@ else
 fi
 
 # -------------------------------------------------------------------------
+# VÉRIFICATION FINALE : les dépendances Python sont bien dans le venv ?
+# -------------------------------------------------------------------------
+echo ""
+if .venv/bin/python -c "import fastapi" >/dev/null 2>&1; then
+    echo -e "${GREEN}✔ Dépendances vérifiées (fastapi présent dans .venv).${NC}"
+else
+    echo -e "${RED}⚠ fastapi introuvable dans .venv — l'installation des dépendances a échoué.${NC}"
+    echo -e "   Relance : ${BOLD}source .venv/bin/activate && uv pip install -r requirements.txt${NC}"
+fi
+
+# -------------------------------------------------------------------------
 # FIN D'INSTALLATION
 # -------------------------------------------------------------------------
 echo ""
 echo -e "${CYAN}${BOLD}========================================================================="
-echo " 🎉 INSTALLATION TERMINÉE AVEC SUCCÈS !"
+echo " 🎉 INSTALLATION TERMINÉE !"
 echo "=========================================================================${NC}"
-echo -e "Pour démarrer votre bureau virtuel multi-agent, vous pouvez :"
-echo -e " 1. Double-cliquer sur le raccourci ${GREEN}Athena${NC} créé sur votre Bureau."
-echo -e " 2. Ou démarrer dans votre terminal en tapant :"
-echo -e "    👉 ${GREEN}${BOLD}athena start${NC}"
+echo -e "Pour démarrer Athena :"
+echo -e "    👉 ${GREEN}${BOLD}athena start${NC}   (puis ${BOLD}athena stop${NC} / ${BOLD}athena logs${NC})"
+echo -e "    ou directement : ${BOLD}.venv/bin/python server.py${NC}"
+echo -e "${YELLOW}    ⚠ NE lance PAS « python server.py » (python SYSTÈME → fastapi absent).${NC}"
+echo -e "       Athena tourne dans le venv (.venv) — utilise 'athena' ou '.venv/bin/python'."
 echo ""
-echo -e "Ouvrez ensuite votre navigateur sur : ${CYAN}${BOLD}http://localhost:8000/${NC}"
+echo -e "Composants OPTIONNELS (vocal, transcription…) — si l'assistant n'a pas été proposé"
+echo -e "(installation via ${BOLD}curl|bash${NC}, non interactive), relance-le quand tu veux :"
+echo -e "    👉 ${BOLD}source .venv/bin/activate && python setup_wizard.py${NC}"
+echo ""
+echo -e "Ouvre ensuite ton navigateur sur : ${CYAN}${BOLD}http://localhost:8000/${NC}"
 echo ""
