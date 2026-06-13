@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.42 (openwakeword compatible Python 3.13 — backend ONNX)
+
+### 🎙️ Wake word sur Python 3.13
+- **openwakeword échouait** : son `install_requires` force `tflite-runtime`, qui n'a **aucun wheel pour Python ≥3.10** (dont 3.13) → l'install du pipeline vocal entier avortait. Or openwakeword tourne aussi en **ONNX** (onnxruntime a des wheels 3.13).
+- **Fix** : `setup_wizard.py` installe openwakeword **à part** (`--no-deps` + onnxruntime/scipy/scikit-learn) puis **télécharge les modèles** ; le runtime (`voice/wakeword.py`) utilise désormais **`inference_framework='onnx'`** par défaut (surchargeable via `OWW_INFERENCE_FRAMEWORK`).
+- **Install vocale résiliente** : `requirements-voice.txt` s'installe paquet par paquet en cas d'échec groupé (un paquet incompatible n'avorte plus tout le vocal). openwakeword retiré du fichier (géré spécialement, recette documentée dedans).
+- Vérifié de bout en bout sur Python **3.13** : import OK, modèles téléchargés, `Model(onnx)` → wakewords (alexa, hey_jarvis, hey_mycroft…).
 ## v0.11.41 (Install interactive sous curl|bash + accès distant + marque)
 
 ### 🔧 Correctifs d'installation

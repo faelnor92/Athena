@@ -95,6 +95,52 @@ def pip_install(*args):
     return subprocess.call(cmd) == 0
 
 
+def pip_install_requirements(req_file):
+    """Installe un requirements de façon RÉSILIENTE : tente le bloc d'un coup, et en cas
+    d'échec (souvent un seul paquet incompatible avec la version Python — ex. openwakeword
+    sur Python ≥3.10), reprend LIGNE PAR LIGNE en continuant sur les erreurs. Le cœur
+    s'installe ; seuls les paquets vraiment incompatibles sont ignorés.
+    Renvoie (tout_ok: bool, échecs: list[str])."""
+    _ensure_pip()
+    if pip_install("-r", req_file):
+        return True, []
+    say("  ⚠ Échec groupé → reprise paquet par paquet (on ignore les incompatibles)...", "yellow")
+    failed = []
+    try:
+        with open(req_file, "r", encoding="utf-8") as f:
+            specs = [ln.split("#")[0].strip() for ln in f]
+    except Exception:
+        return False, ["(lecture du fichier impossible)"]
+    for spec in specs:
+        if not spec:
+            continue
+        if not pip_install(spec):
+            failed.append(spec)
+            say(f"  ⚠ Ignoré (incompatible ?) : {spec}", "yellow")
+    return (len(failed) == 0), failed
+
+
+def install_openwakeword():
+    """Wake word openwakeword sur Python ≥3.10 (dont 3.13) : son install_requires force
+    `tflite-runtime` (aucun wheel pour ces versions) → on l'installe SANS ses deps, puis on
+    pose ses vraies deps en backend ONNX (onnxruntime a des wheels 3.13), et on télécharge
+    les modèles pré-entraînés. Le runtime utilise inference_framework='onnx'."""
+    say("  → openwakeword (wake word, backend ONNX, compatible 3.13)...", "yellow")
+    pip_install("--no-deps", "openwakeword")
+    pip_install("onnxruntime<2", "scipy", "scikit-learn<2,>=1", "tqdm", "requests")
+    try:
+        subprocess.call([sys.executable, "-c",
+                         "import openwakeword.utils as u; u.download_models()"])
+    except Exception:
+        pass
+    ok = subprocess.call([sys.executable, "-c", "import openwakeword"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
+    say("  ✔ openwakeword prêt (ONNX, modèles téléchargés)." if ok
+        else "  ⚠ openwakeword indisponible (le push-to-talk reste possible).",
+        "green" if ok else "yellow")
+    return ok
+
+
 def _sudo_prefix():
     """[] si root, ['sudo'] sinon (et si sudo existe)."""
     try:
@@ -175,9 +221,13 @@ def step_optional_components():
                 dnf_pkgs=["portaudio-devel", "espeak-ng", "ffmpeg"],
                 pacman_pkgs=["portaudio", "espeak-ng", "ffmpeg"],
                 label="vocal")
-            ok = pip_install("-r", "requirements-voice.txt")
-            say("✔ Pipeline vocal installé." if ok else "⚠ Échec d'installation du vocal.",
-                "green" if ok else "red")
+            ok, failed = pip_install_requirements("requirements-voice.txt")
+            # openwakeword (wake word) géré à part : incompatible en install standard sur 3.13.
+            install_openwakeword()
+            if ok:
+                say("✔ Pipeline vocal installé.", "green")
+            else:
+                say(f"⚠ Vocal installé partiellement (paquets ignorés : {', '.join(failed)}).", "yellow")
             
             if ok and ask_yes_no("  → Installer le serveur TTS 'Kokoro' via Docker (voix expressives ultra-rapides) ?", default=False):
                 if shutil.which("docker"):
