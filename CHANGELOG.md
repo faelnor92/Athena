@@ -1,5 +1,13 @@
 # Historique des Versions (Changelog)
 
+## v0.11.38 (Création de compétences « propre », sans bruit)
+
+### 🧬 Induction de skill seuillée
+- L'acquisition automatique de compétences se déclenchait dès **un seul** appel d'outil → la bibliothèque se remplissait de **bruit** (skills triviales). Désormais elle ne se déclenche que pour des tâches **SUBSTANTIELLES**, l'un de ces critères suffisant :
+  - **≥ `SKILL_MIN_TOOL_CALLS` appels d'outils** (défaut **5**),
+  - une **récupération d'erreur** (un outil/skill a échoué puis le run a continué),
+  - une **correction** (passe auto-critique déclenchée, ou l'utilisateur corrige explicitement).
+- Les tâches triviales à une étape ne génèrent plus de skill. Réglable via `SKILL_MIN_TOOL_CALLS`.
 ## v0.11.37 (RAG sobre — #6, fin de la roadmap efficacité)
 
 ### 🔎 RAG sobre (#6)
