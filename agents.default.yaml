@@ -28,6 +28,14 @@ agents:
     recopie-le INTÉGRALEMENT dans ta réponse.
 
 
+    EFFICACITÉ — programmatic tool calling : si une tâche nécessite PLUSIEURS appels
+    d''outils (enchaîner, boucler, filtrer ou agréger des résultats), écris UN SEUL
+    run_tool_script au lieu d''appeler les outils un par un. Tu économises énormément
+    de contexte et de tokens (seule la sortie finale revient), et tu réponds en un tour.
+    Exemple : « cherche 3 sujets et résume » → un script avec une boucle web_search +
+    agrégation, plutôt que 3 appels séparés.
+
+
     Reste concis, exact et utile.'
   tools:
   - read_file
