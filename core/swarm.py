@@ -1254,8 +1254,27 @@ class Swarm:
             return
         if os.getenv("SELF_IMPROVE_SKILLS", "true").lower() not in ("true", "1", "yes"):
             return
-        # Seulement pour des tâches non triviales (outils/handoffs).
-        if not any(s.get("type") in ("tool_call", "handoff") for s in steps):
+        # Création « PROPRE », sans bruit : on ne déclenche l'induction que pour des tâches
+        # SUBSTANTIELLES — jamais pour le trivial à une étape (sinon la bibliothèque de
+        # compétences se remplit de bruit). Critères (l'un suffit) :
+        #   - ≥ SKILL_MIN_TOOL_CALLS appels d'outils (défaut 5),
+        #   - une RÉCUPÉRATION D'ERREUR (un outil/skill a échoué puis le run a continué),
+        #   - une CORRECTION (auto-critique déclenchée, ou l'utilisateur corrige explicitement).
+        _n_tool_calls = sum(1 for s in steps if s.get("type") == "tool_call")
+        _errm = ("erreur", "error", "traceback", "exception", "échec", "echec", "failed")
+        _had_error_recovery = (
+            any(s.get("type") == "skill_improved" for s in steps)
+            or any(m.get("role") == "tool" and isinstance(m.get("content"), str)
+                   and any(w in m["content"][:160].lower() for w in _errm)
+                   for m in messages)
+        )
+        _last_user = next((str(m.get("content", "")) for m in reversed(messages)
+                           if m.get("role") == "user"), "").lower()
+        _corr = ("plutôt", "plutot", "corrige", "c'est faux", "ce n'est pas", "refais",
+                 "pas ça", "pas ca", "non,", "non ")
+        _had_correction = any(s.get("type") == "critic" for s in steps) or any(w in _last_user for w in _corr)
+        _min_calls = int(os.getenv("SKILL_MIN_TOOL_CALLS", "5") or 5)
+        if not (_n_tool_calls >= _min_calls or _had_error_recovery or _had_correction):
             return
         try:
             import json as _json
