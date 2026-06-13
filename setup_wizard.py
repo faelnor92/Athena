@@ -25,7 +25,27 @@ if os.name == "nt" or not sys.stdout.isatty():
     C = {k: "" for k in C}  # pas de couleurs hors TTY/Windows
 
 AUTO = "--auto" in sys.argv
-INTERACTIVE = sys.stdin.isatty() and not AUTO
+# Sous « curl … | bash », stdin est occupé par le SCRIPT (pas le clavier) → on lit les
+# réponses sur le terminal de contrôle /dev/tty pour rester INTERACTIF malgré le pipe.
+_TTY = None
+if not AUTO and not sys.stdin.isatty():
+    try:
+        _TTY = open("/dev/tty", "r")
+    except Exception:
+        _TTY = None
+INTERACTIVE = (sys.stdin.isatty() or _TTY is not None) and not AUTO
+
+
+def _prompt(text):
+    """input() qui marche même quand stdin est pris par curl|bash (lecture sur /dev/tty)."""
+    if _TTY is not None:
+        sys.stdout.write(text)
+        sys.stdout.flush()
+        line = _TTY.readline()
+        if line == "":
+            raise EOFError
+        return line.rstrip("\n")
+    return input(text)
 
 
 def say(msg, color="nc"):
@@ -40,7 +60,7 @@ def ask_yes_no(question, default=False):
         return default
     suffix = " [O/n] " if default else " [o/N] "
     try:
-        ans = input(f"{C['cyan']}{question}{C['nc']}{suffix}").strip().lower()
+        ans = _prompt(f"{C['cyan']}{question}{C['nc']}{suffix}").strip().lower()
     except EOFError:
         return default
     if not ans:
@@ -52,7 +72,7 @@ def ask_text(question, default=""):
     if not INTERACTIVE:
         return default
     try:
-        ans = input(f"{C['cyan']}{question}{C['nc']} ").strip()
+        ans = _prompt(f"{C['cyan']}{question}{C['nc']} ").strip()
     except EOFError:
         return default
     return ans or default
@@ -248,11 +268,33 @@ def step_env_essentials():
         set_env_var("OLLAMA_API_BASE", ask_text("URL Ollama :", default="http://localhost:11434"))
         say("✔ Ollama configuré. Pense à `ollama pull <modèle>` (ex: qwen2.5-coder:1.5b).", "green")
 
-    # Mot de passe admin (protège l'UI + les outils sensibles).
-    if ask_yes_no("Protéger l'accès par un mot de passe admin ?", default=False):
-        pwd = ask_text("Mot de passe admin :")
+    # Accès réseau : LOCAL (127.0.0.1, sans mot de passe) vs DISTANT (0.0.0.0 → le serveur
+    # EXIGE un ADMIN_PASSWORD, sinon il refuse de démarrer en mode exposé).
+    say("\nAccès au serveur :")
+    say("  1) Local uniquement (127.0.0.1) — pas de mot de passe requis")
+    say("  2) Accessible sur le réseau / à distance (0.0.0.0) — mot de passe admin OBLIGATOIRE")
+    acc = ask_text("Ton choix [1-2] :", default="1")
+    if acc == "2":
+        set_env_var("HOST", "0.0.0.0")
+        pwd = ""
+        while not pwd:
+            pwd = ask_text("Mot de passe admin (OBLIGATOIRE pour l'accès distant) :")
+            if not pwd:
+                say("  ⚠ Sans mot de passe, le serveur REFUSERA de démarrer en mode exposé (0.0.0.0).", "yellow")
+                if not ask_yes_no("  Ressaisir le mot de passe ?", default=True):
+                    break
         if pwd:
             set_env_var("ADMIN_PASSWORD", pwd)
+            say("✔ Accès réseau (0.0.0.0) + mot de passe admin configurés.", "green")
+        else:
+            say("  ⚠ Accès réseau choisi SANS mot de passe → mets ADMIN_PASSWORD dans .env avant de démarrer.", "yellow")
+    else:
+        set_env_var("HOST", "127.0.0.1")
+        say("✔ Accès local (127.0.0.1).", "green")
+        if ask_yes_no("Protéger quand même l'UI par un mot de passe admin ?", default=False):
+            pwd = ask_text("Mot de passe admin :")
+            if pwd:
+                set_env_var("ADMIN_PASSWORD", pwd)
             say("✔ Mot de passe admin défini.", "green")
 
 
