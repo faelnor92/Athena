@@ -20,12 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 clear
 echo -e "${CYAN}${BOLD}"
 echo "========================================================================="
-echo "          _      _____  _   _  ___  _   _    _    "
-echo "         /_\    |_   _|| | | || __|| \ | |  /_\   "
-echo "        / _ \     | |  | |_| || _| |  \| | / _ \  "
-echo "       /_/ \_\    |_|   \___/ |___||_|\__|/_/ \_\ "
-echo "                                                  "
-echo "        ORCHESTRATEUR MULTI-AGENT — INSTALLATEUR"
+echo "                          A T H E N A"
+echo "              Orchestrateur multi-agent — Installateur"
 echo "=========================================================================${NC}"
 echo -e "📦 Système détecté : ${MAGENTA}${BOLD}${OS_TYPE}${NC}"
 echo ""
@@ -414,7 +410,7 @@ if command -v ollama &> /dev/null; then
     
     if ! ollama list | grep -q "qwen2.5:0.5b"; then
         echo -e "${YELLOW}⚠ Le modèle de maintenance (qwen2.5:0.5b) n'est pas détecté.${NC}"
-        read -p "Voulez-vous le télécharger pour activer l'Agent de Nuit Gratuit ? (o/n) : " INSTALL_MODEL
+        read -p "Voulez-vous le télécharger pour activer l'Agent de Nuit Gratuit ? (o/n) : " INSTALL_MODEL < /dev/tty 2>/dev/null || INSTALL_MODEL=n
         if [[ "$INSTALL_MODEL" =~ ^[OoYy] ]]; then
             echo -e "${CYAN}Téléchargement de qwen2.5:0.5b...${NC}"
             ollama pull qwen2.5:0.5b
@@ -423,7 +419,7 @@ if command -v ollama &> /dev/null; then
 else
     echo -e "${YELLOW}⚠ Note : Ollama n'est pas détecté.${NC}"
     echo -e "Ollama est recommandé pour faire tourner l'Agent de Maintenance de Nuit gratuitement."
-    read -p "Voulez-vous installer Ollama maintenant ? (o/n) : " INSTALL_OLLAMA
+    read -p "Voulez-vous installer Ollama maintenant ? (o/n) : " INSTALL_OLLAMA < /dev/tty 2>/dev/null || INSTALL_OLLAMA=n
     if [[ "$INSTALL_OLLAMA" =~ ^[OoYy] ]]; then
         echo -e "${CYAN}Installation d'Ollama...${NC}"
         curl -fsSL https://ollama.com/install.sh | sh

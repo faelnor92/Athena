@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.41 (Install interactive sous curl|bash + accès distant + marque)
+
+### 🔧 Correctifs d'installation
+- **Wizard non interactif sous `curl | bash`** (CAUSE COMMUNE) : stdin était occupé par le script piped → aucun prompt → ni optionnels, ni `requirements-voice`, ni `requirements-observability`, ni mot de passe. Le wizard **lit désormais sur `/dev/tty`** → il redevient interactif malgré le pipe (et `install.sh` lit aussi ses prompts Ollama sur `/dev/tty`). Repli propre si aucun terminal.
+- **Accès distant + mot de passe** : le wizard demande explicitement **Local (127.0.0.1) vs Réseau (0.0.0.0)** ; en réseau, l'**`ADMIN_PASSWORD` devient obligatoire** (le serveur refuse de démarrer exposé sans lui) et `HOST` est réglé en conséquence.
+- **Marque** : bannière ASCII corrigée — elle épelait « ATUENA » (U au lieu du H) → bannière texte **ATHENA** simple et sûre.
 ## v0.11.40 (Correctifs d'installation)
 
 ### 🔧 install.sh utilisable de bout en bout
