@@ -899,6 +899,14 @@ class Swarm:
         is_hard = len(text) > 280 or any(k in text for k in hard_kw)
         return default_model if is_hard else fast
 
+    def _utility_model(self, default_model: str) -> str:
+        """Modèle pour les appels LLM UTILITAIRES (jugement, extraction, classification :
+        induction de compétence, relecture critique…). Un PETIT modèle suffit et coûte
+        bien moins. Priorité : UTILITY_MODEL > FAST_MODEL > modèle de l'agent (repli sûr)."""
+        return (os.getenv("UTILITY_MODEL", "").strip()
+                or os.getenv("FAST_MODEL", "").strip()
+                or default_model)
+
     def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None, allow_fallback: bool = True):
         """Appel LLM via litellm avec routage clé officielle / endpoint custom.
         Si on_delta est fourni et STREAM_TOKENS actif, diffuse les tokens au fil
@@ -1186,7 +1194,7 @@ class Swarm:
         if not user:
             return
         try:
-            verdict = (self._complete(agent.model, [
+            verdict = (self._complete(self._utility_model(agent.model), [
                 {"role": "system", "content": (
                     "Tu es un relecteur critique. Vérifie si la RÉPONSE traite correctement et "
                     "complètement la DEMANDE, sans erreur factuelle, incohérence ni partie manquante. "
@@ -1253,7 +1261,7 @@ class Swarm:
                 'OU {"skill": false} si aucune compétence générique pertinente. '
                 "Ne crée PAS de compétence trop spécifique ou triviale."
             )
-            resp = self._complete(agent.model, [
+            resp = self._complete(self._utility_model(agent.model), [
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": transcript},
             ], tools_schema=None)

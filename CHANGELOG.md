@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.35 (Discipline du swarm — tiering des appels utilitaires)
+
+### 🧠 #4 de la roadmap efficacité (audit + complément)
+- **Déjà en place (confirmé par audit)** : les sous-agents renvoient un **résultat distillé** (réponse finale + métriques), jamais leur transcript complet — vrai pour `delegate_to_` ET `query_agent`. Tiering par difficulté (`_route_model`/`FAST_MODEL`) et mini-routeur/juge de relais utilisent déjà le petit modèle. Débats inter-agents = opt-in.
+- **Ajout** : nouveau knob **`UTILITY_MODEL`** pour les appels LLM **utilitaires** (jugement/extraction/classification : induction de compétence, relecture critique) → un petit modèle suffit. Priorité `UTILITY_MODEL` > `FAST_MODEL` > modèle de l'agent. Appliqué à l'induction de compétence et au relecteur critique (auto-critic).
 ## v0.11.34 (Prompt caching — la mémoire ne casse plus le cache)
 
 ### 🧊 Audit CacheAligner (#3 de la roadmap efficacité)
