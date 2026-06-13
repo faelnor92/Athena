@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.32 (Programmatic tool calling réellement actif)
+
+### ⚡ Orchestration par script (économie de tokens)
+- **Correctif majeur** : `run_tool_script` était mentionné dans le prompt de l'orchestrateur **mais absent de sa liste `tools:`** → l'agent ne pouvait jamais l'appeler. Le programmatic tool calling ne se déclenchait donc **jamais**. `run_tool_script` (+ `make_plan`/`update_plan_step`/`send_notification`, eux aussi mentionnés mais manquants) sont ajoutés aux outils d'Athena.
+- **Couverture élargie** : le script peut maintenant appeler aussi les outils **read-only** d'inspection — `read_file`, `file_outline`, `search_code`, `find_definition`, `find_references`, `git_status/diff/log`, `query_graph`, `analyze_document`, `read_inbox`, `read_email` — en plus du web/mémoire/agenda. Un pipeline « lis 5 fichiers + agrège » devient **une seule inférence**.
+- **Incitation renforcée** : le prompt de l'orchestrateur demande désormais explicitement de **préférer un seul `run_tool_script`** dès qu'une tâche enchaîne/agrège plusieurs appels d'outils (seule la sortie finale revient → grosse économie de contexte/tokens).
+- Sûreté inchangée : validation AST, builtins restreints, pas d'écriture/shell/SSH/exec, timeout + budget d'instructions.
 ## v0.11.31 (install : pip dans le venv uv + libs système du vocal)
 
 ### 🐛 Correctifs d'installation

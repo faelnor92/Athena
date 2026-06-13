@@ -13,13 +13,21 @@ import threading
 import contextlib
 import importlib
 
-# Outils sûrs exposés au script (lecture/recherche/mémoire/calcul). On EXCLUT shell,
-# exécution de code brute, SSH, génération lourde, etc.
+# Outils sûrs exposés au script (lecture/recherche/mémoire/inspection/calcul). On EXCLUT
+# shell, exécution de code brute, SSH, écriture de fichiers et génération lourde.
 SCRIPT_SAFE_TOOLS = {
+    # Web / mémoire
     "web_search", "web_scrape", "search_memory", "memorize_fact", "store_document",
+    "query_graph", "remember_relation",
+    # Agenda / listes / domotique (lecture + mutations légères)
     "get_list_items", "add_list_item", "toggle_list_item",
     "list_calendar_events", "add_calendar_event", "get_ha_state", "get_daily_briefing",
-    "get_time", "get_weather"
+    "get_time", "get_weather",
+    # Inspection CODE (lecture seule) — batch d'analyse sans gonfler le contexte
+    "read_file", "file_outline", "search_code", "find_definition", "find_references",
+    "git_status", "git_diff", "git_log",
+    # Documents / e-mails (lecture seule)
+    "analyze_document", "read_inbox", "read_email",
 }
 
 _SAFE_IMPORTS = {"math", "json", "re", "datetime", "statistics", "itertools",
@@ -100,13 +108,20 @@ def _build_namespace():
 
 def run_tool_script(code: str) -> str:
     """
-    Exécute un script Python d'orchestration qui peut appeler plusieurs outils en une
-    seule fois (idéal pour enchaîner/agréger des résultats sans multiplier les tours).
-    Outils disponibles dans le script : web_search, web_scrape, search_memory,
-    store_document, memorize_fact, get_list_items, list_calendar_events, get_ha_state,
-    get_daily_briefing, ainsi que toutes les compétences. Modules : math, json, re,
-    datetime, statistics. Affecte le résultat final à une variable 'result' OU utilise print().
-    Restrictions de sûreté : pas d'import système, pas de fichiers/réseau direct, pas de while.
+    Exécute UN script Python qui appelle PLUSIEURS outils en un seul tour (boucles,
+    conditions, agrégation). À PRÉFÉRER dès qu'une tâche enchaîne/filtre/agrège des
+    résultats : seule la sortie finale revient → énorme économie de contexte/tokens.
+
+    Outils appelables dans le script (lecture/recherche/inspection + mutations légères) :
+      web_search, web_scrape, search_memory, store_document, memorize_fact, query_graph,
+      remember_relation, get_list_items, add_list_item, toggle_list_item,
+      list_calendar_events, add_calendar_event, get_ha_state, get_daily_briefing,
+      get_time, get_weather, read_file, file_outline, search_code, find_definition,
+      find_references, git_status, git_diff, git_log, analyze_document, read_inbox,
+      read_email — ainsi que toutes les compétences. Modules : math, json, re, datetime,
+      statistics. Affecte le résultat final à 'result' OU utilise print().
+    Sûreté : pas d'écriture de fichier/shell/SSH/exec, pas d'import système, pas de while.
+    Exemple : for q in ["a","b","c"]: print(web_search(q))   # 3 recherches en 1 tour.
     code: Le script Python à exécuter.
     """
     if os.getenv("TOOL_SCRIPTS", "true").lower() not in ("true", "1", "yes"):

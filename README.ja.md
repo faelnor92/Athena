@@ -1,6 +1,6 @@
 # 🎛️ Athena — セルフホスト型マルチエージェント・フレームワーク
 
-![Version](https://img.shields.io/badge/version-0.11.31-blue.svg)
+![Version](https://img.shields.io/badge/version-0.11.32-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
