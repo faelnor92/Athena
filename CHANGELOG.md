@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.56 (Home Assistant en STDIO — géré par Athena, sans Docker)
+
+### 🏠 ha-mcp piloté par Athena (auto-start / auto-restart)
+- ha-mcp expose **le même jeu d'outils (84+) en STDIO** (`ha-mcp` = entrypoint stdio). On bascule donc l'intégration HA en **STDIO** : Athena le lance comme sous-process → il **démarre et se relance automatiquement avec Athena**, **plus besoin de Docker** ni de service HTTP séparé.
+- **Marketplace dynamique** : l'entrée Home Assistant remplit automatiquement le chemin absolu du console-script `tools/mcp-servers/ha-mcp/.venv/bin/ha-mcp` s'il est installé (repli HTTP sinon). Il ne reste qu'à saisir `HOMEASSISTANT_URL` + un token longue durée.
+- **install.sh** : injecte ce chemin absolu dans l'entrée `home-assistant` de `mcp_servers.json` (stdio, `disabled` tant que les identifiants ne sont pas remplis). `mcp_servers.json.example` passé en stdio.
+- Rappel : `StdioServerParameters` n'a pas de `cwd` → on utilise le chemin **absolu** du console-script (shebang auto-suffisant vers son venv).
 ## v0.11.55 (Mise à jour depuis l'UI — fiabilisée)
 
 ### 🔁 Fix : « Mettre à jour » depuis l'interface

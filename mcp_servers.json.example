@@ -2,9 +2,13 @@
   "_comment": "Copiez ce fichier en mcp_servers.json et adaptez. Format compatible Claude Desktop. Le vrai fichier est ignoré par git (peut contenir des tokens).",
   "mcpServers": {
     "home-assistant": {
-      "_note": "Serveur MCP Home Assistant (livré dans tools/mcp-servers/ha-mcp). C'est un SERVICE HTTP à lancer SÉPARÉMENT (Docker / add-on HA / uvx — voir tools/mcp-servers/ha-mcp/README.md), avec HOMEASSISTANT_URL + HOMEASSISTANT_TOKEN. Une fois lancé, mets son URL ci-dessous et passe disabled à false.",
-      "url": "http://127.0.0.1:8099/mcp",
-      "transport": "http",
+      "_note": "Serveur MCP Home Assistant (livré dans tools/mcp-servers/ha-mcp), en STDIO → géré par Athena (démarre/redémarre tout seul, pas de Docker). install.sh remplit 'command' avec le chemin absolu du console-script .venv/bin/ha-mcp. Renseigne HOMEASSISTANT_URL + HOMEASSISTANT_TOKEN puis passe disabled à false.",
+      "command": "tools/mcp-servers/ha-mcp/.venv/bin/ha-mcp",
+      "args": [],
+      "env": {
+        "HOMEASSISTANT_URL": "http://homeassistant.local:8123",
+        "HOMEASSISTANT_TOKEN": "colle-ton-token-longue-duree-ici"
+      },
       "disabled": true
     },
     "filesystem": {

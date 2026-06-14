@@ -131,11 +131,10 @@ _MCP_MARKETPLACE_CATALOGS = [
         "category": "Communauté & Extensions",
         "servers": [
              {
-                "label": "Home Assistant (ha-mcp)", "name": "homeassistant", "icon": "🏠",
+                "label": "Home Assistant (ha-mcp) — local, géré par Athena", "name": "homeassistant", "icon": "🏠",
                 "command": "", "args": [],
-                "url": "http://127.0.0.1:8099/mcp", "transport": "http",
-                "env": {},
-                "note": "84+ outils HA. C'est un SERVICE HTTP : lance-le d'abord (uv/Docker/add-on HA, voir tools/mcp-servers/ha-mcp/README) avec HOMEASSISTANT_URL+TOKEN, puis mets son URL ci-dessus."
+                "env": {"HOMEASSISTANT_URL": "", "HOMEASSISTANT_TOKEN": ""},
+                "note": "84+ outils HA en STDIO : Athena le lance et le relance toute seule (pas de Docker, démarre/redémarre avec Athena). Renseigne HOMEASSISTANT_URL (ex: http://homeassistant.local:8123) + un token longue durée HA. Le chemin de commande est rempli automatiquement si ha-mcp est installé."
             },
             {
                 "label": "SQLite", "name": "sqlite", "icon": "🗃️",
@@ -193,10 +192,38 @@ async def list_mcp_servers() -> Dict[str, Any]:
         })
     return {"servers": out, "presets": [], "tool_count": st.get("tool_count", 0)}
 
+def _ha_mcp_stdio_command() -> str:
+    """Chemin absolu du console-script stdio de ha-mcp s'il est installé (sinon '')."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cand = os.path.join(root, "tools", "mcp-servers", "ha-mcp", ".venv", "bin", "ha-mcp")
+    return cand if os.path.exists(cand) else ""
+
+
 @router.get("/api/config/mcp/marketplace")
 async def mcp_marketplace() -> list[Dict[str, Any]]:
-    """Retourne le catalogue complet des serveurs MCP pour l'UI."""
-    return _MCP_MARKETPLACE_CATALOGS
+    """Retourne le catalogue complet des serveurs MCP pour l'UI.
+
+    L'entrée Home Assistant est résolue dynamiquement : si ha-mcp est installé,
+    on remplit son chemin de commande stdio (géré par Athena). Sinon on bascule
+    l'entrée en mode HTTP avec une note pour la lancer à part."""
+    import copy
+    catalog = copy.deepcopy(_MCP_MARKETPLACE_CATALOGS)
+    ha_cmd = _ha_mcp_stdio_command()
+    for cat in catalog:
+        for srv in cat.get("servers", []):
+            if srv.get("name") != "homeassistant":
+                continue
+            if ha_cmd:
+                srv["command"] = ha_cmd
+                srv["args"] = []
+            else:
+                # ha-mcp pas installé localement → repli HTTP (service à lancer à part).
+                srv["label"] = "Home Assistant (ha-mcp) — HTTP"
+                srv["url"] = "http://127.0.0.1:8099/mcp"
+                srv["transport"] = "http"
+                srv["note"] = ("ha-mcp non installé localement. Lance-le en service HTTP "
+                               "(Docker/uv/add-on HA) avec HOMEASSISTANT_URL+TOKEN, puis mets son URL ci-dessus.")
+    return catalog
 
 
 class McpServerRequest(BaseModel):
