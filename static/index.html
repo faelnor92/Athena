@@ -999,8 +999,12 @@
 
                     <!-- VUE 2 : Marketplace -->
                     <div id="mcp-view-market" style="display: none;">
+                        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 12px;">
+                            <input type="text" id="mcp-market-search" placeholder="🔎 Rechercher dans le registre MCP officiel (ex: notion, postgres, brave…)" style="flex: 1; background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); color: #fff; padding: 8px 10px; border-radius: 6px; font-size: 0.85rem; outline: none;">
+                            <button type="button" id="mcp-market-search-btn" class="btn btn-primary" style="padding: 8px 14px; white-space: nowrap;">Rechercher</button>
+                        </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                            <span style="font-size: 0.85rem; color: #aaa;">Sélectionne un catalogue :</span>
+                            <span id="mcp-market-cat-label" style="font-size: 0.85rem; color: #aaa;">Catalogue local :</span>
                             <select id="mcp-market-category" style="background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); color: #fff; padding: 6px; border-radius: 4px; font-size: 0.85rem;">
                                 <!-- Rempli en JS -->
                             </select>
@@ -1586,7 +1590,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260614_mcpurl"></script>
+    <script src="app.js?v=20260614_mcpregistry"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>

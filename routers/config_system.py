@@ -199,6 +199,84 @@ def _ha_mcp_stdio_command() -> str:
     return cand if os.path.exists(cand) else ""
 
 
+_REGISTRY_BASE = os.getenv("MCP_REGISTRY_URL", "https://registry.modelcontextprotocol.io")
+
+
+def _map_registry_server(srv: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Transforme une entrée du registre MCP officiel en carte UA (label/command/args/env/url).
+
+    Gère les packages (npm→npx, pypi→uvx, oci→docker) et les remotes (http/sse).
+    Renvoie None si on ne sait pas la lancer."""
+    name = srv.get("name") or ""
+    short = name.split("/")[-1] if name else (srv.get("title") or "serveur")
+    card: Dict[str, Any] = {
+        "label": srv.get("title") or short,
+        "name": short.replace(" ", "-").lower() or "mcp",
+        "icon": "🌐",
+        "command": "", "args": [], "env": {},
+        "note": (srv.get("description") or "")[:300] + (f"  ·  {name}" if name else ""),
+    }
+    # 1) Remotes (serveur HTTP/SSE hébergé)
+    for rem in (srv.get("remotes") or []):
+        url = rem.get("url")
+        if not url:
+            continue
+        t = (rem.get("type") or "").lower()
+        card["url"] = url
+        card["transport"] = "sse" if "sse" in t else "http"
+        return card
+    # 2) Packages (à lancer en local via un runner)
+    for pkg in (srv.get("packages") or []):
+        rt = (pkg.get("registryType") or pkg.get("registry_type") or "").lower()
+        ident = pkg.get("identifier")
+        if not ident:
+            continue
+        if rt == "npm":
+            card["command"], card["args"] = "npx", ["-y", ident]
+        elif rt == "pypi":
+            card["command"], card["args"] = "uvx", [ident]
+        elif rt in ("oci", "docker"):
+            card["command"], card["args"] = "docker", ["run", "-i", "--rm", ident]
+        else:
+            continue
+        env_vars = pkg.get("environmentVariables") or pkg.get("environment_variables") or []
+        card["env"] = {ev.get("name"): "" for ev in env_vars if ev.get("name")}
+        return card
+    return None
+
+
+@router.get("/api/config/mcp/registry")
+async def mcp_registry_search(q: str = "", limit: int = 30) -> Dict[str, Any]:
+    """Recherche en ligne dans le registre MCP officiel (modelcontextprotocol.io).
+
+    Host fixe et de confiance (pas d'URL arbitraire → pas de SSRF). GET only."""
+    import requests
+    try:
+        params = {"limit": max(1, min(limit, 50))}
+        if q.strip():
+            params["search"] = q.strip()
+        r = requests.get(f"{_REGISTRY_BASE}/v0/servers", params=params, timeout=8)
+        if r.status_code != 200:
+            return {"servers": [], "error": f"registre HTTP {r.status_code}"}
+        payload = r.json()
+        items = payload.get("servers", payload) if isinstance(payload, dict) else payload
+        cards = []
+        seen = set()
+        for it in (items or []):
+            srv = it.get("server", it) if isinstance(it, dict) else {}
+            # On ne garde que les serveurs actifs et la dernière version.
+            meta = (it.get("_meta") or {}).get("io.modelcontextprotocol.registry/official", {}) if isinstance(it, dict) else {}
+            if meta and (meta.get("status") not in (None, "active") or meta.get("isLatest") is False):
+                continue
+            card = _map_registry_server(srv)
+            if card and card["name"] not in seen:
+                seen.add(card["name"])
+                cards.append(card)
+        return {"servers": cards, "count": len(cards)}
+    except Exception as e:
+        return {"servers": [], "error": str(e)}
+
+
 @router.get("/api/config/mcp/marketplace")
 async def mcp_marketplace() -> list[Dict[str, Any]]:
     """Retourne le catalogue complet des serveurs MCP pour l'UI.

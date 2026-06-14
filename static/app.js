@@ -7525,27 +7525,67 @@ function renderMcpMarketplaceGrid() {
         serversToShow = mcpMarketplaceCatalogs[catIdx]?.servers || [];
     }
     
-    serversToShow.forEach(srv => {
-        const card = document.createElement("div");
-        card.className = "mcp-market-card";
-        
-        // stringify for onclick handler safely
-        const payload = encodeURIComponent(JSON.stringify(srv));
-        
-        card.innerHTML = `
-            <div>
-                <div class="mcp-market-card-header">
-                    <span style="font-size: 1.5rem;">${srv.icon || '🧩'}</span>
-                    <div class="mcp-market-card-title">${srv.label}</div>
-                </div>
-                <div class="mcp-market-card-desc">${srv.note}</div>
-                <div style="font-size: 0.7rem; color: #888; margin-bottom: 12px; font-family: monospace;">${srv.command} ${srv.args[0] || ''}...</div>
-            </div>
-            <button class="mcp-market-card-btn" onclick="installMarketplaceServer('${payload}')">Installer</button>
-        `;
-        grid.appendChild(card);
-    });
+    serversToShow.forEach(srv => grid.appendChild(_renderMcpCard(srv)));
 }
+
+// Carte MCP réutilisable (catalogue local ET résultats du registre en ligne).
+function _renderMcpCard(srv) {
+    const card = document.createElement("div");
+    card.className = "mcp-market-card";
+    const payload = encodeURIComponent(JSON.stringify(srv));
+    // Ligne technique : commande locale, ou URL pour un serveur distant.
+    const tech = srv.command
+        ? `${srv.command} ${(srv.args && srv.args[0]) || ''}…`
+        : (srv.url ? `${srv.transport || 'http'} · ${srv.url}` : '');
+    card.innerHTML = `
+        <div>
+            <div class="mcp-market-card-header">
+                <span style="font-size: 1.5rem;">${srv.icon || '🧩'}</span>
+                <div class="mcp-market-card-title">${srv.label}</div>
+            </div>
+            <div class="mcp-market-card-desc">${srv.note || ''}</div>
+            <div style="font-size: 0.7rem; color: #888; margin-bottom: 12px; font-family: monospace; word-break: break-all;">${tech}</div>
+        </div>
+        <button class="mcp-market-card-btn" onclick="installMarketplaceServer('${payload}')">Installer</button>
+    `;
+    return card;
+}
+
+// Recherche en ligne dans le registre MCP officiel.
+async function searchMcpRegistry() {
+    const input = document.getElementById("mcp-market-search");
+    const grid = document.getElementById("mcp-market-grid");
+    const label = document.getElementById("mcp-market-cat-label");
+    const catSel = document.getElementById("mcp-market-category");
+    if (!input || !grid) return;
+    const q = input.value.trim();
+    if (!q) { // champ vidé → on revient au catalogue local
+        if (label) label.textContent = "Catalogue local :";
+        if (catSel) catSel.style.display = "";
+        renderMcpMarketplaceGrid();
+        return;
+    }
+    grid.innerHTML = `<div style="grid-column:1/-1;color:#aaa;padding:12px;">🔎 Recherche dans le registre MCP officiel…</div>`;
+    if (catSel) catSel.style.display = "none";
+    if (label) label.textContent = `Registre MCP officiel — résultats pour « ${q} » :`;
+    try {
+        const r = await apiFetch(`/api/config/mcp/registry?q=${encodeURIComponent(q)}&limit=30`);
+        const data = await r.json();
+        grid.innerHTML = "";
+        const servers = data.servers || [];
+        if (!servers.length) {
+            grid.innerHTML = `<div style="grid-column:1/-1;color:#aaa;padding:12px;">Aucun résultat${data.error ? " ("+data.error+")" : ""}. Essaie un autre terme.</div>`;
+            return;
+        }
+        servers.forEach(srv => grid.appendChild(_renderMcpCard(srv)));
+    } catch (e) {
+        grid.innerHTML = `<div style="grid-column:1/-1;color:#e88;padding:12px;">Erreur registre : ${e.message || e}</div>`;
+    }
+}
+document.getElementById("mcp-market-search-btn")?.addEventListener("click", searchMcpRegistry);
+document.getElementById("mcp-market-search")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); searchMcpRegistry(); }
+});
 
 function installMarketplaceServer(payloadStr) {
     const srv = JSON.parse(decodeURIComponent(payloadStr));
@@ -7558,9 +7598,12 @@ function installMarketplaceServer(payloadStr) {
     
     // Fill form
     document.getElementById("mcp-name").value = srv.name;
-    document.getElementById("mcp-command").value = srv.command;
+    document.getElementById("mcp-command").value = srv.command || "";
     document.getElementById("mcp-args").value = (srv.args || []).join(" ");
-    
+    // Serveurs distants (registre en ligne) : porter url + transport.
+    if (document.getElementById("mcp-url")) document.getElementById("mcp-url").value = srv.url || "";
+    if (document.getElementById("mcp-transport") && srv.transport) document.getElementById("mcp-transport").value = srv.transport;
+
     // renderMcpEnv if exists (needs to be adapted if the function expects obj)
     // Actually we just need to re-render the env html list
     const envList = document.getElementById("mcp-env-list");

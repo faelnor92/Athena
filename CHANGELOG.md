@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.57 (Vrai marketplace MCP — recherche en ligne)
+
+### 🌐 Marketplace MCP dynamique (registre officiel)
+- Jusqu'ici le marketplace n'affichait qu'un **catalogue local codé en dur**. Ajout d'une **recherche en ligne** dans le **registre MCP officiel** (`registry.modelcontextprotocol.io`) : tape un terme (notion, postgres, brave…) → la liste des serveurs publiés s'affiche, prête à installer.
+- **Mapping automatique** vers une commande lançable : `npm`→`npx -y`, `pypi`→`uvx`, `oci`→`docker run`, ou serveur **distant** (`remotes` http/sse) avec URL + transport pré-remplis. Les variables d'environnement requises sont injectées dans le formulaire.
+- Filtrage sur les serveurs **actifs / dernière version**. Host fixe de confiance (pas d'URL arbitraire → pas de SSRF), GET only, configurable via `MCP_REGISTRY_URL`.
+- Le bouton « Installer » d'un résultat distant porte désormais bien **url + transport** (corrige aussi l'install des presets HTTP/SSE).
 ## v0.11.56 (Home Assistant en STDIO — géré par Athena, sans Docker)
 
 ### 🏠 ha-mcp piloté par Athena (auto-start / auto-restart)
