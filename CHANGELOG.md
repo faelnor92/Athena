@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.48 (Installs fraîches : version affichée + config MCP/Home Assistant)
+
+### 🔧 Correctifs « nouvelle install »
+- **Version bloquée à « v0.0.0 »** : `/api/system/version` était derrière l'auth → sur une install avec mot de passe, le front l'appelait AVANT login (401) et n'affichait jamais la vraie version. L'endpoint (non sensible) est désormais **public** → la version s'affiche, y compris sur l'écran de connexion.
+- **Aucun serveur MCP sur une install fraîche** (dont Home Assistant) : `mcp_servers.json` est gitignoré et n'était pas créé. L'install le **génère maintenant depuis `mcp_servers.json.example`**, qui inclut une **entrée `home-assistant`** (désactivée, documentée). Les serveurs sont `disabled` par défaut → à activer dans Réglages → MCP.
+- ℹ️ Le MCP Home Assistant (`tools/mcp-servers/ha-mcp`) est un **service HTTP à lancer séparément** (Docker / add-on HA / uvx, avec `HOMEASSISTANT_URL`+`TOKEN`) ; une fois lancé, renseigne son URL et passe `disabled` à false.
 ## v0.11.47 (Serveur : reload désactivé par défaut — fin du CPU à vide)
 
 ### 🐌→⚡ CPU élevé au repos corrigé

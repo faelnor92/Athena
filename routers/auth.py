@@ -146,6 +146,9 @@ async def auth_middleware(request: Request, call_next):
         pass
     public = (path == "/api/login" or path == "/api/register"
               or path.startswith("/api/auth/oidc/") or path.startswith("/api/hooks/")
+              # Numéro de version : non sensible, affiché aussi sur l'écran de connexion
+              # (sinon la version reste à « v0.0.0 » tant qu'on n'est pas loggué).
+              or path == "/api/system/version"
               # Partage AthenaDesign en lecture seule par jeton (non énumérable).
               or path.startswith("/api/athenadesign/shared/"))
     if _auth_active() and path.startswith("/api/") and not public:
