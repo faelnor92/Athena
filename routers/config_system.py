@@ -350,22 +350,20 @@ async def upsert_mcp_server(req: McpServerRequest) -> Dict[str, Any]:
     else:
         servers[name] = {"command": req.command.strip(), "args": req.args or [],
                          "env": req.env or {}, "disabled": bool(req.disabled)}
-    _mcp_save(servers)
-    from tools.mcp_manager import mcp_manager
     try:
-        await asyncio.to_thread(mcp_manager.restart)
+        _mcp_save(servers)
     except Exception as e:
-        return {"status": "saved_with_error", "detail": str(e), "mcp": mcp_manager.status()}
-    # Le redémarrage n'échoue pas si UN serveur ne se connecte pas (robustesse) : on inspecte
-    # donc le statut pour remonter la VRAIE raison à l'UI (sinon « enregistré » mais en erreur).
-    status = mcp_manager.status()
-    if not bool(req.disabled):
-        err = (status.get("errors") or {}).get(name)
-        if err:
-            return {"status": "saved_with_error",
-                    "detail": f"Serveur enregistré mais connexion échouée : {err}",
-                    "mcp": status}
-    return {"status": "success", "mcp": status}
+        raise HTTPException(status_code=500, detail=f"Écriture de la config MCP impossible : {e}")
+    # Reconnexion EN ARRIÈRE-PLAN : un serveur lent à se connecter (ex. ha-mcp qui attend HA,
+    # ou un binaire npx absent) peut faire durer le restart 30-90s → la requête HTTP expirerait
+    # et le client se déconnecterait (→ 500 ExceptionGroup starlette). On rend donc la main tout
+    # de suite ; l'UI lit l'état/erreurs via les polls de /api/config/mcp/servers.
+    from tools.mcp_manager import mcp_manager
+    import threading
+    threading.Thread(target=mcp_manager.restart, name="mcp-restart", daemon=True).start()
+    return {"status": "success",
+            "message": "Enregistré. Reconnexion des serveurs MCP en arrière-plan — l'état se met à jour dans quelques secondes.",
+            "mcp": mcp_manager.status()}
 
 
 @router.delete("/api/config/mcp/servers/{name}")
