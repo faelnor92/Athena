@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.11.64 (Modèles Gemini listés en direct + diagnostic)
+
+### 🔮 Liste Gemini DYNAMIQUE (corrige « modèle sélectionné mais ne fonctionne pas »)
+- La liste des modèles Gemini était **statique** (3 noms codés en dur) : si ta clé n'autorisait
+  pas ces noms précis (ex. `gemini-2.5-pro`), le modèle choisi renvoyait 404. Désormais
+  `/api/config/models` interroge **l'API Google AI Studio** et propose les modèles RÉELLEMENT
+  disponibles pour ta clé (comme OpenAI/Anthropic/OpenRouter).
+- Ajout d'un script de diagnostic : `scripts/diag_gemini.py` (clé, modèles dispo, test litellm).
+
+
 ## v0.11.63 (Fix 500 à l'enregistrement d'un serveur MCP)
 
 ### 🐛 Fix : « Erreur » (500) en enregistrant un serveur MCP (dont Home Assistant)
