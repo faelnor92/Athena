@@ -207,6 +207,19 @@ if [ ! -f "mcp_servers.json" ] && [ -f "mcp_servers.json.example" ]; then
     cp mcp_servers.json.example mcp_servers.json
     echo -e "${GREEN}✔ mcp_servers.json créé (serveurs MCP désactivés par défaut, dont Home Assistant).${NC}"
 fi
+# Construction du serveur MCP Home Assistant (ha-mcp) en STDIO. Son .venv est un ARTEFACT
+# DE BUILD gitignoré → absent d'un clone frais ; on le construit ici s'il manque, sinon HA
+# tombe en repli HTTP (127.0.0.1) et ne fonctionne pas. Venv DÉDIÉ (deps isolées d'Athena).
+HA_MCP_DIR="${SCRIPT_DIR}/tools/mcp-servers/ha-mcp"
+if [ -f "${HA_MCP_DIR}/pyproject.toml" ] && [ ! -x "${HA_MCP_DIR}/.venv/bin/ha-mcp" ]; then
+    echo -e "${YELLOW}🔄 Construction du serveur MCP Home Assistant (ha-mcp)...${NC}"
+    if ( cd "$HA_MCP_DIR" && uv venv .venv --python 3.13 >/dev/null 2>&1 \
+         && uv pip install --python .venv/bin/python . >/dev/null 2>&1 ); then
+        echo -e "${GREEN}✔ ha-mcp construit — Home Assistant disponible en STDIO.${NC}"
+    else
+        echo -e "${YELLOW}⚠️ Build de ha-mcp échoué (réseau ? Python 3.13 ?) — HA restera en repli HTTP.${NC}"
+    fi
+fi
 # Home Assistant en STDIO géré par Athena : on remplace le 'command' par le chemin
 # ABSOLU du console-script ha-mcp (StdioServerParameters n'a pas de cwd → besoin d'un
 # chemin absolu). Reste 'disabled' tant que l'utilisateur n'a pas mis URL+TOKEN.

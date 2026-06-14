@@ -22,6 +22,21 @@ else
     echo -e "\033[0;31m⚠️ .venv introuvable — relance ./install.sh.\033[0m"
 fi
 
+# Serveur MCP Home Assistant (ha-mcp) : son .venv est un artefact de build gitignoré → on le
+# construit s'il manque (sinon HA reste en repli HTTP 127.0.0.1 et ne fonctionne pas).
+HA_MCP_DIR="$SCRIPT_DIR/tools/mcp-servers/ha-mcp"
+if [ -f "$HA_MCP_DIR/pyproject.toml" ] && [ ! -x "$HA_MCP_DIR/.venv/bin/ha-mcp" ]; then
+    echo -e "\033[0;33m🔄 Construction du serveur MCP Home Assistant (ha-mcp)...\033[0m"
+    if command -v uv >/dev/null 2>&1; then
+        ( cd "$HA_MCP_DIR" && uv venv .venv --python 3.13 >/dev/null 2>&1 \
+          && uv pip install --python .venv/bin/python . >/dev/null 2>&1 ) \
+          && echo -e "\033[0;32m✔ ha-mcp construit.\033[0m" \
+          || echo -e "\033[0;33m⚠️ Build ha-mcp échoué — HA restera en repli HTTP.\033[0m"
+    else
+        echo -e "\033[0;33m⚠️ uv introuvable — impossible de construire ha-mcp (relance ./install.sh).\033[0m"
+    fi
+fi
+
 echo -e "\033[0;36m🚀 Redémarrage du serveur Athena...\033[0m"
 # Priorité au service systemd s'il pilote Athena : un seul gestionnaire de process,
 # pas de double instance (le nohup + Restart=always se battraient sur le port 8000).
