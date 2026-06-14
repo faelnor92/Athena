@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.51 (update.sh : bon venv, plus d'erreur externally-managed)
+
+### 🔄 Correctif du script de mise à jour
+- `update.sh` activait **`venv/bin/activate`** alors que le venv est **`.venv`** → l'activation échouait, `pip` tombait sur le **python système** → erreur **`externally-managed-environment`** (Debian/PEP 668). Désormais on utilise directement **`.venv/bin/python -m pip`** (jamais le python système).
+- Le fallback de relance manuelle utilise aussi **`.venv/bin/python server.py`** (et non `python3` système, qui n'a pas fastapi).
 ## v0.11.50 (Diagnostic : « Vérification… » figé + bouton de mise à jour toujours dispo)
 
 ### 🔄 Mise à jour débloquée
