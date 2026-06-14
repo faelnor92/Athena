@@ -14,8 +14,13 @@ if [ -f "VERSION" ]; then
 fi
 
 echo -e "\033[0;33m🔄 Installation des éventuelles nouvelles dépendances...\033[0m"
-source venv/bin/activate
-pip install -r requirements.txt --quiet
+# Le venv est .venv (créé par install.sh). On utilise SON python directement → pas de
+# bascule sur le python système (qui déclenche « externally-managed-environment » sur Debian).
+if [ -x ".venv/bin/python" ]; then
+    .venv/bin/python -m pip install -r requirements.txt --quiet
+else
+    echo -e "\033[0;31m⚠️ .venv introuvable — relance ./install.sh.\033[0m"
+fi
 
 echo -e "\033[0;36m🚀 Redémarrage du serveur Athena...\033[0m"
 if command -v athena &> /dev/null; then
@@ -26,7 +31,7 @@ else
     else
         echo -e "\033[0;33m⚠️ Relance manuelle du serveur...\033[0m"
         pkill -f "python.*server.py" || true
-        nohup python3 server.py > server.log 2>&1 &
+        nohup .venv/bin/python server.py > server.log 2>&1 &
         echo -e "\033[0;32m✔ Serveur relancé en arrière-plan (PID $!).\033[0m"
     fi
 fi
