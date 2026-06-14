@@ -1,12 +1,19 @@
+# TEMPLATE — install.sh GÉNÈRE automatiquement la vraie unité (chemins/utilisateur réels)
+# dans /etc/systemd/system/athena-swarm.service. Ce fichier sert de référence.
+# Remplace <USER> et <CHEMIN> si tu l'installes à la main, puis :
+#   sudo cp athena-swarm.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now athena-swarm.service
 [Unit]
-Description=Athena Multi-Agent Swarm Orchestration Service
-After=network.target
+Description=Athena Multi-Agent Swarm
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=legrill@ad.unistra.fr
-WorkingDirectory=/home/legrill@ad.unistra.fr/Bureau/test_orchestrator
-ExecStart=/home/legrill@ad.unistra.fr/Bureau/test_orchestrator/.venv/bin/python3 server.py
+User=<USER>
+WorkingDirectory=<CHEMIN>
+Environment=RELOAD=false
+ExecStart=<CHEMIN>/.venv/bin/python <CHEMIN>/server.py
 Restart=always
 RestartSec=5
 StandardOutput=journal
