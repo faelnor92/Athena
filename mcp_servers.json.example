@@ -1,18 +1,25 @@
 {
   "_comment": "Copiez ce fichier en mcp_servers.json et adaptez. Format compatible Claude Desktop. Le vrai fichier est ignoré par git (peut contenir des tokens).",
   "mcpServers": {
+    "home-assistant": {
+      "_note": "Serveur MCP Home Assistant (livré dans tools/mcp-servers/ha-mcp). C'est un SERVICE HTTP à lancer SÉPARÉMENT (Docker / add-on HA / uvx — voir tools/mcp-servers/ha-mcp/README.md), avec HOMEASSISTANT_URL + HOMEASSISTANT_TOKEN. Une fois lancé, mets son URL ci-dessous et passe disabled à false.",
+      "url": "http://127.0.0.1:8099/mcp",
+      "transport": "http",
+      "disabled": true
+    },
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/chemin/explicite/autorise"],
-      "disabled": false,
-      "_note": "Serveur sensible (FS) : non démarré si ADMIN_PASSWORD est vide."
+      "disabled": true,
+      "_note": "Serveur sensible (FS) : adapte le chemin autorisé puis disabled=false. Non démarré si ADMIN_PASSWORD est vide."
     },
     "github": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxx"
-      }
+      },
+      "disabled": true
     },
     "exemple_http": {
       "url": "https://mon-serveur-mcp.example.com/mcp",

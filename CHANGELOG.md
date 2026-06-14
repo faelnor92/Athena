@@ -1,5 +1,26 @@
 # Historique des Versions (Changelog)
 
+## v0.11.50 (Diagnostic : « Vérification… » figé + bouton de mise à jour toujours dispo)
+
+### 🔄 Mise à jour débloquée
+- **« Vérification de la version » restait figé** : si `/api/system/update_check` renvoyait un non-200 (ex. 401 **avant login**), le front ne mettait jamais à jour le statut. Corrigé : (1) l'endpoint est rendu **public** (comme la version), (2) le front affiche désormais un statut **final dans TOUS les cas** (à jour / indisponible / erreur).
+- **Bouton « Forcer la mise à jour » toujours disponible** dans le Diagnostic (il était caché quand aucune mise à jour n'était détectée → impossible de forcer). Tu peux maintenant lancer `git pull origin main` + redémarrage à tout moment.
+## v0.11.49 (Liste de modèles : endpoint custom + fin de la liste inutile)
+
+### 🧩 `/api/config/models` revu
+- **Modèles de l'endpoint CUSTOM enfin listés** : interrogation robuste de `CUSTOM_LLM_API_BASE` (essaie `/v1/models` ET `/models`, timeout 5 s, gère les formats `{data:[…]}` ou liste brute) → tes modèles apparaissent en tête (« ⭐ Serveur Custom »). (Corrige aussi un bug où les 2 branches d'URL étaient identiques.)
+- **Fin de la longue liste inutile** : le catalogue statique d'un fournisseur cloud (OpenAI/Anthropic/Gemini/Groq/Mistral/OpenRouter) n'est désormais affiché **que si sa clé API est configurée**. Avec seulement ton endpoint custom → tu ne vois **que tes modèles**. Listes live (OpenAI/Anthropic/OpenRouter) seulement si clé ; Ollama seulement si joignable.
+## v0.11.48 (Installs fraîches : version affichée + config MCP/Home Assistant)
+
+### 🔧 Correctifs « nouvelle install »
+- **Version bloquée à « v0.0.0 »** : `/api/system/version` était derrière l'auth → sur une install avec mot de passe, le front l'appelait AVANT login (401) et n'affichait jamais la vraie version. L'endpoint (non sensible) est désormais **public** → la version s'affiche, y compris sur l'écran de connexion.
+- **Aucun serveur MCP sur une install fraîche** (dont Home Assistant) : `mcp_servers.json` est gitignoré et n'était pas créé. L'install le **génère maintenant depuis `mcp_servers.json.example`**, qui inclut une **entrée `home-assistant`** (désactivée, documentée). Les serveurs sont `disabled` par défaut → à activer dans Réglages → MCP.
+- ℹ️ Le MCP Home Assistant (`tools/mcp-servers/ha-mcp`) est un **service HTTP à lancer séparément** (Docker / add-on HA / uvx, avec `HOMEASSISTANT_URL`+`TOKEN`) ; une fois lancé, renseigne son URL et passe `disabled` à false.
+## v0.11.47 (Serveur : reload désactivé par défaut — fin du CPU à vide)
+
+### 🐌→⚡ CPU élevé au repos corrigé
+- `server.py` lançait uvicorn avec **`reload=True` codé en dur** : le surveillant de fichiers scanne tout l'arbre (`.venv`, `.chroma_db`, `athena_projects`…) → **CPU saturé EN PERMANENCE**, même serveur au repos.
+- `reload` est désormais **gouverné par `RELOAD`** (défaut **false**, sain pour un déploiement). En dev, `RELOAD=true` réactive le rechargement auto — limité aux dossiers de code (`core/routers/tools/voice`, `*.py`) pour ne pas pomper le CPU.
 ## v0.11.46 (Install vocale : resemblyzer optionnel)
 
 ### 🔧 Correctif

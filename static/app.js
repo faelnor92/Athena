@@ -106,22 +106,34 @@ async function checkSystemUpdate() {
                 if (statusText) statusText.innerHTML = `Nouvelle version disponible : <strong style="color:#28a745;">v${data.latest_version}</strong> (actuelle: v${data.current_version})`;
             } else {
                 if (btnDock) btnDock.style.display = "none";
-                if (btnDoctor) btnDoctor.style.display = "none";
+                // Le bouton du Diagnostic reste TOUJOURS disponible : « Forcer la mise à jour »
+                // (git pull + redémarrage), même quand la vérif ne détecte rien ou échoue.
+                if (btnDoctor) { btnDoctor.style.display = "inline-block"; btnDoctor.textContent = "Forcer la mise à jour"; }
                 if (statusText) {
                     if (data.check_unavailable) {
                         statusText.innerHTML = data.current_version
                             ? `Version v${data.current_version} · vérification des mises à jour indisponible.`
                             : `Vérification des mises à jour indisponible.`;
-                    } else if (data.current_version) {
-                        statusText.innerHTML = `Athena est à jour (v${data.current_version}).`;
+                    } else {
+                        statusText.innerHTML = data.current_version
+                            ? `Athena est à jour (v${data.current_version}).`
+                            : `Athena est à jour.`;
                     }
                 }
             }
+        } else {
+            // Réponse non-200 (ex. 401 avant login) : ne JAMAIS laisser « Vérification… » figé.
+            const statusText = document.getElementById("update-status-text");
+            if (statusText) statusText.textContent = "Vérification des mises à jour indisponible.";
+            const btnDoctor = document.getElementById("btn-force-update");
+            if (btnDoctor) { btnDoctor.style.display = "inline-block"; btnDoctor.textContent = "Forcer la mise à jour"; }
         }
     } catch (e) {
         console.error("Failed to check system update:", e);
         const statusText = document.getElementById("update-status-text");
         if (statusText) statusText.textContent = "Impossible de vérifier les mises à jour.";
+        const btnDoctor = document.getElementById("btn-force-update");
+        if (btnDoctor) { btnDoctor.style.display = "inline-block"; btnDoctor.textContent = "Forcer la mise à jour"; }
     }
 }
 

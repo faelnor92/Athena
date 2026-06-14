@@ -200,6 +200,14 @@ else
     echo -e "${GREEN}✔ Le fichier de configuration .env existe déjà (non modifié).${NC}"
 fi
 
+# Config MCP : créer mcp_servers.json depuis l'exemple (sinon AUCUN serveur MCP n'est
+# proposé sur une install fraîche — ex. Home Assistant). Les serveurs sont 'disabled'
+# par défaut → à activer/renseigner dans ⚙️ Réglages → MCP (ou en éditant le fichier).
+if [ ! -f "mcp_servers.json" ] && [ -f "mcp_servers.json.example" ]; then
+    cp mcp_servers.json.example mcp_servers.json
+    echo -e "${GREEN}✔ mcp_servers.json créé (serveurs MCP désactivés par défaut, dont Home Assistant).${NC}"
+fi
+
 # -------------------------------------------------------------------------
 # ÉTAPE 4b : Assistant interactif (composants optionnels + configuration .env)
 # -------------------------------------------------------------------------
