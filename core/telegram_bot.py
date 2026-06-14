@@ -59,7 +59,10 @@ def send_message(chat_id, text: str):
     text = text or "(réponse vide)"
     for i in range(0, len(text), 4000):
         try:
-            _call("sendMessage", chat_id=chat_id, text=text[i:i + 4000])
+            resp = _call("sendMessage", chat_id=chat_id, text=text[i:i + 4000])
+            if not resp.get("ok"):
+                # Erreur côté Telegram (chat inconnu, bot bloqué…) — silencieuse avant, loggée ici.
+                print(f"[Telegram] sendMessage refusé pour {chat_id} : {resp.get('description')}")
         except Exception as e:
             print(f"[Telegram] envoi échoué : {e}")
             return
@@ -119,6 +122,8 @@ def _handle_message(msg: dict):
     if not chat_id or not text:
         return
 
+    print(f"[Telegram] ← message de {chat_id} : {text[:80]!r} "
+          f"(autorisé={telegram_pairing.is_allowed(chat_id)})")
     low = text.lower()
 
     # Commandes accessibles à tous.
@@ -177,9 +182,12 @@ def _handle_message(msg: dict):
 
     # --- Réponse de l'essaim ---
     try:
-        send_message(chat_id, _respond(chat_id, text))
+        reply = _respond(chat_id, text)
+        print(f"[Telegram] → réponse à {chat_id} ({len(reply)} car.)")
+        send_message(chat_id, reply)
     except Exception as e:
-        print(f"[Telegram] erreur essaim : {e}")
+        import traceback
+        print(f"[Telegram] erreur essaim : {e}\n{traceback.format_exc()}")
         send_message(chat_id, f"⚠️ Erreur interne : {e}")
 
 
