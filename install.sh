@@ -231,12 +231,21 @@ bin_path = sys.argv[1]
 try:
     d = json.load(open("mcp_servers.json", encoding="utf-8"))
     srv = d.get("mcpServers", d)
-    ha = srv.get("home-assistant")
-    if isinstance(ha, dict) and "url" not in ha:
-        ha["command"] = bin_path
-        ha.setdefault("args", [])
+    changed = False
+    # Répare l'entrée HA intégrée (les 2 noms possibles) : FORCE le STDIO et retire l'URL
+    # périmée (ex. http://127.0.0.1:8099 du repli) qui primait sur le STDIO et faisait échouer
+    # la connexion. On conserve env (HOMEASSISTANT_URL/TOKEN) et l'état disabled.
+    for key in ("home-assistant", "homeassistant"):
+        ha = srv.get(key)
+        if isinstance(ha, dict):
+            ha["command"] = bin_path
+            ha.setdefault("args", [])
+            ha.pop("url", None)
+            ha.pop("transport", None)
+            changed = True
+    if changed:
         json.dump(d, open("mcp_servers.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-        print("  -> home-assistant (stdio) prêt :", bin_path)
+        print("  -> home-assistant réparé en STDIO :", bin_path)
 except Exception as e:
     print("  (info) entrée HA non modifiée :", e)
 PYHA

@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.11.62 (Home Assistant : réparation auto de l'entrée périmée)
+
+### 🏠 Fix : l'entrée HA gardait une URL `127.0.0.1:8099` qui faisait échouer la connexion
+- Sur les installs existantes, l'entrée `home-assistant` du `mcp_servers.json` conservait un
+  `"url": "http://127.0.0.1:8099/mcp"` (repli HTTP d'avant le build de ha-mcp). Or un `url`
+  **prime** sur le STDIO → Athena se connectait dans le vide → « Erreur ».
+- **Correctif** : `install.sh` et `update.sh` **réparent** désormais l'entrée HA (les 2 noms
+  `home-assistant`/`homeassistant`) → forcent le **STDIO** (chemin du binaire ha-mcp), **retirent
+  l'`url`/`transport`** périmés, et **conservent** `env` (HOMEASSISTANT_URL/TOKEN) + `disabled`.
+- Pré-validation HA corrigée pour reconnaître aussi le nom `home-assistant` (avec tiret).
+- ⟹ Après `./update.sh`, Home Assistant fonctionne en STDIO sans action manuelle.
+
 ## v0.11.61 (Home Assistant : construction automatique de ha-mcp)
 
 ### 🏠 Fix : Home Assistant tombait en repli HTTP (127.0.0.1) et ne marchait pas
