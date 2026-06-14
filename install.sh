@@ -207,6 +207,27 @@ if [ ! -f "mcp_servers.json" ] && [ -f "mcp_servers.json.example" ]; then
     cp mcp_servers.json.example mcp_servers.json
     echo -e "${GREEN}✔ mcp_servers.json créé (serveurs MCP désactivés par défaut, dont Home Assistant).${NC}"
 fi
+# Home Assistant en STDIO géré par Athena : on remplace le 'command' par le chemin
+# ABSOLU du console-script ha-mcp (StdioServerParameters n'a pas de cwd → besoin d'un
+# chemin absolu). Reste 'disabled' tant que l'utilisateur n'a pas mis URL+TOKEN.
+HA_MCP_BIN="${SCRIPT_DIR}/tools/mcp-servers/ha-mcp/.venv/bin/ha-mcp"
+if [ -f "mcp_servers.json" ] && [ -x "$HA_MCP_BIN" ]; then
+    "$SCRIPT_DIR/.venv/bin/python" - "$HA_MCP_BIN" <<'PYHA'
+import json, sys
+bin_path = sys.argv[1]
+try:
+    d = json.load(open("mcp_servers.json", encoding="utf-8"))
+    srv = d.get("mcpServers", d)
+    ha = srv.get("home-assistant")
+    if isinstance(ha, dict) and "url" not in ha:
+        ha["command"] = bin_path
+        ha.setdefault("args", [])
+        json.dump(d, open("mcp_servers.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+        print("  -> home-assistant (stdio) prêt :", bin_path)
+except Exception as e:
+    print("  (info) entrée HA non modifiée :", e)
+PYHA
+fi
 
 # -------------------------------------------------------------------------
 # ÉTAPE 4b : Assistant interactif (composants optionnels + configuration .env)

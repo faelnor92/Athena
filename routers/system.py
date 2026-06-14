@@ -96,13 +96,19 @@ async def run_system_update():
             )
         else:
             script_path = os.path.join(root_dir, "update.sh")
+            # Sortie redirigée vers update.log : l'endpoint répond avant la fin du script,
+            # donc sans ce log un échec de git pull / pip / restart serait invisible côté UI.
+            log_path = os.path.join(root_dir, "update.log")
+            log_f = open(log_path, "w", encoding="utf-8")
             subprocess.Popen(
                 ["bash", script_path],
                 cwd=root_dir,
                 start_new_session=True,
-                preexec_fn=os.setsid
+                preexec_fn=os.setsid,
+                stdout=log_f,
+                stderr=subprocess.STDOUT,
             )
-        return {"status": "success", "message": "Mise à jour lancée, redémarrage imminent."}
+        return {"status": "success", "message": "Mise à jour lancée (journal : update.log), redémarrage imminent."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur de lancement de la maj : {str(e)}")
 

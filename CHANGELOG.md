@@ -1,5 +1,30 @@
 # Historique des Versions (Changelog)
 
+## v0.11.57 (Vrai marketplace MCP — recherche en ligne)
+
+### 🌐 Marketplace MCP dynamique (registre officiel)
+- Jusqu'ici le marketplace n'affichait qu'un **catalogue local codé en dur**. Ajout d'une **recherche en ligne** dans le **registre MCP officiel** (`registry.modelcontextprotocol.io`) : tape un terme (notion, postgres, brave…) → la liste des serveurs publiés s'affiche, prête à installer.
+- **Mapping automatique** vers une commande lançable : `npm`→`npx -y`, `pypi`→`uvx`, `oci`→`docker run`, ou serveur **distant** (`remotes` http/sse) avec URL + transport pré-remplis. Les variables d'environnement requises sont injectées dans le formulaire.
+- Filtrage sur les serveurs **actifs / dernière version**. Host fixe de confiance (pas d'URL arbitraire → pas de SSRF), GET only, configurable via `MCP_REGISTRY_URL`.
+- Le bouton « Installer » d'un résultat distant porte désormais bien **url + transport** (corrige aussi l'install des presets HTTP/SSE).
+## v0.11.56 (Home Assistant en STDIO — géré par Athena, sans Docker)
+
+### 🏠 ha-mcp piloté par Athena (auto-start / auto-restart)
+- ha-mcp expose **le même jeu d'outils (84+) en STDIO** (`ha-mcp` = entrypoint stdio). On bascule donc l'intégration HA en **STDIO** : Athena le lance comme sous-process → il **démarre et se relance automatiquement avec Athena**, **plus besoin de Docker** ni de service HTTP séparé.
+- **Marketplace dynamique** : l'entrée Home Assistant remplit automatiquement le chemin absolu du console-script `tools/mcp-servers/ha-mcp/.venv/bin/ha-mcp` s'il est installé (repli HTTP sinon). Il ne reste qu'à saisir `HOMEASSISTANT_URL` + un token longue durée.
+- **install.sh** : injecte ce chemin absolu dans l'entrée `home-assistant` de `mcp_servers.json` (stdio, `disabled` tant que les identifiants ne sont pas remplis). `mcp_servers.json.example` passé en stdio.
+- Rappel : `StdioServerParameters` n'a pas de `cwd` → on utilise le chemin **absolu** du console-script (shebang auto-suffisant vers son venv).
+## v0.11.55 (Mise à jour depuis l'UI — fiabilisée)
+
+### 🔁 Fix : « Mettre à jour » depuis l'interface
+- `update.sh` est maintenant **systemd-aware** : si le service `athena-swarm` pilote Athena, on fait un `systemctl restart` propre (ou kill + `Restart=always` si pas de droits root) — **fini le conflit** entre le `nohup` du script et le redémarrage systemd qui se battaient sur le port 8000.
+- La sortie de la mise à jour est journalisée dans **`update.log`** (l'endpoint répond avant la fin du script ; sans ce log, un échec de `git pull`/`pip`/restart était invisible côté UI).
+## v0.11.54 (Liste des modèles agents — corrigée)
+
+### 🐛 Fix : liste des modèles vide dans la config des agents
+- **Cause racine** : l'endpoint `/api/config/models` lisait `.env` en chemin **relatif au cwd**. Lancé depuis un autre dossier (wrapper `athena`, nohup, ancien service), le `.env` n'était pas trouvé → aucune clé/endpoint détecté → liste vide. → Désormais `.env` est résolu aussi par **chemin absolu** (racine projet), + lecture de l'environnement live.
+- **Endpoint custom plus robuste** : on tente plusieurs chemins (`/v1/models`, `/models`, `/api/models`, `/api/tags`) et plusieurs formats (`data`/`models`, `id`/`name`/`model`) → compatible vLLM / LM Studio / Open WebUI / LiteLLM / Ollama.
+- **Jamais vide** : si rien n'est détecté au moment de l'appel, un court groupe « ⚡ Courants » de raccourcis est proposé (le champ reste en saisie libre).
 ## v0.11.53 (Démarrage auto au boot — Athena + MCP locaux)
 
 ### 🔁 Service systemd auto-configuré

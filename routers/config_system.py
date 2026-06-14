@@ -131,11 +131,10 @@ _MCP_MARKETPLACE_CATALOGS = [
         "category": "Communauté & Extensions",
         "servers": [
              {
-                "label": "Home Assistant (ha-mcp)", "name": "homeassistant", "icon": "🏠",
+                "label": "Home Assistant (ha-mcp) — local, géré par Athena", "name": "homeassistant", "icon": "🏠",
                 "command": "", "args": [],
-                "url": "http://127.0.0.1:8099/mcp", "transport": "http",
-                "env": {},
-                "note": "84+ outils HA. C'est un SERVICE HTTP : lance-le d'abord (uv/Docker/add-on HA, voir tools/mcp-servers/ha-mcp/README) avec HOMEASSISTANT_URL+TOKEN, puis mets son URL ci-dessus."
+                "env": {"HOMEASSISTANT_URL": "", "HOMEASSISTANT_TOKEN": ""},
+                "note": "84+ outils HA en STDIO : Athena le lance et le relance toute seule (pas de Docker, démarre/redémarre avec Athena). Renseigne HOMEASSISTANT_URL (ex: http://homeassistant.local:8123) + un token longue durée HA. Le chemin de commande est rempli automatiquement si ha-mcp est installé."
             },
             {
                 "label": "SQLite", "name": "sqlite", "icon": "🗃️",
@@ -193,10 +192,116 @@ async def list_mcp_servers() -> Dict[str, Any]:
         })
     return {"servers": out, "presets": [], "tool_count": st.get("tool_count", 0)}
 
+def _ha_mcp_stdio_command() -> str:
+    """Chemin absolu du console-script stdio de ha-mcp s'il est installé (sinon '')."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cand = os.path.join(root, "tools", "mcp-servers", "ha-mcp", ".venv", "bin", "ha-mcp")
+    return cand if os.path.exists(cand) else ""
+
+
+_REGISTRY_BASE = os.getenv("MCP_REGISTRY_URL", "https://registry.modelcontextprotocol.io")
+
+
+def _map_registry_server(srv: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Transforme une entrée du registre MCP officiel en carte UA (label/command/args/env/url).
+
+    Gère les packages (npm→npx, pypi→uvx, oci→docker) et les remotes (http/sse).
+    Renvoie None si on ne sait pas la lancer."""
+    name = srv.get("name") or ""
+    short = name.split("/")[-1] if name else (srv.get("title") or "serveur")
+    card: Dict[str, Any] = {
+        "label": srv.get("title") or short,
+        "name": short.replace(" ", "-").lower() or "mcp",
+        "icon": "🌐",
+        "command": "", "args": [], "env": {},
+        "note": (srv.get("description") or "")[:300] + (f"  ·  {name}" if name else ""),
+    }
+    # 1) Remotes (serveur HTTP/SSE hébergé)
+    for rem in (srv.get("remotes") or []):
+        url = rem.get("url")
+        if not url:
+            continue
+        t = (rem.get("type") or "").lower()
+        card["url"] = url
+        card["transport"] = "sse" if "sse" in t else "http"
+        return card
+    # 2) Packages (à lancer en local via un runner)
+    for pkg in (srv.get("packages") or []):
+        rt = (pkg.get("registryType") or pkg.get("registry_type") or "").lower()
+        ident = pkg.get("identifier")
+        if not ident:
+            continue
+        if rt == "npm":
+            card["command"], card["args"] = "npx", ["-y", ident]
+        elif rt == "pypi":
+            card["command"], card["args"] = "uvx", [ident]
+        elif rt in ("oci", "docker"):
+            card["command"], card["args"] = "docker", ["run", "-i", "--rm", ident]
+        else:
+            continue
+        env_vars = pkg.get("environmentVariables") or pkg.get("environment_variables") or []
+        card["env"] = {ev.get("name"): "" for ev in env_vars if ev.get("name")}
+        return card
+    return None
+
+
+@router.get("/api/config/mcp/registry")
+async def mcp_registry_search(q: str = "", limit: int = 30) -> Dict[str, Any]:
+    """Recherche en ligne dans le registre MCP officiel (modelcontextprotocol.io).
+
+    Host fixe et de confiance (pas d'URL arbitraire → pas de SSRF). GET only."""
+    import requests
+    try:
+        params = {"limit": max(1, min(limit, 50))}
+        if q.strip():
+            params["search"] = q.strip()
+        r = requests.get(f"{_REGISTRY_BASE}/v0/servers", params=params, timeout=8)
+        if r.status_code != 200:
+            return {"servers": [], "error": f"registre HTTP {r.status_code}"}
+        payload = r.json()
+        items = payload.get("servers", payload) if isinstance(payload, dict) else payload
+        cards = []
+        seen = set()
+        for it in (items or []):
+            srv = it.get("server", it) if isinstance(it, dict) else {}
+            # On ne garde que les serveurs actifs et la dernière version.
+            meta = (it.get("_meta") or {}).get("io.modelcontextprotocol.registry/official", {}) if isinstance(it, dict) else {}
+            if meta and (meta.get("status") not in (None, "active") or meta.get("isLatest") is False):
+                continue
+            card = _map_registry_server(srv)
+            if card and card["name"] not in seen:
+                seen.add(card["name"])
+                cards.append(card)
+        return {"servers": cards, "count": len(cards)}
+    except Exception as e:
+        return {"servers": [], "error": str(e)}
+
+
 @router.get("/api/config/mcp/marketplace")
 async def mcp_marketplace() -> list[Dict[str, Any]]:
-    """Retourne le catalogue complet des serveurs MCP pour l'UI."""
-    return _MCP_MARKETPLACE_CATALOGS
+    """Retourne le catalogue complet des serveurs MCP pour l'UI.
+
+    L'entrée Home Assistant est résolue dynamiquement : si ha-mcp est installé,
+    on remplit son chemin de commande stdio (géré par Athena). Sinon on bascule
+    l'entrée en mode HTTP avec une note pour la lancer à part."""
+    import copy
+    catalog = copy.deepcopy(_MCP_MARKETPLACE_CATALOGS)
+    ha_cmd = _ha_mcp_stdio_command()
+    for cat in catalog:
+        for srv in cat.get("servers", []):
+            if srv.get("name") != "homeassistant":
+                continue
+            if ha_cmd:
+                srv["command"] = ha_cmd
+                srv["args"] = []
+            else:
+                # ha-mcp pas installé localement → repli HTTP (service à lancer à part).
+                srv["label"] = "Home Assistant (ha-mcp) — HTTP"
+                srv["url"] = "http://127.0.0.1:8099/mcp"
+                srv["transport"] = "http"
+                srv["note"] = ("ha-mcp non installé localement. Lance-le en service HTTP "
+                               "(Docker/uv/add-on HA) avec HOMEASSISTANT_URL+TOKEN, puis mets son URL ci-dessus.")
+    return catalog
 
 
 class McpServerRequest(BaseModel):

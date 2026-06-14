@@ -28,13 +28,23 @@ async def get_budget() -> Dict[str, Any]:
 
 def _parse_env_local() -> Dict[str, str]:
     env_vars = {}
-    if os.path.exists(".env"):
-        with open(".env", "r", encoding="utf-8") as f:
+    # On cherche .env d'abord dans le cwd, puis à la racine du projet (parent de routers/).
+    # Indispensable quand le serveur est lancé depuis un autre dossier (nohup, wrapper,
+    # service) : sans ça le .env n'est pas trouvé et la liste des modèles tombe vide.
+    candidates = [".env", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")]
+    seen = set()
+    for path in candidates:
+        ap = os.path.abspath(path)
+        if ap in seen or not os.path.exists(ap):
+            continue
+        seen.add(ap)
+        with open(ap, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
-                    env_vars[k.strip()] = v.strip("'\"")
+                    env_vars.setdefault(k.strip(), v.strip("'\""))
+        break
     return env_vars
 
 @router.get("/api/telemetry")
@@ -199,27 +209,56 @@ async def reset_pricing() -> Dict[str, Any]:
 
 @router.get("/api/config/models")
 async def list_available_models() -> Dict[str, List[str]]:
-    env = _parse_env_local()
+    # On lit le .env ET l'environnement live (l'UI écrit dans .env, mais une variable
+    # passée au process sans être dans .env doit quand même compter).
+    env = {**_parse_env_local()}
+    for k in ("CUSTOM_LLM_API_BASE", "CUSTOM_LLM_API_KEY", "OPENAI_API_KEY",
+              "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY",
+              "MISTRAL_API_KEY", "OPENROUTER_API_KEY", "OLLAMA_API_BASE"):
+        v = os.environ.get(k)
+        if v and not (env.get(k) or "").strip():
+            env[k] = v
     models: Dict[str, List[str]] = {}
 
-    # --- Endpoint CUSTOM (OpenAI-compatible) EN PREMIER : on liste ses modèles en direct
-    #     via /v1/models. C'est le cas d'usage principal (vLLM/LM Studio/Open WebUI…).
+    # --- Endpoint CUSTOM (OpenAI-compatible) EN PREMIER : on liste ses modèles en direct.
+    #     Cas d'usage principal (vLLM/LM Studio/Open WebUI/LiteLLM…). On essaie plusieurs
+    #     chemins car les serveurs n'exposent pas tous /v1/models.
     custom_base = (env.get("CUSTOM_LLM_API_BASE") or "").rstrip("/")
     custom_key = env.get("CUSTOM_LLM_API_KEY", "")
     if custom_base:
         base_v1 = custom_base if custom_base.endswith("/v1") else custom_base + "/v1"
+        root = custom_base[:-3].rstrip("/") if custom_base.endswith("/v1") else custom_base
         headers = {"Authorization": f"Bearer {custom_key}"} if custom_key else {}
-        for url in (f"{base_v1}/models", f"{custom_base}/models"):
+        # OpenAI-compat (/v1/models, /models) puis Ollama (/api/tags) et Open WebUI (/api/models)
+        candidates = [f"{base_v1}/models", f"{root}/models",
+                      f"{root}/api/models", f"{root}/api/tags"]
+        seen = set()
+        for url in candidates:
+            if url in seen:
+                continue
+            seen.add(url)
             try:
-                r = requests.get(url, headers=headers, timeout=5)
-                if r.status_code == 200:
-                    payload = r.json()
-                    data = payload.get("data", payload) if isinstance(payload, dict) else payload
-                    c_models = sorted(f"custom/{m['id']}" for m in data
-                                      if isinstance(m, dict) and m.get("id"))
-                    if c_models:
-                        models["⭐ Serveur Custom (ton endpoint)"] = c_models
-                        break
+                r = requests.get(url, headers=headers, timeout=4)
+                if r.status_code != 200:
+                    continue
+                payload = r.json()
+                # Formats : {"data":[{"id":..}]} (OpenAI) ; {"models":[{"name":..}]} (Ollama) ; [..]
+                if isinstance(payload, dict):
+                    data = payload.get("data") or payload.get("models") or []
+                else:
+                    data = payload
+                ids = []
+                for m in (data or []):
+                    if isinstance(m, dict):
+                        mid = m.get("id") or m.get("name") or m.get("model")
+                    else:
+                        mid = m
+                    if mid:
+                        ids.append(f"custom/{mid}")
+                c_models = sorted(set(ids))
+                if c_models:
+                    models["⭐ Serveur Custom (ton endpoint)"] = c_models
+                    break
             except Exception:
                 continue
 
@@ -280,5 +319,17 @@ async def list_available_models() -> Dict[str, List[str]]:
                 models["Ollama (installés)"] = lm
     except Exception:
         pass
+
+    # Filet de sécurité : si RIEN n'a été détecté (pas de clé cloud, endpoint custom
+    # injoignable au moment de l'appel), on propose quand même une courte liste de
+    # raccourcis courants — le champ reste un texte libre, donc l'utilisateur peut
+    # toujours saisir n'importe quel modèle. Jamais de liste vide.
+    if not models:
+        models["⚡ Courants (saisie libre possible)"] = [
+            "gpt-4o", "gpt-4o-mini",
+            "anthropic/claude-3-5-sonnet-20241022", "anthropic/claude-3-5-haiku-20241022",
+            "gemini/gemini-2.5-flash",
+            "custom/(ton-modèle)",
+        ]
 
     return models
