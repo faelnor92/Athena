@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.55 (Mise à jour depuis l'UI — fiabilisée)
+
+### 🔁 Fix : « Mettre à jour » depuis l'interface
+- `update.sh` est maintenant **systemd-aware** : si le service `athena-swarm` pilote Athena, on fait un `systemctl restart` propre (ou kill + `Restart=always` si pas de droits root) — **fini le conflit** entre le `nohup` du script et le redémarrage systemd qui se battaient sur le port 8000.
+- La sortie de la mise à jour est journalisée dans **`update.log`** (l'endpoint répond avant la fin du script ; sans ce log, un échec de `git pull`/`pip`/restart était invisible côté UI).
 ## v0.11.54 (Liste des modèles agents — corrigée)
 
 ### 🐛 Fix : liste des modèles vide dans la config des agents
