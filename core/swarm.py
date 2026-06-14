@@ -52,6 +52,7 @@ import tools.playbooks
 import tools.claude_code_tool
 import tools.email_tools
 import tools.gmail_oauth
+import tools.nextcloud_tools
 
 # Profondeur de DÉLÉGATION du contexte courant (anti-récursion infinie entre sous-agents).
 # parent=0 → enfant=1 → petit-enfant rejeté au-delà de DELEGATE_MAX_DEPTH.
@@ -106,6 +107,12 @@ AVAILABLE_TOOLS = {
     "create_email_draft": tools.email_tools.create_email_draft,
     "read_gmail": tools.gmail_oauth.read_gmail,
     "read_gmail_message": tools.gmail_oauth.read_gmail_message,
+    "nextcloud_list_files": tools.nextcloud_tools.nextcloud_list_files,
+    "nextcloud_read_file": tools.nextcloud_tools.nextcloud_read_file,
+    "nextcloud_write_file": tools.nextcloud_tools.nextcloud_write_file,
+    "nextcloud_delete_file": tools.nextcloud_tools.nextcloud_delete_file,
+    "nextcloud_list_tasks": tools.nextcloud_tools.nextcloud_list_tasks,
+    "nextcloud_search_contacts": tools.nextcloud_tools.nextcloud_search_contacts,
     "make_plan": tools.planning_tools.make_plan,
     "update_plan_step": tools.planning_tools.update_plan_step,
     "get_plan": tools.planning_tools.get_plan,
@@ -160,6 +167,8 @@ _TOOL_GROUPS = {
                "add_list_item", "get_list_items", "toggle_list_item", "delete_list_item"},
     "email": {"read_inbox", "read_email", "create_email_draft", "read_gmail", "read_gmail_message"},
     "documents": {"analyze_document", "transcribe_and_summarize_meeting", "ingest_file"},
+    "nextcloud": {"nextcloud_list_files", "nextcloud_read_file", "nextcloud_write_file",
+                  "nextcloud_delete_file", "nextcloud_list_tasks", "nextcloud_search_contacts"},
     "skills": {"save_new_skill", "delete_skill"},
     "computer": {"computer_use_action"},
 }
@@ -183,6 +192,8 @@ _TOOL_GROUP_KEYWORDS = {
               "brouillon", "messagerie"],
     "documents": ["document", "pdf", "résume ce", "resume ce", "analyse ce", "compte rendu",
                   "compte-rendu", "transcris", "transcription", "ingère", "ingere"],
+    "nextcloud": ["nextcloud", "webdav", "carddav", "contact", "carnet d'adresses", "fichier nextcloud",
+                  "mon cloud", "drive perso", "roman", "chapitre", "manuscrit"],
     "skills": ["compétence", "competence", "skill", "nouvel outil", "apprends à"],
     "computer": ["souris", "clic", "écran", "ecran", "screenshot", "capture"],
 }
@@ -967,16 +978,15 @@ class Swarm:
             official_key = _u("OPENAI_API_KEY")
         has_official_key = bool(official_key)
 
-        # Modèle cloud "standard" SANS préfixe (gpt-4o, claude-3-… écrits nus).
-        is_standard_bare = ("/" not in m) and ("gpt-" in model_l or "claude-" in model_l)
-
         # Décision : endpoint custom si préfixe custom, OU si "openai/" (= endpoint
-        # OpenAI-compatible local), OU si rien d'explicitement natif/standard-avec-clé
-        # → repli sur le serveur custom configuré. JAMAIS pour un préfixe provider natif.
+        # OpenAI-compatible local), OU si on n'a NI préfixe provider natif NI clé officielle
+        # → repli sur le serveur custom configuré. JAMAIS pour un préfixe provider natif,
+        # ni pour un modèle cloud dont on possède la clé (gpt-4o, claude-…, gemini-… même
+        # écrits SANS préfixe — corrige « gemini-2.5-pro nu » envoyé par erreur au custom).
         use_custom = bool(custom_base) and (
             is_custom_prefixed
             or model_l.startswith("openai/")
-            or (not is_native_prefixed and not (is_standard_bare and has_official_key))
+            or (not is_native_prefixed and not has_official_key)
         )
         if use_custom:
             # Auto-correction pour Open WebUI (/v1 -> /api/v1)

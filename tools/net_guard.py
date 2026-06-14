@@ -3,14 +3,34 @@
 Bloque l'accès aux adresses internes / loopback / link-local / métadonnées cloud,
 y compris quand un nom de domaine PUBLIC résout vers une IP interne (DNS rebinding) :
 on résout réellement le hostname et on vérifie TOUTES les IP retournées.
+
+ALLOWLIST (homelab) : `NET_GUARD_ALLOW_HOSTS` (CSV de hostnames/IP) autorise explicitement
+des services internes DE CONFIANCE (ex. Nextcloud auto-hébergé en 192.168.x.x). Déclaré par
+l'admin/l'opérateur — c'est le SEUL moyen de joindre un service LAN sans ouvrir le SSRF en grand.
+La métadonnée cloud (169.254.169.254) reste bloquée même si listée (garde-fou anti-bêtise).
 """
 import contextlib
 import ipaddress
+import os
 import socket
 import threading
 import urllib.parse
 
 _BLOCKED_NAMES = {"localhost", "metadata.google.internal"}
+# Jamais autorisables, même via l'allowlist (exfiltration de credentials cloud).
+_NEVER_ALLOW = {"169.254.169.254", "metadata.google.internal", "metadata"}
+
+
+def _allowlist() -> set:
+    raw = os.getenv("NET_GUARD_ALLOW_HOSTS", "") or ""
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
+def _host_allowlisted(host: str) -> bool:
+    host = (host or "").strip().lower()
+    if not host or host in _NEVER_ALLOW:
+        return False
+    return host in _allowlist()
 
 # Verrou pour l'épinglage d'IP (monkeypatch global de la résolution urllib3).
 _pin_lock = threading.Lock()
@@ -33,6 +53,9 @@ def is_blocked_url(url: str) -> bool:
         return True
     if not host or host in _BLOCKED_NAMES:
         return True
+    # Service interne explicitement autorisé (homelab) → on ne bloque pas.
+    if _host_allowlisted(host):
+        return False
     # IP littérale dans l'URL : vérification directe.
     try:
         ipaddress.ip_address(host)
@@ -72,8 +95,13 @@ def safe_resolve(url: str):
         return None, None, _SSRF_ERR
     if not host or host in _BLOCKED_NAMES:
         return None, None, _SSRF_ERR
+    # Service interne explicitement autorisé (homelab) : on résout et on épingle sans
+    # appliquer le blocage des IP internes.
+    allow = _host_allowlisted(host)
     try:
         ipaddress.ip_address(host)  # IP littérale
+        if allow:
+            return host, host, None
         return (None, None, _SSRF_ERR) if _ip_is_internal(host) else (host, host, None)
     except ValueError:
         pass
@@ -82,7 +110,11 @@ def safe_resolve(url: str):
     except Exception:
         return None, None, _SSRF_ERR
     ips = [info[4][0] for info in infos]
-    if not ips or any(_ip_is_internal(ip) for ip in ips):
+    if not ips:
+        return None, None, _SSRF_ERR
+    if allow:
+        return host, ips[0], None
+    if any(_ip_is_internal(ip) for ip in ips):
         return None, None, _SSRF_ERR
     return host, ips[0], None
 

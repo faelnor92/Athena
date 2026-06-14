@@ -244,6 +244,12 @@ agents:
   - create_email_draft
   - read_gmail
   - read_gmail_message
+  - nextcloud_list_files
+  - nextcloud_read_file
+  - nextcloud_write_file
+  - nextcloud_delete_file
+  - nextcloud_list_tasks
+  - nextcloud_search_contacts
   handoffs:
   - Athena
   - Codeur

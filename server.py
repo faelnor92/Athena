@@ -150,6 +150,8 @@ from routers import config_agenda as _config_agenda_router
 app.include_router(_config_agenda_router.router)
 from routers import oauth_google as _oauth_google_router
 app.include_router(_oauth_google_router.router)
+from routers import config_nextcloud as _config_nextcloud_router
+app.include_router(_config_nextcloud_router.router)
 from routers import config_routines as _config_routines_router
 app.include_router(_config_routines_router.router)
 from routers import system as _system_router
