@@ -1,5 +1,19 @@
 # Historique des Versions (Changelog)
 
+## v0.11.61 (Home Assistant : construction automatique de ha-mcp)
+
+### 🏠 Fix : Home Assistant tombait en repli HTTP (127.0.0.1) et ne marchait pas
+- **Cause** : le serveur MCP intégré `ha-mcp` a besoin d'un binaire (`.venv/bin/ha-mcp`), mais ce
+  `.venv` est un **artefact de build gitignoré** → absent d'un clone frais → Athena ne le trouvait
+  pas et basculait sur un repli HTTP `http://127.0.0.1:8099/mcp` (service inexistant) → erreur de
+  connexion.
+- **Correctif** : `install.sh` ET `update.sh` **construisent désormais `ha-mcp`** s'il manque
+  (venv dédié via `uv`, deps isolées d'Athena). Après mise à jour, l'entrée « Home Assistant
+  (ha-mcp) — local » fonctionne en **STDIO** (URL + token longue durée), sans repli HTTP.
+- **Note** : sur une install existante, relance `./update.sh` (ou `./install.sh`) pour déclencher
+  la construction. Supprime puis ré-ajoute l'entrée Home Assistant si elle pointait encore sur
+  `127.0.0.1`.
+
 ## v0.11.60 (Bot Telegram entrant)
 
 ### ✈️ Telegram : le bot répond enfin (entrant)
