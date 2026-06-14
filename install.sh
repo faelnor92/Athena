@@ -399,11 +399,49 @@ EOF
     fi
     echo -e "${GREEN}✔ Raccourci d'application système enregistré !${NC}"
 
-    # Suggestion Service Systemd
-    echo -e "${CYAN}💡 Option Service d'arrière-plan (Systemd) :${NC}"
-    echo -e "   Pour exécuter Athena en arrière-plan permanent sur votre serveur Linux, tapez :"
-    echo -e "   ${MAGENTA}sudo cp $SCRIPT_DIR/athena-swarm.service /etc/systemd/system/${NC}"
-    echo -e "   ${MAGENTA}sudo systemctl enable --now athena-swarm.service${NC}"
+    # Service Systemd : Athena démarre AU BOOT et se relance en cas de crash. Conséquence
+    # importante : les serveurs MCP LOCAUX (stdio) sont des SOUS-PROCESS d'Athena → ils
+    # reviennent aussi automatiquement après un redémarrage, sans rien lancer à la main.
+    if command -v systemctl >/dev/null 2>&1; then
+        SVC="/etc/systemd/system/athena-swarm.service"
+        _svc_user="$(id -un)"
+        echo -e "${YELLOW}🔄 Service systemd (démarrage auto au boot)...${NC}"
+        if $SUDO tee "$SVC" >/dev/null <<UNIT
+[Unit]
+Description=Athena Multi-Agent Swarm
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${_svc_user}
+WorkingDirectory=${SCRIPT_DIR}
+Environment=RELOAD=false
+ExecStart=${SCRIPT_DIR}/.venv/bin/python ${SCRIPT_DIR}/server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+        then
+            $SUDO systemctl daemon-reload 2>/dev/null || true
+            ENABLE_SVC="o"
+            read -p "Activer le démarrage automatique d'Athena au boot (recommandé) ? (O/n) : " ENABLE_SVC < /dev/tty 2>/dev/null || ENABLE_SVC="o"
+            if [[ ! "$ENABLE_SVC" =~ ^[Nn] ]]; then
+                # On stoppe une éventuelle instance lancée à la main avant de confier à systemd.
+                pkill -f "server.py" 2>/dev/null || true
+                $SUDO systemctl enable --now athena-swarm.service 2>/dev/null \
+                    && echo -e "${GREEN}✔ Athena démarre au boot + se relance en cas de crash (et ses MCP locaux avec).${NC}" \
+                    && echo -e "${YELLOW}   Gère-le via : ${BOLD}sudo systemctl {start,stop,status,restart} athena-swarm${NC}${YELLOW} (pas 'athena start' en parallèle).${NC}" \
+                    || echo -e "${YELLOW}⚠ Activation impossible (pas de systemd dans ce conteneur ?). Service écrit dans $SVC.${NC}"
+            else
+                echo -e "Plus tard : ${BOLD}${SUDO} systemctl enable --now athena-swarm.service${NC}"
+            fi
+        fi
+    fi
 fi
 
 # -------------------------------------------------------------------------

@@ -2913,8 +2913,10 @@ function showMcpForm(serverData = null) {
         document.getElementById("mcp-form-title").textContent = "Modifier " + serverData.name;
         document.getElementById("mcp-name").value = serverData.name;
         document.getElementById("mcp-name").disabled = true; // Can't change name once created
-        document.getElementById("mcp-command").value = serverData.command;
-        document.getElementById("mcp-args").value = serverData.args.join(" ");
+        document.getElementById("mcp-command").value = serverData.command || "";
+        document.getElementById("mcp-args").value = (serverData.args || []).join(" ");
+        if (document.getElementById("mcp-url")) document.getElementById("mcp-url").value = serverData.url || "";
+        if (document.getElementById("mcp-transport") && serverData.transport) document.getElementById("mcp-transport").value = serverData.transport;
         document.getElementById("mcp-disabled").checked = serverData.disabled;
         
         document.getElementById("btn-mcp-delete").style.display = "block";
@@ -2927,8 +2929,9 @@ function showMcpForm(serverData = null) {
         document.getElementById("mcp-name").disabled = false;
         document.getElementById("mcp-command").value = "";
         document.getElementById("mcp-args").value = "";
+        if (document.getElementById("mcp-url")) document.getElementById("mcp-url").value = "";
         document.getElementById("mcp-disabled").checked = false;
-        
+
         document.getElementById("btn-mcp-delete").style.display = "none";
         addMcpEnvRow("", ""); // Add one empty row
     }
@@ -2962,9 +2965,11 @@ document.getElementById("mcp-presets")?.addEventListener("change", (e) => {
     const preset = currentMcpPresets[e.target.value];
     if (preset) {
         document.getElementById("mcp-name").value = preset.name;
-        document.getElementById("mcp-command").value = preset.command;
-        document.getElementById("mcp-args").value = preset.args.join(" ");
-        
+        document.getElementById("mcp-command").value = preset.command || "";
+        document.getElementById("mcp-args").value = (preset.args || []).join(" ");
+        if (document.getElementById("mcp-url")) document.getElementById("mcp-url").value = preset.url || "";
+        if (document.getElementById("mcp-transport") && preset.transport) document.getElementById("mcp-transport").value = preset.transport;
+
         const envList = document.getElementById("mcp-env-list");
         envList.innerHTML = "";
         if (Object.keys(preset.env).length === 0) {
@@ -2996,6 +3001,8 @@ document.getElementById("btn-mcp-save")?.addEventListener("click", async () => {
         name: name,
         command: document.getElementById("mcp-command").value.trim(),
         args: document.getElementById("mcp-args").value.trim().split(" ").filter(s => s),
+        url: (document.getElementById("mcp-url")?.value || "").trim(),
+        transport: (document.getElementById("mcp-transport")?.value || "http"),
         env: envObj,
         disabled: document.getElementById("mcp-disabled").checked
     };
