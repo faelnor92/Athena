@@ -313,6 +313,26 @@ def list_available_models() -> Dict[str, List[str]]:
         except Exception:
             pass
 
+    # Google Gemini LIVE : remplace le catalogue statique par les modèles RÉELLEMENT
+    # disponibles pour cette clé (Google AI Studio). Évite de proposer un nom de modèle
+    # que la clé n'autorise pas → « modèle sélectionné mais ne fonctionne pas » (404).
+    gemini_key = env.get("GEMINI_API_KEY")
+    if gemini_key:
+        try:
+            r = requests.get("https://generativelanguage.googleapis.com/v1beta/models",
+                             params={"key": gemini_key}, timeout=3)
+            if r.status_code == 200:
+                gm = sorted(
+                    f"gemini/{m['name'].replace('models/', '')}"
+                    for m in r.json().get("models", [])
+                    if "generateContent" in (m.get("supportedGenerationMethods") or [])
+                    and m.get("name", "").replace("models/", "").startswith("gemini")
+                )
+                if gm:
+                    models["Google Gemini"] = gm
+        except Exception:
+            pass
+
     # Ollama local : ajouté seulement s'il est joignable.
     ollama_base = (env.get("OLLAMA_API_BASE", "http://localhost:11434") or "").rstrip("/")
     try:
