@@ -43,6 +43,7 @@ class MCPManager:
         self._stop_events: Dict[str, "asyncio.Event"] = {}
         self._tools: Dict[str, Dict[str, Any]] = {}    # tool_name -> {server, schema, description}
         self._tool_functions: Dict[str, Callable] = {}
+        self._errors: Dict[str, str] = {}              # server -> dernière erreur de connexion (pour l'UI)
         self._started = False
 
     # ------------------------------------------------------------------ config
@@ -82,15 +83,15 @@ class MCPManager:
         self.thread = threading.Thread(target=self._run_loop, name="mcp-loop", daemon=True)
         self.thread.start()
 
+        self._errors = {}
         auth_off = _auth_disabled()
         for name, conf in config.items():
             if conf.get("disabled"):
                 continue
             if auth_off and self._is_sensitive(name, conf):
-                logger.warning(
-                    "Serveur MCP '%s' ignoré : sensible (FS/shell) et authentification désactivée.",
-                    name,
-                )
+                msg = "ignoré : serveur sensible (FS/shell) et authentification désactivée."
+                logger.warning("Serveur MCP '%s' %s", name, msg)
+                self._errors[name] = msg
                 continue
             self._connect_blocking(name, conf)
 
@@ -111,16 +112,25 @@ class MCPManager:
         )
         timeout = conf.get("timeout", 30)
         if not ready.wait(timeout=timeout):
-            logger.error("Serveur MCP '%s' : délai de connexion dépassé (%ss).", name, timeout)
+            msg = f"délai de connexion dépassé ({timeout}s)."
+            logger.error("Serveur MCP '%s' : %s", name, msg)
+            self._errors[name] = msg
             return
         if box.get("error"):
             logger.error("Serveur MCP '%s' : échec — %s", name, box["error"])
+            self._errors[name] = box["error"]
         else:
+            self._errors.pop(name, None)
             logger.info("Serveur MCP '%s' connecté (%d outils).", name, box.get("n_tools", 0))
 
     def _make_transport(self, conf: dict):
-        """Retourne un context manager async pour le transport demandé."""
+        """Retourne (kind, context_manager_async, errfile|None) pour le transport demandé.
+
+        Pour le stdio, on capture le stderr du sous-process dans un fichier temporaire :
+        en cas d'échec, c'est SOUVENT là que le serveur explique pourquoi (ex. ha-mcp
+        « Missing HOMEASSISTANT_URL/TOKEN ») — sinon l'exception stdio est opaque."""
         if conf.get("command"):
+            import tempfile
             from mcp.client.stdio import stdio_client, StdioServerParameters
             env = {**os.environ, **(conf.get("env") or {})}
             params = StdioServerParameters(
@@ -128,7 +138,9 @@ class MCPManager:
                 args=conf.get("args", []) or [],
                 env=env,
             )
-            return ("stdio", stdio_client(params))
+            errf = tempfile.NamedTemporaryFile(mode="w+", prefix="mcp-stderr-", suffix=".log",
+                                               delete=False, encoding="utf-8")
+            return ("stdio", stdio_client(params, errlog=errf), errf)
 
         url = conf.get("url")
         if not url:
@@ -136,15 +148,16 @@ class MCPManager:
         transport = (conf.get("transport") or "").lower()
         if transport in ("sse",) or (not transport and url.rstrip("/").endswith("sse")):
             from mcp.client.sse import sse_client
-            return ("sse", sse_client(url))
+            return ("sse", sse_client(url), None)
         # HTTP « streamable » par défaut pour une URL
         from mcp.client.streamable_http import streamablehttp_client
-        return ("http", streamablehttp_client(url))
+        return ("http", streamablehttp_client(url), None)
 
     async def _connect_server(self, name, conf, ready: threading.Event, box: dict):
+        errf = None
         try:
             from mcp import ClientSession
-            kind, transport_cm = self._make_transport(conf)
+            kind, transport_cm, errf = self._make_transport(conf)
             async with transport_cm as streams:
                 read, write = streams[0], streams[1]
                 async with ClientSession(read, write) as session:
@@ -164,8 +177,29 @@ class MCPManager:
                     ready.set()
                     await stop.wait()  # garde la session ouverte jusqu'à l'arrêt
         except Exception as e:  # noqa: BLE001 — robustesse : on n'interrompt jamais l'agent
-            box["error"] = repr(e)
+            detail = repr(e)
+            # Le stderr du sous-process explique souvent la VRAIE cause (config manquante…).
+            stderr_txt = ""
+            if errf is not None:
+                try:
+                    errf.flush()
+                    errf.seek(0)
+                    stderr_txt = errf.read().strip()
+                except Exception:
+                    pass
+            if stderr_txt:
+                # On garde les dernières lignes utiles (messages de config en fin de sortie).
+                tail = "\n".join(stderr_txt.splitlines()[-8:])
+                detail = f"{detail} — sortie du serveur :\n{tail}"
+            box["error"] = detail
             ready.set()
+        finally:
+            if errf is not None:
+                try:
+                    errf.close()
+                    os.remove(errf.name)
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------ outils
     @staticmethod
@@ -233,7 +267,9 @@ class MCPManager:
         return {
             "started": self._started,
             "config_path": self.config_path,
+            "configured_servers": list(self._load_config().keys()),
             "connected_servers": list(self._sessions.keys()),
+            "errors": dict(self._errors),       # serveur -> raison de l'échec (pour l'UI)
             "tools_by_server": tools_by_server,
             "tool_count": len(self._tools),
         }

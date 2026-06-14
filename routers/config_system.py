@@ -179,6 +179,7 @@ async def list_mcp_servers() -> Dict[str, Any]:
     st = mcp_manager.status()
     connected = set(st.get("connected_servers", []))
     tbs = st.get("tools_by_server", {})
+    errors = st.get("errors", {}) or {}
     out = []
     for name, conf in servers.items():
         out.append({
@@ -188,6 +189,7 @@ async def list_mcp_servers() -> Dict[str, Any]:
             "env": conf.get("env", {}),
             "disabled": bool(conf.get("disabled")),
             "connected": name in connected,
+            "error": errors.get(name, ""),    # raison de l'échec de connexion (vide si OK)
             "tools": tbs.get(name, []),
         })
     return {"servers": out, "presets": [], "tool_count": st.get("tool_count", 0)}
@@ -246,16 +248,18 @@ def _map_registry_server(srv: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 @router.get("/api/config/mcp/registry")
-async def mcp_registry_search(q: str = "", limit: int = 30) -> Dict[str, Any]:
+def mcp_registry_search(q: str = "", limit: int = 30) -> Dict[str, Any]:
     """Recherche en ligne dans le registre MCP officiel (modelcontextprotocol.io).
 
-    Host fixe et de confiance (pas d'URL arbitraire → pas de SSRF). GET only."""
+    Host fixe et de confiance (pas d'URL arbitraire → pas de SSRF). GET only.
+    SYNCHRONE (def) : appel réseau bloquant → exécuté en threadpool par FastAPI,
+    sinon la boucle asyncio (et toute l'UI) gèlerait le temps de la requête."""
     import requests
     try:
         params = {"limit": max(1, min(limit, 50))}
         if q.strip():
             params["search"] = q.strip()
-        r = requests.get(f"{_REGISTRY_BASE}/v0/servers", params=params, timeout=8)
+        r = requests.get(f"{_REGISTRY_BASE}/v0/servers", params=params, timeout=6)
         if r.status_code != 200:
             return {"servers": [], "error": f"registre HTTP {r.status_code}"}
         payload = r.json()
@@ -321,6 +325,21 @@ async def upsert_mcp_server(req: McpServerRequest) -> Dict[str, Any]:
     name = (req.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Nom de serveur requis.")
+
+    # Pré-validation des serveurs connus exigeant une config (évite un échec opaque au démarrage).
+    # Home Assistant (ha-mcp) refuse de démarrer sans HOMEASSISTANT_URL + HOMEASSISTANT_TOKEN.
+    _blob = f"{name} {req.command} {' '.join(req.args or [])}".lower()
+    if "homeassistant" in _blob or "ha-mcp" in _blob or "ha_mcp" in _blob:
+        env = req.env or {}
+        manquants = [k for k in ("HOMEASSISTANT_URL", "HOMEASSISTANT_TOKEN")
+                     if not (env.get(k) or "").strip()]
+        if manquants:
+            raise HTTPException(
+                status_code=400,
+                detail=("Home Assistant nécessite : " + ", ".join(manquants) +
+                        ". Renseigne l'URL de ton instance (ex. http://homeassistant.local:8123) "
+                        "et un token longue durée (HA → Profil → Jetons d'accès longue durée)."))
+
     servers = _mcp_raw()
     if (req.url or "").strip():
         # Serveur MCP DISTANT (HTTP/SSE) : url + transport priment sur command/args.
@@ -336,7 +355,16 @@ async def upsert_mcp_server(req: McpServerRequest) -> Dict[str, Any]:
         await asyncio.to_thread(mcp_manager.restart)
     except Exception as e:
         return {"status": "saved_with_error", "detail": str(e), "mcp": mcp_manager.status()}
-    return {"status": "success", "mcp": mcp_manager.status()}
+    # Le redémarrage n'échoue pas si UN serveur ne se connecte pas (robustesse) : on inspecte
+    # donc le statut pour remonter la VRAIE raison à l'UI (sinon « enregistré » mais en erreur).
+    status = mcp_manager.status()
+    if not bool(req.disabled):
+        err = (status.get("errors") or {}).get(name)
+        if err:
+            return {"status": "saved_with_error",
+                    "detail": f"Serveur enregistré mais connexion échouée : {err}",
+                    "mcp": status}
+    return {"status": "success", "mcp": status}
 
 
 @router.delete("/api/config/mcp/servers/{name}")

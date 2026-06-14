@@ -2885,6 +2885,7 @@ function renderMcpServersList(servers, totalTools) {
                     </div>
                     <div class="mcp-card-cmd">${srv.command} ${srv.args.join(" ")}</div>
                     ${srv.tools && srv.tools.length > 0 ? `<div class="mcp-card-tools">${srv.tools.length} outil(s) (ex: ${srv.tools.slice(0, 3).map(t => t.name).join(", ")}${srv.tools.length > 3 ? '...' : ''})</div>` : ''}
+                    ${(!srv.disabled && !srv.connected && srv.error) ? `<div class="mcp-card-tools" style="color:#ffae42; white-space:pre-wrap;">⚠️ ${String(srv.error).slice(0, 240)}</div>` : ''}
                 </div>
                 <button class="btn btn-secondary btn-mcp-edit" data-name="${srv.name}" style="padding: 4px 10px; font-size: 0.75rem;">⚙️ Modifier</button>
             </div>
@@ -3014,7 +3015,11 @@ document.getElementById("btn-mcp-save")?.addEventListener("click", async () => {
             body: JSON.stringify(payload)
         });
         const d = await r.json().catch(() => ({}));
-        if (r.ok) {
+        if (r.ok && d.status === "saved_with_error") {
+            // Enregistré mais le serveur ne s'est pas connecté → on montre la VRAIE raison.
+            st.innerHTML = `<span style="color:#ffae42">⚠️ ${d.detail || "Connexion au serveur échouée."}</span>`;
+            setTimeout(() => { loadConfigMcpPane(); }, 2500);
+        } else if (r.ok) {
             st.innerHTML = `✅ Sauvegardé`;
             setTimeout(() => { hideMcpForm(); loadConfigMcpPane(); }, 1000);
         } else {
@@ -5189,7 +5194,77 @@ async function loadAgendaConfig() {
     } catch (err) {
         console.error("Erreur lors de la récupération des paramètres agenda :", err);
     }
+    loadGoogleOAuthStatus();
 }
+
+// --- OAuth Google (Calendar + Gmail) -------------------------------------
+async function loadGoogleOAuthStatus() {
+    const box = document.getElementById("google-oauth-box");
+    if (!box) return;
+    try {
+        const r = await apiFetch("/api/oauth/google/status");
+        const s = await r.json();
+        if (!s.configured) { box.style.display = "none"; return; }  // app sans identifiants OAuth
+        box.style.display = "block";
+        const span = document.getElementById("google-oauth-status");
+        const bConn = document.getElementById("google-oauth-connect");
+        const bDisc = document.getElementById("google-oauth-disconnect");
+        if (s.connected) {
+            span.innerHTML = "Connecté ✅" + (s.email ? " (" + s.email + ")" : "");
+            span.style.color = "var(--success-color)";
+            bConn.textContent = "Reconnecter";
+            bDisc.style.display = "inline-block";
+        } else {
+            span.innerHTML = "Non connecté";
+            span.style.color = "#ffae42";
+            bConn.textContent = "Connecter Google";
+            bDisc.style.display = "none";
+        }
+    } catch (err) {
+        box.style.display = "none";
+    }
+}
+
+async function startGoogleOAuth() {
+    try {
+        const r = await apiFetch("/api/oauth/google/start");
+        const d = await r.json();
+        if (r.ok && d.auth_url) {
+            window.location.href = d.auth_url;  // redirige vers le consentement Google
+        } else {
+            alert("OAuth Google indisponible : " + (d.detail || "erreur inconnue"));
+        }
+    } catch (err) {
+        alert("Erreur réseau OAuth : " + err);
+    }
+}
+
+async function disconnectGoogleOAuth() {
+    if (!confirm("Déconnecter ton compte Google d'Athena ?")) return;
+    try {
+        await apiFetch("/api/oauth/google/disconnect", { method: "POST" });
+        loadGoogleOAuthStatus();
+    } catch (err) {
+        alert("Erreur réseau : " + err);
+    }
+}
+
+// Retour de redirection OAuth Google (?google_oauth=connected|error)
+(function handleGoogleOAuthReturn() {
+    const p = new URLSearchParams(window.location.search);
+    const st = p.get("google_oauth");
+    if (!st) return;
+    if (st === "connected") {
+        const email = p.get("email") || "";
+        setTimeout(() => alert("Compte Google connecté !" + (email ? " (" + email + ")" : "")), 300);
+    } else {
+        setTimeout(() => alert("Échec de la connexion Google. Réessaie (vérifie l'URI de redirection)."), 300);
+    }
+    // Nettoie l'URL (retire les paramètres OAuth).
+    p.delete("google_oauth"); p.delete("email"); p.delete("detail");
+    const q = p.toString();
+    history.replaceState(null, "", window.location.pathname + (q ? "?" + q : "") + window.location.hash);
+})();
 
 // Enregistrer les variables agenda (.env)
 const agendaSyncForm = document.getElementById("agenda-sync-form");
