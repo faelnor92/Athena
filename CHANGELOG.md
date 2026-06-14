@@ -1,5 +1,35 @@
 # Historique des Versions (Changelog)
 
+## v0.11.60 (Bot Telegram entrant)
+
+### ✈️ Telegram : le bot répond enfin (entrant)
+- Jusqu'ici, seules les **notifications sortantes** existaient : aucun listener ne lisait tes
+  messages → le bot ne pouvait pas répondre. Ajout d'un **bot entrant** (`core/telegram_bot.py`) :
+  long-polling natif (`getUpdates`, zéro dépendance), démarré automatiquement quand
+  `TELEGRAM_BOT_TOKEN` est défini.
+- **Sécurité** : appairage des contacts (un inconnu reçoit un code à approuver dans l'UI ou via
+  `/approve <code>` depuis un chat autorisé ; les `TELEGRAM_CHAT_ID` sont autorisés d'office ;
+  le 1er contact est auto-approuvé). Canal `telegram:<chat_id>` → shell/SSH déjà interdits.
+- **Conversation** : contexte mémorisé par chat (borné). Commandes `/start`, `/help`,
+  `/approve <code>`, `/reset`. Réponses découpées à la limite Telegram (4096).
+- Statut du bot dans Réglages → Messageries (`GET /api/telegram/bot`). ⚠️ **redémarrage du
+  serveur nécessaire** après avoir saisi le token.
+
+## v0.11.59 (Intégration Nextcloud + OAuth/Gemini affinés)
+
+### ☁️ Nextcloud (auto-hébergé) — Fichiers, Tâches, Contacts
+- **Fichiers (WebDAV)** : `nextcloud_list_files` / `nextcloud_read_file` / `nextcloud_write_file` / `nextcloud_delete_file` (natif `requests`, anti-traversal, `can_write`).
+- **Tâches (CalDAV VTODO)** : `nextcloud_list_tasks`. **Contacts (CardDAV)** : `nextcloud_search_contacts`.
+- Config unifiée par utilisateur (URL + utilisateur + mot de passe d'application → URLs DAV dérivées) : `core/nextcloud.py`, router `routers/config_nextcloud.py` (`/api/config/nextcloud` + `/test`), section UI dans Réglages → Agenda. Donnés à la Secrétaire.
+- **Allowlist anti-SSRF** (`NET_GUARD_ALLOW_HOSTS`) : autorise les services internes de confiance (Nextcloud/Home Assistant en IP privée), **éditable dans l'UI**. La métadonnée cloud reste toujours bloquée.
+
+### 🔧 Affinages
+- **Gemini** : un nom de modèle **nu** (`gemini-2.5-pro` sans préfixe `gemini/`) n'est plus routé par erreur vers l'endpoint custom quand la clé Gemini est présente.
+- **OAuth Google** : le bloc « Connecter Google » est **toujours visible** avec des **champs pour saisir Client ID / secret / URI de redirection** directement dans l'UI (plus besoin d'éditer le `.env` à la main).
+
+### ✅ Tests
+- `tests/test_nextcloud.py`.
+
 ## v0.11.58 (OAuth Google + fiabilisation outils/MCP/agenda)
 
 ### ✨ OAuth Google (Calendar + Gmail), par utilisateur

@@ -150,6 +150,8 @@ from routers import config_agenda as _config_agenda_router
 app.include_router(_config_agenda_router.router)
 from routers import oauth_google as _oauth_google_router
 app.include_router(_oauth_google_router.router)
+from routers import config_nextcloud as _config_nextcloud_router
+app.include_router(_config_nextcloud_router.router)
 from routers import config_routines as _config_routines_router
 app.include_router(_config_routines_router.router)
 from routers import system as _system_router
@@ -180,6 +182,14 @@ from routers import athenadesign as _athenadesign_router
 app.include_router(_athenadesign_router.router)
 from routers import plugins as _plugins_router
 app.include_router(_plugins_router.router)
+
+
+# Bot Telegram ENTRANT (long-polling) — démarre seulement si TELEGRAM_BOT_TOKEN est défini.
+try:
+    from core import telegram_bot
+    telegram_bot.start()
+except Exception as e:
+    logger.warning("Démarrage du bot Telegram ignoré : %s", e)
 
 
 # Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Athena →

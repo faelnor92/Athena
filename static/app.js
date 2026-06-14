@@ -3528,7 +3528,26 @@ async function loadMessagingPane() {
     } catch (e) { /* ignore */ }
     refreshMessagingStatus();
 }
+async function loadTelegramBotStatus() {
+    const el = document.getElementById("tg-bot-status");
+    if (!el) return;
+    try {
+        const r = await apiFetch("/api/telegram/bot");
+        const s = await r.json();
+        if (!s.enabled) {
+            el.innerHTML = "Bot entrant : <b>désactivé</b> (aucun token).";
+            el.style.color = "#888";
+        } else if (s.running) {
+            el.innerHTML = "Bot entrant : <b style='color:var(--success-color)'>actif ✅</b> (à l'écoute)";
+        } else {
+            el.innerHTML = "Bot entrant : <b style='color:#ffae42'>token défini mais pas démarré</b> — redémarre le serveur."
+                + (s.last_error ? ` <span style="opacity:0.7;">(${s.last_error})</span>` : "");
+        }
+    } catch (e) { el.textContent = "Bot entrant : statut indisponible."; }
+}
+
 async function loadPairing() {
+    loadTelegramBotStatus();
     const box = document.getElementById("pairing-list");
     if (!box) return;
     try {
@@ -5195,33 +5214,138 @@ async function loadAgendaConfig() {
         console.error("Erreur lors de la récupération des paramètres agenda :", err);
     }
     loadGoogleOAuthStatus();
+    loadNextcloudConfig();
+}
+
+// --- Nextcloud (Fichiers / Tâches / Contacts) ----------------------------
+async function loadNextcloudConfig() {
+    if (!document.getElementById("nc-url")) return;
+    try {
+        const r = await apiFetch("/api/config/nextcloud");
+        const c = await r.json();
+        document.getElementById("nc-url").value = c.url || "";
+        document.getElementById("nc-user").value = c.username || "";
+        document.getElementById("nc-password").value = c.password || "";
+    } catch (e) { /* silencieux */ }
+    // Allowlist anti-SSRF (réglage global, dans .env).
+    try {
+        const re = await apiFetch("/api/config/env");
+        const env = await re.json();
+        const ah = document.getElementById("nc-allow-hosts");
+        if (ah) ah.value = env["NET_GUARD_ALLOW_HOSTS"] || "";
+    } catch (e) { /* silencieux */ }
+}
+
+async function saveNextcloudConfig() {
+    const st = document.getElementById("nc-status");
+    st.textContent = "⏳…";
+    const payload = {
+        url: document.getElementById("nc-url").value.trim(),
+        username: document.getElementById("nc-user").value.trim(),
+        password: document.getElementById("nc-password").value.trim(),
+    };
+    try {
+        // 1) Allowlist anti-SSRF (global, .env) — enregistrée AVANT pour que le test fonctionne.
+        const allow = (document.getElementById("nc-allow-hosts")?.value || "").trim();
+        await apiFetch("/api/config/env", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ env: { NET_GUARD_ALLOW_HOSTS: allow } })
+        });
+        // 2) Config Nextcloud par-utilisateur.
+        const r = await apiFetch("/api/config/nextcloud", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) {
+            st.innerHTML = `<span style="color:var(--success-color)">✅ ${d.message || "Enregistré"}</span>`;
+        } else {
+            st.innerHTML = `<span style="color:#ff5555">❌ ${d.detail || "Erreur"}</span>`;
+        }
+    } catch (e) {
+        st.innerHTML = `<span style="color:#ff5555">❌ ${e}</span>`;
+    }
+}
+
+async function testNextcloudConfig() {
+    const st = document.getElementById("nc-status");
+    st.textContent = "⏳ Test en cours…";
+    try {
+        const r = await apiFetch("/api/config/nextcloud/test");
+        const d = await r.json();
+        st.innerHTML = d.ok
+            ? `<span style="color:var(--success-color)">${d.detail}</span>`
+            : `<span style="color:#ffae42">⚠️ ${d.detail}</span>`;
+    } catch (e) {
+        st.innerHTML = `<span style="color:#ff5555">❌ ${e}</span>`;
+    }
 }
 
 // --- OAuth Google (Calendar + Gmail) -------------------------------------
 async function loadGoogleOAuthStatus() {
     const box = document.getElementById("google-oauth-box");
     if (!box) return;
+    box.style.display = "block";  // toujours visible : on guide la config dans l'UI
+    // Suggérer l'URI de redirection courante (à enregistrer dans Google Cloud).
+    const ruri = document.getElementById("google-oauth-redirect");
+    if (ruri && !ruri.value) ruri.placeholder = window.location.origin + "/api/oauth/google/callback";
+    const span = document.getElementById("google-oauth-status");
+    const bConn = document.getElementById("google-oauth-connect");
+    const bDisc = document.getElementById("google-oauth-disconnect");
+    const cfg = document.getElementById("google-oauth-config");
     try {
         const r = await apiFetch("/api/oauth/google/status");
         const s = await r.json();
-        if (!s.configured) { box.style.display = "none"; return; }  // app sans identifiants OAuth
-        box.style.display = "block";
-        const span = document.getElementById("google-oauth-status");
-        const bConn = document.getElementById("google-oauth-connect");
-        const bDisc = document.getElementById("google-oauth-disconnect");
+        if (!s.configured) {
+            span.innerHTML = "⚙️ Identifiants OAuth non renseignés (déplie « Identifiants OAuth » ci-dessous).";
+            span.style.color = "#ffae42";
+            bConn.style.display = "none";
+            bDisc.style.display = "none";
+            if (cfg) cfg.open = true;   // ouvre la section config pour guider
+            return;
+        }
+        bConn.style.display = "inline-block";
         if (s.connected) {
             span.innerHTML = "Connecté ✅" + (s.email ? " (" + s.email + ")" : "");
             span.style.color = "var(--success-color)";
             bConn.textContent = "Reconnecter";
             bDisc.style.display = "inline-block";
         } else {
-            span.innerHTML = "Non connecté";
+            span.innerHTML = "Identifiants OK — clique pour autoriser ton compte.";
             span.style.color = "#ffae42";
             bConn.textContent = "Connecter Google";
             bDisc.style.display = "none";
         }
     } catch (err) {
-        box.style.display = "none";
+        span.innerHTML = "Statut indisponible.";
+    }
+}
+
+async function saveGoogleOAuthCreds() {
+    const st = document.getElementById("google-oauth-creds-status");
+    const env = {};
+    const cid = document.getElementById("google-oauth-client-id").value.trim();
+    const sec = document.getElementById("google-oauth-client-secret").value.trim();
+    const red = document.getElementById("google-oauth-redirect").value.trim();
+    if (cid) env["GOOGLE_OAUTH_CLIENT_ID"] = cid;
+    if (sec) env["GOOGLE_OAUTH_CLIENT_SECRET"] = sec;
+    if (red) env["GOOGLE_OAUTH_REDIRECT_URI"] = red;
+    if (Object.keys(env).length === 0) { st.textContent = "Rien à enregistrer."; return; }
+    st.textContent = "⏳…";
+    try {
+        const r = await apiFetch("/api/config/env", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ env })
+        });
+        if (r.ok) {
+            st.innerHTML = '<span style="color:var(--success-color)">✅ Enregistré</span>';
+            loadGoogleOAuthStatus();
+        } else {
+            const d = await r.json().catch(() => ({}));
+            st.innerHTML = `<span style="color:#ff5555">❌ ${d.detail || "Erreur"}</span>`;
+        }
+    } catch (e) {
+        st.innerHTML = `<span style="color:#ff5555">❌ ${e}</span>`;
     }
 }
 

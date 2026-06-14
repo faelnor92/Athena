@@ -862,14 +862,32 @@
                     <p class="section-desc">Connecte ton assistant à ton agenda Google, Apple, Outlook ou Nextcloud (CalDAV).</p>
 
                     <!-- 0. OAUTH GOOGLE (recommandé) : ton propre compte, sans partage ni clé JSON -->
-                    <div id="google-oauth-box" style="display:none; margin-bottom:18px; padding:12px 14px; border:1px solid rgba(76,175,80,0.35); border-radius:6px; background:rgba(76,175,80,0.07);">
+                    <div id="google-oauth-box" style="margin-bottom:18px; padding:12px 14px; border:1px solid rgba(76,175,80,0.35); border-radius:6px; background:rgba(76,175,80,0.07);">
                         <div style="font-weight:bold; font-size:0.9rem; color:var(--color-Athena); margin-bottom:6px;">✅ 0. Connexion Google (OAuth — recommandé)</div>
                         <p style="font-size:0.82rem; opacity:0.8; margin:4px 0 10px 0;">Autorise Athena à accéder à <b>ton</b> Google Calendar (lecture+écriture) et à <b>tes</b> mails Gmail (lecture seule). Pas besoin de partager ton agenda ni d'uploader une clé.</p>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                             <span id="google-oauth-status" style="font-size:0.85rem; opacity:0.85;">Vérification…</span>
-                            <button type="button" id="google-oauth-connect" class="btn btn-primary" style="padding:6px 14px; font-size:0.82rem;" onclick="startGoogleOAuth()">Connecter Google</button>
+                            <button type="button" id="google-oauth-connect" class="btn btn-primary" style="padding:6px 14px; font-size:0.82rem; display:none;" onclick="startGoogleOAuth()">Connecter Google</button>
                             <button type="button" id="google-oauth-disconnect" class="btn btn-secondary" style="padding:6px 14px; font-size:0.82rem; display:none;" onclick="disconnectGoogleOAuth()">Déconnecter</button>
                         </div>
+                        <details id="google-oauth-config" style="margin-top:10px;">
+                            <summary style="cursor:pointer; font-size:0.82rem; opacity:0.85;">⚙️ Identifiants OAuth (Google Cloud Console)</summary>
+                            <p style="font-size:0.78rem; opacity:0.7; margin:6px 0;">Crée un « ID client OAuth 2.0 » (type Application Web) dans Google Cloud, active les API Calendar + Gmail, et enregistre l'URI de redirection ci-dessous. Détails : <code>docs/SETUP_GOOGLE_OAUTH.md</code>.</p>
+                            <div class="form-group" style="margin-bottom:6px;">
+                                <label style="font-size:0.78rem;">Client ID</label>
+                                <input type="text" id="google-oauth-client-id" placeholder="xxxx.apps.googleusercontent.com" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+                            </div>
+                            <div class="form-group" style="margin-bottom:6px;">
+                                <label style="font-size:0.78rem;">Client secret</label>
+                                <input type="password" id="google-oauth-client-secret" placeholder="Laisser vide si inchangé" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+                            </div>
+                            <div class="form-group" style="margin-bottom:6px;">
+                                <label style="font-size:0.78rem;">URI de redirection (à enregistrer à l'identique dans Google)</label>
+                                <input type="text" id="google-oauth-redirect" placeholder="https://athena.mondomaine.fr/api/oauth/google/callback" style="width:100%; padding:6px; border-radius:4px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+                            </div>
+                            <button type="button" class="btn btn-secondary" style="padding:5px 12px; font-size:0.8rem;" onclick="saveGoogleOAuthCreds()">Enregistrer les identifiants</button>
+                            <span id="google-oauth-creds-status" style="font-size:0.78rem; margin-left:8px;"></span>
+                        </details>
                     </div>
 
                     <form id="agenda-sync-form" class="config-form">
@@ -915,6 +933,36 @@
                         
                         <button type="submit" class="btn btn-primary" style="margin-top: 20px; width: 100%; padding: 10px; font-weight: bold;">Enregistrer la Configuration Agenda</button>
                     </form>
+
+                    <!-- NEXTCLOUD : Fichiers (WebDAV) + Tâches (CalDAV) + Contacts (CardDAV) -->
+                    <div style="margin-top:26px; padding-top:16px; border-top:1px solid rgba(255,255,255,0.1);">
+                        <div style="font-weight:bold; font-size:0.9rem; color:var(--color-Athena); margin-bottom:6px;">☁️ Nextcloud (Fichiers · Tâches · Contacts)</div>
+                        <p style="font-size:0.82rem; opacity:0.8; margin:4px 0 10px 0;">Un seul jeu d'identifiants pour les fichiers (lecture/écriture de tes documents, romans…), les tâches et les contacts. Utilise un <b>mot de passe d'application</b> Nextcloud.</p>
+                        <div class="form-grid">
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label for="nc-url">URL Nextcloud (base)</label>
+                                <input type="url" id="nc-url" placeholder="Ex: https://cloud.mondomaine.fr ou http://192.168.1.10:8080" style="width:100%; padding:8px; border-radius:4px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+                            </div>
+                            <div class="form-group">
+                                <label for="nc-user">Nom d'utilisateur</label>
+                                <input type="text" id="nc-user" placeholder="Ex: fael" style="width:100%; padding:8px; border-radius:4px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+                            </div>
+                            <div class="form-group">
+                                <label for="nc-password">Mot de passe d'application</label>
+                                <input type="password" id="nc-password" placeholder="Laisser vide si inchangé" style="width:100%; padding:8px; border-radius:4px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top:10px;">
+                            <label for="nc-allow-hosts">🛡️ Hôtes internes autorisés (anti-SSRF) — séparés par des virgules</label>
+                            <input type="text" id="nc-allow-hosts" placeholder="Ex: 192.168.1.10, nextcloud.home, homeassistant.local" style="width:100%; padding:8px; border-radius:4px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+                            <p style="font-size:0.74rem; opacity:0.6; margin-top:4px;">Indispensable si ton Nextcloud/Home Assistant est sur une IP privée (homelab) : sinon l'anti-SSRF bloque l'accès. Réglage global ; la métadonnée cloud reste toujours bloquée.</p>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap;">
+                            <button type="button" class="btn btn-primary" style="padding:8px 16px; font-weight:bold;" onclick="saveNextcloudConfig()">Enregistrer Nextcloud</button>
+                            <button type="button" class="btn btn-secondary" style="padding:8px 16px;" onclick="testNextcloudConfig()">Tester la connexion</button>
+                            <span id="nc-status" style="font-size:0.82rem;"></span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ONGLET 4 : TARIFICATION PAR MODÈLE LLM -->
@@ -1099,7 +1147,9 @@
 
                     <h5 style="color: var(--accent-cyan); margin: 12px 0 4px;">✈️ Telegram</h5>
                     <div class="form-group"><label>Bot token (TELEGRAM_BOT_TOKEN)</label><input type="password" id="msg-tg-token" placeholder="Laisser vide si inchangé"></div>
-                    <div class="form-group"><label>Chat ID(s) — séparés par des virgules</label><input type="text" id="msg-tg-chat" placeholder="123456789,987654321"></div>
+                    <div class="form-group"><label>Chat ID(s) — séparés par des virgules (pour les notifications sortantes)</label><input type="text" id="msg-tg-chat" placeholder="123456789,987654321"></div>
+                    <div id="tg-bot-status" style="font-size:0.78rem; margin:4px 0 2px; opacity:0.9;">Bot entrant : …</div>
+                    <p class="section-desc" style="font-size:0.72rem;">Le bot ENTRANT (tu écris → Athena répond) démarre automatiquement quand le token est défini. ⚠️ Un redémarrage du serveur est nécessaire après avoir saisi le token.</p>
                     <div style="margin-top:6px;">
                         <label style="font-size:0.78rem;opacity:0.85;">🔒 Appairage (accès des contacts) <button type="button" id="btn-pairing-refresh" class="btn" style="padding:1px 6px;font-size:0.7rem;">↻</button></label>
                         <p class="section-desc" style="font-size:0.72rem;">Un inconnu qui écrit au bot reçoit un code à approuver ici. Désactivable via TELEGRAM_REQUIRE_PAIRING.</p>
@@ -1601,7 +1651,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260614_mcperr"></script>
+    <script src="app.js?v=20260614_telegram"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>
