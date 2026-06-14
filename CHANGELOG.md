@@ -1,5 +1,22 @@
 # Historique des Versions (Changelog)
 
+## v0.11.58 (OAuth Google + fiabilisation outils/MCP/agenda)
+
+### ✨ OAuth Google (Calendar + Gmail), par utilisateur
+- Connecte **ton** compte Google (consentement OAuth) pour que l'agent lise/écrive dans **ton** Google Calendar et lise **tes** mails Gmail — **sans partage de calendrier ni clé de compte de service**. Implémentation **native** (`requests` seul, zéro lib Google) : `core/google_oauth.py` (flux auth-code offline, refresh_token **par utilisateur**, state CSRF anti-rejeu, cache d'access_token).
+- Endpoints `/api/oauth/google/status|start|callback|disconnect` (callback public, utilisateur résolu via le `state`). Bouton **« Connecter Google »** dans Réglages → Agenda.
+- Agenda : token OAuth **prioritaire** (calendrier `primary` par défaut, aucun partage requis) avec repli sur le compte de service. Gmail **lecture seule** (`read_gmail`/`read_gmail_message`) câblé à la Secrétaire.
+- Guide de mise en place : `docs/SETUP_GOOGLE_OAUTH.md` (⚠️ Google refuse une IP nue ; via domaine/Cloudflare Tunnel ou consentement unique en localhost).
+
+### 🐛 Corrections (remontées à l'usage)
+- **`get_time`** : réécrit avec `zoneinfo` (stdlib) au lieu de `pytz` (absent du venv → l'outil plantait). Ajout de `tzdata` aux requirements (images slim / venvs minimaux sans données IANA).
+- **Sélection de modèles** : le préfixe UI `custom/` est retiré automatiquement (→ `openai/<modèle>`) ; un modèle à **préfixe provider explicite** (`gemini/`, `mistral/`, `groq/`, `openrouter/`…) reste en natif litellm et ne part **plus par erreur vers l'endpoint custom**. Corrige « Gemini sélectionné mais inutilisable » et l'obligation de retirer `custom/` à la main.
+- **MCP Home Assistant** : les erreurs de connexion sont désormais **capturées par serveur** et exposées (incl. le **stderr** du sous-process → la vraie cause remonte, ex. « Missing HOMEASSISTANT_URL/TOKEN »). Pré-validation HA (message clair) + remontée de l'échec réel dans l'UI au lieu d'un faux « enregistré ✅ ».
+- **Agenda Google** : la **suppression** d'événement ne renvoie plus 404 (l'id Google complet est conservé via `external_id` ; le handle local était tronqué à 16 caractères).
+
+### ✅ Tests
+- `tests/test_google_oauth.py`, `tests/test_mcp_and_agenda.py`.
+
 ## v0.11.57 (Vrai marketplace MCP — recherche en ligne)
 
 ### 🌐 Marketplace MCP dynamique (registre officiel)
