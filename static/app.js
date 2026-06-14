@@ -3528,7 +3528,26 @@ async function loadMessagingPane() {
     } catch (e) { /* ignore */ }
     refreshMessagingStatus();
 }
+async function loadTelegramBotStatus() {
+    const el = document.getElementById("tg-bot-status");
+    if (!el) return;
+    try {
+        const r = await apiFetch("/api/telegram/bot");
+        const s = await r.json();
+        if (!s.enabled) {
+            el.innerHTML = "Bot entrant : <b>désactivé</b> (aucun token).";
+            el.style.color = "#888";
+        } else if (s.running) {
+            el.innerHTML = "Bot entrant : <b style='color:var(--success-color)'>actif ✅</b> (à l'écoute)";
+        } else {
+            el.innerHTML = "Bot entrant : <b style='color:#ffae42'>token défini mais pas démarré</b> — redémarre le serveur."
+                + (s.last_error ? ` <span style="opacity:0.7;">(${s.last_error})</span>` : "");
+        }
+    } catch (e) { el.textContent = "Bot entrant : statut indisponible."; }
+}
+
 async function loadPairing() {
+    loadTelegramBotStatus();
     const box = document.getElementById("pairing-list");
     if (!box) return;
     try {

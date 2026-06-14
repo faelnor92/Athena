@@ -1,5 +1,20 @@
 # Historique des Versions (Changelog)
 
+## v0.11.60 (Bot Telegram entrant)
+
+### ✈️ Telegram : le bot répond enfin (entrant)
+- Jusqu'ici, seules les **notifications sortantes** existaient : aucun listener ne lisait tes
+  messages → le bot ne pouvait pas répondre. Ajout d'un **bot entrant** (`core/telegram_bot.py`) :
+  long-polling natif (`getUpdates`, zéro dépendance), démarré automatiquement quand
+  `TELEGRAM_BOT_TOKEN` est défini.
+- **Sécurité** : appairage des contacts (un inconnu reçoit un code à approuver dans l'UI ou via
+  `/approve <code>` depuis un chat autorisé ; les `TELEGRAM_CHAT_ID` sont autorisés d'office ;
+  le 1er contact est auto-approuvé). Canal `telegram:<chat_id>` → shell/SSH déjà interdits.
+- **Conversation** : contexte mémorisé par chat (borné). Commandes `/start`, `/help`,
+  `/approve <code>`, `/reset`. Réponses découpées à la limite Telegram (4096).
+- Statut du bot dans Réglages → Messageries (`GET /api/telegram/bot`). ⚠️ **redémarrage du
+  serveur nécessaire** après avoir saisi le token.
+
 ## v0.11.59 (Intégration Nextcloud + OAuth/Gemini affinés)
 
 ### ☁️ Nextcloud (auto-hébergé) — Fichiers, Tâches, Contacts

@@ -184,6 +184,14 @@ from routers import plugins as _plugins_router
 app.include_router(_plugins_router.router)
 
 
+# Bot Telegram ENTRANT (long-polling) — démarre seulement si TELEGRAM_BOT_TOKEN est défini.
+try:
+    from core import telegram_bot
+    telegram_bot.start()
+except Exception as e:
+    logger.warning("Démarrage du bot Telegram ignoré : %s", e)
+
+
 # Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Athena →
 # Athena » au rafraîchissement : le HTML statique contenait le nom en dur).
 def _render_index():

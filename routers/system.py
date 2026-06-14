@@ -125,6 +125,13 @@ async def telegram_pairing_status():
     return telegram_pairing.status()
 
 
+@router.get("/api/telegram/bot")
+async def telegram_bot_status():
+    """État du bot Telegram ENTRANT (long-polling) : activé / en cours / dernière erreur."""
+    from core import telegram_bot
+    return telegram_bot.status()
+
+
 @router.post("/api/telegram/pairing/approve")
 async def telegram_pairing_approve(req: PairingActionRequest):
     from core import telegram_pairing

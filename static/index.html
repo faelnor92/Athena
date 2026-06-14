@@ -1147,7 +1147,9 @@
 
                     <h5 style="color: var(--accent-cyan); margin: 12px 0 4px;">✈️ Telegram</h5>
                     <div class="form-group"><label>Bot token (TELEGRAM_BOT_TOKEN)</label><input type="password" id="msg-tg-token" placeholder="Laisser vide si inchangé"></div>
-                    <div class="form-group"><label>Chat ID(s) — séparés par des virgules</label><input type="text" id="msg-tg-chat" placeholder="123456789,987654321"></div>
+                    <div class="form-group"><label>Chat ID(s) — séparés par des virgules (pour les notifications sortantes)</label><input type="text" id="msg-tg-chat" placeholder="123456789,987654321"></div>
+                    <div id="tg-bot-status" style="font-size:0.78rem; margin:4px 0 2px; opacity:0.9;">Bot entrant : …</div>
+                    <p class="section-desc" style="font-size:0.72rem;">Le bot ENTRANT (tu écris → Athena répond) démarre automatiquement quand le token est défini. ⚠️ Un redémarrage du serveur est nécessaire après avoir saisi le token.</p>
                     <div style="margin-top:6px;">
                         <label style="font-size:0.78rem;opacity:0.85;">🔒 Appairage (accès des contacts) <button type="button" id="btn-pairing-refresh" class="btn" style="padding:1px 6px;font-size:0.7rem;">↻</button></label>
                         <p class="section-desc" style="font-size:0.72rem;">Un inconnu qui écrit au bot reçoit un code à approuver ici. Désactivable via TELEGRAM_REQUIRE_PAIRING.</p>
@@ -1649,7 +1651,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260614_nextcloud"></script>
+    <script src="app.js?v=20260614_telegram"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>
