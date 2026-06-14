@@ -132,9 +132,10 @@ _MCP_MARKETPLACE_CATALOGS = [
         "servers": [
              {
                 "label": "Home Assistant (ha-mcp)", "name": "homeassistant", "icon": "🏠",
-                "command": "uv", "args": ["run", "--directory", "tools/mcp-servers/ha-mcp", "ha-mcp"],
-                "env": {"HOMEASSISTANT_URL": "", "HOMEASSISTANT_TOKEN": ""},
-                "note": "84+ outils HA. Clone local robuste de ha-mcp."
+                "command": "", "args": [],
+                "url": "http://127.0.0.1:8099/mcp", "transport": "http",
+                "env": {},
+                "note": "84+ outils HA. C'est un SERVICE HTTP : lance-le d'abord (uv/Docker/add-on HA, voir tools/mcp-servers/ha-mcp/README) avec HOMEASSISTANT_URL+TOKEN, puis mets son URL ci-dessus."
             },
             {
                 "label": "SQLite", "name": "sqlite", "icon": "🗃️",
@@ -203,18 +204,27 @@ class McpServerRequest(BaseModel):
     command: str = ""
     args: list = []
     env: Dict[str, str] = {}
+    url: str = ""
+    transport: str = ""
     disabled: bool = False
 
 
 @router.post("/api/config/mcp/servers")
 async def upsert_mcp_server(req: McpServerRequest) -> Dict[str, Any]:
-    """Ajoute/met à jour UN serveur MCP (formulaire) et reconnecte à chaud."""
+    """Ajoute/met à jour UN serveur MCP (formulaire) et reconnecte à chaud.
+    Deux types : DISTANT (url + transport http/sse) OU local (command + args)."""
     name = (req.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Nom de serveur requis.")
     servers = _mcp_raw()
-    servers[name] = {"command": req.command.strip(), "args": req.args or [],
-                     "env": req.env or {}, "disabled": bool(req.disabled)}
+    if (req.url or "").strip():
+        # Serveur MCP DISTANT (HTTP/SSE) : url + transport priment sur command/args.
+        servers[name] = {"url": req.url.strip(),
+                         "transport": (req.transport or "http").strip() or "http",
+                         "env": req.env or {}, "disabled": bool(req.disabled)}
+    else:
+        servers[name] = {"command": req.command.strip(), "args": req.args or [],
+                         "env": req.env or {}, "disabled": bool(req.disabled)}
     _mcp_save(servers)
     from tools.mcp_manager import mcp_manager
     try:

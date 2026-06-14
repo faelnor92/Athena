@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.52 (MCP : ajout de serveurs HTTP/SSE par l'UI + Home Assistant corrigé)
+
+### 🔌 Formulaire MCP : support url/transport
+- **On ne pouvait ajouter que des MCP locaux (command/args/env)** via l'UI — pas de serveur **distant HTTP/SSE**. Le formulaire a désormais des champs **URL + Transport (http/sse)**, et l'endpoint `POST /api/config/mcp/servers` accepte `url`/`transport` (un serveur est soit local soit distant). Les presets/édition gèrent aussi ces champs.
+- **Preset Home Assistant corrigé** : il pointait sur `uv run … ha-mcp` (= `ha_mcp.__main__:main`, qui lance un serveur **HTTP/OAuth**, pas du stdio → ne marchait pas en local). Il est désormais une entrée **HTTP** (URL `http://127.0.0.1:8099/mcp`) avec une note : lancer d'abord le service ha-mcp (uv/Docker/add-on HA, avec HOMEASSISTANT_URL+TOKEN), puis renseigner son URL.
 ## v0.11.51 (update.sh : bon venv, plus d'erreur externally-managed)
 
 ### 🔄 Correctif du script de mise à jour
