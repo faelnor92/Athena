@@ -34,9 +34,16 @@ def _auth_disabled() -> bool:
     return not os.getenv("ADMIN_PASSWORD", "").strip()
 
 
+def _resolve_config_path() -> str:
+    """Chemin du fichier de config MCP. IMPORTANT : `os.getenv(k, defaut)` renvoie une chaîne
+    VIDE (pas le défaut) si la variable existe mais est vide (ex. `MCP_CONFIG_PATH=` dans .env)
+    → `open('')` planterait. On retombe donc explicitement sur 'mcp_servers.json' si vide."""
+    return (os.getenv("MCP_CONFIG_PATH") or "").strip() or "mcp_servers.json"
+
+
 class MCPManager:
     def __init__(self, config_path: str = "mcp_servers.json"):
-        self.config_path = config_path
+        self.config_path = (config_path or "").strip() or "mcp_servers.json"
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.thread: Optional[threading.Thread] = None
         self._sessions: Dict[str, Any] = {}            # server -> ClientSession
@@ -300,9 +307,9 @@ class MCPManager:
         self.loop = None
         self.thread = None
         self._started = False
-        self.config_path = os.getenv("MCP_CONFIG_PATH", "mcp_servers.json")
+        self.config_path = _resolve_config_path()
         self.start()
 
 
 # Singleton applicatif
-mcp_manager = MCPManager(os.getenv("MCP_CONFIG_PATH", "mcp_servers.json"))
+mcp_manager = MCPManager(_resolve_config_path())

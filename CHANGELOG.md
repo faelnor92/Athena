@@ -1,5 +1,19 @@
 # Historique des Versions (Changelog)
 
+## v0.11.63 (Fix 500 à l'enregistrement d'un serveur MCP)
+
+### 🐛 Fix : « Erreur » (500) en enregistrant un serveur MCP (dont Home Assistant)
+- **Cause** : si `MCP_CONFIG_PATH` est **définie mais vide** dans l'environnement (ex. ligne
+  `MCP_CONFIG_PATH=` dans `.env`), `os.getenv("MCP_CONFIG_PATH", "mcp_servers.json")` renvoyait
+  une **chaîne vide** (et non le défaut) → `open('', 'w')` → `FileNotFoundError: ... ''` → 500.
+- **Correctif** : `mcp_manager` retombe explicitement sur `mcp_servers.json` quand la variable
+  est vide (helper `_resolve_config_path`, appliqué à l'init, au singleton et au restart).
+- **Robustesse** : l'enregistrement d'un serveur MCP **reconnecte désormais en arrière-plan**
+  (un serveur lent à joindre — ha-mcp/HA, npx absent — ne fait plus expirer la requête HTTP) et
+  l'écriture de la config est protégée (message clair au lieu d'un 500 opaque).
+- Test : `tests/test_mcp_and_agenda.py::test_config_path_never_empty`.
+
+
 ## v0.11.62 (Home Assistant : réparation auto de l'entrée périmée)
 
 ### 🏠 Fix : l'entrée HA gardait une URL `127.0.0.1:8099` qui faisait échouer la connexion

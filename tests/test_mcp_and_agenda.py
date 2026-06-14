@@ -32,6 +32,16 @@ def test_mcp_status_surfaces_connection_error():
         os.remove(f.name)
 
 
+def test_config_path_never_empty():
+    # Bug réel : MCP_CONFIG_PATH défini mais VIDE (ligne `MCP_CONFIG_PATH=` dans .env) →
+    # os.getenv(k, defaut) renvoie '' (pas le défaut) → open('') plante (FileNotFoundError).
+    import tools.mcp_manager as mm
+    with mock.patch.dict(os.environ, {"MCP_CONFIG_PATH": ""}):
+        assert mm._resolve_config_path() == "mcp_servers.json"
+    assert mm.MCPManager("").config_path == "mcp_servers.json"
+    assert mm.MCPManager("   ").config_path == "mcp_servers.json"
+
+
 def test_agenda_delete_google_uses_external_id():
     # Agenda local contenant un événement Google avec id tronqué + external_id complet.
     full_id = "abcdef0123456789FULLGOOGLEID9999"
