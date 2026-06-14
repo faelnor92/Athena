@@ -329,7 +329,8 @@ async def upsert_mcp_server(req: McpServerRequest) -> Dict[str, Any]:
     # Pré-validation des serveurs connus exigeant une config (évite un échec opaque au démarrage).
     # Home Assistant (ha-mcp) refuse de démarrer sans HOMEASSISTANT_URL + HOMEASSISTANT_TOKEN.
     _blob = f"{name} {req.command} {' '.join(req.args or [])}".lower()
-    if "homeassistant" in _blob or "ha-mcp" in _blob or "ha_mcp" in _blob:
+    if ("homeassistant" in _blob or "home-assistant" in _blob
+            or "ha-mcp" in _blob or "ha_mcp" in _blob):
         env = req.env or {}
         manquants = [k for k in ("HOMEASSISTANT_URL", "HOMEASSISTANT_TOKEN")
                      if not (env.get(k) or "").strip()]

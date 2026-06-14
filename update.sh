@@ -37,6 +37,32 @@ if [ -f "$HA_MCP_DIR/pyproject.toml" ] && [ ! -x "$HA_MCP_DIR/.venv/bin/ha-mcp" 
     fi
 fi
 
+# Répare l'entrée Home Assistant : FORCE le STDIO (chemin du binaire ha-mcp) et retire l'URL
+# périmée (ex. http://127.0.0.1:8099) qui primait sur le STDIO → connexion qui échouait.
+HA_MCP_BIN="$SCRIPT_DIR/tools/mcp-servers/ha-mcp/.venv/bin/ha-mcp"
+MCP_FILE=$(grep -E '^MCP_CONFIG_PATH=' .env 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'")
+MCP_FILE=${MCP_FILE:-mcp_servers.json}
+if [ -x ".venv/bin/python" ] && [ -x "$HA_MCP_BIN" ] && [ -f "$MCP_FILE" ]; then
+    .venv/bin/python - "$HA_MCP_BIN" "$MCP_FILE" <<'PYHA'
+import json, sys
+bin_path, path = sys.argv[1], sys.argv[2]
+try:
+    d = json.load(open(path, encoding="utf-8"))
+    srv = d.get("mcpServers", d)
+    changed = False
+    for key in ("home-assistant", "homeassistant"):
+        ha = srv.get(key)
+        if isinstance(ha, dict):
+            ha["command"] = bin_path; ha.setdefault("args", [])
+            ha.pop("url", None); ha.pop("transport", None); changed = True
+    if changed:
+        json.dump(d, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+        print("\033[0;32m✔ Entrée Home Assistant réparée en STDIO.\033[0m")
+except Exception as e:
+    print("(info) entrée HA non modifiée :", e)
+PYHA
+fi
+
 echo -e "\033[0;36m🚀 Redémarrage du serveur Athena...\033[0m"
 # Priorité au service systemd s'il pilote Athena : un seul gestionnaire de process,
 # pas de double instance (le nohup + Restart=always se battraient sur le port 8000).
