@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.50 (Diagnostic : « Vérification… » figé + bouton de mise à jour toujours dispo)
+
+### 🔄 Mise à jour débloquée
+- **« Vérification de la version » restait figé** : si `/api/system/update_check` renvoyait un non-200 (ex. 401 **avant login**), le front ne mettait jamais à jour le statut. Corrigé : (1) l'endpoint est rendu **public** (comme la version), (2) le front affiche désormais un statut **final dans TOUS les cas** (à jour / indisponible / erreur).
+- **Bouton « Forcer la mise à jour » toujours disponible** dans le Diagnostic (il était caché quand aucune mise à jour n'était détectée → impossible de forcer). Tu peux maintenant lancer `git pull origin main` + redémarrage à tout moment.
 ## v0.11.49 (Liste de modèles : endpoint custom + fin de la liste inutile)
 
 ### 🧩 `/api/config/models` revu
