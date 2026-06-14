@@ -146,6 +146,9 @@ async def auth_middleware(request: Request, call_next):
         pass
     public = (path == "/api/login" or path == "/api/register"
               or path.startswith("/api/auth/oidc/") or path.startswith("/api/hooks/")
+              # Callback OAuth Google : le navigateur revient de Google sans Bearer.
+              # L'utilisateur est résolu via le `state` (anti-CSRF), pas via la session.
+              or path == "/api/oauth/google/callback"
               # Version + vérification de mise à jour : non sensibles, affichées aussi sur
               # l'écran de connexion (sinon « v0.0.0 » et « Vérification… » restent figés).
               or path == "/api/system/version"

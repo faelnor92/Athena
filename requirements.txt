@@ -3,6 +3,9 @@ openai==2.41.0
 litellm==1.88.1
 python-dotenv==1.2.2
 requests==2.34.2
+# Données de fuseaux horaires IANA pour zoneinfo (stdlib) — get_time. Indispensable sur les
+# images sans tzdata système (python:3.13-slim) et venvs minimaux. Remplace l'ancienne dép pytz.
+tzdata==2026.2
 pyyaml==6.0.2
 colorama==0.4.6
 # chromadb 1.x : requis pour Python 3.13 (la 0.5.0 utilise np.float_, supprimé en numpy 2,

@@ -208,7 +208,11 @@ async def reset_pricing() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/config/models")
-async def list_available_models() -> Dict[str, List[str]]:
+def list_available_models() -> Dict[str, List[str]]:
+    # NB: fonction SYNCHRONE volontairement (def, pas async def). Elle fait des appels
+    # réseau bloquants (requests) ; en async def ça gèlerait la boucle asyncio et TOUT
+    # le serveur (MCP, Plugins…) resterait en « chargement ». En def, FastAPI l'exécute
+    # dans un threadpool → pas de blocage.
     # On lit le .env ET l'environnement live (l'UI écrit dans .env, mais une variable
     # passée au process sans être dans .env doit quand même compter).
     env = {**_parse_env_local()}

@@ -124,7 +124,7 @@ def sync_all_external_calendars() -> int:
     events = load_agenda()
 
     has_external = bool(os.getenv("EXTERNAL_ICAL_URL")) or \
-        (os.path.exists(agenda_sync.GOOGLE_KEY_PATH) and os.getenv("GOOGLE_CALENDAR_ID")) or \
+        agenda_sync.google_calendar_enabled() or \
         (os.getenv("CALDAV_URL") and os.getenv("CALDAV_USERNAME") and os.getenv("CALDAV_PASSWORD"))
     if not has_external:
         return 0
@@ -140,7 +140,7 @@ def sync_all_external_calendars() -> int:
             e["source"] = "ical"
         external_events.extend(ical_events)
 
-    if os.path.exists(agenda_sync.GOOGLE_KEY_PATH) and os.getenv("GOOGLE_CALENDAR_ID"):
+    if agenda_sync.google_calendar_enabled():
         print("📅 [Sync] Démarrage de la synchro Google Calendar...")
         google_events = agenda_sync.sync_google_calendar()
         for e in google_events:
@@ -192,7 +192,7 @@ def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60
     source = "local"
     event_id = uuid.uuid4().hex[:8]
 
-    if os.path.exists(agenda_sync.GOOGLE_KEY_PATH) and os.getenv("GOOGLE_CALENDAR_ID"):
+    if agenda_sync.google_calendar_enabled():
         print("📅 [Agenda] Écriture en cours sur Google Calendar...")
         success = agenda_sync.add_google_calendar_event(title, iso_str, int(duration_minutes), description)
         if success:
@@ -288,10 +288,13 @@ def delete_calendar_event(event_id: str) -> str:
 
     source = target_event.get("source", "local")
     deleted_externally = False
+    # Pour Google, l'API exige l'id COMPLET (le champ `id` local est tronqué à 16 car. pour
+    # l'affichage) → on utilise `external_id` quand il est présent.
+    ext_id = target_event.get("external_id") or event_id
 
     if source == "google":
         print(f"📅 [Agenda] Suppression en cours sur Google Calendar pour l'event {event_id}...")
-        deleted_externally = agenda_sync.delete_google_calendar_event(event_id)
+        deleted_externally = agenda_sync.delete_google_calendar_event(ext_id)
     elif source == "caldav":
         print(f"📅 [Agenda] Suppression en cours sur CalDAV pour l'event {event_id}...")
         deleted_externally = agenda_sync.delete_caldav_calendar_event(event_id)

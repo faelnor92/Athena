@@ -6,8 +6,13 @@ def get_time(timezone: str = "Europe/Paris") -> str:
     """
     Retourne l'heure et la date courante (utile pour savoir quel jour on est).
     """
-    import pytz
-    tz = pytz.timezone(timezone)
+    # zoneinfo = stdlib (Python ≥3.9) → pas de dépendance pytz (doctrine native>dépendance).
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    try:
+        tz = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        return (f"Erreur : fuseau horaire inconnu '{timezone}'. "
+                "Utilise un identifiant IANA, ex. 'Europe/Paris'.")
     now = datetime.now(tz)
     # Format: Lundi 03 Juin 2026, 14:15
     day_names = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]

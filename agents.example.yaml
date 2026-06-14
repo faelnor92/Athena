@@ -242,6 +242,8 @@ agents:
   - read_inbox
   - read_email
   - create_email_draft
+  - read_gmail
+  - read_gmail_message
   handoffs:
   - Athena
   - Codeur
