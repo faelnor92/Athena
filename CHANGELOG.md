@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## v0.11.54 (Liste des modèles agents — corrigée)
+
+### 🐛 Fix : liste des modèles vide dans la config des agents
+- **Cause racine** : l'endpoint `/api/config/models` lisait `.env` en chemin **relatif au cwd**. Lancé depuis un autre dossier (wrapper `athena`, nohup, ancien service), le `.env` n'était pas trouvé → aucune clé/endpoint détecté → liste vide. → Désormais `.env` est résolu aussi par **chemin absolu** (racine projet), + lecture de l'environnement live.
+- **Endpoint custom plus robuste** : on tente plusieurs chemins (`/v1/models`, `/models`, `/api/models`, `/api/tags`) et plusieurs formats (`data`/`models`, `id`/`name`/`model`) → compatible vLLM / LM Studio / Open WebUI / LiteLLM / Ollama.
+- **Jamais vide** : si rien n'est détecté au moment de l'appel, un court groupe « ⚡ Courants » de raccourcis est proposé (le champ reste en saisie libre).
 ## v0.11.53 (Démarrage auto au boot — Athena + MCP locaux)
 
 ### 🔁 Service systemd auto-configuré
