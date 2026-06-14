@@ -200,46 +200,62 @@ async def reset_pricing() -> Dict[str, Any]:
 @router.get("/api/config/models")
 async def list_available_models() -> Dict[str, List[str]]:
     env = _parse_env_local()
-    models = {
-        "OpenAI (Flagships)": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o1-mini", "o3-mini"],
-        "Anthropic Claude": ["anthropic/claude-3-5-sonnet-20241022", "anthropic/claude-3-5-haiku-20241022", "anthropic/claude-3-opus-20240229", "anthropic/claude-3-sonnet-20240229", "anthropic/claude-3-haiku-20240307"],
-        "Google Gemini": ["gemini/gemini-2.5-pro", "gemini/gemini-2.5-flash", "gemini/gemini-1.5-pro", "gemini/gemini-1.5-flash", "gemini/gemini-1.0-pro"],
-        "Groq Fast Inference": ["groq/llama-3.3-70b-specdec", "groq/llama-3.1-70b-versatile", "groq/llama-3.1-8b-instant", "groq/mixtral-8x7b-32768", "groq/gemma2-9b-it"],
-        "Mistral AI": ["mistral/mistral-large-latest", "mistral/mistral-medium-latest", "mistral/mistral-small-latest", "mistral/codestral-latest", "mistral/open-mixtral-8b"],
-        "OpenRouter Cloud": [
-            "openrouter/anthropic/claude-3.5-sonnet",
-            "openrouter/deepseek/deepseek-chat",
-            "openrouter/deepseek/deepseek-r1",
-            "openrouter/google/gemini-2.5-pro",
-            "openrouter/meta-llama/llama-3.3-70b-instruct",
-            "openrouter/qwen/qwen-2.5-72b-instruct"
-        ],
-        "Ollama (Local / Custom)": [
-            "ollama/llama3", "ollama/llama3.1", "ollama/llama3.3", "ollama/deepseek-r1",
-            "ollama/mistral", "ollama/qwen2.5", "ollama/phi3", "ollama/gemma2"
-        ],
-        "Qwen Cloud (Dashscope)": ["dashscope/qwen-max", "dashscope/qwen-plus", "dashscope/qwen-turbo", "dashscope/qwen-long", "dashscope/qwen2.5-72b-instruct", "dashscope/qwen2.5-14b-instruct", "dashscope/qwen2.5-7b-instruct"],
+    models: Dict[str, List[str]] = {}
+
+    # --- Endpoint CUSTOM (OpenAI-compatible) EN PREMIER : on liste ses modèles en direct
+    #     via /v1/models. C'est le cas d'usage principal (vLLM/LM Studio/Open WebUI…).
+    custom_base = (env.get("CUSTOM_LLM_API_BASE") or "").rstrip("/")
+    custom_key = env.get("CUSTOM_LLM_API_KEY", "")
+    if custom_base:
+        base_v1 = custom_base if custom_base.endswith("/v1") else custom_base + "/v1"
+        headers = {"Authorization": f"Bearer {custom_key}"} if custom_key else {}
+        for url in (f"{base_v1}/models", f"{custom_base}/models"):
+            try:
+                r = requests.get(url, headers=headers, timeout=5)
+                if r.status_code == 200:
+                    payload = r.json()
+                    data = payload.get("data", payload) if isinstance(payload, dict) else payload
+                    c_models = sorted(f"custom/{m['id']}" for m in data
+                                      if isinstance(m, dict) and m.get("id"))
+                    if c_models:
+                        models["⭐ Serveur Custom (ton endpoint)"] = c_models
+                        break
+            except Exception:
+                continue
+
+    # --- Catalogue STATIQUE par fournisseur cloud : ajouté UNIQUEMENT si la clé du
+    #     fournisseur est présente (sinon une longue liste de modèles inaccessibles).
+    catalog = {
+        "OPENAI_API_KEY": ("OpenAI", ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o1", "o1-mini", "o3-mini"]),
+        "ANTHROPIC_API_KEY": ("Anthropic Claude", ["anthropic/claude-3-5-sonnet-20241022", "anthropic/claude-3-5-haiku-20241022", "anthropic/claude-3-opus-20240229"]),
+        "GEMINI_API_KEY": ("Google Gemini", ["gemini/gemini-2.5-pro", "gemini/gemini-2.5-flash", "gemini/gemini-1.5-pro"]),
+        "GROQ_API_KEY": ("Groq", ["groq/llama-3.3-70b-versatile", "groq/llama-3.1-8b-instant", "groq/mixtral-8x7b-32768"]),
+        "MISTRAL_API_KEY": ("Mistral AI", ["mistral/mistral-large-latest", "mistral/mistral-small-latest", "mistral/codestral-latest"]),
     }
-    
+    for key_name, (label, lst) in catalog.items():
+        if (env.get(key_name) or "").strip():
+            models[label] = lst
+
+    # Listes LIVE (remplacent le statique) si la clé est présente.
     openai_key = env.get("OPENAI_API_KEY")
     if openai_key:
         try:
-            r = requests.get("https://api.openai.com/v1/models", headers={"Authorization": f"Bearer {openai_key}"}, timeout=2)
+            r = requests.get("https://api.openai.com/v1/models", headers={"Authorization": f"Bearer {openai_key}"}, timeout=3)
             if r.status_code == 200:
-                openai_models = [m['id'] for m in r.json().get("data", []) if "gpt" in m['id']]
-                if openai_models:
-                    models["OpenAI"] = sorted(openai_models)
+                om = sorted(m['id'] for m in r.json().get("data", []) if "gpt" in m['id'] or m['id'].startswith("o"))
+                if om:
+                    models["OpenAI"] = om
         except Exception:
             pass
 
     anthropic_key = env.get("ANTHROPIC_API_KEY")
     if anthropic_key:
         try:
-            r = requests.get("https://api.anthropic.com/v1/models", headers={"x-api-key": anthropic_key, "anthropic-version": "2023-06-01"}, timeout=2)
+            r = requests.get("https://api.anthropic.com/v1/models", headers={"x-api-key": anthropic_key, "anthropic-version": "2023-06-01"}, timeout=3)
             if r.status_code == 200:
-                anth_models = [m['id'] for m in r.json().get("data", [])]
-                if anth_models:
-                    models["Anthropic Claude"] = sorted(anth_models)
+                am = sorted(m['id'] for m in r.json().get("data", []))
+                if am:
+                    models["Anthropic Claude"] = am
         except Exception:
             pass
 
@@ -248,34 +264,21 @@ async def list_available_models() -> Dict[str, List[str]]:
         try:
             r = requests.get("https://openrouter.ai/api/v1/models", timeout=3)
             if r.status_code == 200:
-                or_models = [m['id'] for m in r.json().get("data", [])]
-                if or_models:
-                    models["OpenRouter (Full Catalog)"] = sorted(or_models)
+                orm = sorted(m['id'] for m in r.json().get("data", []))
+                if orm:
+                    models["OpenRouter"] = orm
         except Exception:
             pass
 
-    ollama_base = env.get("OLLAMA_API_BASE", "http://localhost:11434")
+    # Ollama local : ajouté seulement s'il est joignable.
+    ollama_base = (env.get("OLLAMA_API_BASE", "http://localhost:11434") or "").rstrip("/")
     try:
         r = requests.get(f"{ollama_base}/api/tags", timeout=1)
         if r.status_code == 200:
-            local_models = [f"ollama/{m['name']}" for m in r.json().get("models", [])]
-            if local_models:
-                models["Ollama (Modèles installés)"] = sorted(local_models)
+            lm = sorted(f"ollama/{m['name']}" for m in r.json().get("models", []))
+            if lm:
+                models["Ollama (installés)"] = lm
     except Exception:
         pass
-
-    custom_base = env.get("CUSTOM_LLM_API_BASE")
-    custom_key = env.get("CUSTOM_LLM_API_KEY", "")
-    if custom_base:
-        try:
-            headers = {"Authorization": f"Bearer {custom_key}"} if custom_key else {}
-            url = f"{custom_base}/models" if not custom_base.endswith("/v1") else f"{custom_base}/models"
-            r = requests.get(url, headers=headers, timeout=2)
-            if r.status_code == 200:
-                c_models = [f"custom/{m['id']}" for m in r.json().get("data", [])]
-                if c_models:
-                    models["Serveur Custom"] = sorted(c_models)
-        except Exception:
-            pass
 
     return models

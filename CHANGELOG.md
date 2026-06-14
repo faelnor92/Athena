@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.49 (Liste de modèles : endpoint custom + fin de la liste inutile)
+
+### 🧩 `/api/config/models` revu
+- **Modèles de l'endpoint CUSTOM enfin listés** : interrogation robuste de `CUSTOM_LLM_API_BASE` (essaie `/v1/models` ET `/models`, timeout 5 s, gère les formats `{data:[…]}` ou liste brute) → tes modèles apparaissent en tête (« ⭐ Serveur Custom »). (Corrige aussi un bug où les 2 branches d'URL étaient identiques.)
+- **Fin de la longue liste inutile** : le catalogue statique d'un fournisseur cloud (OpenAI/Anthropic/Gemini/Groq/Mistral/OpenRouter) n'est désormais affiché **que si sa clé API est configurée**. Avec seulement ton endpoint custom → tu ne vois **que tes modèles**. Listes live (OpenAI/Anthropic/OpenRouter) seulement si clé ; Ollama seulement si joignable.
 ## v0.11.48 (Installs fraîches : version affichée + config MCP/Home Assistant)
 
 ### 🔧 Correctifs « nouvelle install »
