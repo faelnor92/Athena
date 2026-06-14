@@ -232,4 +232,14 @@ if __name__ == "__main__":
     version = get_version()
     print(f"\n🚀 Lancement du serveur {_app_name()} Dashboard (v{version})...")
     print(f"👉 Accède à l'application ici : http://{'localhost' if host == '0.0.0.0' else host}:{port}\n")
-    uvicorn.run("server:app", host=host, port=port, reload=True)
+    # reload=True est une feature de DÉVELOPPEMENT (rechargement auto sur édition .py) :
+    # son surveillant de fichiers scanne tout l'arbre (.venv, .chroma_db, athena_projects…)
+    # → CPU élevé EN PERMANENCE sur un déploiement. Désactivé par défaut ; active-le en dev
+    # via RELOAD=true (en limitant la surveillance au code pour ne pas pomper le CPU).
+    _reload = os.getenv("RELOAD", "false").lower() in ("true", "1", "yes")
+    if _reload:
+        uvicorn.run("server:app", host=host, port=port, reload=True,
+                    reload_dirs=["core", "routers", "tools", "voice"],
+                    reload_includes=["*.py"])
+    else:
+        uvicorn.run("server:app", host=host, port=port, reload=False)

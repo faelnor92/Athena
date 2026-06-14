@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## v0.11.47 (Serveur : reload désactivé par défaut — fin du CPU à vide)
+
+### 🐌→⚡ CPU élevé au repos corrigé
+- `server.py` lançait uvicorn avec **`reload=True` codé en dur** : le surveillant de fichiers scanne tout l'arbre (`.venv`, `.chroma_db`, `athena_projects`…) → **CPU saturé EN PERMANENCE**, même serveur au repos.
+- `reload` est désormais **gouverné par `RELOAD`** (défaut **false**, sain pour un déploiement). En dev, `RELOAD=true` réactive le rechargement auto — limité aux dossiers de code (`core/routers/tools/voice`, `*.py`) pour ne pas pomper le CPU.
 ## v0.11.46 (Install vocale : resemblyzer optionnel)
 
 ### 🔧 Correctif
