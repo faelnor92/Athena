@@ -1,5 +1,26 @@
 # Historique des Versions (Changelog)
 
+## v0.11.82 (Atelier romans : suivi conversationnel + sans Nextcloud + intégration cohérence)
+
+### 🐛 « intègre-les » partait en texte au lieu d'appeler l'outil
+- Le filtre d'outils ne regardait QUE le dernier message : un suivi sans mot-clé
+  (« intègre-les », « fais-le », « oui ») masquait les outils du domaine déjà engagé →
+  le modèle narrait faute d'outil. Désormais fenêtre glissante sur les 3 derniers messages
+  utilisateur → le domaine (ex. rédaction) reste exposé sur les tours de suivi.
+
+### 🔧 Intégration des corrections de cohérence opérationnelle
+- `_llm_corrections` ignorait la consigne (prompt codé « ne change pas le sens ») → « intègre
+  les corrections de cohérence » ne produisait RIEN. Nouveau mode CONSIGNE : applique les
+  corrections demandées (cohérence, continuité, faits, chronologie, climat…) en fragments
+  ponctuels {old→new} (toujours en modifications suivies, jamais de réécriture globale).
+
+### 📤 L'atelier fonctionne SANS Nextcloud (fichiers uploadés)
+- `document_open` accepte un .docx UPLOADÉ dans l'app (workspace/uploads) en plus d'un chemin
+  Nextcloud. Révision/traduction → fichier produit déposé dans le workspace avec lien de
+  téléchargement (`/api/workspace/download`). Nextcloud devient une source/destination
+  OPTIONNELLE ; l'original reste toujours intact.
+
+
 ## v0.11.81 (Outils romans robustes + équipe nettoyée)
 
 ### 🧹 Agents redondants retirés du modèle d'équipe

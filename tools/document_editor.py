@@ -11,6 +11,7 @@ Dépendance : python-docx. Téléchargement/upload via core.nextcloud (WebDAV).
 import os
 import re
 import json
+import shutil
 import difflib
 import datetime
 import urllib.parse
@@ -88,6 +89,90 @@ def _nc_url(remote_path: str) -> str:
     if any(s == ".." for s in segs):
         raise ValueError("chemin distant invalide ('..').")
     return nextcloud.files_base() + "/".join(urllib.parse.quote(s) for s in segs)
+
+
+# --- Source & livraison (Nextcloud OU fichier uploadé local) ----------------
+# L'atelier fonctionne SANS Nextcloud : un .docx uploadé (workspace/uploads/) peut être
+# ouvert, révisé/traduit, puis récupéré via un lien de téléchargement workspace. Nextcloud
+# devient une source/destination OPTIONNELLE. Le moteur (modifications suivies, trad…) est
+# identique ; seuls l'entrée (open) et la sortie (publish/translate) changent d'adaptateur.
+
+def _find_local_docx(name: str):
+    """Cherche un .docx déjà uploadé (workspace/uploads) par nom. Renvoie le chemin ou None."""
+    try:
+        from tools.document_tools import _resolve
+        p = _resolve(name)
+        if p and p.lower().endswith(".docx"):
+            return p
+    except Exception:
+        pass
+    return None
+
+
+def _write_src(local: str, meta: dict):
+    """Mémorise l'origine du document (Nextcloud OU upload local) en JSON, à côté de la copie."""
+    with open(local + ".src", "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False)
+
+
+def _src_meta(local: str) -> dict:
+    """Lit l'origine du document. Rétro-compat : un ancien .src = simple chemin Nextcloud."""
+    try:
+        raw = open(local + ".src", encoding="utf-8").read().strip()
+    except Exception:
+        return {}
+    if not raw:
+        return {}
+    try:
+        d = json.loads(raw)
+        if isinstance(d, dict) and d.get("kind"):
+            return d
+    except Exception:
+        pass
+    return {"kind": "nextcloud", "path": raw}  # ancien format (chaîne brute)
+
+
+def _download_ref(local_path: str):
+    """URL de téléchargement workspace pour un fichier produit localement (ou None)."""
+    try:
+        from core.state import get_workspace_dir
+        base = get_workspace_dir()
+        rel = os.path.relpath(local_path, base)
+        if not rel.startswith(".."):
+            return "/api/workspace/download?path=" + urllib.parse.quote(rel)
+    except Exception:
+        pass
+    return None
+
+
+def _deliver(local_file: str, out_basename: str, meta: dict):
+    """Dépose le fichier produit. Nextcloud → upload à côté de l'original ; upload local →
+    copie dans le workspace rédaction + lien de téléchargement. Renvoie (ok, description)."""
+    if meta.get("kind") == "nextcloud":
+        original_remote = (meta.get("path") or "").strip()
+        folder = original_remote.rsplit("/", 1)[0] if "/" in original_remote else ""
+        remote = (folder + "/" + out_basename) if folder else out_basename
+        try:
+            url = _nc_url(remote)
+        except ValueError as e:
+            return False, f"chemin distant invalide : {e}"
+        if is_blocked_url(url):
+            return False, "hôte Nextcloud bloqué (anti-SSRF)"
+        with open(local_file, "rb") as f:
+            data = f.read()
+        r = requests.put(url, auth=nextcloud.auth(), data=data,
+                         headers={"Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+                         timeout=30)
+        if r.status_code in (200, 201, 204):
+            return True, f"Nextcloud : « {remote} » (l'original « {original_remote} » est intact)"
+        return False, f"upload Nextcloud échoué ({r.status_code})"
+    # Origine locale (upload) : on garde le fichier dans le workspace rédaction.
+    dest = os.path.join(_dir(), out_basename)
+    if os.path.abspath(dest) != os.path.abspath(local_file):
+        shutil.copyfile(local_file, dest)
+    ref = _download_ref(dest)
+    where = f"workspace ({ref})" if ref else f"workspace : {dest}"
+    return True, where
 
 
 def _now_iso() -> str:
@@ -240,36 +325,44 @@ def _find_chapter(doc, chapter):
 # --- OUTILS exposés à l'agent ----------------------------------------------
 def document_open(nextcloud_path: str) -> str:
     """
-    Ouvre un document .docx depuis Nextcloud pour édition (le télécharge dans un espace de
-    travail dédié). L'ORIGINAL sur Nextcloud n'est jamais modifié.
+    Ouvre un document .docx pour édition (copie de travail dédiée). La source peut être un
+    fichier Nextcloud (ex: "Romans/MonRoman.docx") OU un .docx déjà UPLOADÉ dans l'app
+    (ex: "MonRoman.docx") — Nextcloud n'est PAS obligatoire. L'ORIGINAL n'est jamais modifié.
 
     Args:
-        nextcloud_path (str): Chemin du .docx sur Nextcloud (ex: "Romans/MonRoman.docx").
+        nextcloud_path (str): Chemin Nextcloud OU nom d'un fichier .docx uploadé.
 
     Returns:
         str: Confirmation + liste des chapitres détectés.
     """
-    if not nextcloud.is_configured():
-        return "Nextcloud non configuré (Réglages → Agenda → section Nextcloud)."
-    if not (nextcloud_path or "").lower().endswith(".docx"):
+    source = (nextcloud_path or "").strip()
+    if not source.lower().endswith(".docx"):
         return "Seuls les fichiers .docx sont pris en charge pour l'édition suivie."
+    name = _safe_name(source)
+    local = _local_path(name)
     try:
-        url = _nc_url(nextcloud_path)
-    except ValueError as e:
-        return f"Erreur : {e}"
-    if is_blocked_url(url):
-        return "Hôte Nextcloud bloqué (anti-SSRF) — ajoute-le à NET_GUARD_ALLOW_HOSTS."
-    try:
-        r = requests.get(url, auth=nextcloud.auth(), timeout=30)
-        if r.status_code != 200:
-            return f"Téléchargement impossible ({r.status_code})."
-        name = _safe_name(nextcloud_path)
-        local = _local_path(name)
-        with open(local, "wb") as f:
-            f.write(r.content)
-        # mémorise le chemin distant d'origine (pour publier à côté)
-        with open(local + ".src", "w", encoding="utf-8") as f:
-            f.write(nextcloud_path)
+        # 1) Fichier uploadé local (prioritaire si présent — marche sans Nextcloud).
+        loc = _find_local_docx(source)
+        if loc:
+            shutil.copyfile(loc, local)
+            _write_src(local, {"kind": "local", "name": name})
+        # 2) Sinon, Nextcloud si configuré.
+        elif nextcloud.is_configured():
+            try:
+                url = _nc_url(source)
+            except ValueError as e:
+                return f"Erreur : {e}"
+            if is_blocked_url(url):
+                return "Hôte Nextcloud bloqué (anti-SSRF) — ajoute-le à NET_GUARD_ALLOW_HOSTS."
+            r = requests.get(url, auth=nextcloud.auth(), timeout=30)
+            if r.status_code != 200:
+                return f"Téléchargement Nextcloud impossible ({r.status_code})."
+            with open(local, "wb") as f:
+                f.write(r.content)
+            _write_src(local, {"kind": "nextcloud", "path": source})
+        else:
+            return (f"Fichier « {name} » introuvable. Uploade le .docx dans l'app, "
+                    "ou configure Nextcloud (Réglages → Agenda → section Nextcloud).")
         doc = _docx()(local)
         chaps = _chapters(doc)
         lst = "\n".join(f"  {i+1}. {t}  ({b-a} paragraphe(s))" for i, (t, a, b) in enumerate(chaps))
@@ -405,21 +498,43 @@ def _llm_corrections(model: str, instruction: str, chapter_text: str) -> list:
     n'appliquera QUE ces fragments → impossible de « changer l'histoire ». Renvoie [] si rien."""
     try:
         from core.state import swarm as _sw
-        sys_p = (
-            "Tu es un correcteur. On te donne un extrait de roman. Tu renvoies la LISTE des "
-            "corrections PONCTUELLES à y apporter, au format JSON STRICT : une liste d'objets "
-            "{\"old\": \"...\", \"new\": \"...\"}.\n"
-            "RÈGLES :\n"
-            "- `old` = un fragment COURT (quelques mots) copié EXACTEMENT du texte (à l'identique, "
-            "mêmes accents/ponctuation).\n"
-            "- Corrige UNIQUEMENT : fautes d'orthographe, de grammaire, de ponctuation, et lourdeurs "
-            "ÉVIDENTES (répétitions, adjectifs/adverbes redondants).\n"
-            "- NE reformule PAS des phrases entières, NE change PAS l'histoire, les noms, le sens. "
-            "NE crée pas d'entrée si rien n'est fautif.\n"
-            "- Réponds UNIQUEMENT par le tableau JSON (commence par [ et finis par ]). Si rien à "
-            "corriger : [].")
-        usr = (f"Consigne : {instruction or 'corrige les fautes et les lourdeurs évidentes, sans réécrire'}\n\n"
-               f"--- EXTRAIT ---\n{chapter_text}")
+        has_instr = bool((instruction or "").strip())
+        if has_instr:
+            # Mode CONSIGNE : on applique ce que demande l'utilisateur (y compris des corrections
+            # de COHÉRENCE / continuité / faits, ex. « rétablis Malachar comme gardien éternel »).
+            # Toujours sous forme de fragments ponctuels {old→new} → on ne réécrit jamais tout le
+            # chapitre, on ne touche que ce que vise la consigne (bornage par construction).
+            sys_p = (
+                "Tu es un éditeur de roman. On te donne un EXTRAIT et une CONSIGNE. Tu renvoies la "
+                "LISTE des modifications PONCTUELLES à appliquer pour RÉALISER la consigne, au format "
+                "JSON STRICT : une liste d'objets {\"old\": \"...\", \"new\": \"...\"}.\n"
+                "RÈGLES :\n"
+                "- `old` = un fragment COURT copié EXACTEMENT du texte (mêmes mots/accents/ponctuation) ; "
+                "il DOIT apparaître tel quel dans l'extrait.\n"
+                "- `new` = le même fragment modifié pour appliquer la consigne (cohérence, continuité, "
+                "faits, noms, chronologie, climat, style…).\n"
+                "- Ne cible QUE les fragments concernés par la consigne ; ne réécris pas des chapitres "
+                "entiers, ne touche pas à ce qui n'est pas visé.\n"
+                "- Si la consigne ne concerne PAS cet extrait : renvoie []. Réponds UNIQUEMENT par le "
+                "tableau JSON (de [ à ]).")
+            usr = f"Consigne : {instruction}\n\n--- EXTRAIT ---\n{chapter_text}"
+        else:
+            # Mode CORRECTION par défaut : orthographe/grammaire/lourdeurs, sans changer le sens.
+            sys_p = (
+                "Tu es un correcteur. On te donne un extrait de roman. Tu renvoies la LISTE des "
+                "corrections PONCTUELLES à y apporter, au format JSON STRICT : une liste d'objets "
+                "{\"old\": \"...\", \"new\": \"...\"}.\n"
+                "RÈGLES :\n"
+                "- `old` = un fragment COURT (quelques mots) copié EXACTEMENT du texte (à l'identique, "
+                "mêmes accents/ponctuation).\n"
+                "- Corrige UNIQUEMENT : fautes d'orthographe, de grammaire, de ponctuation, et lourdeurs "
+                "ÉVIDENTES (répétitions, adjectifs/adverbes redondants).\n"
+                "- NE reformule PAS des phrases entières, NE change PAS l'histoire, les noms, le sens. "
+                "NE crée pas d'entrée si rien n'est fautif.\n"
+                "- Réponds UNIQUEMENT par le tableau JSON (commence par [ et finis par ]). Si rien à "
+                "corriger : [].")
+            usr = (f"Consigne : corrige les fautes et les lourdeurs évidentes, sans réécrire\n\n"
+                   f"--- EXTRAIT ---\n{chapter_text}")
         resp = _sw._complete(model, [{"role": "system", "content": sys_p},
                                      {"role": "user", "content": usr}], tools_schema=None)
         raw = (resp.choices[0].message.content or "").strip()
@@ -702,24 +817,17 @@ def document_translate(nextcloud_path: str, target_language: str, instruction: s
                 batch.append(line); blen += len(line) + 1
             _flush(batch)
 
-        # Publication : nouveau fichier « <nom> (<langue>).docx » à côté de l'original.
-        local_out = os.path.join(_dir(), name[:-5] + f" ({target_language}).docx")
+        # Publication : nouveau fichier « <nom> (<langue>).docx » (à côté de l'original Nextcloud,
+        # ou dans le workspace si la source était un upload local).
+        out_name = name[:-5] + f" ({target_language}).docx"
+        local_out = os.path.join(_dir(), out_name)
         out.save(local_out)
-        original_remote = open(_local_path(name) + ".src", encoding="utf-8").read().strip()
-        folder = original_remote.rsplit("/", 1)[0] if "/" in original_remote else ""
-        remote = (folder + "/" if folder else "") + os.path.basename(local_out)
-        url = _nc_url(remote)
-        if is_blocked_url(url):
-            return "Hôte Nextcloud bloqué (anti-SSRF)."
-        with open(local_out, "rb") as f:
-            data = f.read()
-        r = requests.put(url, auth=nextcloud.auth(), data=data,
-                         headers={"Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
-                         timeout=30)
-        if r.status_code in (200, 201, 204):
-            return (f"🌍 Traduction ({target_language}) publiée sur Nextcloud : « {remote} » "
-                    f"({len(chaps)} chapitre(s), {n_chunks} bloc(s) traduits). L'original est intact.")
-        return f"Traduction faite mais upload échoué ({r.status_code})."
+        meta = _src_meta(_local_path(name))
+        ok, where = _deliver(local_out, out_name, meta)
+        if not ok:
+            return f"Traduction faite mais livraison échouée : {where}."
+        return (f"🌍 Traduction ({target_language}) — {where} "
+                f"({len(chaps)} chapitre(s), {n_chunks} bloc(s) traduits). L'original est intact.")
     except Exception as e:
         return f"Erreur lors de la traduction : {e}"
 
@@ -819,27 +927,19 @@ def document_publish(filename: str) -> str:
     local = _local_path(filename)
     if not os.path.exists(local):
         return "Document non ouvert."
-    src_file = local + ".src"
-    if not os.path.exists(src_file):
-        return "Chemin Nextcloud d'origine inconnu (ré-ouvre via document_open)."
+    meta = _src_meta(local)
+    if not meta:
+        return "Origine du document inconnue (ré-ouvre via document_open)."
     try:
-        original_remote = open(src_file, encoding="utf-8").read().strip()
-        folder = original_remote.rsplit("/", 1)[0] if "/" in original_remote else ""
         base = _safe_name(filename)
-        revised_name = base[:-5] + " — révisé.docx" if base.lower().endswith(".docx") else base + " — révisé.docx"
-        remote = (folder + "/" + revised_name) if folder else revised_name
-        url = _nc_url(remote)
-        if is_blocked_url(url):
-            return "Hôte Nextcloud bloqué (anti-SSRF)."
-        with open(local, "rb") as f:
-            data = f.read()
-        r = requests.put(url, auth=nextcloud.auth(), data=data,
-                         headers={"Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
-                         timeout=30)
-        if r.status_code in (200, 201, 204):
-            return (f"📤 Publié sur Nextcloud : « {remote} » (l'original « {original_remote} » est intact). "
-                    "Ouvre-le dans OnlyOffice → tu verras les modifications suivies à accepter/refuser.")
-        return f"Échec de l'upload ({r.status_code})."
+        revised_name = (base[:-5] if base.lower().endswith(".docx") else base) + " — révisé.docx"
+        ok, where = _deliver(local, revised_name, meta)
+        if not ok:
+            return f"Échec de la publication : {where}."
+        tail = ("Ouvre-le dans OnlyOffice/Word → tu verras les modifications suivies à accepter/refuser."
+                if meta.get("kind") == "nextcloud" else
+                "Télécharge-le puis ouvre-le dans Word/OnlyOffice → modifications suivies à accepter/refuser.")
+        return f"📤 Publié — {where}. L'original est intact. {tail}"
     except Exception as e:
         return f"Erreur de publication : {e}"
 
