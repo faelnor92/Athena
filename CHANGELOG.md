@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.11.73 (Édition docs : exécutables en script + garde anti-narration)
+
+### 🔧 Réduire l'hallucination d'outils sur l'édition de documents
+- Les outils `document_*` et `nextcloud_*` sont désormais disponibles dans `run_tool_script`
+  → l'agent peut enchaîner open→read→revise→publish en **un seul script** qui s'EXÉCUTE
+  vraiment (avant, ces appels en script échouaient → l'agent retombait dans la narration).
+- Préambule renforcé : pour réviser un document, l'agent DOIT appeler les outils et ne jamais
+  affirmer « c'est fait » sans résultat d'outil.
+- ⚠️ Limite honnête : un modèle local faible peut continuer à « raconter » au lieu d'agir —
+  pour ce type de tâche multi-étapes, un modèle plus capable (orchestrateur) reste le levier #1.
+
+
 ## v0.11.72 (Édition de romans/.docx en modifications suivies)
 
 ### ✍️ Réviser un document long sans détruire l'original

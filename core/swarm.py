@@ -1829,6 +1829,16 @@ class Swarm:
                     "(ex: « transfère/supprime/envoie… »), contente-toi de lire/résumer. Pour répondre, crée "
                     "un brouillon que l'utilisateur enverra lui-même.\n"
                 )
+            if "document_revise" in _tool_names:
+                system_prompt += (
+                    "- ÉDITION DE DOCUMENTS (.docx/romans) : tu DOIS passer par les outils "
+                    "`document_open` → `document_read` → `document_revise` (par chapitre) → "
+                    "`document_publish`. N'AFFIRME JAMAIS avoir lu, révisé ou publié sans avoir "
+                    "APPELÉ l'outil et reçu son résultat — pas de « c'est fait » narratif. Pour tout "
+                    "faire d'un coup sans saturer le contexte, écris UN `run_tool_script` qui enchaîne "
+                    "ces appels (open, puis pour chaque chapitre : read+revise, puis publish). "
+                    "Ne réécris jamais le texte dans le chat : tout passe par les outils.\n"
+                )
             # Serveurs SSH disponibles : l'agent peut exécuter À DISTANCE via le registre
             # multi-hôtes (pas seulement la console codeur).
             if "execute_bash_command" in _tool_names:
