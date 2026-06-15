@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Éditeur OnlyOffice — Athena</title>
+    <style>
+        html, body { margin: 0; height: 100%; background: #1a1a1a; color: #eee;
+                     font-family: system-ui, sans-serif; }
+        #placeholder { position: absolute; inset: 0; }
+        #msg { position: absolute; inset: 0; display: flex; align-items: center;
+               justify-content: center; text-align: center; padding: 24px; }
+        #msg .box { max-width: 640px; line-height: 1.5; }
+        #msg h2 { margin: 0 0 10px; }
+        #msg code { background: #000; padding: 2px 6px; border-radius: 4px; }
+        .err { color: #ff9; }
+    </style>
+</head>
+<body>
+    <div id="msg"><div class="box">Chargement de l'éditeur…</div></div>
+    <div id="placeholder"></div>
+    <script>
+    (function () {
+        const params = new URLSearchParams(location.search);
+        const path = params.get("path") || "";
+        const mode = params.get("mode") || "edit";
+        const msg = document.getElementById("msg");
+        const token = localStorage.getItem("athena_session_token") || "";
+
+        function fail(html) {
+            msg.style.display = "flex";
+            msg.innerHTML = '<div class="box err"><h2>Éditeur indisponible</h2>' + html + '</div>';
+        }
+        if (!path) { fail("Aucun fichier indiqué."); return; }
+
+        const headers = {};
+        if (token && token !== "no-auth-required") headers["Authorization"] = "Bearer " + token;
+
+        fetch("/api/redaction/onlyoffice/config?path=" + encodeURIComponent(path) + "&mode=" + encodeURIComponent(mode),
+              { headers })
+        .then(r => r.json().then(d => ({ ok: r.ok, d })))
+        .then(({ ok, d }) => {
+            if (!ok) throw new Error(d.detail || "config refusée");
+            const dsUrl = (d.ds_url || "").replace(/\/$/, "");
+            const s = document.createElement("script");
+            s.src = dsUrl + "/web-apps/apps/api/documents/api.js";
+            s.onerror = () => fail("Le script de l'éditeur (<code>api.js</code>) est injoignable.<br>"
+                + "Vérifie l'URL du Document Server : <code>" + dsUrl + "</code>");
+            s.onload = () => {
+                try {
+                    msg.style.display = "none";
+                    d.config.width = "100%"; d.config.height = "100%";
+                    d.config.events = {
+                        onError: (e) => fail("Erreur OnlyOffice : <code>" + JSON.stringify(e && e.data) + "</code>"
+                            + "<br>Souvent : le Document Server n'arrive pas à TÉLÉCHARGER le fichier depuis Athena "
+                            + "(règle « URL d'Athena vue par OnlyOffice ») ou le secret JWT ne correspond pas."),
+                        onDocumentReady: () => { document.title = (d.config.document && d.config.document.title) || "Éditeur"; }
+                    };
+                    new window.DocsAPI.DocEditor("placeholder", d.config);
+                } catch (e) { fail("Initialisation impossible : " + e.message); }
+            };
+            document.head.appendChild(s);
+        })
+        .catch(e => fail("Configuration impossible : " + e.message
+            + "<br>Vérifie qu'OnlyOffice est configuré (onglet Écriture → ⚙️)."));
+    })();
+    </script>
+</body>
+</html>

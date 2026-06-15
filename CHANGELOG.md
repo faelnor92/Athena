@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.11.98 (Éditeur OnlyOffice en fenêtre dédiée + erreurs claires)
+
+### 📝 Ouverture dans une nouvelle fenêtre
+- L'éditeur OnlyOffice s'ouvre désormais dans une PAGE DÉDIÉE plein écran (/oo_editor.html),
+  plus confortable que l'embarqué. La page lit le jeton de session (même origine) et affiche
+  un MESSAGE D'ERREUR EXPLICITE si ça coince (api.js injoignable = mauvaise URL DS ; zone grise
+  vide = le Document Server n'arrive pas à télécharger le fichier depuis Athena → régler « URL
+  d'Athena vue par OnlyOffice » ; ou secret JWT incorrect).
+
+
 ## v0.11.97 (Bouton « Ouvrir dans OnlyOffice » fiable)
 
 ### 📝 Ouvrir n'importe quel doc chargé dans OnlyOffice
