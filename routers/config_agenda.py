@@ -15,6 +15,7 @@ class SaveAgendaConfigRequest(BaseModel):
     caldav_url: str = ""
     caldav_username: str = ""
     caldav_password: str = ""
+    write_target: str = "auto"   # où créer les événements : auto | local | google | caldav
 
 
 @router.get("/api/config/agenda")
@@ -32,6 +33,7 @@ async def get_config_agenda() -> Dict[str, Any]:
             "caldav_url": user_config.get("CALDAV_URL", "") or "",
             "caldav_username": user_config.get("CALDAV_USERNAME", "") or "",
             "caldav_password": masked,
+            "write_target": user_config.get("AGENDA_WRITE_TARGET", "auto") or "auto",
             "has_google_credentials": os.path.exists(google_creds_path()),
         }
     except Exception as e:
@@ -44,11 +46,15 @@ async def get_config_agenda() -> Dict[str, Any]:
 async def save_config_agenda(req: SaveAgendaConfigRequest) -> Dict[str, str]:
     """Enregistre la config agenda de l'utilisateur courant (store par-utilisateur, pas .env)."""
     try:
+        _wt = (req.write_target or "auto").strip().lower()
+        if _wt not in ("auto", "local", "google", "caldav"):
+            _wt = "auto"
         updates = {
             "EXTERNAL_ICAL_URL": req.external_ical_url,
             "GOOGLE_CALENDAR_ID": req.google_calendar_id,
             "CALDAV_URL": req.caldav_url,
             "CALDAV_USERNAME": req.caldav_username,
+            "AGENDA_WRITE_TARGET": _wt,
         }
         # Ne pas écraser le mot de passe s'il est masqué (non modifié dans l'UI).
         if req.caldav_password and "..." not in req.caldav_password and req.caldav_password != "***":

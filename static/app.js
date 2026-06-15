@@ -5192,7 +5192,9 @@ async function loadAgendaConfig() {
         document.getElementById("agenda-google-id").value = config.google_calendar_id || "";
         document.getElementById("agenda-caldav-url").value = config.caldav_url || "";
         document.getElementById("agenda-caldav-user").value = config.caldav_username || "";
-        
+        const wt = document.getElementById("agenda-write-target");
+        if (wt) wt.value = config.write_target || "auto";
+
         // Gérer le mot de passe CalDAV masqué
         const pwdInput = document.getElementById("agenda-caldav-password");
         if (config.caldav_password) {
@@ -5401,7 +5403,8 @@ if (agendaSyncForm) {
             google_calendar_id: document.getElementById("agenda-google-id").value.trim(),
             caldav_url: document.getElementById("agenda-caldav-url").value.trim(),
             caldav_username: document.getElementById("agenda-caldav-user").value.trim(),
-            caldav_password: document.getElementById("agenda-caldav-password").value.trim()
+            caldav_password: document.getElementById("agenda-caldav-password").value.trim(),
+            write_target: (document.getElementById("agenda-write-target")?.value || "auto")
         };
         
         try {

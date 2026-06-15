@@ -15,7 +15,8 @@ import tools.agenda_sync as agenda_sync
 # os.getenv en interne), un context manager injecte temporairement, SOUS VERROU, la
 # config de l'utilisateur courant dans l'environnement le temps de l'opération.
 _AGENDA_LOCK = threading.RLock()
-_ENV_KEYS = ["EXTERNAL_ICAL_URL", "GOOGLE_CALENDAR_ID", "CALDAV_URL", "CALDAV_USERNAME", "CALDAV_PASSWORD"]
+_ENV_KEYS = ["EXTERNAL_ICAL_URL", "GOOGLE_CALENDAR_ID", "CALDAV_URL", "CALDAV_USERNAME",
+             "CALDAV_PASSWORD", "AGENDA_WRITE_TARGET"]
 
 
 def _user_slug() -> str:
@@ -192,19 +193,40 @@ def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60
     source = "local"
     event_id = uuid.uuid4().hex[:8]
 
-    if agenda_sync.google_calendar_enabled():
-        print("📅 [Agenda] Écriture en cours sur Google Calendar...")
-        success = agenda_sync.add_google_calendar_event(title, iso_str, int(duration_minutes), description)
-        if success:
-            written_externally = True
-            source = "google"
+    # Calendrier d'écriture : préférence utilisateur (AGENDA_WRITE_TARGET) parmi
+    # auto / local / google / caldav. "auto" (défaut) = ancien comportement (Google puis CalDAV).
+    # Une cible explicite mais indisponible retombe sur "auto" plutôt que d'échouer en silence.
+    _target = (os.getenv("AGENDA_WRITE_TARGET") or "auto").strip().lower()
+    _google_ok = agenda_sync.google_calendar_enabled()
+    _caldav_ok = bool(os.getenv("CALDAV_URL") and os.getenv("CALDAV_USERNAME") and os.getenv("CALDAV_PASSWORD"))
 
-    elif os.getenv("CALDAV_URL") and os.getenv("CALDAV_USERNAME") and os.getenv("CALDAV_PASSWORD"):
-        print("📅 [Agenda] Écriture en cours sur CalDAV...")
-        success = agenda_sync.add_caldav_calendar_event(title, iso_str, int(duration_minutes), description)
-        if success:
-            written_externally = True
-            source = "caldav"
+    def _write_google():
+        if agenda_sync.add_google_calendar_event(title, iso_str, int(duration_minutes), description):
+            return "google"
+        return None
+
+    def _write_caldav():
+        if agenda_sync.add_caldav_calendar_event(title, iso_str, int(duration_minutes), description):
+            return "caldav"
+        return None
+
+    if _target == "local":
+        pass  # local uniquement, on n'écrit sur aucun externe
+    elif _target == "google" and _google_ok:
+        print("📅 [Agenda] Écriture sur Google Calendar (cible choisie)...")
+        source = _write_google() or "local"
+    elif _target == "caldav" and _caldav_ok:
+        print("📅 [Agenda] Écriture sur CalDAV (cible choisie)...")
+        source = _write_caldav() or "local"
+    else:
+        # auto (ou cible choisie indisponible) : Google d'abord, sinon CalDAV.
+        if _google_ok:
+            print("📅 [Agenda] Écriture sur Google Calendar (auto)...")
+            source = _write_google() or "local"
+        elif _caldav_ok:
+            print("📅 [Agenda] Écriture sur CalDAV (auto)...")
+            source = _write_caldav() or "local"
+    written_externally = source != "local"
 
     event = {
         "id": event_id,
