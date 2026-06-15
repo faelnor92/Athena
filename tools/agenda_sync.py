@@ -349,8 +349,13 @@ def sync_caldav_calendar() -> List[Dict[str, Any]]:
         
         r = requests.request("REPORT", url, auth=(user, password), headers=headers, data=xml_payload, timeout=10)
         if r.status_code in [200, 207]:
-            # Extraire les blocs iCal des réponses XML
-            calendar_datas = re.findall(r"<c:calendar-data.*?>(.*?)</c:calendar-data>", r.text, re.DOTALL)
+            # Extraire les blocs iCal des réponses XML. ATTENTION : le serveur choisit SON
+            # préfixe de namespace dans la réponse (SabreDAV/Nextcloud renvoie souvent
+            # <cal:calendar-data>, voire <C:...>), pas forcément le `c:` de notre requête.
+            # → on matche n'importe quel préfixe (ou aucun), sinon 0 événement lu.
+            calendar_datas = re.findall(
+                r"<(?:[A-Za-z0-9_.-]+:)?calendar-data[^>]*>(.*?)</(?:[A-Za-z0-9_.-]+:)?calendar-data>",
+                r.text, re.DOTALL | re.IGNORECASE)
             for ics in calendar_datas:
                 # Décoder les entités XML de base
                 decoded_ics = ics.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")

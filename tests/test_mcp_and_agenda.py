@@ -75,6 +75,32 @@ def test_agenda_delete_google_uses_external_id():
             os.remove(path)
 
 
+def test_caldav_sync_extracts_any_namespace_prefix():
+    # Bug réel : SabreDAV/Nextcloud renvoie <cal:calendar-data> (ou C:, ou sans préfixe),
+    # pas le `c:` de notre requête → l'ancien regex `<c:calendar-data>` lisait 0 événement
+    # → list_calendar_events ne montrait que le local. L'extraction doit être prefix-agnostique.
+    import tools.agenda_sync as asy
+    for prefix in ("cal:", "c:", "C:", ""):
+        sabre = (f"<multistatus><response><propstat><prop>"
+                 f"<{prefix}calendar-data>BEGIN:VCALENDAR EVT END:VCALENDAR</{prefix}calendar-data>"
+                 f"</prop></propstat></response></multistatus>")
+
+        class _R:
+            status_code = 207
+            text = sabre
+
+        captured = []
+        with mock.patch.dict(os.environ, {"CALDAV_URL": "https://x/cal/",
+                                          "CALDAV_USERNAME": "u", "CALDAV_PASSWORD": "p"}), \
+             mock.patch("tools.net_guard.is_blocked_url", return_value=False), \
+             mock.patch.object(asy.requests, "request", return_value=_R()), \
+             mock.patch.object(asy, "parse_ics_data",
+                               lambda s: captured.append(s) or [{"title": "RDV", "datetime": "2026-06-20 10:00"}]):
+            evs = asy.sync_caldav_calendar()
+        assert captured, f"calendar-data NON extrait pour le préfixe {prefix!r}"
+        assert evs and evs[0]["source"] == "caldav", (prefix, evs)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
