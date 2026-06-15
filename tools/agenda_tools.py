@@ -16,7 +16,7 @@ import tools.agenda_sync as agenda_sync
 # config de l'utilisateur courant dans l'environnement le temps de l'opération.
 _AGENDA_LOCK = threading.RLock()
 _ENV_KEYS = ["EXTERNAL_ICAL_URL", "GOOGLE_CALENDAR_ID", "CALDAV_URL", "CALDAV_USERNAME",
-             "CALDAV_PASSWORD", "AGENDA_WRITE_TARGET"]
+             "CALDAV_PASSWORD", "AGENDA_WRITE_TARGET", "AGENDA_TIMEZONE"]
 
 
 def _user_slug() -> str:

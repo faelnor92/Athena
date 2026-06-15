@@ -10,6 +10,35 @@ from typing import List, Dict, Any, Tuple
 # Chemin des credentials Google
 GOOGLE_KEY_PATH = "workspace/google_credentials.json"
 
+
+def local_tz_name() -> str:
+    """Nom IANA du fuseau à utiliser pour l'agenda (ex. 'Europe/Paris', 'America/New_York').
+
+    Priorité : AGENDA_TIMEZONE (réglable PAR UTILISATEUR), puis le fuseau SYSTÈME de la machine
+    (/etc/localtime), puis repli 'Europe/Paris'. → plus aucun fuseau codé en dur."""
+    name = (os.getenv("AGENDA_TIMEZONE") or "").strip()
+    if name:
+        return name
+    try:
+        p = os.path.realpath("/etc/localtime")
+        if "zoneinfo/" in p:
+            return p.split("zoneinfo/")[-1]
+    except Exception:
+        pass
+    return "Europe/Paris"
+
+
+def _local_tz():
+    """Objet tzinfo correspondant à local_tz_name() (repli sur l'offset système, puis UTC)."""
+    from zoneinfo import ZoneInfo
+    try:
+        return ZoneInfo(local_tz_name())
+    except Exception:
+        try:
+            return datetime.now().astimezone().tzinfo   # offset système courant
+        except Exception:
+            return ZoneInfo("Europe/Paris")
+
 # =========================================================================
 # 1. PARSEUR ICS UNIVERSEL (LIGHTWEIGHT & EXTRA ROBUSTE)
 # =========================================================================
@@ -34,17 +63,20 @@ def parse_ics_data(ics_content: str) -> List[Dict[str, Any]]:
         desc_match = re.search(r"DESCRIPTION:(.*)", vevent)
         event["description"] = desc_match.group(1).strip().replace("\\n", "\n").replace("\\", "") if desc_match else ""
         
-        # 3. Date de début (DTSTART)
-        dtstart_match = re.search(r"DTSTART(?:;VALUE=DATE)?:([0-9T]+Z?)", vevent)
+        # 3. Date de début (DTSTART). IMPORTANT : accepter N'IMPORTE QUEL paramètre avant le ':'
+        #    (DTSTART;TZID=Europe/Paris:..., DTSTART;VALUE=DATE:...). L'ancien regex ne gérait
+        #    que ':' ou ';VALUE=DATE:' → il SAUTAIT tout événement horodaté avec un fuseau
+        #    (cas par défaut de Nextcloud) → événements invisibles dans Athena.
+        dtstart_match = re.search(r"DTSTART[^:\r\n]*:([0-9T]+Z?)", vevent)
         if dtstart_match:
             raw_start = dtstart_match.group(1).strip()
             event["datetime"] = format_ics_datetime(raw_start)
         else:
             continue # Ignorer les événements sans date de début
-            
+
         # 4. Durée (DURATION ou DTEND)
         duration_match = re.search(r"DURATION:P(?:.*?T)?([0-9]+)M", vevent)
-        dtend_match = re.search(r"DTEND(?:;VALUE=DATE)?:([0-9T]+Z?)", vevent)
+        dtend_match = re.search(r"DTEND[^:\r\n]*:([0-9T]+Z?)", vevent)
         
         if duration_match:
             event["duration_minutes"] = int(duration_match.group(1))
@@ -73,12 +105,21 @@ def parse_ics_data(ics_content: str) -> List[Dict[str, Any]]:
     return events
 
 def format_ics_datetime(raw_dt: str) -> str:
-    """ Convertit un timestamp ICS (ex: 20260530T143000Z ou 20260530) en format YYYY-MM-DD HH:MM """
+    """ Convertit un timestamp ICS (ex: 20260530T143000Z ou 20260530) en YYYY-MM-DD HH:MM.
+    Si l'horodatage est en UTC (suffixe Z), on le convertit en heure locale Europe/Paris
+    (sinon un événement stocké en UTC s'afficherait décalé de l'offset, ex. -2h l'été). """
+    is_utc = raw_dt.strip().endswith("Z")
     raw_dt = raw_dt.replace("Z", "")
     if "T" in raw_dt:
         # Format complet YYYYMMDDTHHMMSS
         try:
             dt = datetime.strptime(raw_dt[:13], "%Y%m%dT%H%M")
+            if is_utc:
+                try:
+                    from zoneinfo import ZoneInfo
+                    dt = dt.replace(tzinfo=ZoneInfo("UTC")).astimezone(_local_tz())
+                except Exception:
+                    pass
             return dt.strftime("%Y-%m-%d %H:%M")
         except Exception:
             pass
@@ -280,11 +321,12 @@ def add_google_calendar_event(title: str, datetime_str: str, duration_minutes: i
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
+        _tz = local_tz_name()
         body = {
             "summary": title,
             "description": description,
-            "start": {"dateTime": start_iso, "timeZone": "Europe/Paris"},
-            "end": {"dateTime": end_iso, "timeZone": "Europe/Paris"}
+            "start": {"dateTime": start_iso, "timeZone": _tz},
+            "end": {"dateTime": end_iso, "timeZone": _tz}
         }
         
         r = requests.post(url, headers=headers, json=body, timeout=10)
@@ -385,20 +427,31 @@ def add_caldav_calendar_event(title: str, datetime_str: str, duration_minutes: i
         
         dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
         dt_end = dt + timedelta(minutes=duration_minutes)
-        
-        stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-        start_str = dt.strftime("%Y%m%dT%H%M00")
-        end_str = dt_end.strftime("%Y%m%dT%H%M00")
-        
-        # Construire un fichier ICS valide minimaliste
+
+        # Écrire en UTC (suffixe Z), SANS TZID : on n'inclut pas de bloc VTIMEZONE, donc un
+        # DTSTART;TZID sans VTIMEZONE est interprété comme flottant/UTC par SabreDAV →
+        # l'événement s'affichait décalé. En UTC explicite, c'est sans ambiguïté. L'heure reçue
+        # (datetime_str) est de l'heure LOCALE (fuseau résolu par _local_tz : AGENDA_TIMEZONE
+        # ou fuseau système).
+        try:
+            from zoneinfo import ZoneInfo
+            _TZ, _UTC = _local_tz(), ZoneInfo("UTC")
+            start_str = dt.replace(tzinfo=_TZ).astimezone(_UTC).strftime("%Y%m%dT%H%M%SZ")
+            end_str = dt_end.replace(tzinfo=_TZ).astimezone(_UTC).strftime("%Y%m%dT%H%M%SZ")
+        except Exception:
+            start_str = dt.strftime("%Y%m%dT%H%M00Z")
+            end_str = dt_end.strftime("%Y%m%dT%H%M00Z")
+        stamp = datetime.now(__import__("datetime").timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+        # Construire un fichier ICS valide minimaliste (heures en UTC).
         ics_data = f"""BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Athena Swarm//Calendar Client//FR
 BEGIN:VEVENT
 UID:{event_uid}
 DTSTAMP:{stamp}
-DTSTART;TZID=Europe/Paris:{start_str}
-DTEND;TZID=Europe/Paris:{end_str}
+DTSTART:{start_str}
+DTEND:{end_str}
 SUMMARY:{title}
 DESCRIPTION:{description}
 END:VEVENT

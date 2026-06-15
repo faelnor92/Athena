@@ -75,6 +75,30 @@ def test_agenda_delete_google_uses_external_id():
             os.remove(path)
 
 
+def test_ics_parses_tzid_events_and_converts_utc():
+    # Bug réel : DTSTART;TZID=Europe/Paris:... était SAUTÉ (regex trop strict) → events
+    # Nextcloud invisibles. Et un DTSTART en UTC (Z) doit être converti en heure locale.
+    import importlib
+    import tools.agenda_sync as asy
+    with mock.patch.dict(os.environ, {"AGENDA_TIMEZONE": "Europe/Paris"}):
+        importlib.reload(asy)
+        # (a) événement horodaté avec fuseau → NON sauté, heure locale telle quelle
+        ev = ("BEGIN:VEVENT\nUID:a\nSUMMARY:RDV\n"
+              "DTSTART;TZID=Europe/Paris:20260615T140000\n"
+              "DTEND;TZID=Europe/Paris:20260615T150000\nEND:VEVENT")
+        r = asy.parse_ics_data(ev)
+        assert r and r[0]["datetime"] == "2026-06-15 14:00", r
+        # (b) UTC → converti en local (Paris été = +2)
+        ev2 = "BEGIN:VEVENT\nUID:b\nSUMMARY:U\nDTSTART:20260615T120000Z\nEND:VEVENT"
+        r2 = asy.parse_ics_data(ev2)
+        assert r2 and r2[0]["datetime"] == "2026-06-15 14:00", r2
+    with mock.patch.dict(os.environ, {"AGENDA_TIMEZONE": "America/New_York"}):
+        importlib.reload(asy)
+        r3 = asy.parse_ics_data("BEGIN:VEVENT\nUID:c\nSUMMARY:U\nDTSTART:20260615T120000Z\nEND:VEVENT")
+        assert r3 and r3[0]["datetime"] == "2026-06-15 08:00", r3  # NY été = -4
+    importlib.reload(asy)
+
+
 def test_caldav_sync_extracts_any_namespace_prefix():
     # Bug réel : SabreDAV/Nextcloud renvoie <cal:calendar-data> (ou C:, ou sans préfixe),
     # pas le `c:` de notre requête → l'ancien regex `<c:calendar-data>` lisait 0 événement

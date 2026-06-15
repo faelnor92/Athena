@@ -1,5 +1,19 @@
 # Historique des Versions (Changelog)
 
+## v0.11.68 (Agenda : événements horodatés enfin lus + fuseau configurable)
+
+### 🐛 Fix majeur : les événements Nextcloud (avec fuseau) étaient SAUTÉS
+- Le parseur ICS ne reconnaissait que `DTSTART:` / `DTSTART;VALUE=DATE:` → il **ignorait**
+  `DTSTART;TZID=Europe/Paris:...` (le format par défaut de Nextcloud) → événements visibles
+  dans Nextcloud mais **invisibles dans Athena**. Regex corrigé (n'importe quel paramètre).
+- **Fuseau horaire correct** : les horodatages UTC (`...Z`) sont convertis en heure locale
+  (avant : décalés de l'offset). L'écriture CalDAV se fait en **UTC explicite** (fini le
+  `TZID` sans `VTIMEZONE` qui décalait de +2h).
+- **Fuseau CONFIGURABLE** (plus de Europe/Paris en dur) : `AGENDA_TIMEZONE` par utilisateur
+  (Réglages → Agenda), sinon le **fuseau système** de la machine, sinon repli Europe/Paris.
+- Test : `tests/test_mcp_and_agenda.py::test_ics_parses_tzid_events_and_converts_utc`.
+
+
 ## v0.11.67 (CalDAV : lecture des événements réparée + diags)
 
 ### 🐛 Fix : `list_calendar_events` ne voyait pas les événements CalDAV (Nextcloud)
