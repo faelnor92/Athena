@@ -241,7 +241,19 @@ def document_read(filename: str, chapter: str = "") -> str:
             title, a, b = ch
             body = "\n".join(p.text for p in paras[a:b])
             return f"# {title}\n{body}"
-        return "\n".join(p.text for p in paras) or "(document vide)"
+        full = "\n".join(p.text for p in paras) or "(document vide)"
+        # Garde-fou CONTEXTE : ne JAMAIS déverser un document entier (un roman = 100k+ car.)
+        # dans le contexte → ça sature le modèle et déclenche des hallucinations. Au-delà d'un
+        # seuil, on renvoie la liste des chapitres et on invite à lire chapitre par chapitre.
+        _CAP = int(os.getenv("DOCUMENT_READ_CAP", "8000") or 8000)
+        if len(full) > _CAP:
+            chaps = _chapters(doc)
+            lst = "\n".join(f"  {i+1}. {t}" for i, (t, a, b) in enumerate(chaps))
+            return (f"⚠️ Document volumineux ({len(full)} caractères) — ne lis PAS tout d'un coup "
+                    f"(ça sature le contexte). Lis chapitre par chapitre via document_read(\"{filename}\", "
+                    f"chapter=\"…\"), ou utilise document_autorevise pour tout réviser d'un coup.\n"
+                    f"{len(chaps)} chapitre(s) :\n{lst}")
+        return full
     except Exception as e:
         return f"Erreur de lecture : {e}"
 
@@ -323,6 +335,86 @@ def document_revise(filename: str, chapter: str, new_text: str) -> str:
                 f"Utilise document_publish('{filename}') quand tu as fini.")
     except Exception as e:
         return f"Erreur lors de la révision : {e}"
+
+
+def _llm_revise_chapter(model: str, instruction: str, old_text: str) -> str:
+    """Appelle le LLM (via le swarm) pour réviser UN chapitre en contexte ISOLÉ.
+    Renvoie le texte révisé (un paragraphe par ligne), ou "" si échec."""
+    try:
+        from core.state import swarm as _sw
+        sys_p = ("Tu es un correcteur/éditeur littéraire. Tu révises le texte fourni en suivant "
+                 "la consigne, en PRÉSERVANT le sens, l'intrigue, les noms et le découpage en "
+                 "paragraphes. Tu réponds UNIQUEMENT par le texte révisé (un paragraphe par ligne), "
+                 "SANS commentaire, sans titre, sans guillemets.")
+        usr = f"Consigne de révision : {instruction or 'améliore le style, fluidifie, supprime les redondances'}\n\n--- TEXTE À RÉVISER ---\n{old_text}"
+        resp = _sw._complete(model, [{"role": "system", "content": sys_p},
+                                     {"role": "user", "content": usr}], tools_schema=None)
+        txt = (resp.choices[0].message.content or "").strip()
+        return txt
+    except Exception as e:
+        print(f"[document_autorevise] LLM échec : {e}")
+        return ""
+
+
+def document_autorevise(nextcloud_path: str, instruction: str = "", chapter: str = "") -> str:
+    """
+    Révise un document .docx Nextcloud DE BOUT EN BOUT en un seul appel : télécharge l'original
+    (intact), révise chaque chapitre via le LLM en MODIFICATIONS SUIVIES, puis publie la copie
+    « <nom> — révisé.docx » sur Nextcloud. Idéal pour réviser un roman entier sans saturer le
+    contexte (chaque chapitre est traité isolément).
+
+    Args:
+        nextcloud_path (str): Chemin du .docx sur Nextcloud (ex: "roman/MonRoman.docx").
+        instruction (str): Consigne de révision (style, ton…). Optionnel.
+        chapter (str): Pour ne réviser QU'UN chapitre (titre ou numéro). Vide = tout le document.
+
+    Returns:
+        str: Bilan (chapitres révisés) + résultat de la publication.
+    """
+    if not projects.can_write():
+        return "Erreur : édition non autorisée (accès en lecture seule)."
+    res = document_open(nextcloud_path)
+    if "📄" not in res:
+        return res  # erreur d'ouverture (déjà explicite)
+    name = _safe_name(nextcloud_path)
+    local = _local_path(name)
+    try:
+        Document = _docx()
+        doc = Document(local)
+        chaps = _chapters(doc)
+        if chapter:
+            ch = _find_chapter(doc, chapter)
+            if not ch:
+                return f"Chapitre '{chapter}' introuvable."
+            targets = [ch[0]]
+        else:
+            targets = [t for (t, a, b) in chaps]
+        if not targets:
+            return "Aucun chapitre détecté à réviser."
+
+        from core.state import swarm as _sw
+        model = getattr(_sw.agents.get(getattr(_sw, "orchestrator_name", "Athena")), "model", None) or "gpt-4o-mini"
+
+        done, skipped = [], []
+        for title in targets:
+            old = document_read(name, chapter=title)
+            # retire la ligne de titre "# …" ajoutée par document_read
+            old_body = "\n".join(ln for ln in old.split("\n")[1:]) if old.startswith("# ") else old
+            if not old_body.strip():
+                skipped.append(title)
+                continue
+            revised = _llm_revise_chapter(model, instruction, old_body)
+            if not revised or revised.strip() == old_body.strip():
+                skipped.append(title)
+                continue
+            document_revise(name, title, revised)
+            done.append(title)
+
+        pub = document_publish(name)
+        return (f"✅ Révision automatique terminée : {len(done)} chapitre(s) révisé(s)"
+                + (f", {len(skipped)} inchangé(s)/sauté(s)" if skipped else "") + ".\n" + pub)
+    except Exception as e:
+        return f"Erreur lors de la révision automatique : {e}"
 
 
 def document_publish(filename: str) -> str:

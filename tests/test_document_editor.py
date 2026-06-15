@@ -63,6 +63,48 @@ def test_revise_blocked_when_readonly():
     assert "lecture seule" in out.lower(), out
 
 
+def test_autorevise_one_call_revises_all_chapters():
+    if not HAS_DOCX:
+        print("OK (python-docx absent — test sauté)")
+        return
+    import zipfile
+    import core.state as st
+    path = _make_doc()
+
+    class _R:
+        def __init__(self, c):
+            self.choices = [type("C", (), {"message": type("M", (), {"content": c})()})()]
+
+    def fake_complete(model, messages, tools_schema=None, **k):
+        old = messages[-1]["content"].split("--- TEXTE À RÉVISER ---")[-1].strip()
+        return _R("\n".join(l + " [revu]" for l in old.split("\n") if l.strip()))
+
+    with mock.patch.object(de, "document_open", lambda p: "📄 ouvert"), \
+         mock.patch.object(de, "document_publish", lambda f: "📤 publié (mock)"), \
+         mock.patch.object(st.swarm, "_complete", fake_complete):
+        out = de.document_autorevise("Romans/RomanTest.docx", "améliore le style")
+    assert "révisé" in out.lower(), out
+    xml = zipfile.ZipFile(path).read("word/document.xml").decode("utf-8")
+    assert "<w:ins " in xml and "<w:del " in xml and "[revu]" in xml, "révision auto non appliquée"
+
+
+def test_read_caps_large_document():
+    if not HAS_DOCX:
+        print("OK (python-docx absent — test sauté)")
+        return
+    from docx import Document
+    d = de._dir()
+    path = os.path.join(d, "Gros.docx")
+    doc = Document()
+    doc.add_heading("Chapitre 1", level=1)
+    for _ in range(400):
+        doc.add_paragraph("Phrase de remplissage assez longue pour dépasser le seuil de lecture. " * 3)
+    doc.save(path)
+    open(path + ".src", "w", encoding="utf-8").write("roman/Gros.docx")
+    out = de.document_read("Gros.docx")  # tout le doc → doit être plafonné
+    assert "volumineux" in out.lower() and "chapitre par chapitre" in out.lower(), out
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
