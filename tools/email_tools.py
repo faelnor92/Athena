@@ -332,10 +332,40 @@ def _build_search_criteria(from_contains, subject_contains, older_than_days, new
     return crit or ["ALL"]
 
 
+def _imap_utf7(name: str) -> str:
+    """Encode un nom de boîte IMAP en UTF-7 MODIFIÉ (RFC 3501) : indispensable pour les noms
+    non-ASCII (accents) — imaplib envoie sinon de l'ASCII brut et plante (« 'ascii' codec »).
+    Les caractères ASCII imprimables passent tels quels ; les autres sont encodés en base64
+    d'UTF-16BE, encadrés par '&' … '-' (avec '/' → ',')."""
+    out = []
+    i, n = 0, len(name or "")
+    while i < n:
+        ch = name[i]
+        o = ord(ch)
+        if ch == "&":
+            out.append("&-")
+            i += 1
+        elif 0x20 <= o <= 0x7E:
+            out.append(ch)
+            i += 1
+        else:
+            # Accumule la séquence de caractères non-ASCII consécutifs.
+            j = i
+            while j < n and not (0x20 <= ord(name[j]) <= 0x7E) and name[j] != "&":
+                j += 1
+            import base64
+            chunk = name[i:j].encode("utf-16-be")
+            b64 = base64.b64encode(chunk).decode("ascii").rstrip("=").replace("/", ",")
+            out.append("&" + b64 + "-")
+            i = j
+    return "".join(out)
+
+
 def _archive_folder_name() -> str:
-    """Nom du dossier/libellé d'archive. Défaut « Archivés » : NON réservé par Gmail (« Archive »
-    sans accent est un nom système refusé → erreur « Label name is not allowed »)."""
-    return os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or "Archivés"
+    """Nom du dossier/libellé d'archive (lisible). Défaut « Archives » : ASCII et NON réservé par
+    Gmail (« Archive » au singulier est un nom système refusé → « Label name is not allowed »).
+    Configurable via EMAIL_ARCHIVE_FOLDER (les accents sont gérés via UTF-7 modifié)."""
+    return os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or "Archives"
 
 
 def _archive_uids(conn, uids, source_folder="INBOX"):
@@ -344,12 +374,12 @@ def _archive_uids(conn, uids, source_folder="INBOX"):
     les mails dedans (sur Gmail, copier vers un libellé = appliquer ce libellé), puis les retirer
     de la source (\\Deleted + EXPUNGE). On évite X-GM-LABELS (qui refuse les noms réservés).
     Traitement par LOTS (UID set) pour gérer des milliers de mails vite. Renvoie (ok, échecs)."""
-    archive_folder = _archive_folder_name()
+    mbox = _imap_utf7(_archive_folder_name())  # nom encodé pour les commandes IMAP (accents OK)
     norm = [u if isinstance(u, bytes) else str(u).encode() for u in uids]
     if not norm:
         return 0, 0
     try:
-        conn.create(archive_folder)  # no-op si déjà présent
+        conn.create(mbox)  # no-op si déjà présent
     except Exception:
         pass
     done, failed = 0, 0
@@ -357,7 +387,7 @@ def _archive_uids(conn, uids, source_folder="INBOX"):
     for i in range(0, len(norm), CH):
         chunk = norm[i:i + CH]
         uid_set = b",".join(chunk)
-        typ, _ = conn.uid("copy", uid_set, archive_folder)
+        typ, _ = conn.uid("copy", uid_set, mbox)
         if typ != "OK":
             failed += len(chunk)
             continue
