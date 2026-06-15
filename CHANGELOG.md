@@ -1,5 +1,19 @@
 # Historique des Versions (Changelog)
 
+## v0.11.86 (Mails : recherche + ménage non destructif)
+
+### 📬 Tri et ménage des mails (sans rien supprimer)
+- read_inbox : plafond relevé à 100 (au lieu de 30) pour le tri.
+- search_emails(from_contains, subject_contains, since_days, unread_only…) : trouve les mails
+  à traiter (newsletters, vieux mails d'un expéditeur, non-lus…).
+- mark_emails_read / archive_emails : marquer comme lu et ARCHIVER (sortir de la boîte en
+  CONSERVANT une copie — Gmail : reste dans « Tous les messages » ; autres : copie dans le
+  dossier d'archive AVANT retrait). Aucune suppression définitive possible. Si la copie échoue,
+  rien n'est retiré (zéro perte).
+- Garde-fou : Athena doit LISTER les mails ciblés et obtenir l'accord explicite AVANT tout
+  ménage en lot (préambule). EMAIL_ARCHIVE_FOLDER configurable.
+
+
 ## v0.11.85 (Onglet Écriture + SSH LAN fiable + diagnostic mail)
 
 ### ✍️ Nouvel onglet « Écriture » (atelier romans)
