@@ -1,5 +1,23 @@
 # Historique des Versions (Changelog)
 
+## v0.11.83 (Atelier romans : opérations en arrière-plan + plus de délégation fantôme)
+
+### ⛔ Plus de délégation à l'Auteur pour éditer un .docx existant
+- Cause racine (reproduite sur 3 modèles : gpt-oss, gemma, qwen3) : l'orchestrateur déléguait
+  « révise/nettoie le roman » à l'Auteur (Émilie), qui NE PEUT PAS éditer un fichier → impasse,
+  narration et livrables hallucinés. Consigne durcie : pour éditer/réviser/corriger/nettoyer/
+  traduire un .docx EXISTANT, Athena utilise TOUJOURS les outils document_* elle-même et ne
+  délègue JAMAIS (ni transfer_to_/delegate_to_/query_agent). Nettoyer répétitions/style →
+  document_autorevise(chemin, instruction=...).
+
+### ⏳ Opérations longues en arrière-plan (jobs + progression)
+- Nouveau runner core/jobs.py (thread démon, progression, TTL) + endpoints REST
+  /api/redaction/{chapters,job,job/{id},jobs} : réviser/traduire/vérifier la cohérence d'un
+  roman entier tourne en tâche de fond avec progression → ne bloque plus une requête HTTP et
+  ne s'arrête plus avant la fin. Le contexte utilisateur (ContextVar) est propagé au thread du
+  worker (sinon écriture dans le mauvais espace). Base de l'onglet rédaction (lot C).
+
+
 ## v0.11.82 (Atelier romans : suivi conversationnel + sans Nextcloud + intégration cohérence)
 
 ### 🐛 « intègre-les » partait en texte au lieu d'appeler l'outil

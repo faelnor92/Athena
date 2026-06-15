@@ -1855,12 +1855,18 @@ class Swarm:
                     "Outils fins si besoin : document_open/read/revise/publish. Pour VÉRIFIER la "
                     "cohérence narrative (noms, traits, lieux, chronologie) : "
                     "`document_check_coherence(chemin)` → rapport, sans modifier le texte. "
-                    "Pour INTÉGRER des corrections de cohérence trouvées : rappelle "
-                    "`document_autorevise(chemin, instruction=\"<les points à corriger>\")`. "
+                    "Pour INTÉGRER des corrections de cohérence trouvées, ou NETTOYER les répétitions "
+                    "et tics de style : rappelle "
+                    "`document_autorevise(chemin, instruction=\"<les points / le nettoyage à appliquer>\")`. "
+                    "⛔ Pour éditer/réviser/corriger/nettoyer/traduire un .docx EXISTANT, tu fais TOUT "
+                    "TOI-MÊME avec ces outils : ne DÉLÈGUE JAMAIS à l'Auteur (Émilie) ni à un autre agent "
+                    "— Émilie écrit du NOUVEAU texte, elle NE PEUT PAS éditer un fichier en modifications "
+                    "suivies ; déléguer ici mène à une impasse. N'utilise PAS transfer_to_/delegate_to_/"
+                    "query_agent pour ces tâches. "
                     "APPELLE ces outils DIRECTEMENT comme un appel d'outil — JAMAIS dans "
                     "`run_tool_script`, JAMAIS avec `.run(...)`, et JAMAIS recopiés en texte dans ta "
-                    "réponse. **N'affirme JAMAIS** avoir révisé/publié/analysé sans avoir APPELÉ l'outil "
-                    "et reçu son résultat (pas de « c'est fait » narratif).\n"
+                    "réponse. **N'affirme JAMAIS** avoir révisé/publié/analysé/délégué sans avoir APPELÉ "
+                    "l'outil et reçu son résultat (pas de « c'est fait », pas de livrable inventé).\n"
                 )
             # Serveurs SSH disponibles : l'agent peut exécuter À DISTANCE via le registre
             # multi-hôtes (pas seulement la console codeur).
