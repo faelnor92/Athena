@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.11.65 (Anti-SSRF : plages CIDR dans l'allowlist — débloque Nextcloud/CalDAV LAN)
+
+### 🛡️ Fix : `NET_GUARD_ALLOW_HOSTS` ne reconnaissait pas les plages CIDR
+- Mettre `NET_GUARD_ALLOW_HOSTS=192.168.1.0/24` (une PLAGE) ne marchait pas : l'allowlist ne
+  faisait qu'une comparaison de chaîne exacte → `192.168.1.10 ≠ "192.168.1.0/24"` → l'hôte
+  restait bloqué → **synchro CalDAV/Nextcloud (et tout service LAN) vide**.
+- **Correctif** : l'allowlist accepte désormais les **plages CIDR** (et les IP résolues d'un
+  hostname dans une plage). La métadonnée cloud (169.254.169.254) reste toujours bloquée.
+- Test : `tests/test_nextcloud.py::test_allowlist_supports_cidr`.
+
+
 ## v0.11.64 (Modèles Gemini listés en direct + diagnostic)
 
 ### 🔮 Liste Gemini DYNAMIQUE (corrige « modèle sélectionné mais ne fonctionne pas »)

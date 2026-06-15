@@ -26,11 +26,35 @@ def _allowlist() -> set:
     return {h.strip().lower() for h in raw.split(",") if h.strip()}
 
 
+def _ip_in_allowlist(ip_str: str) -> bool:
+    """Vrai si l'IP est explicitement autorisée — par égalité OU par appartenance à une
+    PLAGE CIDR listée (ex. NET_GUARD_ALLOW_HOSTS=192.168.1.0/24)."""
+    try:
+        ip = ipaddress.ip_address((ip_str or "").strip())
+    except ValueError:
+        return False
+    for entry in _allowlist():
+        if entry in _NEVER_ALLOW:
+            continue
+        if "/" in entry:                       # plage CIDR
+            try:
+                if ip in ipaddress.ip_network(entry, strict=False):
+                    return True
+            except ValueError:
+                continue
+        elif entry == str(ip):                 # IP littérale exacte
+            return True
+    return False
+
+
 def _host_allowlisted(host: str) -> bool:
+    """Hôte de confiance explicitement autorisé : hostname exact, IP exacte, ou IP ∈ CIDR listé."""
     host = (host or "").strip().lower()
     if not host or host in _NEVER_ALLOW:
         return False
-    return host in _allowlist()
+    if host in _allowlist():       # hostname exact (ou IP écrite à l'identique)
+        return True
+    return _ip_in_allowlist(host)  # IP littérale vs plages CIDR
 
 # Verrou pour l'épinglage d'IP (monkeypatch global de la résolution urllib3).
 _pin_lock = threading.Lock()
@@ -67,7 +91,11 @@ def is_blocked_url(url: str) -> bool:
         infos = socket.getaddrinfo(host, None)
     except Exception:
         return True  # résolution impossible → bloqué
-    return any(_ip_is_internal(info[4][0]) for info in infos)
+    ips = [info[4][0] for info in infos]
+    # Hostname qui résout dans une plage CIDR autorisée (ex. nextcloud.home → 192.168.1.x).
+    if ips and all(_ip_in_allowlist(ip) for ip in ips):
+        return False
+    return any(_ip_is_internal(ip) for ip in ips)
 
 
 def check_url(url: str):
@@ -112,7 +140,8 @@ def safe_resolve(url: str):
     ips = [info[4][0] for info in infos]
     if not ips:
         return None, None, _SSRF_ERR
-    if allow:
+    # Autorisé si hostname listé, ou si toutes ses IP sont dans une plage CIDR autorisée.
+    if allow or all(_ip_in_allowlist(ip) for ip in ips):
         return host, ips[0], None
     if any(_ip_is_internal(ip) for ip in ips):
         return None, None, _SSRF_ERR

@@ -62,6 +62,18 @@ def test_ssrf_guard_blocks_private_without_allowlist():
         assert "ssrf" in out.lower() or "interne" in out.lower(), out
 
 
+def test_allowlist_supports_cidr():
+    # Bug réel : NET_GUARD_ALLOW_HOSTS=192.168.1.0/24 (plage CIDR) doit autoriser 192.168.1.x.
+    import importlib
+    import tools.net_guard as ng
+    with mock.patch.dict(os.environ, {"NET_GUARD_ALLOW_HOSTS": "192.168.1.0/24"}):
+        importlib.reload(ng)
+        assert ng.is_blocked_url("http://192.168.1.35:8123/api/") is False   # dans la plage
+        assert ng.is_blocked_url("http://10.0.0.5/x") is True                # hors plage
+        assert ng.is_blocked_url("http://169.254.169.254/") is True          # cloud, jamais
+    importlib.reload(ng)  # restaure l'état sans l'allowlist
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
