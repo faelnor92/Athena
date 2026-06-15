@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.11.88 (Archivage Gmail corrigé + identifiants mail fiables)
+
+### 📬 Archivage Gmail qui fonctionne vraiment
+- L'archivage Gmail ne marchait pas (méthode \Deleted+EXPUNGE dépendante d'un réglage). On
+  utilise désormais la méthode CANONIQUE Gmail : retirer le libellé « \Inbox » via
+  X-GM-LABELS → le mail sort de la boîte et reste dans « Tous les messages » (rappel : Gmail
+  n'a PAS de dossier « Archive », c'est normal). IMAP générique : copie vers le dossier
+  d'archive PUIS retrait (copie échouée = rien retiré).
+- Tout le flux mail passe en UID (identifiants STABLES entre la liste et l'action) → on n'agit
+  plus jamais sur le mauvais mail entre read_inbox/search et mark/archive.
+
+
 ## v0.11.87 (SSH : fin de la boucle subprocess — cause racine corrigée)
 
 ### 🖥️ Athena garde execute_bash_command même quand le routeur vise le Codeur

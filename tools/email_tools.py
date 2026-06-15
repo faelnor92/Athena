@@ -126,7 +126,10 @@ def read_inbox(limit: int = 10, unread_only: bool = False, folder: str = "INBOX"
         limit = max(1, min(int(limit or 10), 100))
         conn.select(folder, readonly=True)        # readonly → ne marque rien comme lu
         crit = "UNSEEN" if unread_only else "ALL"
-        typ, data = conn.search(None, crit)
+        # UID (et non numéro de séquence) : identifiant STABLE entre la liste et l'action
+        # (marquer lu / archiver se font sur une autre connexion) — sinon on risque d'agir
+        # sur le mauvais mail.
+        typ, data = conn.uid("search", None, crit)
         if typ != "OK":
             return "Recherche IMAP échouée."
         ids = data[0].split()
@@ -134,7 +137,7 @@ def read_inbox(limit: int = 10, unread_only: bool = False, folder: str = "INBOX"
             return f"Aucun mail ({'non lus' if unread_only else 'dans ' + folder})."
         out = [f"{len(ids)} mail(s) dans {folder} — {min(limit, len(ids))} plus récent(s) :"]
         for num in reversed(ids[-limit:]):
-            typ, md = conn.fetch(num, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+            typ, md = conn.uid("fetch", num, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
             if typ == "OK" and md and md[0]:
                 msg = email.message_from_bytes(md[0][1])
                 out.append("• " + _fmt_headers(num.decode(), msg))
@@ -164,7 +167,7 @@ def read_email(email_id: str, folder: str = "INBOX") -> str:
         return err
     try:
         conn.select(folder, readonly=True)
-        typ, md = conn.fetch(str(email_id).encode(), "(BODY.PEEK[])")
+        typ, md = conn.uid("fetch", str(email_id).encode(), "(BODY.PEEK[])")
         if typ != "OK" or not md or not md[0]:
             return f"Mail [id {email_id}] introuvable dans {folder}."
         msg = email.message_from_bytes(md[0][1])
@@ -260,7 +263,7 @@ def search_emails(from_contains: str = "", subject_contains: str = "", since_day
             crit += ["SINCE", since]
         if not crit:
             crit = ["ALL"]
-        typ, data = conn.search(None, *crit)
+        typ, data = conn.uid("search", None, *crit)
         if typ != "OK":
             return "Recherche IMAP échouée."
         ids = data[0].split()
@@ -268,7 +271,7 @@ def search_emails(from_contains: str = "", subject_contains: str = "", since_day
             return "Aucun mail ne correspond à ces critères."
         out = [f"{len(ids)} mail(s) correspondent — {min(limit, len(ids))} affiché(s) :"]
         for num in reversed(ids[-limit:]):
-            typ, md = conn.fetch(num, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+            typ, md = conn.uid("fetch", num, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
             if typ == "OK" and md and md[0]:
                 msg = email.message_from_bytes(md[0][1])
                 out.append("• " + _fmt_headers(num.decode(), msg))
@@ -314,7 +317,7 @@ def mark_emails_read(ids, folder: str = "INBOX") -> str:
         conn.select(folder)  # écriture autorisée
         done = 0
         for n in nums:
-            typ, _ = conn.store(n.encode(), "+FLAGS", "\\Seen")
+            typ, _ = conn.uid("store", n.encode(), "+FLAGS", "\\Seen")
             if typ == "OK":
                 done += 1
         return f"✅ {done}/{len(nums)} mail(s) marqué(s) comme lu(s) dans {folder}."
@@ -348,31 +351,40 @@ def archive_emails(ids, folder: str = "INBOX") -> str:
         return err
     c = _cfg()
     is_gmail = "gmail" in (c["host"] or "").lower()
-    archive_folder = os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or ("[Gmail]/All Mail" if is_gmail else "Archive")
+    archive_folder = os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or "Archive"
     try:
         conn.select(folder)
         done, failed = 0, []
+        if is_gmail:
+            # Gmail : archiver = RETIRER le libellé « \Inbox » (le mail reste dans « Tous les
+            # messages »). C'est la méthode canonique via l'extension X-GM-LABELS — fiable et
+            # sans dépendre du réglage d'auto-expunge. Pas de dossier « Archive » chez Gmail.
+            for n in nums:
+                typ, _ = conn.uid("store", n.encode(), "-X-GM-LABELS", "\\Inbox")
+                if typ == "OK":
+                    done += 1
+                else:
+                    failed.append(n)
+            msg = f"✅ {done}/{len(nums)} mail(s) archivé(s) (retirés de la boîte, conservés dans « Tous les messages »)."
+            if failed:
+                msg += f" ⚠️ {len(failed)} non archivé(s)."
+            return msg
+        # IMAP générique : copier vers le dossier d'archive PUIS retirer de la boîte (\Deleted +
+        # EXPUNGE). Si la copie échoue, on ne retire RIEN (zéro perte).
         for n in nums:
             nb = n.encode()
-            copied = False
-            if is_gmail:
-                # Gmail : le message est déjà dans « Tous les messages » → retirer de la boîte
-                # (\Deleted + EXPUNGE sur INBOX) revient à archiver, sans perte.
-                copied = True
-            else:
-                typ, _ = conn.copy(nb, archive_folder)
-                copied = (typ == "OK")
-            if not copied:
+            typ, _ = conn.uid("copy", nb, archive_folder)
+            if typ != "OK":
                 failed.append(n)
-                continue  # SÉCURITÉ : pas de copie = on ne retire RIEN (zéro perte)
-            conn.store(nb, "+FLAGS", "\\Deleted")
+                continue
+            conn.uid("store", nb, "+FLAGS", "\\Deleted")
             done += 1
         if done:
             conn.expunge()
-        msg = f"✅ {done}/{len(nums)} mail(s) archivé(s) (copie conservée) hors de {folder}."
+        msg = f"✅ {done}/{len(nums)} mail(s) archivé(s) (copie conservée dans « {archive_folder} ») hors de {folder}."
         if failed:
             msg += (f" ⚠️ {len(failed)} non archivé(s) (copie vers « {archive_folder} » impossible — "
-                    "rien n'a été retiré pour ces mails). Vérifie EMAIL_ARCHIVE_FOLDER.")
+                    "rien n'a été retiré pour ces mails). Crée le dossier ou règle EMAIL_ARCHIVE_FOLDER.")
         return msg
     except Exception as e:
         return f"Erreur archivage : {e}"
