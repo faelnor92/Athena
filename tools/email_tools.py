@@ -40,6 +40,13 @@ def _cfg():
     }
 
 
+def is_configured() -> bool:
+    """Vrai si l'accès mail (IMAP) est renseigné — sert à exposer les outils mail à
+    l'orchestrateur seulement quand c'est utile."""
+    c = _cfg()
+    return bool(c["host"] and c["user"] and c["password"])
+
+
 def _connect():
     """Ouvre une connexion IMAP. Renvoie (conn, None) ou (None, message d'erreur)."""
     c = _cfg()
