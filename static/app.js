@@ -5217,7 +5217,6 @@ async function loadAgendaConfig() {
     } catch (err) {
         console.error("Erreur lors de la récupération des paramètres agenda :", err);
     }
-    loadGoogleOAuthStatus();
     loadNextcloudConfig();
 }
 
@@ -5284,115 +5283,6 @@ async function testNextcloudConfig() {
         st.innerHTML = `<span style="color:#ff5555">❌ ${e}</span>`;
     }
 }
-
-// --- OAuth Google (Calendar + Gmail) -------------------------------------
-async function loadGoogleOAuthStatus() {
-    const box = document.getElementById("google-oauth-box");
-    if (!box) return;
-    box.style.display = "block";  // toujours visible : on guide la config dans l'UI
-    // Suggérer l'URI de redirection courante (à enregistrer dans Google Cloud).
-    const ruri = document.getElementById("google-oauth-redirect");
-    if (ruri && !ruri.value) ruri.placeholder = window.location.origin + "/api/oauth/google/callback";
-    const span = document.getElementById("google-oauth-status");
-    const bConn = document.getElementById("google-oauth-connect");
-    const bDisc = document.getElementById("google-oauth-disconnect");
-    const cfg = document.getElementById("google-oauth-config");
-    try {
-        const r = await apiFetch("/api/oauth/google/status");
-        const s = await r.json();
-        if (!s.configured) {
-            span.innerHTML = "⚙️ Identifiants OAuth non renseignés (déplie « Identifiants OAuth » ci-dessous).";
-            span.style.color = "#ffae42";
-            bConn.style.display = "none";
-            bDisc.style.display = "none";
-            if (cfg) cfg.open = true;   // ouvre la section config pour guider
-            return;
-        }
-        bConn.style.display = "inline-block";
-        if (s.connected) {
-            span.innerHTML = "Connecté ✅" + (s.email ? " (" + s.email + ")" : "");
-            span.style.color = "var(--success-color)";
-            bConn.textContent = "Reconnecter";
-            bDisc.style.display = "inline-block";
-        } else {
-            span.innerHTML = "Identifiants OK — clique pour autoriser ton compte.";
-            span.style.color = "#ffae42";
-            bConn.textContent = "Connecter Google";
-            bDisc.style.display = "none";
-        }
-    } catch (err) {
-        span.innerHTML = "Statut indisponible.";
-    }
-}
-
-async function saveGoogleOAuthCreds() {
-    const st = document.getElementById("google-oauth-creds-status");
-    const env = {};
-    const cid = document.getElementById("google-oauth-client-id").value.trim();
-    const sec = document.getElementById("google-oauth-client-secret").value.trim();
-    const red = document.getElementById("google-oauth-redirect").value.trim();
-    if (cid) env["GOOGLE_OAUTH_CLIENT_ID"] = cid;
-    if (sec) env["GOOGLE_OAUTH_CLIENT_SECRET"] = sec;
-    if (red) env["GOOGLE_OAUTH_REDIRECT_URI"] = red;
-    if (Object.keys(env).length === 0) { st.textContent = "Rien à enregistrer."; return; }
-    st.textContent = "⏳…";
-    try {
-        const r = await apiFetch("/api/config/env", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ env })
-        });
-        if (r.ok) {
-            st.innerHTML = '<span style="color:var(--success-color)">✅ Enregistré</span>';
-            loadGoogleOAuthStatus();
-        } else {
-            const d = await r.json().catch(() => ({}));
-            st.innerHTML = `<span style="color:#ff5555">❌ ${d.detail || "Erreur"}</span>`;
-        }
-    } catch (e) {
-        st.innerHTML = `<span style="color:#ff5555">❌ ${e}</span>`;
-    }
-}
-
-async function startGoogleOAuth() {
-    try {
-        const r = await apiFetch("/api/oauth/google/start");
-        const d = await r.json();
-        if (r.ok && d.auth_url) {
-            window.location.href = d.auth_url;  // redirige vers le consentement Google
-        } else {
-            alert("OAuth Google indisponible : " + (d.detail || "erreur inconnue"));
-        }
-    } catch (err) {
-        alert("Erreur réseau OAuth : " + err);
-    }
-}
-
-async function disconnectGoogleOAuth() {
-    if (!confirm("Déconnecter ton compte Google d'Athena ?")) return;
-    try {
-        await apiFetch("/api/oauth/google/disconnect", { method: "POST" });
-        loadGoogleOAuthStatus();
-    } catch (err) {
-        alert("Erreur réseau : " + err);
-    }
-}
-
-// Retour de redirection OAuth Google (?google_oauth=connected|error)
-(function handleGoogleOAuthReturn() {
-    const p = new URLSearchParams(window.location.search);
-    const st = p.get("google_oauth");
-    if (!st) return;
-    if (st === "connected") {
-        const email = p.get("email") || "";
-        setTimeout(() => alert("Compte Google connecté !" + (email ? " (" + email + ")" : "")), 300);
-    } else {
-        setTimeout(() => alert("Échec de la connexion Google. Réessaie (vérifie l'URI de redirection)."), 300);
-    }
-    // Nettoie l'URL (retire les paramètres OAuth).
-    p.delete("google_oauth"); p.delete("email"); p.delete("detail");
-    const q = p.toString();
-    history.replaceState(null, "", window.location.pathname + (q ? "?" + q : "") + window.location.hash);
-})();
 
 // Enregistrer les variables agenda (.env)
 const agendaSyncForm = document.getElementById("agenda-sync-form");
