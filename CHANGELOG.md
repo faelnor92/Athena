@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.11.89 (Archivage mail dans un dossier/libellé dédié)
+
+### 📬 Les mails archivés vont dans un libellé « Archive » propre
+- Avant, l'archivage Gmail retirait juste de la boîte → le mail se noyait dans « Tous les
+  messages ». Désormais un LIBELLÉ DÉDIÉ (défaut « Archive », configurable EMAIL_ARCHIVE_FOLDER)
+  est appliqué via X-GM-LABELS puis le mail est retiré de la boîte → il apparaît sous ce
+  libellé propre dans Gmail. IMAP générique : le dossier d'archive est créé au besoin et le
+  mail y est déplacé. Toujours aucune suppression (le mail est conservé).
+
+
 ## v0.11.88 (Archivage Gmail corrigé + identifiants mail fiables)
 
 ### 📬 Archivage Gmail qui fonctionne vraiment
