@@ -593,8 +593,21 @@ def document_autorevise(nextcloud_path: str, instruction: str = "", chapter: str
     Returns:
         str: Bilan (chapitres révisés) + résultat de la publication.
     """
+    return _autorevise_run(nextcloud_path, instruction, chapter, progress=None)
+
+
+def _autorevise_run(nextcloud_path, instruction="", chapter="", progress=None):
+    """Cœur de la révision automatique, avec PROGRESSION optionnelle (jobs en arrière-plan).
+    `progress(done, total, message)` est appelé par chapitre. Voir document_autorevise."""
+    def _p(d=None, t=None, m=None):
+        if progress:
+            try:
+                progress(d, t, m)
+            except Exception:
+                pass
     if not projects.can_write():
         return "Erreur : édition non autorisée (accès en lecture seule)."
+    _p(0, 0, "Ouverture du document…")
     res = document_open(nextcloud_path)
     if "📄" not in res:
         return res  # erreur d'ouverture (déjà explicite)
@@ -619,7 +632,10 @@ def document_autorevise(nextcloud_path: str, instruction: str = "", chapter: str
 
         rev = _Rev()
         done, total_corr = [], 0
-        for title in targets:
+        total = len(targets)
+        _p(0, total, f"Révision de {total} chapitre(s)…")
+        for i, title in enumerate(targets, 1):
+            _p(i - 1, total, f"Chapitre « {title} »")
             old = document_read(name, chapter=title)
             old_body = "\n".join(old.split("\n")[1:]) if old.startswith("# ") else old
             if not old_body.strip():
@@ -634,6 +650,7 @@ def document_autorevise(nextcloud_path: str, instruction: str = "", chapter: str
             if n:
                 done.append(f"{title} ({n}¶)")
                 total_corr += len(corrections)
+        _p(total, total, "Publication…")
         if not done:
             return ("Aucune correction proposée par le modèle (texte déjà propre, ou modèle peu "
                     "coopératif). Rien n'a été modifié.")
@@ -690,6 +707,18 @@ def document_check_coherence(nextcloud_path: str, chapter: str = "") -> str:
     Returns:
         str: Rapport de cohérence (incohérences par chapitre, ou « aucune détectée »).
     """
+    return _coherence_run(nextcloud_path, chapter, progress=None)
+
+
+def _coherence_run(nextcloud_path, chapter="", progress=None):
+    """Cœur de la vérification de cohérence, avec PROGRESSION optionnelle (jobs)."""
+    def _p(d=None, t=None, m=None):
+        if progress:
+            try:
+                progress(d, t, m)
+            except Exception:
+                pass
+    _p(0, 0, "Ouverture du document…")
     res = document_open(nextcloud_path)
     if "📄" not in res:
         return res
@@ -709,7 +738,10 @@ def document_check_coherence(nextcloud_path: str, chapter: str = "") -> str:
 
         canon = ""
         report = []
-        for title in targets:
+        total = len(targets)
+        _p(0, total, f"Analyse de {total} chapitre(s)…")
+        for i, title in enumerate(targets, 1):
+            _p(i - 1, total, f"Chapitre « {title} »")
             txt = document_read(name, chapter=title)
             body = "\n".join(txt.split("\n")[1:]) if txt.startswith("# ") else txt
             if not body.strip():
@@ -718,7 +750,7 @@ def document_check_coherence(nextcloud_path: str, chapter: str = "") -> str:
             canon = r["canon"]
             if r["incoherences"]:
                 report.append(f"\n📍 {title} :\n" + "\n".join(f"   • {i}" for i in r["incoherences"]))
-
+        _p(total, total, "Terminé")
         if not report:
             return f"✅ Aucune incohérence narrative détectée sur {len(targets)} chapitre(s)."
         return ("🔎 RAPPORT DE COHÉRENCE (vérifie/corrige toi-même — rien n'a été modifié) :\n"
@@ -771,10 +803,22 @@ def document_translate(nextcloud_path: str, target_language: str, instruction: s
     Returns:
         str: Confirmation + nom du fichier traduit publié.
     """
+    return _translate_run(nextcloud_path, target_language, instruction, progress=None)
+
+
+def _translate_run(nextcloud_path, target_language, instruction="", progress=None):
+    """Cœur de la traduction vivante, avec PROGRESSION optionnelle (jobs)."""
+    def _p(d=None, t=None, m=None):
+        if progress:
+            try:
+                progress(d, t, m)
+            except Exception:
+                pass
     if not projects.can_write():
         return "Erreur : édition non autorisée (accès en lecture seule)."
     if not (target_language or "").strip():
         return "Précise la langue cible (ex: anglais)."
+    _p(0, 0, "Ouverture du document…")
     res = document_open(nextcloud_path)
     if "📄" not in res:
         return res
@@ -790,7 +834,10 @@ def document_translate(nextcloud_path: str, target_language: str, instruction: s
         from core.state import swarm as _sw
         model = getattr(_sw.agents.get(getattr(_sw, "orchestrator_name", "Athena")), "model", None) or "gpt-4o-mini"
 
-        for (title, a, b) in chaps:
+        total = len(chaps)
+        _p(0, total, f"Traduction de {total} chapitre(s) en {target_language}…")
+        for ci, (title, a, b) in enumerate(chaps, 1):
+            _p(ci - 1, total, f"Chapitre « {title} »")
             seg = paras[a:b]
             idx = 0
             if seg and _is_heading(seg[0]):

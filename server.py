@@ -150,6 +150,8 @@ from routers import config_agenda as _config_agenda_router
 app.include_router(_config_agenda_router.router)
 from routers import config_nextcloud as _config_nextcloud_router
 app.include_router(_config_nextcloud_router.router)
+from routers import redaction as _redaction_router
+app.include_router(_redaction_router.router)
 from routers import config_routines as _config_routines_router
 app.include_router(_config_routines_router.router)
 from routers import system as _system_router
