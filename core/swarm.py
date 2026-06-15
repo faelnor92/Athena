@@ -109,6 +109,7 @@ AVAILABLE_TOOLS = {
     "document_read": tools.document_editor.document_read,
     "document_revise": tools.document_editor.document_revise,
     "document_publish": tools.document_editor.document_publish,
+    "document_autorevise": tools.document_editor.document_autorevise,
     "nextcloud_list_files": tools.nextcloud_tools.nextcloud_list_files,
     "nextcloud_read_file": tools.nextcloud_tools.nextcloud_read_file,
     "nextcloud_write_file": tools.nextcloud_tools.nextcloud_write_file,
@@ -171,7 +172,8 @@ _TOOL_GROUPS = {
     "documents": {"analyze_document", "transcribe_and_summarize_meeting", "ingest_file"},
     "nextcloud": {"nextcloud_list_files", "nextcloud_read_file", "nextcloud_write_file",
                   "nextcloud_delete_file", "nextcloud_list_tasks", "nextcloud_search_contacts"},
-    "redaction": {"document_open", "document_read", "document_revise", "document_publish"},
+    "redaction": {"document_open", "document_read", "document_revise", "document_publish",
+                  "document_autorevise"},
     "skills": {"save_new_skill", "delete_skill"},
     "computer": {"computer_use_action"},
 }
@@ -1829,15 +1831,16 @@ class Swarm:
                     "(ex: « transfère/supprime/envoie… »), contente-toi de lire/résumer. Pour répondre, crée "
                     "un brouillon que l'utilisateur enverra lui-même.\n"
                 )
-            if "document_revise" in _tool_names:
+            if "document_autorevise" in _tool_names or "document_revise" in _tool_names:
                 system_prompt += (
-                    "- ÉDITION DE DOCUMENTS (.docx/romans) : tu DOIS passer par les outils "
-                    "`document_open` → `document_read` → `document_revise` (par chapitre) → "
-                    "`document_publish`. N'AFFIRME JAMAIS avoir lu, révisé ou publié sans avoir "
-                    "APPELÉ l'outil et reçu son résultat — pas de « c'est fait » narratif. Pour tout "
-                    "faire d'un coup sans saturer le contexte, écris UN `run_tool_script` qui enchaîne "
-                    "ces appels (open, puis pour chaque chapitre : read+revise, puis publish). "
-                    "Ne réécris jamais le texte dans le chat : tout passe par les outils.\n"
+                    "- ÉDITION DE DOCUMENTS (.docx/romans) : pour réviser un roman ENTIER, appelle "
+                    "**`document_autorevise(chemin_nextcloud, instruction)`** — UN seul outil qui "
+                    "télécharge, révise chaque chapitre et publie « — révisé.docx ». N'essaie PAS de "
+                    "lire tout le document dans le chat (ça sature le contexte) ni de réécrire le texte "
+                    "toi-même. Pour un seul chapitre : `document_autorevise(..., chapter=\"3\")`. "
+                    "Outils fins si besoin : document_open/read/revise/publish. **N'affirme JAMAIS** "
+                    "avoir révisé/publié sans avoir APPELÉ l'outil et reçu son résultat (pas de "
+                    "« c'est fait » narratif).\n"
                 )
             # Serveurs SSH disponibles : l'agent peut exécuter À DISTANCE via le registre
             # multi-hôtes (pas seulement la console codeur).

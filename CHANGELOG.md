@@ -1,5 +1,18 @@
 # Historique des Versions (Changelog)
 
+## v0.11.74 (Révision de roman en UN appel + garde-fou contexte)
+
+### ✍️ document_autorevise : tout le roman en un seul outil
+- Nouvel outil **`document_autorevise(chemin, instruction)`** : télécharge le .docx (original
+  intact), **révise chaque chapitre via le LLM en contexte ISOLÉ** (plus de saturation), applique
+  les **modifications suivies**, et publie « — révisé.docx ». Un SEUL appel d'outil → le modèle ne
+  peut plus « raconter » 20 étapes sans agir. Option `chapter="3"` pour un seul chapitre.
+- **Garde-fou contexte** : `document_read` sans chapitre ne déverse plus un roman entier (100k+
+  caractères) dans le contexte — au-delà de `DOCUMENT_READ_CAP` (8000), il renvoie la liste des
+  chapitres et invite à lire chapitre par chapitre.
+- Préambule mis à jour pour pousser `document_autorevise`.
+
+
 ## v0.11.73 (Édition docs : exécutables en script + garde anti-narration)
 
 ### 🔧 Réduire l'hallucination d'outils sur l'édition de documents
