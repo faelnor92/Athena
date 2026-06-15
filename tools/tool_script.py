@@ -28,6 +28,12 @@ SCRIPT_SAFE_TOOLS = {
     "git_status", "git_diff", "git_log",
     # Documents / e-mails (lecture seule)
     "analyze_document", "read_inbox", "read_email",
+    # Édition de documents longs (.docx, romans) : flux open→read→revise→publish en UN script
+    # → évite la narration étape par étape (le modèle tentait ces appels en script, qui échouaient).
+    "document_open", "document_read", "document_revise", "document_publish",
+    # Nextcloud (fichiers/tâches/contacts) : lecture + écriture (pas la suppression dans un script).
+    "nextcloud_list_files", "nextcloud_read_file", "nextcloud_write_file",
+    "nextcloud_list_tasks", "nextcloud_search_contacts",
 }
 
 _SAFE_IMPORTS = {"math", "json", "re", "datetime", "statistics", "itertools",
