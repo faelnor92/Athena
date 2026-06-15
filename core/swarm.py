@@ -204,7 +204,11 @@ _TOOL_GROUP_KEYWORDS = {
                   "mon cloud", "drive perso"],
     "redaction": ["roman", "chapitre", "manuscrit", "docx", "document word", ".docx", "réviser",
                   "reviser", "relire", "relis", "réécris", "reecris", "corrige le", "corrige mon",
-                  "modifications suivies", "révision", "revision", "mon document", "mon texte"],
+                  "modifications suivies", "révision", "revision", "mon document", "mon texte",
+                  # cohérence + répétitions + traduction (sinon ces demandes n'exposent pas les outils)
+                  "cohérence", "coherence", "incohérence", "incoherence", "répétition", "repetition",
+                  "répétitions", "repetitions", "traduis", "traduire", "traduction", "translate",
+                  "en anglais", "en espagnol", "en allemand", "en italien"],
     "skills": ["compétence", "competence", "skill", "nouvel outil", "apprends à"],
     "computer": ["souris", "clic", "écran", "ecran", "screenshot", "capture"],
 }
