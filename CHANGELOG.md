@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.11.78 (Traduction VIVANTE de roman)
+
+### 🌍 document_translate : traduire un roman de façon vivante (pas mot-à-mot)
+- Nouvel outil **`document_translate(chemin, langue)`** : traduit un .docx chapitre par chapitre
+  dans la langue cible, en traduction **littéraire et naturelle** (préserve la voix de l'auteur,
+  le ton, le rythme ; adapte les idiomes ; garde les noms propres). Crée un NOUVEAU fichier
+  « <nom> (<langue>).docx » sur Nextcloud — l'original reste intact. Contexte borné (lots par
+  chapitre). Validé sur l'endpoint réel (gemma rend une VO naturelle, pas littérale).
+
+
 ## v0.11.77 (Vérification de cohérence narrative)
 
 ### 🔎 document_check_coherence : détecter les incohérences d'un roman

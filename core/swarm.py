@@ -111,6 +111,7 @@ AVAILABLE_TOOLS = {
     "document_publish": tools.document_editor.document_publish,
     "document_autorevise": tools.document_editor.document_autorevise,
     "document_check_coherence": tools.document_editor.document_check_coherence,
+    "document_translate": tools.document_editor.document_translate,
     "nextcloud_list_files": tools.nextcloud_tools.nextcloud_list_files,
     "nextcloud_read_file": tools.nextcloud_tools.nextcloud_read_file,
     "nextcloud_write_file": tools.nextcloud_tools.nextcloud_write_file,
@@ -174,7 +175,7 @@ _TOOL_GROUPS = {
     "nextcloud": {"nextcloud_list_files", "nextcloud_read_file", "nextcloud_write_file",
                   "nextcloud_delete_file", "nextcloud_list_tasks", "nextcloud_search_contacts"},
     "redaction": {"document_open", "document_read", "document_revise", "document_publish",
-                  "document_autorevise", "document_check_coherence"},
+                  "document_autorevise", "document_check_coherence", "document_translate"},
     "skills": {"save_new_skill", "delete_skill"},
     "computer": {"computer_use_action"},
 }

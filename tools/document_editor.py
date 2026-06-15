@@ -571,6 +571,118 @@ def document_check_coherence(nextcloud_path: str, chapter: str = "") -> str:
         return f"Erreur lors de la vérification de cohérence : {e}"
 
 
+def _heading_level(paragraph) -> int:
+    """Niveau de titre (1 par défaut) d'après le style 'Heading N' / 'Titre N'."""
+    m = re.search(r"(\d+)", getattr(paragraph.style, "name", "") or "")
+    return int(m.group(1)) if m else 1
+
+
+def _translate_block(model: str, lang: str, instruction: str, text: str) -> str:
+    """Traduit un bloc en `lang` — traduction VIVANTE (pas littérale). Préserve les paragraphes."""
+    try:
+        from core.state import swarm as _sw
+        sys_p = (
+            f"Tu es un traducteur littéraire chevronné. Traduis le passage de roman en {lang}.\n"
+            "EXIGENCES :\n"
+            f"- Traduction VIVANTE et NATURELLE, JAMAIS littérale : le texte doit se lire comme s'il "
+            f"avait été ÉCRIT directement en {lang}.\n"
+            "- Préserve la VOIX de l'auteur, le ton, le rythme, le registre et les intentions.\n"
+            "- Adapte IDIOMATIQUEMENT les expressions, jeux de mots et tournures (équivalent culturel), "
+            "sans calquer la structure de la langue source.\n"
+            "- GARDE les noms propres (personnages, lieux) inchangés, sauf équivalent consacré.\n"
+            "- Conserve le même DÉCOUPAGE en paragraphes (un paragraphe par ligne).\n"
+            "- Réponds UNIQUEMENT par la traduction, sans note, sans commentaire, sans guillemets.")
+        usr = (f"{('Consigne : ' + instruction) if instruction else ''}\n\n--- PASSAGE À TRADUIRE ---\n{text}").strip()
+        resp = _sw._complete(model, [{"role": "system", "content": sys_p},
+                                     {"role": "user", "content": usr}], tools_schema=None)
+        return (resp.choices[0].message.content or "").strip()
+    except Exception as e:
+        print(f"[document_translate] bloc : {e}")
+        return ""
+
+
+def document_translate(nextcloud_path: str, target_language: str, instruction: str = "") -> str:
+    """
+    Traduit un roman .docx dans une langue cible, de façon VIVANTE (littéraire, naturelle, pas
+    mot-à-mot), chapitre par chapitre. Crée un NOUVEAU fichier « <nom> (<langue>).docx » sur
+    Nextcloud — l'original reste intact.
+
+    Args:
+        nextcloud_path (str): Chemin du .docx source sur Nextcloud (ex: "roman/MonRoman.docx").
+        target_language (str): Langue cible (ex: "anglais", "espagnol", "english").
+        instruction (str): Consigne de style optionnelle (ton, public…).
+
+    Returns:
+        str: Confirmation + nom du fichier traduit publié.
+    """
+    if not projects.can_write():
+        return "Erreur : édition non autorisée (accès en lecture seule)."
+    if not (target_language or "").strip():
+        return "Précise la langue cible (ex: anglais)."
+    res = document_open(nextcloud_path)
+    if "📄" not in res:
+        return res
+    name = _safe_name(nextcloud_path)
+    try:
+        Document = _docx()
+        src = Document(_local_path(name))
+        chaps = _chapters(src)
+        paras = src.paragraphs
+        out = Document()
+        _CHUNK = int(os.getenv("DOCUMENT_TRANSLATE_CHUNK", "5000") or 5000)
+        n_chunks = 0
+        from core.state import swarm as _sw
+        model = getattr(_sw.agents.get(getattr(_sw, "orchestrator_name", "Athena")), "model", None) or "gpt-4o-mini"
+
+        for (title, a, b) in chaps:
+            seg = paras[a:b]
+            idx = 0
+            if seg and _is_heading(seg[0]):
+                lvl = _heading_level(seg[0])
+                tt = _translate_block(model, target_language, "", seg[0].text) or seg[0].text
+                out.add_heading(tt.strip().splitlines()[0] if tt.strip() else seg[0].text, level=min(lvl, 9))
+                idx = 1
+            # Corps : on regroupe les paragraphes en lots bornés (contexte) puis on traduit.
+            body = [p.text for p in seg[idx:]]
+            batch, blen = [], 0
+            def _flush(batch):
+                nonlocal n_chunks
+                if not batch:
+                    return
+                src_text = "\n".join(batch)
+                tr = _translate_block(model, target_language, instruction, src_text)
+                n_chunks += 1
+                lines = tr.split("\n") if tr else batch
+                for ln in lines:
+                    out.add_paragraph(ln)
+            for line in body:
+                if blen + len(line) > _CHUNK and batch:
+                    _flush(batch); batch, blen = [], 0
+                batch.append(line); blen += len(line) + 1
+            _flush(batch)
+
+        # Publication : nouveau fichier « <nom> (<langue>).docx » à côté de l'original.
+        local_out = os.path.join(_dir(), name[:-5] + f" ({target_language}).docx")
+        out.save(local_out)
+        original_remote = open(_local_path(name) + ".src", encoding="utf-8").read().strip()
+        folder = original_remote.rsplit("/", 1)[0] if "/" in original_remote else ""
+        remote = (folder + "/" if folder else "") + os.path.basename(local_out)
+        url = _nc_url(remote)
+        if is_blocked_url(url):
+            return "Hôte Nextcloud bloqué (anti-SSRF)."
+        with open(local_out, "rb") as f:
+            data = f.read()
+        r = requests.put(url, auth=nextcloud.auth(), data=data,
+                         headers={"Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+                         timeout=30)
+        if r.status_code in (200, 201, 204):
+            return (f"🌍 Traduction ({target_language}) publiée sur Nextcloud : « {remote} » "
+                    f"({len(chaps)} chapitre(s), {n_chunks} bloc(s) traduits). L'original est intact.")
+        return f"Traduction faite mais upload échoué ({r.status_code})."
+    except Exception as e:
+        return f"Erreur lors de la traduction : {e}"
+
+
 def document_publish(filename: str) -> str:
     """
     Publie la copie révisée sur Nextcloud sous « <nom> — révisé.docx » (à côté de l'original,

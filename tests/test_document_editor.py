@@ -114,6 +114,38 @@ def test_check_coherence_reports_inconsistencies():
     assert "Chapitre 2" in out, out
 
 
+def test_translate_creates_target_language_file():
+    if not HAS_DOCX:
+        print("OK (python-docx absent — test sauté)")
+        return
+    import core.state as st
+    from docx import Document
+    _make_doc()
+
+    class _R:
+        def __init__(self, c):
+            self.choices = [type("C", (), {"message": type("M", (), {"content": c})()})()]
+
+    def fake(model, messages, tools_schema=None, **k):
+        src = messages[-1]["content"].split("---")[-1].strip()
+        return _R("\n".join("[EN] " + l for l in src.split("\n") if l.strip()))
+
+    class _Put:
+        status_code = 201
+
+    with mock.patch.object(de, "document_open", lambda p: "📄 ouvert"), \
+         mock.patch.object(st.swarm, "_complete", fake), \
+         mock.patch.object(de, "is_blocked_url", lambda u: False), \
+         mock.patch.object(de.nextcloud, "files_base", lambda: "https://nc.test/remote.php/dav/files/u/"), \
+         mock.patch.object(de.requests, "put", lambda *a, **k: _Put()):
+        out = de.document_translate("roman/RomanTest.docx", "anglais")
+    assert "traduction" in out.lower() and "anglais" in out.lower(), out
+    outf = os.path.join(de._dir(), "RomanTest (anglais).docx")
+    assert os.path.exists(outf), "fichier traduit non créé"
+    texts = [p.text for p in Document(outf).paragraphs]
+    assert any(t.startswith("[EN]") for t in texts), texts
+
+
 def test_read_caps_large_document():
     if not HAS_DOCX:
         print("OK (python-docx absent — test sauté)")
