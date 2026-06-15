@@ -59,7 +59,20 @@ def _connect():
         conn.login(c["user"], c["password"])
         return conn, None
     except Exception as e:
-        return None, f"Connexion IMAP impossible ({c['host']}) : {e}"
+        msg = str(e) or repr(e)
+        hint = ""
+        low = msg.lower()
+        if "eof" in low or "timed out" in low or "timeout" in low or "refused" in low:
+            # Cas Gmail typique : l'envoi SMTP marche mais IMAP coupe la connexion → IMAP non
+            # activé côté boîte, mauvais port/SSL, ou port 993 bloqué par le réseau.
+            hint = (" — La connexion a été coupée. Vérifie que : (1) l'accès IMAP est ACTIVÉ "
+                    "dans ta boîte (Gmail : Paramètres → Transfert et POP/IMAP → Activer IMAP) ; "
+                    "(2) IMAP_PORT=993 et IMAP_SSL=true ; (3) le port 993 n'est pas bloqué par "
+                    "le réseau/pare-feu (l'envoi SMTP peut marcher même si l'IMAP est bloqué).")
+        elif "auth" in low or "credential" in low or "login" in low or "invalid" in low:
+            hint = (" — Identifiants refusés. Gmail/Google exige un MOT DE PASSE D'APPLICATION "
+                    "dédié (pas le mot de passe du compte) et la validation en 2 étapes activée.")
+        return None, f"Connexion IMAP impossible ({c['host']}:{c['port']}) : {msg}{hint}"
 
 
 def _dec(value) -> str:

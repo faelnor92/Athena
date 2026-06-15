@@ -426,6 +426,7 @@ const tabConsole = document.getElementById("tab-console");
 const tabMeeting = document.getElementById("tab-meeting");
 const tabOrchestrator = document.getElementById("tab-orchestrator");
 const tabDesign = document.getElementById("tab-design");
+const tabRedaction = document.getElementById("tab-redaction");
 
 const viewCockpit = document.getElementById("view-cockpit");
 const viewGraph = document.getElementById("view-graph");
@@ -438,6 +439,7 @@ const viewConsole = document.getElementById("view-console");
 const viewMeeting = document.getElementById("view-meeting");
 const viewOrchestrator = document.getElementById("view-orchestrator");
 const viewDesign = document.getElementById("view-design");
+const viewRedaction = document.getElementById("view-redaction");
 const logsOrchestrator = document.getElementById("logs-orchestrator");
 
 // Gestion de la Modale Paramètres
@@ -486,8 +488,8 @@ const agentsList = document.getElementById("agents-list");
 // NAVIGATION DES ONGLETS GAUCHE DOCK (OFFICE vs COCKPIT vs FILES vs AGENDA vs GRAPH vs BRANCHES vs MEMORY vs CONSOLE)
 // =========================================================================
 function selectActiveTab(tab, view, extraAction = null) {
-    const allTabs = [tabCockpit, tabGraph, tabOffice, tabFiles, tabAgenda, tabBranches, tabMemory, tabOrchestrator, tabConsole, tabMeeting, tabDesign];
-    const allViews = [viewCockpit, viewGraph, viewOffice, viewFiles, viewAgenda, viewBranches, viewMemory, viewOrchestrator, viewConsole, viewMeeting, viewDesign];
+    const allTabs = [tabCockpit, tabGraph, tabOffice, tabFiles, tabAgenda, tabBranches, tabMemory, tabOrchestrator, tabConsole, tabMeeting, tabDesign, tabRedaction];
+    const allViews = [viewCockpit, viewGraph, viewOffice, viewFiles, viewAgenda, viewBranches, viewMemory, viewOrchestrator, viewConsole, viewMeeting, viewDesign, viewRedaction];
     
     allTabs.forEach(t => { if (t) t.classList.remove("active"); });
     allViews.forEach(v => { if (v) v.style.display = "none"; });
@@ -587,6 +589,135 @@ if (tabCockpit) {
             loadCockpitData();
             loadGalleryMedia();
         });
+    });
+}
+
+// ============================ ATELIER D'ÉCRITURE (romans) ============================
+// S'appuie sur /api/redaction/* : charge les chapitres, lance une opération (révision /
+// cohérence / répétitions / traduction) en JOB d'arrière-plan et suit la progression.
+let _redacWired = false;
+let _redacPoll = null;
+function _initRedaction() {
+    if (_redacWired) return;
+    _redacWired = true;
+    const pathEl = document.getElementById("redac-path");
+    const fileEl = document.getElementById("redac-file");
+    const dropEl = document.getElementById("redac-dropzone");
+    const loadBtn = document.getElementById("redac-load-btn");
+    const chapWrap = document.getElementById("redac-chapters");
+    const chapSel = document.getElementById("redac-chapter");
+    const instrEl = document.getElementById("redac-instruction");
+    const langWrap = document.getElementById("redac-lang-wrap");
+    const langEl = document.getElementById("redac-lang");
+    const resultEl = document.getElementById("redac-result");
+    const progWrap = document.getElementById("redac-progress-wrap");
+    const progBar = document.getElementById("redac-progress-bar");
+    const progText = document.getElementById("redac-progress-text");
+    const jobLabel = document.getElementById("redac-job-label");
+
+    const setResult = (txt) => { resultEl.textContent = txt; };
+    const setBusy = (b) => {
+        document.querySelectorAll(".redac-op").forEach(x => x.disabled = b);
+        loadBtn.disabled = b;
+        progWrap.style.display = b ? "flex" : "none";
+        if (!b) { progBar.style.width = "0%"; progText.textContent = ""; }
+    };
+
+    // Upload local d'un .docx → réutilise /api/workspace/upload puis pré-remplit le nom.
+    if (dropEl) dropEl.addEventListener("click", () => fileEl.click());
+    if (fileEl) fileEl.addEventListener("change", async () => {
+        const f = fileEl.files[0];
+        if (!f) return;
+        if (!f.name.toLowerCase().endsWith(".docx")) { setResult("Seuls les fichiers .docx sont acceptés."); return; }
+        setResult("Téléversement de « " + f.name + " »…");
+        const fd = new FormData(); fd.append("file", f);
+        try {
+            const r = await apiFetch("/api/workspace/upload", { method: "POST", body: fd });
+            if (!r.ok) throw new Error("upload " + r.status);
+            pathEl.value = f.name;
+            setResult("Fichier téléversé. Clique sur « Charger les chapitres ».");
+        } catch (e) { setResult("Échec du téléversement : " + e.message); }
+    });
+
+    if (loadBtn) loadBtn.addEventListener("click", async () => {
+        const path = (pathEl.value || "").trim();
+        if (!path) { setResult("Indique un chemin Nextcloud ou téléverse un .docx."); return; }
+        setResult("Ouverture du document…");
+        try {
+            const r = await apiFetch("/api/redaction/chapters", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ path })
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.detail || ("HTTP " + r.status));
+            chapSel.innerHTML = '<option value="">Tout le document</option>' +
+                (data.chapters || []).map(c => `<option value="${c.title.replace(/"/g, "&quot;")}">${c.title} (${c.paragraphs}¶)</option>`).join("");
+            chapWrap.style.display = "flex";
+            setResult("✅ " + (data.chapters || []).length + " chapitre(s) détecté(s). Choisis une action.");
+        } catch (e) { setResult("Erreur : " + e.message); }
+    });
+
+    // Affiche le champ « langue » seulement pour la traduction.
+    document.querySelectorAll(".redac-op").forEach(btn => {
+        btn.addEventListener("click", () => _redacRunOp(btn.dataset.op));
+    });
+    const _toggleLang = (op) => { langWrap.style.display = (op === "translate") ? "flex" : "none"; };
+
+    async function _redacRunOp(op) {
+        const path = (pathEl.value || "").trim();
+        if (!path) { setResult("Charge d'abord un document."); return; }
+        _toggleLang(op);
+        if (op === "translate" && !(langEl.value || "").trim()) { setResult("Indique la langue cible."); langEl.focus(); return; }
+        if (_redacPoll) { clearInterval(_redacPoll); _redacPoll = null; }
+        setBusy(true);
+        setResult("Lancement…");
+        jobLabel.textContent = "";
+        const payload = {
+            op, path,
+            instruction: (instrEl.value || "").trim(),
+            chapter: (chapSel.value || "").trim(),
+            target_language: (langEl.value || "").trim()
+        };
+        try {
+            const r = await apiFetch("/api/redaction/job", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.detail || ("HTTP " + r.status));
+            jobLabel.textContent = data.label || "";
+            _redacPollJob(data.job_id);
+        } catch (e) { setBusy(false); setResult("Erreur : " + e.message); }
+    }
+
+    function _redacPollJob(jobId) {
+        _redacPoll = setInterval(async () => {
+            try {
+                const r = await apiFetch("/api/redaction/job/" + encodeURIComponent(jobId));
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.detail || ("HTTP " + r.status));
+                const total = j.total || 0, done = j.done || 0;
+                progBar.style.width = total ? Math.round(100 * done / total) + "%" : "20%";
+                progText.textContent = (j.message || "") + (total ? `  (${done}/${total})` : "");
+                if (j.status === "done" || j.status === "error") {
+                    clearInterval(_redacPoll); _redacPoll = null;
+                    setBusy(false);
+                    let out = j.status === "error" ? ("❌ " + (j.error || "échec")) : (j.result || "(aucun résultat)");
+                    // Transforme un lien de téléchargement workspace en lien cliquable.
+                    out = out.replace(/(\/api\/workspace\/download\?path=[^\s)]+)/g,
+                        (m) => "\n👉 Télécharger : " + m);
+                    setResult(out);
+                }
+            } catch (e) {
+                clearInterval(_redacPoll); _redacPoll = null; setBusy(false);
+                setResult("Erreur de suivi : " + e.message);
+            }
+        }, 1200);
+    }
+}
+if (tabRedaction) {
+    tabRedaction.addEventListener("click", () => {
+        selectActiveTab(tabRedaction, viewRedaction, _initRedaction);
     });
 }
 

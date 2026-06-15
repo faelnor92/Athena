@@ -63,6 +63,10 @@
                     <span class="dock-icon">🎙️</span>
                     <span class="dock-tooltip" data-i18n="dock.meeting">Réunions</span>
                 </button>
+                <button class="dock-btn" id="tab-redaction" title="Atelier d'écriture (romans .docx)">
+                    <span class="dock-icon">✍️</span>
+                    <span class="dock-tooltip" data-i18n="dock.redaction">Écriture</span>
+                </button>
             </div>
 
             <div class="dock-separator"></div>
@@ -550,7 +554,81 @@
                         </div>
                     </div>
                 </div>
-                
+
+                <!-- ATELIER D'ÉCRITURE (romans .docx) : révision en modifications suivies, cohérence,
+                     répétitions, traduction vivante. S'appuie sur /api/redaction/* (jobs en arrière-plan). -->
+                <div class="viewport-panel" id="view-redaction" style="display: none;">
+                    <div style="display:flex; flex-direction:column; gap:16px; height:100%; overflow:hidden; padding:20px;">
+                        <div style="display:flex; align-items:flex-start; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:16px;">
+                            <div>
+                                <h4 class="view-panel-title" style="margin:0; display:flex; align-items:center; gap:8px;">✍️ Atelier d'écriture — romans</h4>
+                                <p class="section-desc" style="margin:4px 0 0 0; opacity:0.6; font-size:0.8rem;">Révision en modifications suivies (Word), cohérence narrative, répétitions, traduction vivante. L'original n'est jamais modifié.</p>
+                            </div>
+                        </div>
+
+                        <div style="display:grid; grid-template-columns:340px 1fr; gap:20px; flex:1; min-height:0;">
+                            <!-- Colonne gauche : source + chapitres + actions -->
+                            <div class="glass" style="display:flex; flex-direction:column; gap:14px; padding:18px; border-radius:12px; min-height:0; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); overflow-y:auto;">
+                                <h5 style="margin:0; font-size:0.9rem; color:var(--color-Athena); text-transform:uppercase;">1. Document</h5>
+
+                                <div style="display:flex; flex-direction:column; gap:6px;">
+                                    <label style="font-size:0.78rem; opacity:0.7;">Chemin Nextcloud OU nom d'un fichier uploadé</label>
+                                    <input type="text" id="redac-path" placeholder="roman/MonRoman.docx" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:9px; color:#fff; font-size:0.85rem;">
+                                </div>
+
+                                <div id="redac-dropzone" style="border:2px dashed rgba(255,255,255,0.15); border-radius:10px; padding:18px; text-align:center; cursor:pointer; background:rgba(0,0,0,0.2); transition:all 0.3s ease;">
+                                    <span style="font-size:1.8rem; display:block; margin-bottom:4px;">📄</span>
+                                    <span style="font-size:0.78rem; opacity:0.7;">Déposez un .docx (sans Nextcloud) ou cliquez</span>
+                                    <input type="file" id="redac-file" accept=".docx" style="display:none;">
+                                </div>
+
+                                <button id="redac-load-btn" class="btn btn-secondary" style="margin:0; padding:9px; font-weight:bold;">📑 Charger les chapitres</button>
+
+                                <div id="redac-chapters" style="display:none; flex-direction:column; gap:6px; border-top:1px solid rgba(255,255,255,0.08); padding-top:12px;">
+                                    <label style="font-size:0.78rem; opacity:0.7;">Cible (vide = tout le document)</label>
+                                    <select id="redac-chapter" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:8px; color:#fff; font-size:0.85rem;"></select>
+                                </div>
+
+                                <h5 style="margin:6px 0 0 0; font-size:0.9rem; color:var(--color-Athena); text-transform:uppercase;">2. Action</h5>
+                                <div style="display:flex; flex-direction:column; gap:6px;">
+                                    <label style="font-size:0.78rem; opacity:0.7;">Consigne (révision / traduction) — optionnel</label>
+                                    <textarea id="redac-instruction" rows="2" placeholder="ex: uniformise le climat ; corrige les fautes ; ton plus sombre…" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:8px; color:#fff; font-size:0.82rem; resize:vertical;"></textarea>
+                                </div>
+                                <div id="redac-lang-wrap" style="display:none; flex-direction:column; gap:6px;">
+                                    <label style="font-size:0.78rem; opacity:0.7;">Langue cible</label>
+                                    <input type="text" id="redac-lang" placeholder="anglais" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:8px; color:#fff; font-size:0.85rem;">
+                                </div>
+
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                                    <button class="btn btn-primary redac-op" data-op="autorevise" style="margin:0; padding:9px; font-weight:bold; font-size:0.82rem;">✒️ Réviser</button>
+                                    <button class="btn btn-secondary redac-op" data-op="coherence" style="margin:0; padding:9px; font-weight:bold; font-size:0.82rem;">🔎 Cohérence</button>
+                                    <button class="btn btn-secondary redac-op" data-op="repetitions" style="margin:0; padding:9px; font-weight:bold; font-size:0.82rem;">🔁 Répétitions</button>
+                                    <button class="btn btn-secondary redac-op" data-op="translate" style="margin:0; padding:9px; font-weight:bold; font-size:0.82rem;">🌍 Traduire</button>
+                                </div>
+                            </div>
+
+                            <!-- Colonne droite : progression + résultat -->
+                            <div class="glass" style="display:flex; flex-direction:column; gap:14px; padding:18px; border-radius:12px; min-height:0; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08);">
+                                <div style="display:flex; align-items:center; justify-content:space-between;">
+                                    <h5 style="margin:0; font-size:0.9rem; color:var(--color-Athena); text-transform:uppercase;">Résultat</h5>
+                                    <span id="redac-job-label" style="font-size:0.75rem; opacity:0.5;"></span>
+                                </div>
+
+                                <div id="redac-progress-wrap" style="display:none; flex-direction:column; gap:8px;">
+                                    <div style="height:10px; background:rgba(0,0,0,0.4); border-radius:6px; overflow:hidden;">
+                                        <div id="redac-progress-bar" style="height:100%; width:0%; background:var(--accent-color, #7fd3ff); transition:width 0.3s ease;"></div>
+                                    </div>
+                                    <div id="redac-progress-text" style="font-size:0.78rem; opacity:0.7;"></div>
+                                </div>
+
+                                <div id="redac-result" style="flex:1; overflow-y:auto; background:rgba(0,0,0,0.3); border-radius:8px; padding:16px; border:1px solid rgba(255,255,255,0.05); font-size:0.88rem; line-height:1.5; color:#e0e0e0; min-height:0; white-space:pre-wrap;">
+                                    <div style="opacity:0.4; text-align:center; margin:auto; font-size:0.85rem;">Charge un document, choisis une action : le rapport (ou le lien du fichier révisé) s'affiche ici.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </main>
 
@@ -1639,7 +1717,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260615_nooauth"></script>
+    <script src="app.js?v=20260615_redaction"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>
