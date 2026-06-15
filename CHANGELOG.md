@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.11.75 (Révision de roman : plus fine et fidèle)
+
+### ✍️ Révisions mot à mot + consigne stricte (ne plus changer l'histoire)
+- **Diff MOT À MOT** : les modifications suivies ne marquent plus le paragraphe entier (barré +
+  réinséré) mais seulement les **fragments réellement modifiés** — bien plus lisible/suivable dans
+  OnlyOffice (le texte inchangé reste en normal).
+- **Consigne renforcée** : la révision est désormais une correction LÉGÈRE (orthographe, grammaire,
+  redondances, fluidité) qui PRÉSERVE l'intrigue, les personnages, les noms et les faits — l'IA ne
+  doit plus réécrire/changer l'histoire ni rien inventer, et garder le même découpage.
+
+
 ## v0.11.74 (Révision de roman en UN appel + garde-fou contexte)
 
 ### ✍️ document_autorevise : tout le roman en un seul outil
