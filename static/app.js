@@ -3493,9 +3493,73 @@ if (_btnTtsRestart) _btnTtsRestart.addEventListener("click", async () => {
         if (st) st.textContent = "❌ " + e;
     }
 });
+// --- Sélecteur de voix Kokoro (partagé chat + satellites) ---------------------
+const _ttsVoiceSel = document.getElementById("tts-voice-select");
+const _ttsVoiceStatus = document.getElementById("tts-voice-status");
+let _ttsVoicesLoaded = false;
+async function loadTtsVoices() {
+    if (!_ttsVoiceSel) return;
+    try {
+        const [vr, cr] = await Promise.all([
+            apiFetch("/api/voice/voices"),
+            apiFetch("/api/config/voice-tts")
+        ]);
+        const vd = await vr.json();
+        const cd = await cr.json();
+        const voices = vd.voices || [];
+        const current = (cd.voice || "").trim();
+        if (!voices.length) {
+            _ttsVoiceSel.innerHTML = '<option value="">' + (vd.error || "Aucune voix (Kokoro injoignable)") + '</option>';
+        } else {
+            _ttsVoiceSel.innerHTML = voices.map(v =>
+                `<option value="${v}" ${v === current ? "selected" : ""}>${v}</option>`).join("");
+            if (current && !voices.includes(current)) {
+                _ttsVoiceSel.insertAdjacentHTML("afterbegin", `<option value="${current}" selected>${current} (actuelle)</option>`);
+            }
+        }
+        _ttsVoicesLoaded = true;
+    } catch (e) {
+        _ttsVoiceSel.innerHTML = '<option value="">Erreur : ' + e + '</option>';
+    }
+}
+const _btnTtsVoiceRefresh = document.getElementById("btn-tts-voice-refresh");
+if (_btnTtsVoiceRefresh) _btnTtsVoiceRefresh.addEventListener("click", () => { _ttsVoicesLoaded = false; loadTtsVoices(); });
+const _btnTtsVoiceSave = document.getElementById("btn-tts-voice-save");
+if (_btnTtsVoiceSave) _btnTtsVoiceSave.addEventListener("click", async () => {
+    const voice = _ttsVoiceSel ? _ttsVoiceSel.value : "";
+    if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = "Enregistrement…";
+    try {
+        const r = await apiFetch("/api/config/voice-tts", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ voice })
+        });
+        const d = await r.json();
+        if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = r.ok ? ("✅ Voix « " + (d.voice || voice) + " » enregistrée (chat + satellites).") : ("❌ " + (d.detail || "erreur"));
+    } catch (e) { if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = "❌ " + e; }
+});
+const _btnTtsVoiceTest = document.getElementById("btn-tts-voice-test");
+if (_btnTtsVoiceTest) _btnTtsVoiceTest.addEventListener("click", async () => {
+    const voice = _ttsVoiceSel ? _ttsVoiceSel.value : "";
+    if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = "🔊 Test…";
+    try {
+        const r = await apiFetch("/api/voice/tts", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: "Bonjour, ceci est un test de la voix sélectionnée.", voice })
+        });
+        if (!r.ok) throw new Error("TTS " + r.status);
+        const blob = await r.blob();
+        stopSpeaking();
+        const audio = new Audio(URL.createObjectURL(blob));
+        currentTtsAudio = audio;
+        await audio.play();
+        if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = "";
+    } catch (e) { if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = "❌ Test impossible : " + e; }
+});
+
 if (modalTabSatellites && paneSatellites) {
     modalTabSatellites.addEventListener("click", () => switchModalTab(modalTabSatellites, () => {
         paneSatellites.style.display = "block";
+        if (!_ttsVoicesLoaded) loadTtsVoices();
         _ensureSatCatalog();
         loadSatellitesPane();
         loadWakeWord();
@@ -4906,33 +4970,52 @@ let currentUtterance = null;
 let recognition = null;
 let isMicRecording = false;
 
-function speakText(text, agentName) {
+let currentTtsAudio = null;
+
+// Stoppe toute lecture en cours (audio serveur Kokoro OU voix navigateur).
+function stopSpeaking() {
+    if (currentTtsAudio) {
+        try { currentTtsAudio.pause(); currentTtsAudio.src = ""; } catch (e) {}
+        currentTtsAudio = null;
+    }
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+// Lit un texte à voix haute. PRIORITÉ au TTS serveur (Kokoro — même voix que les satellites,
+// bien plus naturel) ; repli automatique sur la voix du navigateur si Kokoro est indisponible.
+async function speakText(text, agentName) {
+    stopSpeaking();
+    const cleanText = (text || "").replace(/<[^>]*>/g, "").replace(/[\*_`#]/g, "").trim();
+    if (!cleanText) return;
+    try {
+        const r = await apiFetch("/api/voice/tts", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: cleanText })
+        });
+        if (r.ok) {
+            const blob = await r.blob();
+            const audio = new Audio(URL.createObjectURL(blob));
+            currentTtsAudio = audio;
+            audio.onended = () => { try { URL.revokeObjectURL(audio.src); } catch (e) {} if (currentTtsAudio === audio) currentTtsAudio = null; };
+            await audio.play();
+            return;   // Kokoro a parlé
+        }
+    } catch (e) { /* on bascule sur la voix du navigateur */ }
+    _speakBrowser(cleanText, agentName);
+}
+
+// Repli : Web Speech API du navigateur (voix « robotique » système).
+function _speakBrowser(cleanText, agentName) {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    
-    // Nettoyer les balises HTML et markdown simples pour la lecture vocale
-    let cleanText = text.replace(/<[^>]*>/g, "").replace(/[\*_`#]/g, "");
-    
     const utterance = new SpeechSynthesisUtterance(cleanText);
     const voices = window.speechSynthesis.getVoices();
     const frVoice = voices.find(v => v.lang.startsWith("fr") || v.lang.includes("FR"));
     if (frVoice) utterance.voice = frVoice;
-    
-    // Adapter la voix et le ton selon l'agent
-    if (agentName === "Athena") {
-        utterance.pitch = 1.0;
-        utterance.rate = 1.05;
-    } else if (agentName === "Codeur") {
-        utterance.pitch = 0.9;
-        utterance.rate = 1.15;
-    } else if (agentName === "Auteur") {
-        utterance.pitch = 1.15;
-        utterance.rate = 0.95;
-    } else {
-        utterance.pitch = 1.0;
-        utterance.rate = 1.0;
-    }
-    
+    if (agentName === "Athena") { utterance.pitch = 1.0; utterance.rate = 1.05; }
+    else if (agentName === "Codeur") { utterance.pitch = 0.9; utterance.rate = 1.15; }
+    else if (agentName === "Auteur") { utterance.pitch = 1.15; utterance.rate = 0.95; }
+    else { utterance.pitch = 1.0; utterance.rate = 1.0; }
     currentUtterance = utterance;
     window.speechSynthesis.speak(utterance);
 }
@@ -4953,7 +5036,7 @@ function initSpeech() {
                 btnVoiceToggle.textContent = "🔇 Voix OFF";
                 btnVoiceToggle.style.backgroundColor = "";
                 btnVoiceToggle.style.borderColor = "";
-                if (window.speechSynthesis) window.speechSynthesis.cancel();
+                stopSpeaking();
             }
         });
     }

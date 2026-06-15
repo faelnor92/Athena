@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.12.2 (Voix du chat = Kokoro + sélecteur de voix dynamique)
+
+### 🔊 Le chat parle avec Kokoro (même voix que les satellites)
+- La lecture vocale du chat utilisait la voix ROBOTIQUE du navigateur (Web Speech API).
+  Désormais elle passe par Kokoro via /api/voice/tts (le MÊME moteur que les satellites) →
+  voix naturelle + émotion. Repli automatique sur la voix du navigateur si Kokoro est injoignable.
+- Sélecteur de voix DYNAMIQUE (Réglages → Satellites vocaux) : liste les voix proposées par
+  Kokoro (/v1/audio/voices), bouton Tester, et enregistrement → VOICE_TTS_VOICE partagé par le
+  CHAT et les SATELLITES (changement appliqué à chaud).
+
+
 ## v0.12.1 (Révisé d'un fichier Nextcloud ouvrable dans OnlyOffice d'Athena)
 
 ### 📝 Copie locale du révisé même pour les fichiers Nextcloud
