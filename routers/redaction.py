@@ -67,13 +67,19 @@ async def list_chapters(req: ChaptersRequest):
     if "📄" not in out:
         raise HTTPException(status_code=400, detail=out)
     try:
-        local = de._local_path(de._safe_name(path))
+        name = de._safe_name(path)
+        local = de._local_path(name)
         doc = de._docx()(local)
         chaps = [{"title": t, "paragraphs": b - a} for (t, a, b) in de._chapters(doc)]
         ws_rel = _ws_rel(local)  # chemin relatif workspace → ouverture OnlyOffice
+        # S'il existe déjà un « — révisé.docx » (révision précédente, éventuellement faite via
+        # le chat), on le signale → le bouton OnlyOffice l'ouvre en priorité (pas l'original).
+        rev_base = (name[:-5] if name.lower().endswith(".docx") else name) + " — révisé.docx"
+        revised_abs = os.path.join(de._dir(), rev_base)
+        revised_rel = _ws_rel(revised_abs) if os.path.exists(revised_abs) else None
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {"path": path, "chapters": chaps, "ws_path": ws_rel,
+    return {"path": path, "chapters": chaps, "ws_path": ws_rel, "revised_path": revised_rel,
             "onlyoffice": onlyoffice.is_configured()}
 
 

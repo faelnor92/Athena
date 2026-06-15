@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.12.0 (Bouton OnlyOffice ouvre le révisé)
+
+### 📝 Le bouton OnlyOffice ouvre le « — révisé.docx », pas l'original
+- Le bouton ouvrait le fichier de travail (original chargé) au lieu du révisé, notamment quand
+  la révision avait été faite via le chat. Désormais /api/redaction/chapters signale s'il existe
+  déjà un « — révisé.docx » et le bouton l'ouvre EN PRIORITÉ (sinon le fichier de travail).
+- Note : sous Firefox/Linux, la protection renforcée contre le pistage peut bloquer l'iframe
+  OnlyOffice (cross-site) → l'éditeur reste sur le squelette ; OK sous Windows/autres navigateurs.
+
+
 ## v0.11.99 (Diagnostic OnlyOffice : URL que le DS n'arrive pas à joindre)
 
 ### 📝 Message clair quand le document reste sur le squelette
