@@ -52,6 +52,7 @@ import tools.playbooks
 import tools.claude_code_tool
 import tools.email_tools
 import tools.nextcloud_tools
+import tools.document_editor
 
 # Profondeur de DÉLÉGATION du contexte courant (anti-récursion infinie entre sous-agents).
 # parent=0 → enfant=1 → petit-enfant rejeté au-delà de DELEGATE_MAX_DEPTH.
@@ -104,6 +105,10 @@ AVAILABLE_TOOLS = {
     "read_inbox": tools.email_tools.read_inbox,
     "read_email": tools.email_tools.read_email,
     "create_email_draft": tools.email_tools.create_email_draft,
+    "document_open": tools.document_editor.document_open,
+    "document_read": tools.document_editor.document_read,
+    "document_revise": tools.document_editor.document_revise,
+    "document_publish": tools.document_editor.document_publish,
     "nextcloud_list_files": tools.nextcloud_tools.nextcloud_list_files,
     "nextcloud_read_file": tools.nextcloud_tools.nextcloud_read_file,
     "nextcloud_write_file": tools.nextcloud_tools.nextcloud_write_file,
@@ -166,6 +171,7 @@ _TOOL_GROUPS = {
     "documents": {"analyze_document", "transcribe_and_summarize_meeting", "ingest_file"},
     "nextcloud": {"nextcloud_list_files", "nextcloud_read_file", "nextcloud_write_file",
                   "nextcloud_delete_file", "nextcloud_list_tasks", "nextcloud_search_contacts"},
+    "redaction": {"document_open", "document_read", "document_revise", "document_publish"},
     "skills": {"save_new_skill", "delete_skill"},
     "computer": {"computer_use_action"},
 }
@@ -190,7 +196,10 @@ _TOOL_GROUP_KEYWORDS = {
     "documents": ["document", "pdf", "résume ce", "resume ce", "analyse ce", "compte rendu",
                   "compte-rendu", "transcris", "transcription", "ingère", "ingere"],
     "nextcloud": ["nextcloud", "webdav", "carddav", "contact", "carnet d'adresses", "fichier nextcloud",
-                  "mon cloud", "drive perso", "roman", "chapitre", "manuscrit"],
+                  "mon cloud", "drive perso"],
+    "redaction": ["roman", "chapitre", "manuscrit", "docx", "document word", ".docx", "réviser",
+                  "reviser", "relire", "relis", "réécris", "reecris", "corrige le", "corrige mon",
+                  "modifications suivies", "révision", "revision", "mon document", "mon texte"],
     "skills": ["compétence", "competence", "skill", "nouvel outil", "apprends à"],
     "computer": ["souris", "clic", "écran", "ecran", "screenshot", "capture"],
 }
@@ -1554,10 +1563,11 @@ class Swarm:
                 try:
                     from core import nextcloud as _nc
                     if _nc.is_configured():
-                        for _n in _TOOL_GROUPS.get("nextcloud", ()):
-                            if _n not in existing and _n in AVAILABLE_TOOLS:
-                                effective_tools.append(AVAILABLE_TOOLS[_n])
-                                existing.add(_n)
+                        for _grp in ("nextcloud", "redaction"):
+                            for _n in _TOOL_GROUPS.get(_grp, ()):
+                                if _n not in existing and _n in AVAILABLE_TOOLS:
+                                    effective_tools.append(AVAILABLE_TOOLS[_n])
+                                    existing.add(_n)
                 except Exception:
                     pass
                 # Playbooks Markdown (savoir-faire procédural) : on expose load_playbook
