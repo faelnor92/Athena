@@ -231,7 +231,10 @@ def select_relevant_funcs(text, funcs, top_n):
         score = len(q & _toks(name + " " + head)) + len(q & _toks(name.replace("_", " ")))
         scored.append((-score, i, f))
     scored.sort()
-    return [f for _, _, f in scored[:top_n]]
+    # On ne garde que les fonctions RÉELLEMENT pertinentes (recouvrement > 0). Avant, on
+    # « comblait » le top-N avec des outils sans rapport (ex. 12 outils Home Assistant exposés
+    # pour une requête « calendrier » → l'agent partait sur HA). Rien ne matche ⇒ liste vide.
+    return [f for negscore, _, f in scored if negscore < 0][:top_n]
 
 
 def load_dynamic_skills() -> dict:
@@ -1544,6 +1547,19 @@ class Swarm:
                     if tool_name not in existing:
                         effective_tools.append(func)
                         existing.add(tool_name)
+                # Outils Nextcloud (Fichiers/Tâches/Contacts) : donnés automatiquement à
+                # l'orchestrateur SI Nextcloud est configuré pour l'utilisateur courant (sinon
+                # inutile). Évite d'avoir à les cocher à la main par agent ; le filtre par
+                # domaine ne les expose que pour une requête « nextcloud/fichier/contact ».
+                try:
+                    from core import nextcloud as _nc
+                    if _nc.is_configured():
+                        for _n in _TOOL_GROUPS.get("nextcloud", ()):
+                            if _n not in existing and _n in AVAILABLE_TOOLS:
+                                effective_tools.append(AVAILABLE_TOOLS[_n])
+                                existing.add(_n)
+                except Exception:
+                    pass
                 # Playbooks Markdown (savoir-faire procédural) : on expose load_playbook
                 # UNIQUEMENT s'il existe au moins un playbook (sinon outil inutile).
                 if "load_playbook" not in existing and tools.playbooks.list_playbooks():
@@ -1702,6 +1718,21 @@ class Swarm:
                     _req = next((m.get("content", "") for m in reversed(messages)
                                  if m.get("role") == "user"), "")
                     _keep_extra = {f.__name__ for f in select_relevant_funcs(str(_req), _extras, _topn)}
+                    # Outils MCP Home Assistant : leurs noms sont en ANGLAIS → une requête
+                    # domotique en français (« allume le salon ») ne les fait pas remonter par
+                    # mots-clés. On les RÉ-EXPOSE (bornés à _topn) UNIQUEMENT quand le domaine
+                    # « domotique » est actif → domotique conservée, et plus de bruit HA sur les
+                    # requêtes agenda/email/etc. (cause du « calendrier → HA »).
+                    _req_l = str(_req).lower()
+                    if any(k in _req_l for k in _TOOL_GROUP_KEYWORDS.get("domotique", [])):
+                        try:
+                            import tools.mcp_manager as _mm
+                            _ha = {n for n, info in _mm.mcp_manager._tools.items()
+                                   if str(info.get("server", "")).lower() in ("homeassistant", "home-assistant", "ha")}
+                            _ha_extras = [f.__name__ for f in _extras if f.__name__ in _ha]
+                            _keep_extra |= set(_ha_extras[:_topn])
+                        except Exception:
+                            pass
                     _before_n = len(effective_tools)
                     effective_tools = [f for f in effective_tools
                                        if not _is_extra(f.__name__) or f.__name__ in _keep_extra]

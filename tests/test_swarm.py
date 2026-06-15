@@ -157,6 +157,29 @@ def test_select_tool_subset(monkeypatch=None):
     print("OK: select_tool_subset filtre par pertinence en gardant le cœur")
 
 
+def test_select_relevant_funcs_ne_garde_que_le_pertinent(monkeypatch=None):
+    """Les outils « extra » (MCP/skills) ne sont exposés que s'ils sont VRAIMENT pertinents
+    (recouvrement > 0). Avant, le top-N était comblé au hasard → des outils Home Assistant
+    exposés pour une requête « calendrier » → l'agent partait sur HA."""
+    from core.swarm import select_relevant_funcs
+
+    def mk(name, doc=""):
+        f = lambda **k: None
+        f.__name__ = name
+        f.__doc__ = doc
+        return f
+
+    extras = [mk("HassTurnOn", "Turn on a device"), mk("HassListCalendars", "List HA calendars"),
+              mk("get_entity_state", "Get HA state"), mk("calc_remise", "calcule une remise")]
+    # Requête calendrier (FR) : aucun nom HA anglais ne matche → 0 extra (plus de bruit HA).
+    assert select_relevant_funcs("regarde mon calendrier", extras, 12) == [], \
+        "aucun outil HA ne doit être exposé pour une requête calendrier"
+    # Requête qui matche : seul l'outil pertinent ressort.
+    got = [f.__name__ for f in select_relevant_funcs("turn on the light", extras, 12)]
+    assert got == ["HassTurnOn"], got
+    print("OK: select_relevant_funcs n'expose que les extras pertinents (plus de bourrage)")
+
+
 def test_parse_text_tool_calls(monkeypatch=None):
     """Le parseur récupère un tool-call écrit en TEXTE (bloc ```json, balise <tool_call>)
     et ignore le JSON dont le nom n'est pas un outil disponible (anti faux-positif)."""
@@ -387,6 +410,7 @@ if __name__ == "__main__":
     test_max_turns_borne_la_boucle()
     test_filtre_n_empeche_pas_execution()
     test_select_tool_subset()
+    test_select_relevant_funcs_ne_garde_que_le_pertinent()
     test_parse_text_tool_calls()
     test_disjoncteur_repetition_coupe_les_appels_identiques()
     test_hook_auto_amelioration_archive_un_retour()

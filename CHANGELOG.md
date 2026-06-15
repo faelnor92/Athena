@@ -1,5 +1,25 @@
 # Historique des Versions (Changelog)
 
+## v0.11.71 (Choix d'outils plus fiable + Nextcloud dispo pour Athena)
+
+### 🎯 L'agent choisit mieux ses outils
+- **Fini le « calendrier → Home Assistant »** : les outils « extra » (MCP, dont les 84 de HA, et
+  skills) n'étaient exposés au modèle qu'en comblant un top-12 **au hasard** quand rien ne matchait
+  → du bruit qui faisait partir l'agent sur le mauvais outil. Désormais on n'expose que les extras
+  **réellement pertinents** (recouvrement de mots > 0).
+- **Domotique préservée** : les outils Home Assistant (noms anglais) sont **ré-exposés quand la
+  requête est domotique** (mots-clés FR : allume, lumière, salon…), donc « allume le salon » marche
+  toujours sans polluer les autres requêtes.
+
+### ☁️ Nextcloud accessible à Athena
+- Les outils Nextcloud (Fichiers/Tâches/Contacts) sont **donnés automatiquement à l'orchestrateur**
+  quand Nextcloud est configuré (plus besoin de les cocher par agent). « liste mes fichiers Nextcloud »
+  fonctionne directement.
+
+### ✅ Tests
+- `tests/test_swarm.py::test_select_relevant_funcs_ne_garde_que_le_pertinent`.
+
+
 ## v0.11.70 (Retrait de l'OAuth Google)
 
 ### 🧹 OAuth Google retiré
