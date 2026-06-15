@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.11.99 (Diagnostic OnlyOffice : URL que le DS n'arrive pas à joindre)
+
+### 📝 Message clair quand le document reste sur le squelette
+- Quand l'éditeur reste bloqué sur le squelette (le Document Server ne télécharge pas le
+  fichier), la page affiche après ~22 s l'URL EXACTE que le DS tente d'atteindre + la commande
+  `curl -I <url>` à lancer depuis la machine OnlyOffice pour vérifier la joignabilité, et rappelle
+  de régler « URL d'Athena vue par OnlyOffice » avec l'IP LAN d'Athena.
+
+
 ## v0.11.98 (Éditeur OnlyOffice en fenêtre dédiée + erreurs claires)
 
 ### 📝 Ouverture dans une nouvelle fenêtre
