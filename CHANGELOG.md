@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.11.93 (Fin des appels run_tool_script gâchés sur mail/SSH)
+
+### ⚡ run_tool_script masqué pour les tâches mail et SSH
+- Athena tentait run_tool_script AVANT le bon outil (par habitude) → appels gâchés en boucle,
+  car le bac à sable ne peut exécuter ni les mutations mail (clean_inbox/archive…) ni le SSH
+  (subprocess interdit). Désormais, dès qu'un outil mail (clean_inbox/archive_emails/
+  mark_emails_read/read_inbox) ou SSH (execute_bash_command) est exposé, run_tool_script est
+  retiré de l'exposition → le modèle appelle directement le bon outil.
+
+
 ## v0.11.92 (Archivage mail : nom de dossier ASCII + UTF-7 modifié)
 
 ### 📬 Plus d'erreur d'encodage sur le libellé d'archive

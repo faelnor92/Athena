@@ -1761,6 +1761,16 @@ class Swarm:
                 effective_tools = [f for f in effective_tools
                                    if f.__name__ in _tool_subset or _TOOL_DOMAIN.get(f.__name__) is None]
 
+            # Tâche MAIL ou SSH → on RETIRE run_tool_script de l'exposition : le bac à sable ne
+            # peut exécuter ni les mutations mail (clean_inbox/archive…) ni le SSH (subprocess
+            # interdit). Le modèle l'essayait d'abord par habitude → appels gâchés en boucle. En
+            # le masquant, il va direct au bon outil (clean_inbox / execute_bash_command).
+            if _is_orchestrator:
+                _active = {f.__name__ for f in effective_tools}
+                if _active & {"clean_inbox", "archive_emails", "mark_emails_read", "read_inbox",
+                              "execute_bash_command"}:
+                    effective_tools = [f for f in effective_tools if f.__name__ != "run_tool_script"]
+
             # Sélection par PERTINENCE des outils « extra » (skills + MCP) : hors groupes,
             # ils échappent à select_tool_subset → ils prolifèrent (skills auto-induites,
             # 20-50 outils par serveur MCP). On n'expose que les top-N pertinents pour la
