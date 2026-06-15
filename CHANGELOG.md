@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.11.94 (Catégories Gmail : Promotions, Réseaux sociaux…)
+
+### 📬 Ménage par onglet Gmail
+- search_emails et clean_inbox acceptent un paramètre `category` ciblant les ONGLETS Gmail
+  (Promotions, Réseaux sociaux=social, Notifications=updates, Forums) via l'extension X-GM-RAW
+  → « archive l'onglet Promotions » ou « range mes réseaux sociaux » vide la catégorie entière
+  en un appel. Synonymes FR reconnus (promotions, réseaux sociaux, notifications, forums…).
+- Nouvel outil list_mail_folders : liste les dossiers/libellés (avec décodage UTF-7) et rappelle
+  les catégories Gmail ciblables. Mots-clés de routage étendus (promotions, réseaux sociaux).
+
+
 ## v0.11.93 (Fin des appels run_tool_script gâchés sur mail/SSH)
 
 ### ⚡ run_tool_script masqué pour les tâches mail et SSH
