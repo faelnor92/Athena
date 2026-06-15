@@ -690,6 +690,73 @@ function _initRedaction() {
         } catch (e) { setBusy(false); setResult("Erreur : " + e.message); }
     }
 
+    // --- Réglages OnlyOffice (URL DS, base publique, secret JWT) -------------
+    const ooUrl = document.getElementById("oo-url");
+    const ooPublic = document.getElementById("oo-public-base");
+    const ooSecret = document.getElementById("oo-secret");
+    const ooSave = document.getElementById("oo-save");
+    const ooStatus = document.getElementById("oo-status");
+    let _ooConfigured = false;
+    (async () => {
+        try {
+            const r = await apiFetch("/api/config/onlyoffice");
+            const d = await r.json();
+            if (ooUrl) ooUrl.value = d.url || "";
+            if (ooPublic) ooPublic.value = d.public_base || "";
+            _ooConfigured = !!d.configured;
+            if (ooStatus) ooStatus.textContent = d.configured
+                ? ("Configuré" + (d.has_secret ? " (JWT)" : " (sans JWT)")) : "Non configuré";
+        } catch (e) { /* ignore */ }
+    })();
+    if (ooSave) ooSave.addEventListener("click", async () => {
+        ooSave.disabled = true; ooStatus.textContent = "Enregistrement…";
+        try {
+            const r = await apiFetch("/api/config/onlyoffice", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url: ooUrl.value.trim(), public_base: ooPublic.value.trim(), jwt_secret: ooSecret.value })
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || ("HTTP " + r.status));
+            _ooConfigured = !!d.configured;
+            ooSecret.value = "";
+            ooStatus.textContent = d.configured ? "✅ Enregistré" : "URL manquante";
+        } catch (e) { ooStatus.textContent = "Erreur : " + e.message; }
+        ooSave.disabled = false;
+    });
+
+    // Charge api.js du Document Server une seule fois, puis ouvre le fichier dans l'éditeur.
+    let _ooScriptLoaded = false;
+    let _ooEditorInstance = null;
+    function _ooLoadScript(dsUrl) {
+        return new Promise((resolve, reject) => {
+            if (_ooScriptLoaded && window.DocsAPI) return resolve();
+            const s = document.createElement("script");
+            s.src = dsUrl.replace(/\/$/, "") + "/web-apps/apps/api/documents/api.js";
+            s.onload = () => { _ooScriptLoaded = true; resolve(); };
+            s.onerror = () => reject(new Error("api.js du Document Server injoignable"));
+            document.head.appendChild(s);
+        });
+    }
+    async function _redacOpenEditor(relPath) {
+        const editorEl = document.getElementById("redac-oo-editor");
+        try {
+            const r = await apiFetch("/api/redaction/onlyoffice/config?path=" + encodeURIComponent(relPath));
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.detail || ("HTTP " + r.status));
+            await _ooLoadScript(d.ds_url);
+            editorEl.style.display = "block";
+            editorEl.innerHTML = '<div id="redac-oo-mount" style="height:100%;"></div>';
+            if (_ooEditorInstance && _ooEditorInstance.destroyEditor) {
+                try { _ooEditorInstance.destroyEditor(); } catch (e) {}
+            }
+            _ooEditorInstance = new window.DocsAPI.DocEditor("redac-oo-mount", d.config);
+        } catch (e) {
+            editorEl.style.display = "block";
+            editorEl.innerHTML = '<div style="padding:16px;color:#ff8;">Éditeur OnlyOffice indisponible : '
+                + e.message + '</div>';
+        }
+    }
+
     // Bouton de téléchargement du fichier révisé (apiFetch → blob → ancre, pour porter le jeton).
     async function _redacAddDownload(container, url) {
         const btn = document.createElement("button");
@@ -714,6 +781,17 @@ function _initRedaction() {
         });
         container.appendChild(document.createElement("br"));
         container.appendChild(btn);
+
+        // Bouton « Ouvrir dans OnlyOffice » si configuré → édition des modifications suivies in-app.
+        const relPath = decodeURIComponent((url.split("path=")[1] || ""));
+        if (_ooConfigured && relPath) {
+            const oo = document.createElement("button");
+            oo.className = "btn btn-secondary";
+            oo.style.cssText = "margin:12px 0 0 8px; padding:9px 14px; font-weight:bold;";
+            oo.textContent = "📝 Ouvrir dans OnlyOffice";
+            oo.addEventListener("click", () => _redacOpenEditor(relPath));
+            container.appendChild(oo);
+        }
     }
 
     function _redacPollJob(jobId) {
