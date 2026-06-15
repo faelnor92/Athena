@@ -110,6 +110,7 @@ AVAILABLE_TOOLS = {
     "document_revise": tools.document_editor.document_revise,
     "document_publish": tools.document_editor.document_publish,
     "document_autorevise": tools.document_editor.document_autorevise,
+    "document_check_coherence": tools.document_editor.document_check_coherence,
     "nextcloud_list_files": tools.nextcloud_tools.nextcloud_list_files,
     "nextcloud_read_file": tools.nextcloud_tools.nextcloud_read_file,
     "nextcloud_write_file": tools.nextcloud_tools.nextcloud_write_file,
@@ -173,7 +174,7 @@ _TOOL_GROUPS = {
     "nextcloud": {"nextcloud_list_files", "nextcloud_read_file", "nextcloud_write_file",
                   "nextcloud_delete_file", "nextcloud_list_tasks", "nextcloud_search_contacts"},
     "redaction": {"document_open", "document_read", "document_revise", "document_publish",
-                  "document_autorevise"},
+                  "document_autorevise", "document_check_coherence"},
     "skills": {"save_new_skill", "delete_skill"},
     "computer": {"computer_use_action"},
 }
@@ -1838,9 +1839,11 @@ class Swarm:
                     "télécharge, révise chaque chapitre et publie « — révisé.docx ». N'essaie PAS de "
                     "lire tout le document dans le chat (ça sature le contexte) ni de réécrire le texte "
                     "toi-même. Pour un seul chapitre : `document_autorevise(..., chapter=\"3\")`. "
-                    "Outils fins si besoin : document_open/read/revise/publish. **N'affirme JAMAIS** "
-                    "avoir révisé/publié sans avoir APPELÉ l'outil et reçu son résultat (pas de "
-                    "« c'est fait » narratif).\n"
+                    "Outils fins si besoin : document_open/read/revise/publish. Pour VÉRIFIER la "
+                    "cohérence narrative (noms, traits, lieux, chronologie) : "
+                    "`document_check_coherence(chemin)` → rapport, sans modifier le texte. "
+                    "**N'affirme JAMAIS** avoir révisé/publié/analysé sans avoir APPELÉ l'outil et "
+                    "reçu son résultat (pas de « c'est fait » narratif).\n"
                 )
             # Serveurs SSH disponibles : l'agent peut exécuter À DISTANCE via le registre
             # multi-hôtes (pas seulement la console codeur).

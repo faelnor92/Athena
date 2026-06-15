@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.11.77 (Vérification de cohérence narrative)
+
+### 🔎 document_check_coherence : détecter les incohérences d'un roman
+- Nouvel outil **`document_check_coherence(chemin)`** : analyse un .docx **chapitre par chapitre**
+  en maintenant une « bible » (canon : personnages, traits, lieux, règles, chronologie) et signale
+  les **contradictions** (ex. yeux verts ch.1 → bleus ch.7, nom de lieu mal orthographié, règle de
+  magie contredite). LECTURE SEULE → renvoie un **rapport**, ne modifie pas le texte.
+- Contexte borné (1 chapitre + bible compacte) → pas de saturation sur un long roman.
+- Validé sur l'endpoint réel (gemma et qwen3 détectent bien les incohérences).
+
+
 ## v0.11.76 (Révision de roman : corrections ciblées, plus de réécriture)
 
 ### ✍️ Révision par CORRECTIONS ponctuelles (fidèle par construction)
