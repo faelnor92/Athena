@@ -30,6 +30,21 @@ import requests                          # noqa: E402
 from core import shared_store            # noqa: E402
 from tools.net_guard import is_blocked_url  # noqa: E402
 
+# User-Agent "navigateur" : certaines protections (Cloudflare Bot Fight Mode) bloquent
+# le UA par défaut de python-requests → 403. On teste avec un UA réaliste.
+_UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
+
+
+def _who_blocked(resp):
+    """Indique si un 4xx vient probablement de Cloudflare (vs Nextcloud)."""
+    server = (resp.headers.get("Server") or "").lower()
+    cf_ray = resp.headers.get("CF-RAY") or resp.headers.get("cf-ray")
+    body = (resp.text or "")[:200].lower()
+    cf = "cloudflare" in server or bool(cf_ray) or "cloudflare" in body or "attention required" in body
+    return (f"Server={resp.headers.get('Server')!r} CF-RAY={cf_ray!r}"
+            + ("  ⚠️ => BLOCAGE CLOUDFLARE (pas Nextcloud)" if cf else "  (origine Nextcloud probable)"))
+
 print("=" * 70)
 print("DIAGNOSTIC ÉCRITURE CalDAV — Athena")
 print("=" * 70)
@@ -73,7 +88,7 @@ for user, cfg in buckets.items():
                '<d:prop><d:displayname/><d:resourcetype/>'
                '<d:current-user-privilege-set/></d:prop></d:propfind>')
         r0 = requests.request("PROPFIND", home, auth=auth,
-                              headers={"Depth": "1", "Content-Type": "application/xml"},
+                              headers={"Depth": "1", "Content-Type": "application/xml", **_UA},
                               data=req, timeout=12)
         if r0.status_code in (200, 207):
             import xml.etree.ElementTree as ET
@@ -92,7 +107,7 @@ for user, cfg in buckets.items():
             print("      => Pour Athena, copie l'URL d'un calendrier marqué ✅ ÉCRITURE (URL complète :"
                   f" {base.split('/remote.php')[0]}<href>).")
         else:
-            print(f"      HTTP {r0.status_code} (impossible de lister — on continue)")
+            print(f"      HTTP {r0.status_code} (impossible de lister) — {_who_blocked(r0)}")
     except Exception as e:
         print(f"      (listing impossible : {type(e).__name__}: {str(e)[:150]})")
 
@@ -101,10 +116,12 @@ for user, cfg in buckets.items():
     try:
         body = '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>'
         r = requests.request("PROPFIND", base + "/", auth=auth,
-                             headers={"Depth": "0", "Content-Type": "application/xml"},
+                             headers={"Depth": "0", "Content-Type": "application/xml", **_UA},
                              data=body, timeout=12, allow_redirects=False)
         print(f"      HTTP {r.status_code}"
               + (f"  (redirection → {r.headers.get('Location')})" if r.status_code in (301, 302, 307, 308) else ""))
+        if r.status_code in (403, 405, 503):
+            print(f"      {_who_blocked(r)}")
         if r.status_code == 401:
             print("      => 401 : identifiants refusés (utilise un MOT DE PASSE D'APPLICATION Nextcloud).")
         elif r.status_code in (301, 302, 307, 308):
@@ -130,14 +147,14 @@ for user, cfg in buckets.items():
     print(f"\n    [PUT] création d'un événement de test → {put_url}")
     try:
         r = requests.put(put_url, auth=auth,
-                         headers={"Content-Type": "text/calendar; charset=utf-8"},
+                         headers={"Content-Type": "text/calendar; charset=utf-8", **_UA},
                          data=ics.encode("utf-8"), timeout=12, allow_redirects=False)
         print(f"      HTTP {r.status_code}  (attendu : 201 ou 204)")
         if r.status_code in (200, 201, 204):
             print("      ✅ ÉCRITURE OK — l'événement de test a été créé sur le serveur.")
         else:
-            print(f"      ❌ ÉCRITURE REFUSÉE. En-têtes utiles : "
-                  f"Allow={r.headers.get('Allow')!r} DAV={r.headers.get('DAV')!r}")
+            print(f"      ❌ ÉCRITURE REFUSÉE. {_who_blocked(r)}")
+            print(f"      Allow={r.headers.get('Allow')!r} DAV={r.headers.get('DAV')!r}")
             print(f"      Corps : {r.text[:400]}")
             if r.status_code == 403:
                 print("      => 403 : le compte n'a pas le droit d'ÉCRIRE sur ce calendrier "
@@ -154,12 +171,12 @@ for user, cfg in buckets.items():
 
     # 3) GET de relecture + 4) DELETE de nettoyage
     try:
-        g = requests.get(put_url, auth=auth, timeout=10)
+        g = requests.get(put_url, auth=auth, headers=_UA, timeout=10)
         print(f"    [GET] relecture de l'événement : HTTP {g.status_code} ({'trouvé' if g.status_code == 200 else 'absent'})")
     except Exception as e:
         print(f"    [GET] {type(e).__name__}: {str(e)[:120]}")
     try:
-        d = requests.delete(put_url, auth=auth, timeout=10)
+        d = requests.delete(put_url, auth=auth, headers=_UA, timeout=10)
         print(f"    [DELETE] nettoyage de l'événement de test : HTTP {d.status_code}")
     except Exception as e:
         print(f"    [DELETE] {type(e).__name__}: {str(e)[:120]}")
