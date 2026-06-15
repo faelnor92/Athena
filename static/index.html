@@ -621,9 +621,24 @@
                                     <div id="redac-progress-text" style="font-size:0.78rem; opacity:0.7;"></div>
                                 </div>
 
-                                <div id="redac-result" style="flex:1; overflow-y:auto; background:rgba(0,0,0,0.3); border-radius:8px; padding:16px; border:1px solid rgba(255,255,255,0.05); font-size:0.88rem; line-height:1.5; color:#e0e0e0; min-height:0; white-space:pre-wrap;">
+                                <div id="redac-result" style="flex:0 0 auto; max-height:38%; overflow-y:auto; background:rgba(0,0,0,0.3); border-radius:8px; padding:16px; border:1px solid rgba(255,255,255,0.05); font-size:0.88rem; line-height:1.5; color:#e0e0e0; white-space:pre-wrap;">
                                     <div style="opacity:0.4; text-align:center; margin:auto; font-size:0.85rem;">Charge un document, choisis une action : le rapport (ou le lien du fichier révisé) s'affiche ici.</div>
                                 </div>
+
+                                <!-- Éditeur OnlyOffice embarqué (apparaît à l'ouverture d'un .docx) -->
+                                <div id="redac-oo-editor" style="display:none; flex:1; min-height:300px; border-radius:8px; overflow:hidden; border:1px solid rgba(255,255,255,0.08);"></div>
+
+                                <!-- Réglages OnlyOffice (repliable) -->
+                                <details style="font-size:0.8rem; opacity:0.85;">
+                                    <summary style="cursor:pointer; opacity:0.7;">⚙️ Configurer OnlyOffice (éditeur intégré)</summary>
+                                    <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px; padding:10px; background:rgba(0,0,0,0.2); border-radius:8px;">
+                                        <input type="text" id="oo-url" placeholder="URL du Document Server (http://192.168.1.50:8080)" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:7px; color:#fff;">
+                                        <input type="text" id="oo-public-base" placeholder="URL d'Athena vue par OnlyOffice (optionnel, ex: http://192.168.1.50:8000)" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:7px; color:#fff;">
+                                        <input type="password" id="oo-secret" placeholder="Secret JWT du Document Server (laisser vide = inchangé)" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:7px; color:#fff;">
+                                        <button id="oo-save" class="btn btn-secondary" style="margin:0; padding:7px; font-weight:bold;">💾 Enregistrer OnlyOffice</button>
+                                        <span id="oo-status" style="font-size:0.75rem; opacity:0.6;"></span>
+                                    </div>
+                                </details>
                             </div>
                         </div>
                     </div>
@@ -1717,7 +1732,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260615_redac2"></script>
+    <script src="app.js?v=20260615_onlyoffice"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>

@@ -86,6 +86,30 @@ _DEFAULT_CSP = (
 _CSP = os.getenv("CONTENT_SECURITY_POLICY", _DEFAULT_CSP)
 
 
+def _csp_with_onlyoffice(base_csp: str) -> str:
+    """Autorise l'origine du Document Server OnlyOffice (configurée par l'utilisateur) dans les
+    directives script/frame/connect/img — sinon l'éditeur embarqué est bloqué par la CSP."""
+    url = (os.getenv("ONLYOFFICE_URL", "") or "").strip()
+    if not url:
+        return base_csp
+    try:
+        from urllib.parse import urlparse
+        u = urlparse(url)
+        origin = f"{u.scheme}://{u.netloc}"
+    except Exception:
+        return base_csp
+    out = []
+    for directive in base_csp.split(";"):
+        d = directive.strip()
+        if not d:
+            continue
+        key = d.split(" ", 1)[0]
+        if key in ("script-src", "frame-src", "connect-src", "img-src") and origin not in d:
+            d = d + " " + origin
+        out.append(d)
+    return "; ".join(out)
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     resp = await call_next(request)
@@ -97,7 +121,7 @@ async def security_headers(request, call_next):
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         if _CSP:
-            resp.headers.setdefault("Content-Security-Policy", _CSP)
+            resp.headers.setdefault("Content-Security-Policy", _csp_with_onlyoffice(_CSP))
         # HSTS seulement derrière HTTPS (sinon casserait l'accès HTTP local).
         proto = request.headers.get("x-forwarded-proto", request.url.scheme)
         if proto == "https":
@@ -152,6 +176,8 @@ from routers import config_nextcloud as _config_nextcloud_router
 app.include_router(_config_nextcloud_router.router)
 from routers import redaction as _redaction_router
 app.include_router(_redaction_router.router)
+from routers import config_onlyoffice as _config_onlyoffice_router
+app.include_router(_config_onlyoffice_router.router)
 from routers import config_routines as _config_routines_router
 app.include_router(_config_routines_router.router)
 from routers import system as _system_router

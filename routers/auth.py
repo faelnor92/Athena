@@ -151,7 +151,11 @@ async def auth_middleware(request: Request, call_next):
               or path == "/api/system/version"
               or path == "/api/system/update_check"
               # Partage AthenaDesign en lecture seule par jeton (non énumérable).
-              or path.startswith("/api/athenadesign/shared/"))
+              or path.startswith("/api/athenadesign/shared/")
+              # OnlyOffice Document Server (server-to-server) : ne porte pas de session ; ces
+              # deux endpoints sont protégés par un JETON à usage limité + JWT (cf. core.onlyoffice).
+              or path == "/api/redaction/onlyoffice/file"
+              or path == "/api/redaction/onlyoffice/callback")
     if _auth_active() and path.startswith("/api/") and not public:
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):

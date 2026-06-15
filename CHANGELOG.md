@@ -1,5 +1,18 @@
 # Historique des Versions (Changelog)
 
+## v0.11.96 (Éditeur OnlyOffice embarqué dans l'onglet Écriture)
+
+### 📝 Visualiser/éditer les .docx révisés in-app
+- Intégration OnlyOffice Document Server : on ouvre un .docx révisé (modifications suivies)
+  directement dans l'onglet Écriture, on accepte/refuse les changements et on sauvegarde.
+- Réglages dans l'onglet Écriture (repliable) : URL du Document Server, URL publique d'Athena
+  vue par le DS, secret JWT. Persistés en .env (POST /api/config/onlyoffice).
+- Sécurité : le DS télécharge le fichier et POSTe les sauvegardes via des endpoints protégés
+  par JETON à usage limité + JWT (core/onlyoffice.py) ; ces deux endpoints sont exemptés d'auth
+  de session (le DS n'en a pas). La CSP autorise dynamiquement l'origine du Document Server.
+- Bouton « Ouvrir dans OnlyOffice » à côté du téléchargement quand c'est configuré.
+
+
 ## v0.11.95 (Fichier révisé visible + téléchargeable)
 
 ### ✍️ Le fichier révisé est enfin trouvable
