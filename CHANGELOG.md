@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.11.67 (CalDAV : lecture des événements réparée + diags)
+
+### 🐛 Fix : `list_calendar_events` ne voyait pas les événements CalDAV (Nextcloud)
+- La synchro CalDAV cherchait `<c:calendar-data>` (préfixe en dur), mais Nextcloud/SabreDAV
+  renvoie sa réponse avec SON préfixe (souvent `<cal:calendar-data>`) → **0 événement lu** →
+  l'agenda n'affichait que les événements locaux. Extraction rendue **indépendante du préfixe**.
+- Outils de diagnostic ajoutés : `scripts/diag_caldav_write.py` (test d'écriture + origine d'un
+  403 : Nextcloud vs Cloudflare) et `scripts/list_caldav_calendars.py` (liste les calendriers
+  et donne l'URL exacte à coller — endpoint `/calendars/`, pas `/principals/`).
+- Test : `tests/test_mcp_and_agenda.py::test_caldav_sync_extracts_any_namespace_prefix`.
+
+
 ## v0.11.66 (Agenda : choix du calendrier d'écriture)
 
 ### 📝 Sélecteur « où créer les événements »
