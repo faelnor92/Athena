@@ -358,31 +358,68 @@ def document_revise(filename: str, chapter: str, new_text: str) -> str:
         return f"Erreur lors de la révision : {e}"
 
 
-def _llm_revise_chapter(model: str, instruction: str, old_text: str) -> str:
-    """Appelle le LLM (via le swarm) pour réviser UN chapitre en contexte ISOLÉ.
-    Renvoie le texte révisé (un paragraphe par ligne), ou "" si échec."""
+def _llm_corrections(model: str, instruction: str, chapter_text: str) -> list:
+    """Demande au LLM la LISTE des corrections ponctuelles (et non une réécriture) au format
+    JSON [{"old": "<extrait exact>", "new": "<corrigé>"}]. Bornage par construction : on
+    n'appliquera QUE ces fragments → impossible de « changer l'histoire ». Renvoie [] si rien."""
     try:
         from core.state import swarm as _sw
         sys_p = (
-            "Tu es un correcteur/éditeur littéraire. Tu fais une RÉVISION LÉGÈRE, pas une réécriture. "
-            "RÈGLES ABSOLUES :\n"
-            "- NE CHANGE PAS l'histoire, l'intrigue, les événements, les personnages, les noms, les "
-            "lieux, ni le sens des dialogues. N'INVENTE RIEN, ne supprime aucune information.\n"
-            "- Corrige UNIQUEMENT : orthographe, grammaire, ponctuation, et allège les lourdeurs "
-            "(redondances d'adjectifs/adverbes, répétitions) pour fluidifier.\n"
-            "- GARDE le même découpage en paragraphes (même nombre de lignes, même ordre) et reste "
-            "TRÈS proche du texte d'origine : ne modifie que ce qui doit l'être.\n"
-            "- Réponds UNIQUEMENT par le texte révisé (un paragraphe par ligne), SANS commentaire, "
-            "sans titre, sans guillemets.")
-        usr = (f"Consigne complémentaire : {instruction or 'corrige et fluidifie sans rien changer au fond'}\n\n"
-               f"--- TEXTE À RÉVISER (corrige légèrement, NE réécris PAS) ---\n{old_text}")
+            "Tu es un correcteur. On te donne un extrait de roman. Tu renvoies la LISTE des "
+            "corrections PONCTUELLES à y apporter, au format JSON STRICT : une liste d'objets "
+            "{\"old\": \"...\", \"new\": \"...\"}.\n"
+            "RÈGLES :\n"
+            "- `old` = un fragment COURT (quelques mots) copié EXACTEMENT du texte (à l'identique, "
+            "mêmes accents/ponctuation).\n"
+            "- Corrige UNIQUEMENT : fautes d'orthographe, de grammaire, de ponctuation, et lourdeurs "
+            "ÉVIDENTES (répétitions, adjectifs/adverbes redondants).\n"
+            "- NE reformule PAS des phrases entières, NE change PAS l'histoire, les noms, le sens. "
+            "NE crée pas d'entrée si rien n'est fautif.\n"
+            "- Réponds UNIQUEMENT par le tableau JSON (commence par [ et finis par ]). Si rien à "
+            "corriger : [].")
+        usr = (f"Consigne : {instruction or 'corrige les fautes et les lourdeurs évidentes, sans réécrire'}\n\n"
+               f"--- EXTRAIT ---\n{chapter_text}")
         resp = _sw._complete(model, [{"role": "system", "content": sys_p},
                                      {"role": "user", "content": usr}], tools_schema=None)
-        txt = (resp.choices[0].message.content or "").strip()
-        return txt
+        raw = (resp.choices[0].message.content or "").strip()
+        # Extrait le tableau JSON même s'il est entouré de texte / d'un bloc ```json.
+        m = re.search(r"\[.*\]", raw, re.DOTALL)
+        if not m:
+            return []
+        data = json.loads(m.group(0))
+        out = []
+        for d in data:
+            if isinstance(d, dict) and (d.get("old") or "").strip() and "new" in d:
+                if d["old"] != d["new"]:
+                    out.append({"old": str(d["old"]), "new": str(d["new"])})
+        return out
     except Exception as e:
-        print(f"[document_autorevise] LLM échec : {e}")
-        return ""
+        print(f"[document_autorevise] corrections LLM échec : {e}")
+        return []
+
+
+def _apply_corrections_to_chapter(doc, chapter_title, corrections, rev) -> int:
+    """Applique les corrections {old→new} aux paragraphes du chapitre, en MODIFICATIONS SUIVIES
+    mot à mot (seuls les fragments corrigés sont marqués). Renvoie le nb de paragraphes modifiés."""
+    ch = _find_chapter(doc, chapter_title)
+    if not ch:
+        return 0
+    title, a, b = ch
+    paras = doc.paragraphs
+    body_start = a + 1 if _is_heading(paras[a]) else a
+    changed = 0
+    for p in paras[body_start:b]:
+        original = p.text
+        if not original.strip():
+            continue
+        revised = original
+        for corr in corrections:
+            if corr["old"] in revised:
+                revised = revised.replace(corr["old"], corr["new"], 1)
+        if revised != original:
+            _tracked_replace_paragraph(p, revised, rev)
+            changed += 1
+    return changed
 
 
 def document_autorevise(nextcloud_path: str, instruction: str = "", chapter: str = "") -> str:
@@ -424,24 +461,30 @@ def document_autorevise(nextcloud_path: str, instruction: str = "", chapter: str
         from core.state import swarm as _sw
         model = getattr(_sw.agents.get(getattr(_sw, "orchestrator_name", "Athena")), "model", None) or "gpt-4o-mini"
 
-        done, skipped = [], []
+        rev = _Rev()
+        done, total_corr = [], 0
         for title in targets:
             old = document_read(name, chapter=title)
-            # retire la ligne de titre "# …" ajoutée par document_read
-            old_body = "\n".join(ln for ln in old.split("\n")[1:]) if old.startswith("# ") else old
+            old_body = "\n".join(old.split("\n")[1:]) if old.startswith("# ") else old
             if not old_body.strip():
-                skipped.append(title)
                 continue
-            revised = _llm_revise_chapter(model, instruction, old_body)
-            if not revised or revised.strip() == old_body.strip():
-                skipped.append(title)
+            # On demande au LLM la LISTE des corrections ponctuelles (pas une réécriture), puis
+            # on n'applique QUE ces fragments → révision fidèle et fine (phrase/mot), jamais le
+            # chapitre entier barré.
+            corrections = _llm_corrections(model, instruction, old_body)
+            if not corrections:
                 continue
-            document_revise(name, title, revised)
-            done.append(title)
-
+            n = _apply_corrections_to_chapter(doc, title, corrections, rev)
+            if n:
+                done.append(f"{title} ({n}¶)")
+                total_corr += len(corrections)
+        if not done:
+            return ("Aucune correction proposée par le modèle (texte déjà propre, ou modèle peu "
+                    "coopératif). Rien n'a été modifié.")
+        doc.save(local)
         pub = document_publish(name)
-        return (f"✅ Révision automatique terminée : {len(done)} chapitre(s) révisé(s)"
-                + (f", {len(skipped)} inchangé(s)/sauté(s)" if skipped else "") + ".\n" + pub)
+        return (f"✅ Révision terminée : {total_corr} correction(s) ponctuelle(s) sur "
+                f"{len(done)} chapitre(s) [{', '.join(done)}], en modifications suivies.\n{pub}")
     except Exception as e:
         return f"Erreur lors de la révision automatique : {e}"
 

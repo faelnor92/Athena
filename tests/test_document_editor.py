@@ -76,16 +76,18 @@ def test_autorevise_one_call_revises_all_chapters():
             self.choices = [type("C", (), {"message": type("M", (), {"content": c})()})()]
 
     def fake_complete(model, messages, tools_schema=None, **k):
-        old = messages[-1]["content"].split("--- TEXTE À RÉVISER ---")[-1].strip()
-        return _R("\n".join(l + " [revu]" for l in old.split("\n") if l.strip()))
+        # Le LLM renvoie une LISTE de corrections ponctuelles (JSON), pas une réécriture.
+        return _R('[{"old": "froid", "new": "glacial"}]')
 
     with mock.patch.object(de, "document_open", lambda p: "📄 ouvert"), \
          mock.patch.object(de, "document_publish", lambda f: "📤 publié (mock)"), \
          mock.patch.object(st.swarm, "_complete", fake_complete):
-        out = de.document_autorevise("Romans/RomanTest.docx", "améliore le style")
-    assert "révisé" in out.lower(), out
+        out = de.document_autorevise("Romans/RomanTest.docx", "corrige")
+    assert "révision terminée" in out.lower() or "correction" in out.lower(), out
     xml = zipfile.ZipFile(path).read("word/document.xml").decode("utf-8")
-    assert "<w:ins " in xml and "<w:del " in xml and "[revu]" in xml, "révision auto non appliquée"
+    # Seul « froid » → « glacial » est marqué ; le reste du texte reste normal (non barré).
+    assert "<w:ins " in xml and "<w:del " in xml and "glacial" in xml, "correction non appliquée"
+    assert "Texte intact du chapitre deux." in xml, "le texte non corrigé doit rester intact"
 
 
 def test_read_caps_large_document():

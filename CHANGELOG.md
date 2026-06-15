@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.11.76 (Révision de roman : corrections ciblées, plus de réécriture)
+
+### ✍️ Révision par CORRECTIONS ponctuelles (fidèle par construction)
+- Avant, `document_autorevise` demandait au LLM de RÉÉCRIRE chaque chapitre → le modèle changeait
+  l'histoire et le diff marquait tout. Désormais le LLM renvoie une **liste de corrections**
+  (`{ancien → nouveau}`) et on **n'applique QUE ces fragments**, en modifications suivies mot à mot.
+- Résultat : seules les vraies fautes/lourdeurs (au sein des phrases) sont marquées ; l'intrigue,
+  les noms et le texte non concerné restent **strictement intacts** — par construction, impossible
+  de « changer l'histoire ». Changements fins, faciles à suivre/accepter dans OnlyOffice.
+
+
 ## v0.11.75 (Révision de roman : plus fine et fidèle)
 
 ### ✍️ Révisions mot à mot + consigne stricte (ne plus changer l'histoire)
