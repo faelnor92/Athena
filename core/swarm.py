@@ -1713,7 +1713,11 @@ class Swarm:
                         tgt_tools = {f.__name__ for f in tgt.tools}
                         _orch_keep = {"query_agent", "debate_between_agents", "memorize_fact",
                                       "store_document", "search_memory", "send_notification",
-                                      "make_plan", "update_plan_step", "create_agent", "run_tool_script"}
+                                      "make_plan", "update_plan_step", "create_agent", "run_tool_script",
+                                      # SSH/système : auto-injectés à l'orchestrateur quand un hôte est
+                                      # configuré → il doit les GARDER même si le routeur vise le Codeur
+                                      # (sinon il perd execute_bash_command et boucle sur run_tool_script).
+                                      "execute_bash_command", "list_ssh_hosts"}
                         effective_tools = [f for f in effective_tools
                                            if f.__name__.startswith("transfer_to_")
                                            or f.__name__ not in tgt_tools

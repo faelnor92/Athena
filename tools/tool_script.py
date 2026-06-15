@@ -135,6 +135,15 @@ def run_tool_script(code: str) -> str:
         return "Erreur : l'orchestration par script est désactivée (TOOL_SCRIPTS=false)."
     ok, reason = validate_tool_script(code)
     if not ok:
+        # Redirection utile : le modèle tente souvent subprocess/os/paramiko pour faire du
+        # SSH ou du shell → ça ne passera JAMAIS le bac à sable. On le réoriente vers l'outil
+        # dédié plutôt que de le laisser boucler sur des refus.
+        low = (code or "").lower()
+        if any(k in low for k in ("subprocess", "import os", "paramiko", "ssh ", "os.system", "popen")):
+            return (f"Script refusé (sûreté) : {reason}. ⛔ N'utilise PAS run_tool_script pour du "
+                    "SSH/shell. Appelle DIRECTEMENT l'outil `execute_bash_command(command=\"...\", "
+                    "host=\"<label du serveur>\")` (il gère le SSH lui-même). Pour la liste des "
+                    "serveurs : `list_ssh_hosts()`.")
         return f"Script refusé (sûreté) : {reason}"
 
     ns = _build_namespace()

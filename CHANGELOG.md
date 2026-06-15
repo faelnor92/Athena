@@ -1,5 +1,18 @@
 # Historique des Versions (Changelog)
 
+## v0.11.87 (SSH : fin de la boucle subprocess — cause racine corrigée)
+
+### 🖥️ Athena garde execute_bash_command même quand le routeur vise le Codeur
+- Cause racine de la boucle « j'utilise subprocess » : une demande SSH/système (« connecte-toi
+  à openmediavault, regarde les update apt ») était routée vers le Codeur → l'orchestrateur se
+  faisait RETIRER execute_bash_command (outil-métier du Codeur) tout en gardant run_tool_script
+  → il se rabattait sur run_tool_script + subprocess (bloqué) en boucle. Désormais
+  execute_bash_command et list_ssh_hosts sont conservés sur l'orchestrateur même en cas de
+  délégation (_orch_keep) — il les exécute lui-même.
+- Défense en profondeur : un run_tool_script contenant subprocess/os/paramiko/ssh est refusé
+  AVEC redirection explicite vers execute_bash_command(command, host=...).
+
+
 ## v0.11.86 (Mails : recherche + ménage non destructif)
 
 ### 📬 Tri et ménage des mails (sans rien supprimer)
