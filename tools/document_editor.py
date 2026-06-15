@@ -22,6 +22,47 @@ from tools.net_guard import is_blocked_url
 
 _AUTHOR = "Athena"
 
+# --- Tolérance d'appel ------------------------------------------------------
+# Les petits modèles locaux nomment souvent les arguments « à l'anglaise » ou en clair
+# (file=, instructions=, langue=…) au lieu des noms canoniques. Plutôt que de planter,
+# on remappe ces alias vers le bon paramètre. Le schéma exposé au LLM reste correct
+# (functools.wraps conserve la vraie signature via __wrapped__).
+import functools as _functools
+import inspect as _inspect
+
+_KW_ALIASES = {
+    "instructions": "instruction", "consigne": "instruction", "consignes": "instruction",
+    "prompt": "instruction", "texte": "new_text", "text": "new_text", "contenu": "new_text",
+    "content": "new_text", "language": "target_language", "lang": "target_language",
+    "langue": "target_language", "langue_cible": "target_language", "target": "target_language",
+    "chapitre": "chapter", "chap": "chapter",
+}
+# Clés « fichier » qui visent le 1er paramètre chemin (nextcloud_path OU filename selon l'outil).
+_PATH_ALIASES = {"file", "path", "filepath", "file_path", "chemin", "document", "doc",
+                 "fichier", "nom", "name", "nextcloud_path", "filename"}
+
+
+def _tolerant(fn):
+    sig = _inspect.signature(fn)
+    params = set(sig.parameters)
+    pathparam = "nextcloud_path" if "nextcloud_path" in params else (
+        "filename" if "filename" in params else None)
+
+    @_functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        norm = {}
+        for k, v in kwargs.items():
+            if k in params:
+                norm[k] = v
+            elif k in _KW_ALIASES and _KW_ALIASES[k] in params:
+                norm.setdefault(_KW_ALIASES[k], v)
+            elif k in _PATH_ALIASES and pathparam:
+                norm.setdefault(pathparam, v)
+            # clé inconnue → ignorée plutôt que de lever TypeError
+        return fn(*args, **norm)
+
+    return wrapper
+
 
 def _dir() -> str:
     """Dossier de travail DÉDIÉ aux documents en cours d'édition (par utilisateur)."""
@@ -801,3 +842,11 @@ def document_publish(filename: str) -> str:
         return f"Échec de l'upload ({r.status_code})."
     except Exception as e:
         return f"Erreur de publication : {e}"
+
+
+# Tolérance d'appel appliquée aux outils exposés (alias d'arguments). Fait à la fin du
+# module → AVAILABLE_TOOLS et run_tool_script récupèrent les versions tolérantes.
+for _n in ("document_open", "document_read", "document_revise", "document_autorevise",
+           "document_check_coherence", "document_translate", "document_check_repetitions",
+           "document_publish"):
+    globals()[_n] = _tolerant(globals()[_n])

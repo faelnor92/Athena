@@ -1848,8 +1848,12 @@ class Swarm:
                     "Outils fins si besoin : document_open/read/revise/publish. Pour VÉRIFIER la "
                     "cohérence narrative (noms, traits, lieux, chronologie) : "
                     "`document_check_coherence(chemin)` → rapport, sans modifier le texte. "
-                    "**N'affirme JAMAIS** avoir révisé/publié/analysé sans avoir APPELÉ l'outil et "
-                    "reçu son résultat (pas de « c'est fait » narratif).\n"
+                    "Pour INTÉGRER des corrections de cohérence trouvées : rappelle "
+                    "`document_autorevise(chemin, instruction=\"<les points à corriger>\")`. "
+                    "APPELLE ces outils DIRECTEMENT comme un appel d'outil — JAMAIS dans "
+                    "`run_tool_script`, JAMAIS avec `.run(...)`, et JAMAIS recopiés en texte dans ta "
+                    "réponse. **N'affirme JAMAIS** avoir révisé/publié/analysé sans avoir APPELÉ l'outil "
+                    "et reçu son résultat (pas de « c'est fait » narratif).\n"
                 )
             # Serveurs SSH disponibles : l'agent peut exécuter À DISTANCE via le registre
             # multi-hôtes (pas seulement la console codeur).
