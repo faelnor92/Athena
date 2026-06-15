@@ -34,6 +34,35 @@ def check_command_blacklist(command: str):
     return None
 
 
+def _is_private_host(host: str) -> bool:
+    """Vrai si l'hôte est sur un réseau LOCAL de confiance (IP privée RFC1918 / loopback /
+    lien-local, ou nom .local/.lan/.home/.internal). Sert au TOFU SSH : sur le LAN on fait
+    confiance au premier raccordement (comme le client ssh), pas sur Internet."""
+    import ipaddress
+    import socket
+    h = (host or "").strip()
+    if not h:
+        return False
+    name = h.lower().rstrip(".")
+    if name in ("localhost",) or name.endswith((".local", ".lan", ".home", ".internal")):
+        return True
+    # IP littérale ?
+    try:
+        ip = ipaddress.ip_address(h)
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+    except ValueError:
+        pass
+    # Nom d'hôte : on résout en IP (sans bloquer longtemps) et on teste.
+    try:
+        socket.setdefaulttimeout(2)
+        ip = ipaddress.ip_address(socket.gethostbyname(h))
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+    except Exception:
+        return False
+    finally:
+        socket.setdefaulttimeout(None)
+
+
 def run_ssh_command(command: str, host_id: str = None) -> tuple[str, str, int]:
     """
     Exécute une commande de manière sécurisée sur une machine distante via SSH (Paramiko).
@@ -87,11 +116,15 @@ def run_ssh_command(command: str, host_id: str = None) -> tuple[str, str, int]:
                 ssh.load_host_keys(expanded_known)
             except Exception:
                 pass
-    # Politique stricte par défaut : on REFUSE un hôte inconnu plutôt que de
-    # l'ajouter aveuglément (AutoAddPolicy était vulnérable au MITM).
-    # Opt-in explicite et documenté pour le premier raccordement.
-    if str(cfg.get("auto_add") or "").lower() in ("true", "1", "yes"):
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507 — opt-in explicite (auto_add) ; RejectPolicy par défaut
+    # Politique de clé d'hôte. Par défaut on REFUSE un hôte inconnu (anti-MITM). MAIS sur un
+    # réseau LOCAL de confiance (IP privée RFC1918 / .local), on applique le TOFU « trust on
+    # first use » comme le client ssh classique (premier raccordement d'un homelab) : sinon
+    # l'assistant ne peut JAMAIS joindre un NAS/serveur LAN sans pré-amorcer known_hosts à la
+    # main. Les hôtes PUBLICS restent en RejectPolicy sauf auto_add explicite.
+    _auto_optin = str(cfg.get("auto_add") or "").lower() in ("true", "1", "yes")
+    _is_lan = _is_private_host(host)
+    if _auto_optin or _is_lan:
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507 — opt-in/LAN de confiance
     else:
         ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
     
@@ -128,7 +161,13 @@ def run_ssh_command(command: str, host_id: str = None) -> tuple[str, str, int]:
         
         return stdout_str, stderr_str, return_code
     except Exception as e:
-        return "", f"Erreur de connexion/exécution SSH sur {host} : {str(e)}", 1
+        msg = str(e)
+        if "not found in known_hosts" in msg or "not found" in msg.lower():
+            return "", (f"Clé d'hôte SSH inconnue pour {host} (hôte non vérifié). "
+                        "C'est un hôte public : active l'auto-ajout de la clé (TOFU) pour cet "
+                        "hôte dans Réglages → SSH (auto_add), ou ajoute-le à known_hosts. "
+                        "Les hôtes du réseau local sont acceptés automatiquement."), 1
+        return "", f"Erreur de connexion/exécution SSH sur {host} : {msg}", 1
     finally:
         ssh.close()
 

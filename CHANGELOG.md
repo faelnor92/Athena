@@ -1,5 +1,28 @@
 # Historique des Versions (Changelog)
 
+## v0.11.85 (Onglet Écriture + SSH LAN fiable + diagnostic mail)
+
+### ✍️ Nouvel onglet « Écriture » (atelier romans)
+- Onglet dédié dans le dock : charge un .docx (Nextcloud OU upload), liste les chapitres,
+  lance Révision / Cohérence / Répétitions / Traduction en tâche de fond avec barre de
+  progression, puis affiche le rapport ou le lien de téléchargement du fichier révisé.
+  Branché sur /api/redaction/* (jobs du lot précédent).
+
+### 🖥️ SSH : connexion LAN qui marche enfin (TOFU)
+- « Server not found in known_hosts » sur un NAS/serveur local : on applique désormais le
+  TOFU (trust-on-first-use) AUTOMATIQUEMENT pour les hôtes du réseau LOCAL (IP privée RFC1918,
+  loopback, .local/.lan) comme le client ssh — les hôtes PUBLICS restent en RejectPolicy (ou
+  auto_add explicite), avec un message d'erreur actionnable.
+- L'orchestrateur est explicitement guidé : pour une commande SSH/système, appeler
+  execute_bash_command(command, host='LABEL') DIRECTEMENT, jamais run_tool_script (le bac à
+  sable interdit subprocess/os → boucle d'échecs observée sur gpt-oss/gemma/qwen3).
+
+### 📬 Mail : message d'erreur IMAP explicite
+- Échec IMAP (EOF/timeout/refus) → message guidé : activer l'accès IMAP dans la boîte,
+  IMAP_PORT=993 + IMAP_SSL=true, port 993 non bloqué (l'envoi SMTP peut marcher même si l'IMAP
+  est bloqué) ; échec d'auth → rappel du mot de passe d'application Google.
+
+
 ## v0.11.84 (Athena lit les mails et se connecte en SSH elle-même)
 
 ### 📬 Mails + 🖥️ SSH donnés automatiquement à l'orchestrateur

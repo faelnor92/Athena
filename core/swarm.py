@@ -1902,9 +1902,12 @@ class Swarm:
                     _hl = _ssh_hosts.labels()
                     if _hl and _hl != "(aucun)":
                         system_prompt += (
-                            f"- Serveurs SSH disponibles : {_hl}. Pour exécuter une commande SUR L'UN D'EUX, "
-                            "utilise `execute_bash_command(command=..., host='<nom du serveur>')`. Sans `host`, "
-                            "la commande s'exécute en local.\n"
+                            f"- Serveurs SSH disponibles : {_hl}. Pour exécuter une commande SUR L'UN D'EUX "
+                            "(apt, docker, df, systemctl, ls…), appelle DIRECTEMENT "
+                            "`execute_bash_command(command=\"...\", host='<nom du serveur>')`. Sans `host`, la "
+                            "commande s'exécute en local. ⛔ N'utilise JAMAIS `run_tool_script` pour du SSH/système "
+                            "(le bac à sable interdit subprocess/os — ça échouera toujours) : `execute_bash_command` "
+                            "fait le SSH lui-même. Ne dis pas que tu n'as pas d'outil SSH : tu en as un.\n"
                         )
                 except Exception:
                     pass
