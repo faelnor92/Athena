@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.11.80 (Outils romans déclenchés en langage naturel)
+
+### 🗣️ Plus besoin de nommer l'outil
+- Mots-clés du domaine « rédaction » étendus (cohérence, incohérence, répétition, traduis,
+  traduction, « en anglais/espagnol… ») → une demande naturelle (« vérifie la cohérence de mon
+  roman », « traduis-le en anglais », « repère les répétitions ») expose désormais les outils
+  document_* et Athena choisit le bon, sans qu'on ait à citer le nom de l'outil.
+
+
 ## v0.11.79 (Détection des répétitions à l'échelle du roman)
 
 ### 🔁 document_check_repetitions
