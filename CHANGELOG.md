@@ -1,5 +1,23 @@
 # Historique des Versions (Changelog)
 
+## v0.11.90 (Ménage mail en masse par critère + fix STORE-in-AUTH)
+
+### 🧹 clean_inbox : ménage de milliers de mails en un appel
+- Nouvel outil `clean_inbox(from_contains, subject_contains, older_than_days, unread_only,
+  action)` : filtre CÔTÉ SERVEUR et archive (ou marque lu) tout ce qui correspond en UN appel.
+  Fini l'énumération d'IDs lot par lot (cause des listes inventées et des « j'ai archivé X »
+  hallucinés sur un weak model). Refuse d'agir sans aucun critère. Plafond de sécurité.
+- Préambule mail réécrit : pour le ménage en masse → clean_inbox ; JAMAIS run_tool_script ni
+  énumération d'IDs ; toujours montrer un aperçu (search_emails) + nombre avant d'agir.
+
+### 🐛 Corrections
+- « command STORE illegal in state AUTH » : le SELECT du dossier n'était pas vérifié avant les
+  STORE (archivage/marquage) → désormais contrôlé (_select_rw), message clair si échec.
+- search_emails tolère un argument `query` (rabattu sur le sujet) que certains modèles inventent.
+- Mots-clés email étendus (ménage, archive, newsletter, spam, publicité…) sans collision avec
+  le domaine code.
+
+
 ## v0.11.89 (Archivage mail dans un dossier/libellé dédié)
 
 ### 📬 Les mails archivés vont dans un libellé « Archive » propre

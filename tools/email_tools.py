@@ -228,7 +228,8 @@ def _imap_quote(s: str) -> str:
 
 
 def search_emails(from_contains: str = "", subject_contains: str = "", since_days: int = 0,
-                  unread_only: bool = False, limit: int = 40, folder: str = "INBOX") -> str:
+                  unread_only: bool = False, limit: int = 40, folder: str = "INBOX",
+                  query: str = "") -> str:
     """
     Recherche des mails par expéditeur, sujet, ancienneté ou statut non-lu — pour faire le TRI.
     LECTURE SEULE. Renvoie une liste d'[id N] (utilise mark_emails_read / archive_emails ensuite,
@@ -244,6 +245,9 @@ def search_emails(from_contains: str = "", subject_contains: str = "", since_day
     Returns:
         str: Liste des mails correspondants avec leurs [id N].
     """
+    # Tolérance : certains modèles passent un `query` générique → on le rabat sur le sujet.
+    if query and not subject_contains:
+        subject_contains = query
     conn, err = _connect()
     if err:
         return err
@@ -296,6 +300,72 @@ def _parse_ids(ids) -> list:
     return [x for x in raw if x.isdigit()]
 
 
+def _select_rw(conn, folder: str):
+    """Sélectionne le dossier en écriture et VÉRIFIE le succès (sinon les STORE échouent avec
+    « illegal in state AUTH »). Renvoie (True, "") ou (False, message)."""
+    try:
+        typ, _ = conn.select(folder)  # readonly=False → écriture
+    except Exception as e:
+        return False, f"Sélection du dossier « {folder} » impossible : {e}"
+    if typ != "OK":
+        return False, f"Dossier « {folder} » introuvable ou non sélectionnable."
+    return True, ""
+
+
+def _build_search_criteria(from_contains, subject_contains, older_than_days, newer_than_days,
+                           unread_only):
+    """Construit la liste de critères IMAP (recherche côté serveur)."""
+    crit = []
+    if unread_only:
+        crit.append("UNSEEN")
+    if from_contains:
+        crit += ["FROM", _imap_quote(from_contains)]
+    if subject_contains:
+        crit += ["SUBJECT", _imap_quote(subject_contains)]
+    import datetime as _dt
+    if older_than_days and int(older_than_days) > 0:
+        before = (_dt.date.today() - _dt.timedelta(days=int(older_than_days))).strftime("%d-%b-%Y")
+        crit += ["BEFORE", before]
+    if newer_than_days and int(newer_than_days) > 0:
+        since = (_dt.date.today() - _dt.timedelta(days=int(newer_than_days))).strftime("%d-%b-%Y")
+        crit += ["SINCE", since]
+    return crit or ["ALL"]
+
+
+def _archive_uids(conn, uids, source_folder="INBOX"):
+    """Archive une liste d'UID (déjà sélectionné en écriture). Renvoie (nb_ok, nb_échecs)."""
+    c = _cfg()
+    is_gmail = "gmail" in (c["host"] or "").lower()
+    archive_folder = os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or "Archive"
+    done, failed = 0, 0
+    if is_gmail:
+        label = '"' + archive_folder.replace('"', "") + '"'
+        for n in uids:
+            nb = n.encode() if isinstance(n, str) else n
+            t1, _ = conn.uid("store", nb, "+X-GM-LABELS", label)
+            if t1 != "OK":
+                failed += 1
+                continue
+            conn.uid("store", nb, "-X-GM-LABELS", "\\Inbox")
+            done += 1
+        return done, failed
+    try:
+        conn.create(archive_folder)
+    except Exception:
+        pass
+    for n in uids:
+        nb = n.encode() if isinstance(n, str) else n
+        typ, _ = conn.uid("copy", nb, archive_folder)
+        if typ != "OK":
+            failed += 1
+            continue
+        conn.uid("store", nb, "+FLAGS", "\\Deleted")
+        done += 1
+    if done:
+        conn.expunge()
+    return done, failed
+
+
 def mark_emails_read(ids, folder: str = "INBOX") -> str:
     """
     Marque un ou plusieurs mails comme LUS. NON destructif (le mail reste en place).
@@ -314,7 +384,9 @@ def mark_emails_read(ids, folder: str = "INBOX") -> str:
     if err:
         return err
     try:
-        conn.select(folder)  # écriture autorisée
+        ok, serr = _select_rw(conn, folder)
+        if not ok:
+            return serr
         done = 0
         for n in nums:
             typ, _ = conn.uid("store", n.encode(), "+FLAGS", "\\Seen")
@@ -351,53 +423,88 @@ def archive_emails(ids, folder: str = "INBOX") -> str:
     conn, err = _connect()
     if err:
         return err
-    c = _cfg()
-    is_gmail = "gmail" in (c["host"] or "").lower()
     archive_folder = os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or "Archive"
     try:
-        conn.select(folder)
-        done, failed = 0, []
-        if is_gmail:
-            # Gmail : on APPLIQUE un libellé dédié (créé automatiquement par Gmail si absent)
-            # PUIS on retire « \Inbox ». Le mail apparaît ainsi sous ce libellé propre, hors de
-            # la boîte et SANS se noyer dans « Tous les messages ». X-GM-LABELS = méthode
-            # canonique, fiable. Libellé entre guillemets (gère les espaces).
-            label = '"' + archive_folder.replace('"', "") + '"'
-            for n in nums:
-                nb = n.encode()
-                t1, _ = conn.uid("store", nb, "+X-GM-LABELS", label)
-                if t1 != "OK":
-                    failed.append(n)
-                    continue
-                conn.uid("store", nb, "-X-GM-LABELS", "\\Inbox")  # sort de la boîte
-                done += 1
-            msg = f"✅ {done}/{len(nums)} mail(s) archivé(s) sous le libellé « {archive_folder} » (retirés de la boîte)."
-            if failed:
-                msg += f" ⚠️ {len(failed)} non archivé(s)."
-            return msg
-        # IMAP générique : créer le dossier d'archive au besoin, COPIER dedans PUIS retirer de la
-        # boîte (\Deleted + EXPUNGE). Si la copie échoue, on ne retire RIEN (zéro perte).
-        try:
-            conn.create(archive_folder)  # no-op si déjà présent
-        except Exception:
-            pass
-        for n in nums:
-            nb = n.encode()
-            typ, _ = conn.uid("copy", nb, archive_folder)
-            if typ != "OK":
-                failed.append(n)
-                continue
-            conn.uid("store", nb, "+FLAGS", "\\Deleted")
-            done += 1
-        if done:
-            conn.expunge()
-        msg = f"✅ {done}/{len(nums)} mail(s) archivé(s) dans le dossier « {archive_folder} » (retirés de {folder})."
+        ok, serr = _select_rw(conn, folder)
+        if not ok:
+            return serr
+        done, failed = _archive_uids(conn, nums, folder)
+        msg = f"✅ {done}/{len(nums)} mail(s) archivé(s) sous « {archive_folder} » (retirés de {folder})."
         if failed:
-            msg += (f" ⚠️ {len(failed)} non archivé(s) (copie vers « {archive_folder} » impossible — "
-                    "rien n'a été retiré pour ces mails). Vérifie EMAIL_ARCHIVE_FOLDER.")
+            msg += f" ⚠️ {failed} non archivé(s)."
         return msg
     except Exception as e:
         return f"Erreur archivage : {e}"
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
+def clean_inbox(from_contains: str = "", subject_contains: str = "", older_than_days: int = 0,
+                newer_than_days: int = 0, unread_only: bool = False, action: str = "archive",
+                max_count: int = 500, folder: str = "INBOX") -> str:
+    """
+    Fait le MÉNAGE en masse par CRITÈRE, côté serveur (idéal pour des milliers de mails) : tous
+    les mails correspondants sont archivés (ou marqués lus) en UN appel, sans énumérer d'IDs.
+    NON destructif (archive = rangé dans le libellé/dossier « Archive », jamais supprimé).
+    À utiliser pour « archive toutes les pubs de Temu », « range les notifs GitHub Run failed »,
+    « archive tout ce qui a plus de 180 jours ». MONTRE d'abord un aperçu (search_emails) et
+    obtiens l'accord de l'utilisateur avant de lancer.
+
+    Args:
+        from_contains (str): Filtre expéditeur (ex: "temu", "notifications@github.com").
+        subject_contains (str): Filtre sujet (ex: "Run failed", "newsletter").
+        older_than_days (int): Seulement les mails PLUS VIEUX que N jours (0 = ignorer).
+        newer_than_days (int): Seulement les mails des N derniers jours (0 = ignorer).
+        unread_only (bool): Seulement les non-lus.
+        action (str): "archive" (défaut) ou "mark_read".
+        max_count (int): Plafond de sécurité (défaut 500, max 2000).
+        folder (str): Dossier source (défaut "INBOX").
+    Returns:
+        str: Bilan réel (nombre traité).
+    """
+    if not (from_contains or subject_contains or older_than_days or newer_than_days or unread_only):
+        return ("Précise au moins un critère (from_contains, subject_contains, older_than_days, "
+                "unread_only) — refuse d'archiver TOUTE la boîte sans filtre.")
+    action = (action or "archive").strip().lower()
+    if action not in ("archive", "mark_read"):
+        return "action invalide : 'archive' ou 'mark_read'."
+    conn, err = _connect()
+    if err:
+        return err
+    try:
+        ok, serr = _select_rw(conn, folder)
+        if not ok:
+            return serr
+        crit = _build_search_criteria(from_contains, subject_contains, older_than_days,
+                                      newer_than_days, unread_only)
+        typ, data = conn.uid("search", None, *crit)
+        if typ != "OK":
+            return "Recherche IMAP échouée."
+        uids = data[0].split()
+        if not uids:
+            return "Aucun mail ne correspond à ces critères (rien à faire)."
+        cap = max(1, min(int(max_count or 500), 2000))
+        uids = uids[-cap:]
+        if action == "mark_read":
+            done = 0
+            for u in uids:
+                t, _ = conn.uid("store", u, "+FLAGS", "\\Seen")
+                if t == "OK":
+                    done += 1
+            return f"✅ {done} mail(s) marqué(s) comme lu(s) (critère appliqué côté serveur)."
+        done, failed = _archive_uids(conn, uids, folder)
+        archive_folder = os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or "Archive"
+        msg = f"✅ {done} mail(s) archivé(s) sous « {archive_folder} » (retirés de {folder})."
+        if failed:
+            msg += f" ⚠️ {failed} échec(s)."
+        if len(uids) >= cap:
+            msg += f" (plafond {cap} atteint — relance pour continuer.)"
+        return msg
+    except Exception as e:
+        return f"Erreur ménage : {e}"
     finally:
         try:
             conn.logout()
