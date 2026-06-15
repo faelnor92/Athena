@@ -185,7 +185,9 @@ _TOOL_GROUP_KEYWORDS = {
              "fonction", "function", "fichier", "file", "git", "commit", "refactor", "compil",
              "erreur", "debug", "débug", "dépôt", "repo", "classe", "class", "variable",
              "lint", "patch", "branche", "branch", "terminal", "bash", "shell", "déploie",
-             "ssh", "serveur", "server", "vm", "hôte", "host", "machine", "distant", "remote"],
+             "ssh", "serveur", "server", "vm", "hôte", "host", "machine", "distant", "remote",
+             "connecte", "connecte-toi", "connexion", "connecter", "nas", "openmediavault", "omv",
+             "synology", "raspberry", "raspberrypi", "proxmox", "docker"],
     "domotique": ["lumière", "lumiere", "lampe", "allume", "éteins", "eteins", "chauffage",
                   "volet", "prise", "salon", "chambre", "cuisine", "maison", "home assistant",
                   "thermostat", "scène", "scene", "domotique", "radiateur", "store", "interrupteur"],
@@ -1577,6 +1579,30 @@ class Swarm:
                                 if _n not in existing and _n in AVAILABLE_TOOLS:
                                     effective_tools.append(AVAILABLE_TOOLS[_n])
                                     existing.add(_n)
+                except Exception:
+                    pass
+                # Mails (LECTURE IMAP + BROUILLONS, jamais d'envoi) : donnés à l'orchestrateur
+                # SI l'IMAP est configuré → « vérifie mes mails » marche sans déléguer. Le filtre
+                # par domaine ne les expose que pour une requête mail.
+                try:
+                    import tools.email_tools as _em
+                    if _em.is_configured():
+                        for _n in _TOOL_GROUPS.get("email", ()):
+                            if _n not in existing and _n in AVAILABLE_TOOLS:
+                                effective_tools.append(AVAILABLE_TOOLS[_n])
+                                existing.add(_n)
+                except Exception:
+                    pass
+                # SSH (exécution distante) : donné à l'orchestrateur SI au moins un hôte est
+                # configuré (env ou registre) → « connecte-toi à <serveur> » marche sans passer
+                # par la console Codeur. Le filtre par domaine ne l'expose que si pertinent.
+                try:
+                    from tools import ssh_hosts as _ssh
+                    if _ssh.list_hosts():
+                        for _n in ("execute_bash_command", "list_ssh_hosts"):
+                            if _n not in existing and _n in AVAILABLE_TOOLS:
+                                effective_tools.append(AVAILABLE_TOOLS[_n])
+                                existing.add(_n)
                 except Exception:
                     pass
                 # Playbooks Markdown (savoir-faire procédural) : on expose load_playbook

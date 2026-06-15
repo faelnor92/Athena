@@ -1,5 +1,19 @@
 # Historique des Versions (Changelog)
 
+## v0.11.84 (Athena lit les mails et se connecte en SSH elle-même)
+
+### 📬 Mails + 🖥️ SSH donnés automatiquement à l'orchestrateur
+- Athena répondait « je n'ai pas accès aux mails / pas d'outil SSH » : ces outils
+  appartenaient à la Secrétaire / au Codeur et n'étaient pas dans sa liste, et elle ne
+  déléguait pas. Désormais auto-injectés à l'orchestrateur QUAND ils sont configurés :
+  - mails (LECTURE IMAP + BROUILLONS, jamais d'envoi) si IMAP_HOST/USERNAME/PASSWORD sont
+    renseignés → « vérifie mes mails » marche sans déléguer ;
+  - SSH (execute_bash_command + list_ssh_hosts) si au moins un hôte est configuré →
+    « connecte-toi à <serveur> » marche sans passer par la console Codeur.
+- Mots-clés de domaine étendus (connecte/connexion/nas/openmediavault/omv/synology/proxmox/
+  docker…) pour que ces demandes exposent bien les outils via le filtre par pertinence.
+
+
 ## v0.11.83 (Atelier romans : opérations en arrière-plan + plus de délégation fantôme)
 
 ### ⛔ Plus de délégation à l'Auteur pour éditer un .docx existant
