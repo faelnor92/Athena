@@ -489,6 +489,88 @@ def document_autorevise(nextcloud_path: str, instruction: str = "", chapter: str
         return f"Erreur lors de la révision automatique : {e}"
 
 
+def _llm_coherence(model: str, canon: str, chapter_title: str, chapter_text: str) -> dict:
+    """Analyse un chapitre vs la « bible » accumulée. Renvoie {"incoherences":[...], "canon": "..."}.
+    Contexte borné : seulement la bible (compacte) + le chapitre courant."""
+    try:
+        from core.state import swarm as _sw
+        sys_p = (
+            "Tu es un éditeur qui vérifie la COHÉRENCE NARRATIVE d'un roman, chapitre par chapitre. "
+            "On te donne la BIBLE (faits établis dans les chapitres précédents) et le chapitre courant. "
+            "Renvoie un JSON STRICT : {\"incoherences\": [\"...\"], \"canon\": \"...\"}.\n"
+            "- `incoherences` : liste des CONTRADICTIONS du chapitre avec la bible — traits physiques "
+            "(yeux, cheveux…), noms/orthographe des personnages et lieux, règles de l'univers/magie, "
+            "chronologie, faits déjà établis. Sois précis (cite l'élément). [] si aucune.\n"
+            "- `canon` : la bible MISE À JOUR et COMPACTE (≤ 1500 caractères) : personnages clés et "
+            "leurs attributs, lieux, règles, faits majeurs. Fusionne l'ancienne bible + le nouveau "
+            "chapitre, sans tout recopier.\n"
+            "Réponds UNIQUEMENT par le JSON.")
+        usr = f"BIBLE ACTUELLE :\n{canon or '(vide — premier chapitre)'}\n\n--- CHAPITRE « {chapter_title} » ---\n{chapter_text}"
+        resp = _sw._complete(model, [{"role": "system", "content": sys_p},
+                                     {"role": "user", "content": usr}], tools_schema=None)
+        raw = (resp.choices[0].message.content or "").strip()
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        if not m:
+            return {"incoherences": [], "canon": canon}
+        d = json.loads(m.group(0))
+        inc = [str(x) for x in (d.get("incoherences") or []) if str(x).strip()]
+        new_canon = str(d.get("canon") or canon)[:2000]
+        return {"incoherences": inc, "canon": new_canon}
+    except Exception as e:
+        print(f"[document_check_coherence] chapitre '{chapter_title}' : {e}")
+        return {"incoherences": [], "canon": canon}
+
+
+def document_check_coherence(nextcloud_path: str, chapter: str = "") -> str:
+    """
+    Vérifie la COHÉRENCE NARRATIVE d'un .docx (noms, traits physiques, lieux, règles de l'univers,
+    chronologie) chapitre par chapitre, et renvoie un RAPPORT des incohérences détectées.
+    LECTURE SEULE : ne modifie pas le document.
+
+    Args:
+        nextcloud_path (str): Chemin du .docx sur Nextcloud (ex: "roman/MonRoman.docx").
+        chapter (str): Pour n'analyser qu'un chapitre (sinon tout le document).
+
+    Returns:
+        str: Rapport de cohérence (incohérences par chapitre, ou « aucune détectée »).
+    """
+    res = document_open(nextcloud_path)
+    if "📄" not in res:
+        return res
+    name = _safe_name(nextcloud_path)
+    try:
+        doc = _docx()(_local_path(name))
+        chaps = _chapters(doc)
+        if chapter:
+            ch = _find_chapter(doc, chapter)
+            if not ch:
+                return f"Chapitre '{chapter}' introuvable."
+            targets = [ch[0]]
+        else:
+            targets = [t for (t, a, b) in chaps]
+        from core.state import swarm as _sw
+        model = getattr(_sw.agents.get(getattr(_sw, "orchestrator_name", "Athena")), "model", None) or "gpt-4o-mini"
+
+        canon = ""
+        report = []
+        for title in targets:
+            txt = document_read(name, chapter=title)
+            body = "\n".join(txt.split("\n")[1:]) if txt.startswith("# ") else txt
+            if not body.strip():
+                continue
+            r = _llm_coherence(model, canon, title, body)
+            canon = r["canon"]
+            if r["incoherences"]:
+                report.append(f"\n📍 {title} :\n" + "\n".join(f"   • {i}" for i in r["incoherences"]))
+
+        if not report:
+            return f"✅ Aucune incohérence narrative détectée sur {len(targets)} chapitre(s)."
+        return ("🔎 RAPPORT DE COHÉRENCE (vérifie/corrige toi-même — rien n'a été modifié) :\n"
+                + "".join(report))
+    except Exception as e:
+        return f"Erreur lors de la vérification de cohérence : {e}"
+
+
 def document_publish(filename: str) -> str:
     """
     Publie la copie révisée sur Nextcloud sous « <nom> — révisé.docx » (à côté de l'original,

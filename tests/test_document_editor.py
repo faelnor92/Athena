@@ -90,6 +90,30 @@ def test_autorevise_one_call_revises_all_chapters():
     assert "Texte intact du chapitre deux." in xml, "le texte non corrigé doit rester intact"
 
 
+def test_check_coherence_reports_inconsistencies():
+    if not HAS_DOCX:
+        print("OK (python-docx absent — test sauté)")
+        return
+    import core.state as st
+    _make_doc()
+
+    class _R:
+        def __init__(self, c):
+            self.choices = [type("C", (), {"message": type("M", (), {"content": c})()})()]
+
+    def fake_complete(model, messages, tools_schema=None, **k):
+        # 1er chapitre : aucune incohérence ; 2e : une incohérence + canon.
+        if "Chapitre 2" in messages[-1]["content"]:
+            return _R('{"incoherences": ["Yeux verts au ch.1, bleus ici"], "canon": "Ryna yeux verts"}')
+        return _R('{"incoherences": [], "canon": "Ryna yeux verts"}')
+
+    with mock.patch.object(de, "document_open", lambda p: "📄 ouvert"), \
+         mock.patch.object(st.swarm, "_complete", fake_complete):
+        out = de.document_check_coherence("Romans/RomanTest.docx")
+    assert "incohérence" in out.lower() or "yeux verts" in out.lower(), out
+    assert "Chapitre 2" in out, out
+
+
 def test_read_caps_large_document():
     if not HAS_DOCX:
         print("OK (python-docx absent — test sauté)")

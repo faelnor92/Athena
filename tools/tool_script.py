@@ -31,6 +31,7 @@ SCRIPT_SAFE_TOOLS = {
     # Édition de documents longs (.docx, romans) : flux open→read→revise→publish en UN script
     # → évite la narration étape par étape (le modèle tentait ces appels en script, qui échouaient).
     "document_open", "document_read", "document_revise", "document_publish",
+    "document_autorevise", "document_check_coherence",
     # Nextcloud (fichiers/tâches/contacts) : lecture + écriture (pas la suppression dans un script).
     "nextcloud_list_files", "nextcloud_read_file", "nextcloud_write_file",
     "nextcloud_list_tasks", "nextcloud_search_contacts",
