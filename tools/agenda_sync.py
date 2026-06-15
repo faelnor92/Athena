@@ -200,36 +200,15 @@ def get_google_access_token(sa_info: Dict[str, Any]) -> str:
     )
     return r.json()["access_token"]
 
-def _oauth_token() -> str:
-    """access_token OAuth de l'utilisateur courant (None s'il n'a pas connecté Google)."""
-    try:
-        from core import google_oauth
-        return google_oauth.get_access_token()
-    except Exception:
-        return None
-
-
 def google_calendar_enabled() -> bool:
-    """Vrai si l'utilisateur courant a une source Google active : OAuth connecté, OU
-    compte de service (fichier de clé) + GOOGLE_CALENDAR_ID. Sert de garde aux opérations."""
-    if _oauth_token():
-        return True
+    """Vrai si l'utilisateur courant a un Google Calendar configuré (compte de service :
+    fichier de clé + GOOGLE_CALENDAR_ID). Sert de garde aux opérations agenda."""
     return bool(os.path.exists(GOOGLE_KEY_PATH) and os.getenv("GOOGLE_CALENDAR_ID"))
 
 
 def get_google_calendar_client() -> Tuple[str, str]:
-    """Récupère un (access_token, calendar_id) Google.
-
-    Priorité à l'OAuth utilisateur (son propre compte → calendrier `primary` par défaut,
-    AUCUN partage requis). Repli sur le compte de service (JWT) si configuré."""
-    # 1) OAuth utilisateur (recommandé).
-    token = _oauth_token()
-    if token:
-        # En OAuth on agit sur le compte de l'utilisateur : 'primary' sauf override explicite.
-        calendar_id = os.getenv("GOOGLE_CALENDAR_ID") or "primary"
-        return token, calendar_id
-
-    # 2) Compte de service (legacy) : nécessite le partage du calendrier avec le SA.
+    """Récupère (access_token, calendar_id) Google via le compte de service (JWT).
+    ⚠️ Le calendrier visé doit être PARTAGÉ avec l'email du compte de service."""
     if not os.path.exists(GOOGLE_KEY_PATH):
         return None, None
     calendar_id = os.getenv("GOOGLE_CALENDAR_ID")

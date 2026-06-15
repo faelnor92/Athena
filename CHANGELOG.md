@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.11.70 (Retrait de l'OAuth Google)
+
+### 🧹 OAuth Google retiré
+- L'OAuth Google (Calendar + Gmail) est supprimé : sans HTTPS et sans client OAuth dédié, il ne
+  pouvait pas offrir le « se connecter avec Google » en un clic attendu pour un usage homelab.
+  Supprimés : `core/google_oauth.py`, `routers/oauth_google.py`, `tools/gmail_oauth.py`, le bloc
+  UI et la doc associée. Le **compte de service** Google reste disponible (Réglages → Agenda).
+- Pour l'agenda, **CalDAV/Nextcloud** est la voie recommandée (lecture+écriture OK).
+
+
 ## v0.11.69 (Telegram : indicateur « écrit… »)
 
 ### ✈️ Telegram : feedback immédiat
