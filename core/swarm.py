@@ -109,6 +109,7 @@ AVAILABLE_TOOLS = {
     "mark_emails_read": tools.email_tools.mark_emails_read,
     "archive_emails": tools.email_tools.archive_emails,
     "clean_inbox": tools.email_tools.clean_inbox,
+    "list_mail_folders": tools.email_tools.list_mail_folders,
     "document_open": tools.document_editor.document_open,
     "document_read": tools.document_editor.document_read,
     "document_revise": tools.document_editor.document_revise,
@@ -176,7 +177,7 @@ _TOOL_GROUPS = {
     "agenda": {"add_calendar_event", "list_calendar_events", "delete_calendar_event",
                "add_list_item", "get_list_items", "toggle_list_item", "delete_list_item"},
     "email": {"read_inbox", "read_email", "create_email_draft", "search_emails",
-              "mark_emails_read", "archive_emails", "clean_inbox"},
+              "mark_emails_read", "archive_emails", "clean_inbox", "list_mail_folders"},
     "documents": {"analyze_document", "transcribe_and_summarize_meeting", "ingest_file"},
     "nextcloud": {"nextcloud_list_files", "nextcloud_read_file", "nextcloud_write_file",
                   "nextcloud_delete_file", "nextcloud_list_tasks", "nextcloud_search_contacts"},
@@ -205,7 +206,8 @@ _TOOL_GROUP_KEYWORDS = {
                "planifie", "planning", "échéance", "deadline"],
     "email": ["mail", "email", "e-mail", "courriel", "inbox", "boîte", "boite",
               "brouillon", "messagerie", "archive", "archiver", "ménage", "menage",
-              "newsletter", "spam", "publicité", "publicite", "non lus", "non-lus"],
+              "newsletter", "spam", "publicité", "publicite", "non lus", "non-lus",
+              "promotion", "promotions", "réseaux sociaux", "reseaux sociaux"],
     "documents": ["document", "pdf", "résume ce", "resume ce", "analyse ce", "compte rendu",
                   "compte-rendu", "transcris", "transcription", "ingère", "ingere"],
     "nextcloud": ["nextcloud", "webdav", "carddav", "contact", "carnet d'adresses", "fichier nextcloud",
@@ -1888,11 +1890,13 @@ class Swarm:
                     "- MAILS : tu peux LIRE (`read_inbox`, `read_email`, `search_emails`), créer des "
                     "BROUILLONS (`create_email_draft`), et faire le MÉNAGE. Tu NE PEUX PAS envoyer ni "
                     "SUPPRIMER définitivement.\n"
-                    "  • MÉNAGE EN MASSE (« archive toutes les pubs de Temu », « range les notifs GitHub "
-                    "Run failed », « archive ce qui a plus de 6 mois ») : utilise **`clean_inbox(...)`** "
-                    "qui filtre CÔTÉ SERVEUR par expéditeur/sujet/ancienneté et traite des MILLIERS de "
-                    "mails en UN appel. N'ÉNUMÈRE JAMAIS les IDs un par un, et n'utilise JAMAIS "
-                    "`run_tool_script` pour les mails (pas de subprocess/execute_tool/boucles d'IDs).\n"
+                    "  • MÉNAGE EN MASSE (« archive l'onglet Promotions / les Réseaux sociaux », « archive "
+                    "toutes les pubs de Temu », « range les notifs GitHub Run failed », « archive ce qui a "
+                    "plus de 6 mois ») : utilise **`clean_inbox(...)`** qui filtre CÔTÉ SERVEUR par "
+                    "expéditeur/sujet/ancienneté et par CATÉGORIE Gmail (category=\"promotions\", "
+                    "\"social\", \"updates\", \"forums\") → vide un onglet entier en UN appel. "
+                    "`list_mail_folders()` pour voir les dossiers/libellés. N'ÉNUMÈRE JAMAIS les IDs un par "
+                    "un, et n'utilise JAMAIS `run_tool_script` pour les mails.\n"
                     "  • Ciblage fin : `mark_emails_read(ids)` / `archive_emails(ids)` avec les [id N] vus.\n"
                     "  • Procédé : d'abord `search_emails` pour MONTRER un aperçu + le nombre, demande "
                     "l'accord, PUIS appelle clean_inbox. N'affirme JAMAIS avoir archivé sans avoir appelé "

@@ -229,9 +229,10 @@ def _imap_quote(s: str) -> str:
 
 def search_emails(from_contains: str = "", subject_contains: str = "", since_days: int = 0,
                   unread_only: bool = False, limit: int = 40, folder: str = "INBOX",
-                  query: str = "") -> str:
+                  query: str = "", category: str = "") -> str:
     """
-    Recherche des mails par expéditeur, sujet, ancienneté ou statut non-lu — pour faire le TRI.
+    Recherche des mails par expéditeur, sujet, ancienneté, statut non-lu, ou CATÉGORIE Gmail
+    (onglets Promotions, Réseaux sociaux, Notifications, Forums) — pour faire le TRI.
     LECTURE SEULE. Renvoie une liste d'[id N] (utilise mark_emails_read / archive_emails ensuite,
     APRÈS avoir montré la liste et obtenu l'accord de l'utilisateur).
 
@@ -242,6 +243,8 @@ def search_emails(from_contains: str = "", subject_contains: str = "", since_day
         unread_only (bool): Si True, seulement les non-lus.
         limit (int): Nombre max de résultats (max 200).
         folder (str): Dossier IMAP (défaut "INBOX").
+        category (str): Catégorie Gmail : "promotions", "social" (réseaux sociaux), "updates"
+                        (notifications), "forums". Gmail uniquement.
     Returns:
         str: Liste des mails correspondants avec leurs [id N].
     """
@@ -254,23 +257,10 @@ def search_emails(from_contains: str = "", subject_contains: str = "", since_day
     try:
         limit = max(1, min(int(limit or 40), 200))
         conn.select(folder, readonly=True)
-        crit = []
-        if unread_only:
-            crit.append("UNSEEN")
-        if from_contains:
-            crit += ["FROM", _imap_quote(from_contains)]
-        if subject_contains:
-            crit += ["SUBJECT", _imap_quote(subject_contains)]
-        if since_days and int(since_days) > 0:
-            import datetime as _dt
-            since = (_dt.date.today() - _dt.timedelta(days=int(since_days))).strftime("%d-%b-%Y")
-            crit += ["SINCE", since]
-        if not crit:
-            crit = ["ALL"]
-        typ, data = conn.uid("search", None, *crit)
-        if typ != "OK":
-            return "Recherche IMAP échouée."
-        ids = data[0].split()
+        ids, serr = _search_uids(conn, from_contains, subject_contains, since_days, 0,
+                                 unread_only, category)
+        if serr:
+            return serr
         if not ids:
             return "Aucun mail ne correspond à ces critères."
         out = [f"{len(ids)} mail(s) correspondent — {min(limit, len(ids))} affiché(s) :"]
@@ -330,6 +320,72 @@ def _build_search_criteria(from_contains, subject_contains, older_than_days, new
         since = (_dt.date.today() - _dt.timedelta(days=int(newer_than_days))).strftime("%d-%b-%Y")
         crit += ["SINCE", since]
     return crit or ["ALL"]
+
+
+# Catégories d'onglets Gmail (Promotions, Réseaux sociaux…) + synonymes FR → valeur Gmail.
+_GMAIL_CATEGORIES = {
+    "promotions": "promotions", "promotion": "promotions", "promo": "promotions",
+    "promos": "promotions", "pub": "promotions", "pubs": "promotions",
+    "publicité": "promotions", "publicite": "promotions", "publicités": "promotions",
+    "social": "social", "réseaux sociaux": "social", "reseaux sociaux": "social",
+    "réseaux": "social", "reseaux": "social", "sociaux": "social", "social networks": "social",
+    "updates": "updates", "notifications": "updates", "notification": "updates",
+    "mises à jour": "updates", "mises a jour": "updates", "maj": "updates",
+    "forums": "forums", "forum": "forums",
+    "primary": "primary", "principal": "primary", "principale": "primary",
+}
+
+
+def _normalize_category(cat: str) -> str:
+    """Renvoie la catégorie Gmail normalisée (promotions/social/updates/forums/primary) ou ''."""
+    return _GMAIL_CATEGORIES.get((cat or "").strip().lower(), "")
+
+
+def _is_gmail() -> bool:
+    return "gmail" in (_cfg()["host"] or "").lower()
+
+
+def _gmail_raw_query(from_contains, subject_contains, older_than_days, newer_than_days,
+                     unread_only, category) -> str:
+    """Construit une requête Gmail (syntaxe X-GM-RAW) combinant catégorie d'onglet + filtres."""
+    parts = []
+    cat = _normalize_category(category)
+    if cat:
+        parts.append(f"category:{cat}")
+    if from_contains:
+        parts.append(f"from:({from_contains})")
+    if subject_contains:
+        parts.append(f"subject:({subject_contains})")
+    if older_than_days and int(older_than_days) > 0:
+        parts.append(f"older_than:{int(older_than_days)}d")
+    if newer_than_days and int(newer_than_days) > 0:
+        parts.append(f"newer_than:{int(newer_than_days)}d")
+    if unread_only:
+        parts.append("is:unread")
+    return " ".join(parts)
+
+
+def _search_uids(conn, from_contains="", subject_contains="", older_than_days=0,
+                 newer_than_days=0, unread_only=False, category=""):
+    """Recherche d'UID côté serveur. Si une CATÉGORIE Gmail est demandée (Promotions, Réseaux
+    sociaux…), on passe par l'extension X-GM-RAW ; sinon critères IMAP standards. Renvoie
+    (uids, erreur_ou_None)."""
+    if category and not _is_gmail():
+        return [], "Les catégories (Promotions, Réseaux sociaux…) sont spécifiques à Gmail."
+    if category or (_is_gmail() and (from_contains or subject_contains)):
+        # Voie Gmail : X-GM-RAW (gère category: et la recherche plein-texte de Gmail).
+        raw = _gmail_raw_query(from_contains, subject_contains, older_than_days,
+                               newer_than_days, unread_only, category)
+        if not raw:
+            return [], None
+        typ, data = conn.uid("search", None, "X-GM-RAW", _imap_quote(raw))
+    else:
+        crit = _build_search_criteria(from_contains, subject_contains, older_than_days,
+                                      newer_than_days, unread_only)
+        typ, data = conn.uid("search", None, *crit)
+    if typ != "OK":
+        return [], "Recherche IMAP échouée."
+    return data[0].split(), None
 
 
 def _imap_utf7(name: str) -> str:
@@ -476,14 +532,14 @@ def archive_emails(ids, folder: str = "INBOX") -> str:
 
 def clean_inbox(from_contains: str = "", subject_contains: str = "", older_than_days: int = 0,
                 newer_than_days: int = 0, unread_only: bool = False, action: str = "archive",
-                max_count: int = 500, folder: str = "INBOX") -> str:
+                max_count: int = 500, folder: str = "INBOX", category: str = "") -> str:
     """
     Fait le MÉNAGE en masse par CRITÈRE, côté serveur (idéal pour des milliers de mails) : tous
     les mails correspondants sont archivés (ou marqués lus) en UN appel, sans énumérer d'IDs.
-    NON destructif (archive = rangé dans le libellé/dossier « Archive », jamais supprimé).
-    À utiliser pour « archive toutes les pubs de Temu », « range les notifs GitHub Run failed »,
-    « archive tout ce qui a plus de 180 jours ». MONTRE d'abord un aperçu (search_emails) et
-    obtiens l'accord de l'utilisateur avant de lancer.
+    NON destructif (archive = rangé dans le libellé/dossier dédié, jamais supprimé).
+    À utiliser pour « archive l'onglet Promotions », « range les Réseaux sociaux », « archive
+    toutes les pubs de Temu », « archive tout ce qui a plus de 180 jours ». MONTRE d'abord un
+    aperçu (search_emails) et obtiens l'accord de l'utilisateur avant de lancer.
 
     Args:
         from_contains (str): Filtre expéditeur (ex: "temu", "notifications@github.com").
@@ -494,12 +550,15 @@ def clean_inbox(from_contains: str = "", subject_contains: str = "", older_than_
         action (str): "archive" (défaut) ou "mark_read".
         max_count (int): Plafond de sécurité (défaut 500, max 2000).
         folder (str): Dossier source (défaut "INBOX").
+        category (str): Catégorie Gmail à cibler : "promotions", "social" (réseaux sociaux),
+                        "updates" (notifications), "forums". Idéal pour vider un onglet entier.
     Returns:
         str: Bilan réel (nombre traité).
     """
-    if not (from_contains or subject_contains or older_than_days or newer_than_days or unread_only):
-        return ("Précise au moins un critère (from_contains, subject_contains, older_than_days, "
-                "unread_only) — refuse d'archiver TOUTE la boîte sans filtre.")
+    if not (from_contains or subject_contains or older_than_days or newer_than_days
+            or unread_only or category):
+        return ("Précise au moins un critère (category, from_contains, subject_contains, "
+                "older_than_days, unread_only) — refuse d'archiver TOUTE la boîte sans filtre.")
     action = (action or "archive").strip().lower()
     if action not in ("archive", "mark_read"):
         return "action invalide : 'archive' ou 'mark_read'."
@@ -510,12 +569,10 @@ def clean_inbox(from_contains: str = "", subject_contains: str = "", older_than_
         ok, serr = _select_rw(conn, folder)
         if not ok:
             return serr
-        crit = _build_search_criteria(from_contains, subject_contains, older_than_days,
-                                      newer_than_days, unread_only)
-        typ, data = conn.uid("search", None, *crit)
-        if typ != "OK":
-            return "Recherche IMAP échouée."
-        uids = data[0].split()
+        uids, serr = _search_uids(conn, from_contains, subject_contains, older_than_days,
+                                  newer_than_days, unread_only, category)
+        if serr:
+            return serr
         if not uids:
             return "Aucun mail ne correspond à ces critères (rien à faire)."
         cap = max(1, min(int(max_count or 500), 2000))
@@ -537,6 +594,72 @@ def clean_inbox(from_contains: str = "", subject_contains: str = "", older_than_
         return msg
     except Exception as e:
         return f"Erreur ménage : {e}"
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
+def _imap_utf7_decode(name: str) -> str:
+    """Décode un nom de boîte IMAP (UTF-7 modifié) en texte lisible. Robuste : renvoie le nom
+    brut si le décodage échoue."""
+    import base64
+    out, i, n = [], 0, len(name or "")
+    while i < n:
+        ch = name[i]
+        if ch == "&":
+            j = name.find("-", i)
+            if j == -1:
+                out.append(name[i:]); break
+            token = name[i + 1:j]
+            if token == "":
+                out.append("&")
+            else:
+                try:
+                    b = (token.replace(",", "/") + "===")[:len(token) + (4 - len(token) % 4) % 4]
+                    out.append(base64.b64decode(b).decode("utf-16-be"))
+                except Exception:
+                    out.append(name[i:j + 1])
+            i = j + 1
+        else:
+            out.append(ch); i += 1
+    return "".join(out)
+
+
+def list_mail_folders() -> str:
+    """
+    Liste les DOSSIERS / LIBELLÉS de la boîte mail (INBOX, Drafts, libellés Gmail, onglets…).
+    Utile pour savoir où chercher/archiver. LECTURE SEULE.
+    Rappel : sur Gmail, les ONGLETS (Promotions, Réseaux sociaux, Notifications, Forums) ne sont
+    pas des dossiers mais des CATÉGORIES — cible-les via le paramètre `category` de search_emails
+    / clean_inbox (ex: category="promotions").
+
+    Returns:
+        str: La liste des dossiers/libellés disponibles.
+    """
+    conn, err = _connect()
+    if err:
+        return err
+    try:
+        typ, data = conn.list()
+        if typ != "OK" or not data:
+            return "Impossible de lister les dossiers."
+        names = []
+        for raw in data:
+            if not raw:
+                continue
+            line = raw.decode("utf-8", "ignore") if isinstance(raw, bytes) else str(raw)
+            # Format : (\Flags) "/" "Nom Du Dossier"  → on extrait le dernier champ.
+            m = re.search(r'"([^"]*)"\s*$', line) or re.search(r'(\S+)\s*$', line)
+            if m:
+                names.append(_imap_utf7_decode(m.group(1)))
+        cats = ("\n\nOnglets Gmail (catégories, pas des dossiers) ciblables via `category` : "
+                "promotions, social (réseaux sociaux), updates (notifications), forums."
+                ) if _is_gmail() else ""
+        return "Dossiers / libellés disponibles :\n" + "\n".join(f"- {n}" for n in names) + cats
+    except Exception as e:
+        return f"Erreur liste des dossiers : {e}"
     finally:
         try:
             conn.logout()
