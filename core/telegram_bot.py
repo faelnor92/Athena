@@ -181,6 +181,12 @@ def _handle_message(msg: dict):
         return  # déjà répondu, pas de passage à l'essaim
 
     # --- Réponse de l'essaim ---
+    # Indicateur « écrit… » : feedback immédiat pendant que l'essaim réfléchit (le temps
+    # de réponse vient du LLM, pas du bot). Telegram l'affiche ~5 s ; suffisant comme accusé.
+    try:
+        _call("sendChatAction", chat_id=chat_id, action="typing")
+    except Exception:
+        pass
     try:
         reply = _respond(chat_id, text)
         print(f"[Telegram] → réponse à {chat_id} ({len(reply)} car.)")

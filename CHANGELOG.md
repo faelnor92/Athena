@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## v0.11.69 (Telegram : indicateur « écrit… »)
+
+### ✈️ Telegram : feedback immédiat
+- Le bot envoie l'action « typing » (« Athena écrit… ») dès réception d'un message, pendant que
+  l'essaim réfléchit → ressenti de latence amélioré (le temps de réponse vient du LLM, pas du bot).
+
+
 ## v0.11.68 (Agenda : événements horodatés enfin lus + fuseau configurable)
 
 ### 🐛 Fix majeur : les événements Nextcloud (avec fuseau) étaient SAUTÉS
