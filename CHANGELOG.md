@@ -1,5 +1,19 @@
 # Historique des Versions (Changelog)
 
+## v0.11.72 (Édition de romans/.docx en modifications suivies)
+
+### ✍️ Réviser un document long sans détruire l'original
+- Nouvel atelier d'édition (`tools/document_editor.py`, dépendance `python-docx`) : Athena ouvre
+  un `.docx` depuis Nextcloud dans un **workspace dédié** (l'original reste INTACT), le lit par
+  **chapitre**, et applique des révisions en **MODIFICATIONS SUIVIES Word** (`w:ins`/`w:del`,
+  auteur « Athena »). À la fin, une **copie « <nom> — révisé.docx »** est déposée sur Nextcloud.
+  Tu l'ouvres dans **OnlyOffice** → tu vois les ajouts/suppressions et tu les **acceptes/refuses**.
+- Outils : `document_open`, `document_read`, `document_revise`, `document_publish` (donnés à
+  l'orchestrateur quand Nextcloud est configuré + aux agents Auteur/Correcteur). Garde `can_write`,
+  anti-traversal, anti-SSRF.
+- Test : `tests/test_document_editor.py`.
+
+
 ## v0.11.71 (Choix d'outils plus fiable + Nextcloud dispo pour Athena)
 
 ### 🎯 L'agent choisit mieux ses outils
