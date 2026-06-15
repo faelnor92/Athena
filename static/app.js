@@ -5194,6 +5194,8 @@ async function loadAgendaConfig() {
         document.getElementById("agenda-caldav-user").value = config.caldav_username || "";
         const wt = document.getElementById("agenda-write-target");
         if (wt) wt.value = config.write_target || "auto";
+        const tz = document.getElementById("agenda-timezone");
+        if (tz) tz.value = config.timezone || "";
 
         // Gérer le mot de passe CalDAV masqué
         const pwdInput = document.getElementById("agenda-caldav-password");
@@ -5404,7 +5406,8 @@ if (agendaSyncForm) {
             caldav_url: document.getElementById("agenda-caldav-url").value.trim(),
             caldav_username: document.getElementById("agenda-caldav-user").value.trim(),
             caldav_password: document.getElementById("agenda-caldav-password").value.trim(),
-            write_target: (document.getElementById("agenda-write-target")?.value || "auto")
+            write_target: (document.getElementById("agenda-write-target")?.value || "auto"),
+            timezone: (document.getElementById("agenda-timezone")?.value || "").trim()
         };
         
         try {
