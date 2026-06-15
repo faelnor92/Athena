@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.11.92 (Archivage mail : nom de dossier ASCII + UTF-7 modifié)
+
+### 📬 Plus d'erreur d'encodage sur le libellé d'archive
+- « 'ascii' codec can't encode character '\xe9' » : un nom de dossier IMAP accentué
+  (« Archivés ») doit être encodé en UTF-7 MODIFIÉ (RFC 3501), pas envoyé en ASCII brut.
+  Ajout d'un encodeur _imap_utf7 (les noms accentués fonctionnent désormais) et défaut
+  ramené à « Archives » (ASCII, non réservé par Gmail). EMAIL_ARCHIVE_FOLDER accepte les accents.
+
+
 ## v0.11.91 (Archivage Gmail réparé : « Label name is not allowed: Archive »)
 
 ### 📬 Le libellé d'archive fonctionne enfin sur Gmail
