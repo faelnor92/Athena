@@ -63,6 +63,39 @@ for user, cfg in buckets.items():
     auth = (usr, pwd)
     base = url.rstrip("/")
 
+    # 0) Liste des calendriers de l'utilisateur + lesquels sont EN ÉCRITURE.
+    #    On remonte au "calendar-home" (le parent de l'URL) et on PROPFIND Depth:1.
+    home = base.rsplit("/", 1)[0] + "/" if "/" in base else base
+    print(f"\n    [Calendriers disponibles] PROPFIND {home}")
+    try:
+        req = ('<?xml version="1.0"?><d:propfind xmlns:d="DAV:" '
+               'xmlns:c="urn:ietf:params:xml:ns:caldav">'
+               '<d:prop><d:displayname/><d:resourcetype/>'
+               '<d:current-user-privilege-set/></d:prop></d:propfind>')
+        r0 = requests.request("PROPFIND", home, auth=auth,
+                              headers={"Depth": "1", "Content-Type": "application/xml"},
+                              data=req, timeout=12)
+        if r0.status_code in (200, 207):
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(r0.content)
+            ns = {"d": "DAV:", "c": "urn:ietf:params:xml:ns:caldav"}
+            for resp in root.findall("d:response", ns):
+                href = resp.findtext("d:href", "", ns)
+                is_cal = resp.find(".//c:calendar", ns) is not None
+                if not is_cal:
+                    continue
+                name = resp.findtext(".//d:displayname", "", ns) or "(sans nom)"
+                privs = resp.find(".//d:current-user-privilege-set", ns)
+                can_write = privs is not None and privs.find(".//d:write", ns) is not None
+                flag = "✅ ÉCRITURE" if can_write else "🔒 lecture seule"
+                print(f"      {flag}  «{name}»  -> URL : {href}")
+            print("      => Pour Athena, copie l'URL d'un calendrier marqué ✅ ÉCRITURE (URL complète :"
+                  f" {base.split('/remote.php')[0]}<href>).")
+        else:
+            print(f"      HTTP {r0.status_code} (impossible de lister — on continue)")
+    except Exception as e:
+        print(f"      (listing impossible : {type(e).__name__}: {str(e)[:150]})")
+
     # 1) PROPFIND : le calendrier répond-il ?
     print("\n    [PROPFIND] le calendrier existe/répond ?")
     try:
