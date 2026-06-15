@@ -56,12 +56,8 @@ def _resolve_starting_agent(sess, req):
             aliases.extend(["cm", "communitymanager", "lucas"])
         elif name == "Auteur":
             aliases.extend(["emilie", "éamilie", "auteur"])
-        elif name == "Correcteur":
-            aliases.extend(["marc", "correcteur"])
         elif name == "Codeur":
             aliases.extend(["robert", "codeur"])
-        elif name == "Traducteur":
-            aliases.extend(["sofia", "traducteur"])
         import re as _re
         for alias in aliases:
             # Pour éviter les faux positifs (ex: "je suis développeur" routé vers le Codeur),

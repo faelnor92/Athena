@@ -1,5 +1,21 @@
 # Historique des Versions (Changelog)
 
+## v0.11.81 (Outils romans robustes + équipe nettoyée)
+
+### 🧹 Agents redondants retirés du modèle d'équipe
+- `agents.example.yaml` : suppression de Correcteur (Marc) et Traducteur (Sofia), désormais
+  couverts par les outils document_* (révision en modifications suivies, cohérence, répétitions,
+  traduction vivante). Évite qu'Athena délègue à un agent au lieu d'appeler l'outil.
+
+### 🛡️ Appels d'outils document_* tolérants
+- Les petits modèles nommaient mal les arguments (`file=`, `instructions=`, `langue=`) →
+  remappage automatique vers les noms canoniques (nextcloud_path/instruction/target_language),
+  kwargs inconnus ignorés au lieu de lever TypeError. Le schéma exposé au LLM reste correct.
+- Consigne renforcée : appeler les outils document_* DIRECTEMENT (jamais via run_tool_script,
+  ni `.run(...)`, ni recopiés en texte) ; pour intégrer des corrections de cohérence →
+  `document_autorevise(chemin, instruction=...)`.
+
+
 ## v0.11.80 (Outils romans déclenchés en langage naturel)
 
 ### 🗣️ Plus besoin de nommer l'outil
