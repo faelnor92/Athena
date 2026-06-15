@@ -931,6 +931,18 @@
                             </div>
                         </div>
                         
+                        <div style="font-weight: bold; font-size: 0.9rem; color: var(--color-Athena); margin: 20px 0 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">📝 4. Où créer les nouveaux événements ?</div>
+                        <div class="form-group" style="grid-column: span 2;">
+                            <label for="agenda-write-target">Calendrier d'écriture (quand Athena ajoute un RDV)</label>
+                            <select id="agenda-write-target" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff;">
+                                <option value="auto">Auto (Google si dispo, sinon CalDAV, sinon local)</option>
+                                <option value="caldav">CalDAV / Nextcloud</option>
+                                <option value="google">Google Calendar</option>
+                                <option value="local">Local (Athena uniquement)</option>
+                            </select>
+                            <p class="section-desc" style="font-size:0.72rem;">Choisis où Athena crée les événements. Ex. « CalDAV / Nextcloud » pour les voir dans ton agenda Nextcloud.</p>
+                        </div>
+
                         <button type="submit" class="btn btn-primary" style="margin-top: 20px; width: 100%; padding: 10px; font-weight: bold;">Enregistrer la Configuration Agenda</button>
                     </form>
 
@@ -1651,7 +1663,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260614_telegram"></script>
+    <script src="app.js?v=20260615_agendatarget"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>

@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.11.66 (Agenda : choix du calendrier d'écriture)
+
+### 📝 Sélecteur « où créer les événements »
+- Quand plusieurs calendriers sont configurés (Google + CalDAV/Nextcloud), Athena écrivait
+  toujours sur **Google en priorité** → les RDV finissaient dans un calendrier non visible
+  (compte de service). Ajout d'un réglage **« Calendrier d'écriture »** (Réglages → Agenda) :
+  **auto / CalDAV / Google / local**. `add_calendar_event` respecte ce choix (une cible
+  indisponible retombe sur « auto »). Ex. choisir **CalDAV** → les RDV apparaissent dans Nextcloud.
+
+
 ## v0.11.65 (Anti-SSRF : plages CIDR dans l'allowlist — débloque Nextcloud/CalDAV LAN)
 
 ### 🛡️ Fix : `NET_GUARD_ALLOW_HOSTS` ne reconnaissait pas les plages CIDR
