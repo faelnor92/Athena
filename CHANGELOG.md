@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.12.1 (Révisé d'un fichier Nextcloud ouvrable dans OnlyOffice d'Athena)
+
+### 📝 Copie locale du révisé même pour les fichiers Nextcloud
+- Quand le document venait de Nextcloud, le révisé était uploadé sur Nextcloud mais aucune copie
+  locale n'était gardée → le bouton OnlyOffice d'Athena (qui ouvre un fichier local) retombait
+  sur l'original. Désormais une copie locale « — révisé.docx » est conservée dans le workspace en
+  plus de l'upload Nextcloud → le bouton ouvre bien le révisé.
+
+
 ## v0.12.0 (Bouton OnlyOffice ouvre le révisé)
 
 ### 📝 Le bouton OnlyOffice ouvre le « — révisé.docx », pas l'original
