@@ -1707,8 +1707,15 @@ class Swarm:
                 _tool_subset_done = True
                 _avail = {f.__name__ for f in _secured_tools}
                 if len(_avail) >= _tool_filter_min:
-                    _last_user = next((m.get("content", "") for m in reversed(messages)
-                                       if m.get("role") == "user"), "")
+                    # On regarde les DERNIERS messages utilisateur (fenêtre glissante), pas
+                    # seulement le dernier : un suivi du type « intègre-les / fais-le / oui »
+                    # n'a aucun mot-clé de domaine et masquerait à tort les outils du domaine
+                    # déjà engagé au tour précédent (ex. rédaction). Sous-exposer = bug (le
+                    # modèle narre faute d'outil) ; sur-exposer = juste quelques tokens. On
+                    # penche donc vers le contexte récent.
+                    _recent_users = [str(m.get("content", "")) for m in messages
+                                     if m.get("role") == "user"][-3:]
+                    _last_user = "\n".join(_recent_users)
                     _tool_subset = select_tool_subset(str(_last_user), _avail)
                     _dropped = len(_avail) - len(_tool_subset)
                     if _dropped > 0:

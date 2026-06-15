@@ -183,6 +183,56 @@ def test_read_caps_large_document():
     assert "volumineux" in out.lower() and "chapitre par chapitre" in out.lower(), out
 
 
+def test_local_upload_works_without_nextcloud():
+    if not HAS_DOCX:
+        print("OK (python-docx absent — test sauté)")
+        return
+    import tempfile
+    from docx import Document
+    up = os.path.join(tempfile.gettempdir(), "MonUpload.docx")
+    d = Document()
+    d.add_heading("Chapitre 1", level=1)
+    d.add_paragraph("Un texte uploadé sans Nextcloud.")
+    d.save(up)
+    with mock.patch.object(de, "_find_local_docx", lambda s: up), \
+         mock.patch.object(de.nextcloud, "is_configured", lambda: False):
+        out = de.document_open("MonUpload.docx")
+        assert "ouvert" in out.lower(), out
+        pub = de.document_publish("MonUpload.docx")
+    # Livraison workspace (PAS Nextcloud) + fichier révisé présent dans l'atelier.
+    assert "workspace" in pub.lower(), pub
+    assert os.path.exists(os.path.join(de._dir(), "MonUpload — révisé.docx")), pub
+
+
+def test_autorevise_applies_coherence_instruction():
+    if not HAS_DOCX:
+        print("OK (python-docx absent — test sauté)")
+        return
+    import zipfile
+    import core.state as st
+    path = _make_doc()  # « Il faisait froid. » au Chapitre 1
+
+    class _R:
+        def __init__(self, c):
+            self.choices = [type("C", (), {"message": type("M", (), {"content": c})()})()]
+
+    captured = {}
+
+    def fake(model, messages, tools_schema=None, **k):
+        captured["sys"] = messages[0]["content"]
+        # Correction de COHÉRENCE (changement de fait) — possible seulement en mode consigne.
+        return _R('[{"old": "Il faisait froid.", "new": "Il faisait une chaleur anormale."}]')
+
+    with mock.patch.object(de, "document_open", lambda p: "📄 ouvert"), \
+         mock.patch.object(de, "document_publish", lambda f: "📤 publié (mock)"), \
+         mock.patch.object(st.swarm, "_complete", fake):
+        out = de.document_autorevise("roman/RomanTest.docx",
+                                     instruction="uniformise le climat : chaleur anormale à Lyrion")
+    assert "consigne" in captured["sys"].lower(), "le mode CONSIGNE doit être utilisé"
+    xml = zipfile.ZipFile(path).read("word/document.xml").decode("utf-8")
+    assert "chaleur anormale" in xml and "<w:ins " in xml, out
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
