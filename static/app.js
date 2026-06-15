@@ -747,37 +747,10 @@ function _initRedaction() {
         ooSave.disabled = false;
     });
 
-    // Charge api.js du Document Server une seule fois, puis ouvre le fichier dans l'éditeur.
-    let _ooScriptLoaded = false;
-    let _ooEditorInstance = null;
-    function _ooLoadScript(dsUrl) {
-        return new Promise((resolve, reject) => {
-            if (_ooScriptLoaded && window.DocsAPI) return resolve();
-            const s = document.createElement("script");
-            s.src = dsUrl.replace(/\/$/, "") + "/web-apps/apps/api/documents/api.js";
-            s.onload = () => { _ooScriptLoaded = true; resolve(); };
-            s.onerror = () => reject(new Error("api.js du Document Server injoignable"));
-            document.head.appendChild(s);
-        });
-    }
-    async function _redacOpenEditor(relPath) {
-        const editorEl = document.getElementById("redac-oo-editor");
-        try {
-            const r = await apiFetch("/api/redaction/onlyoffice/config?path=" + encodeURIComponent(relPath));
-            const d = await r.json();
-            if (!r.ok) throw new Error(d.detail || ("HTTP " + r.status));
-            await _ooLoadScript(d.ds_url);
-            editorEl.style.display = "block";
-            editorEl.innerHTML = '<div id="redac-oo-mount" style="height:100%;"></div>';
-            if (_ooEditorInstance && _ooEditorInstance.destroyEditor) {
-                try { _ooEditorInstance.destroyEditor(); } catch (e) {}
-            }
-            _ooEditorInstance = new window.DocsAPI.DocEditor("redac-oo-mount", d.config);
-        } catch (e) {
-            editorEl.style.display = "block";
-            editorEl.innerHTML = '<div style="padding:16px;color:#ff8;">Éditeur OnlyOffice indisponible : '
-                + e.message + '</div>';
-        }
+    // Ouvre l'éditeur OnlyOffice dans une NOUVELLE FENÊTRE plein écran (page dédiée). Plus
+    // robuste et confortable que l'embarqué ; la page lit le jeton de session (même origine).
+    function _redacOpenEditor(relPath) {
+        window.open("/oo_editor.html?path=" + encodeURIComponent(relPath), "_blank", "noopener");
     }
 
     // Bouton de téléchargement du fichier révisé (apiFetch → blob → ancre, pour porter le jeton).
