@@ -332,9 +332,11 @@ def mark_emails_read(ids, folder: str = "INBOX") -> str:
 
 def archive_emails(ids, folder: str = "INBOX") -> str:
     """
-    ARCHIVE un ou plusieurs mails : les sort de la boîte de réception en CONSERVANT une copie
-    (jamais de suppression définitive). Pour Gmail, le mail reste dans « Tous les messages » ;
-    pour les autres, il est copié dans le dossier d'archive avant d'être retiré de la boîte.
+    ARCHIVE un ou plusieurs mails dans un dossier/libellé DÉDIÉ (défaut « Archive »,
+    configurable via EMAIL_ARCHIVE_FOLDER) et les retire de la boîte de réception, en
+    CONSERVANT le mail (jamais de suppression définitive). Pour Gmail, un libellé dédié est
+    appliqué (le mail apparaît sous ce libellé, plus dans la boîte) ; pour les autres IMAP, le
+    mail est déplacé dans ce dossier (créé au besoin).
     À n'utiliser qu'APRÈS avoir listé les mails ciblés et obtenu l'accord de l'utilisateur.
 
     Args:
@@ -356,21 +358,29 @@ def archive_emails(ids, folder: str = "INBOX") -> str:
         conn.select(folder)
         done, failed = 0, []
         if is_gmail:
-            # Gmail : archiver = RETIRER le libellé « \Inbox » (le mail reste dans « Tous les
-            # messages »). C'est la méthode canonique via l'extension X-GM-LABELS — fiable et
-            # sans dépendre du réglage d'auto-expunge. Pas de dossier « Archive » chez Gmail.
+            # Gmail : on APPLIQUE un libellé dédié (créé automatiquement par Gmail si absent)
+            # PUIS on retire « \Inbox ». Le mail apparaît ainsi sous ce libellé propre, hors de
+            # la boîte et SANS se noyer dans « Tous les messages ». X-GM-LABELS = méthode
+            # canonique, fiable. Libellé entre guillemets (gère les espaces).
+            label = '"' + archive_folder.replace('"', "") + '"'
             for n in nums:
-                typ, _ = conn.uid("store", n.encode(), "-X-GM-LABELS", "\\Inbox")
-                if typ == "OK":
-                    done += 1
-                else:
+                nb = n.encode()
+                t1, _ = conn.uid("store", nb, "+X-GM-LABELS", label)
+                if t1 != "OK":
                     failed.append(n)
-            msg = f"✅ {done}/{len(nums)} mail(s) archivé(s) (retirés de la boîte, conservés dans « Tous les messages »)."
+                    continue
+                conn.uid("store", nb, "-X-GM-LABELS", "\\Inbox")  # sort de la boîte
+                done += 1
+            msg = f"✅ {done}/{len(nums)} mail(s) archivé(s) sous le libellé « {archive_folder} » (retirés de la boîte)."
             if failed:
                 msg += f" ⚠️ {len(failed)} non archivé(s)."
             return msg
-        # IMAP générique : copier vers le dossier d'archive PUIS retirer de la boîte (\Deleted +
-        # EXPUNGE). Si la copie échoue, on ne retire RIEN (zéro perte).
+        # IMAP générique : créer le dossier d'archive au besoin, COPIER dedans PUIS retirer de la
+        # boîte (\Deleted + EXPUNGE). Si la copie échoue, on ne retire RIEN (zéro perte).
+        try:
+            conn.create(archive_folder)  # no-op si déjà présent
+        except Exception:
+            pass
         for n in nums:
             nb = n.encode()
             typ, _ = conn.uid("copy", nb, archive_folder)
@@ -381,10 +391,10 @@ def archive_emails(ids, folder: str = "INBOX") -> str:
             done += 1
         if done:
             conn.expunge()
-        msg = f"✅ {done}/{len(nums)} mail(s) archivé(s) (copie conservée dans « {archive_folder} ») hors de {folder}."
+        msg = f"✅ {done}/{len(nums)} mail(s) archivé(s) dans le dossier « {archive_folder} » (retirés de {folder})."
         if failed:
             msg += (f" ⚠️ {len(failed)} non archivé(s) (copie vers « {archive_folder} » impossible — "
-                    "rien n'a été retiré pour ces mails). Crée le dossier ou règle EMAIL_ARCHIVE_FOLDER.")
+                    "rien n'a été retiré pour ces mails). Vérifie EMAIL_ARCHIVE_FOLDER.")
         return msg
     except Exception as e:
         return f"Erreur archivage : {e}"
