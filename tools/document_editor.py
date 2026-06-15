@@ -97,19 +97,40 @@ class _Rev:
         return self._wrap("w:del", _make_text_run(text, deltext=True))
 
 
+def _tokenize(s):
+    """Découpe en jetons mots + espaces (pour un diff fin qui préserve l'espacement)."""
+    return re.findall(r"\S+|\s+", s or "")
+
+
 def _tracked_replace_paragraph(paragraph, new_text, rev: "_Rev"):
-    """Remplace le contenu d'un paragraphe : ancien texte en SUPPRESSION suivie + nouveau
-    texte en INSERTION suivie. Conserve le paragraphe (donc son style)."""
+    """Révise un paragraphe avec un diff MOT À MOT : seuls les fragments modifiés sont marqués
+    (ancien en suppression suivie, nouveau en insertion suivie) ; le reste demeure en texte
+    normal. Bien plus lisible dans OnlyOffice qu'un paragraphe entier barré/réinséré."""
     from docx.oxml.ns import qn
     p = paragraph._p
     old = paragraph.text
     for child in list(p):
         if child.tag in (qn("w:r"), qn("w:ins"), qn("w:del")):
             p.remove(child)
-    if old:
-        p.append(rev.dele(old))
-    if new_text:
-        p.append(rev.ins(new_text))
+    old_tok, new_tok = _tokenize(old), _tokenize(new_text)
+    sm = difflib.SequenceMatcher(a=old_tok, b=new_tok, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        old_seg = "".join(old_tok[i1:i2])
+        new_seg = "".join(new_tok[j1:j2])
+        if tag == "equal":
+            if old_seg:
+                p.append(_make_text_run(old_seg))          # texte inchangé (normal)
+        elif tag == "delete":
+            if old_seg:
+                p.append(rev.dele(old_seg))
+        elif tag == "insert":
+            if new_seg:
+                p.append(rev.ins(new_seg))
+        else:  # replace
+            if old_seg:
+                p.append(rev.dele(old_seg))
+            if new_seg:
+                p.append(rev.ins(new_seg))
 
 
 def _tracked_delete_paragraph(paragraph, rev: "_Rev"):
@@ -342,11 +363,19 @@ def _llm_revise_chapter(model: str, instruction: str, old_text: str) -> str:
     Renvoie le texte révisé (un paragraphe par ligne), ou "" si échec."""
     try:
         from core.state import swarm as _sw
-        sys_p = ("Tu es un correcteur/éditeur littéraire. Tu révises le texte fourni en suivant "
-                 "la consigne, en PRÉSERVANT le sens, l'intrigue, les noms et le découpage en "
-                 "paragraphes. Tu réponds UNIQUEMENT par le texte révisé (un paragraphe par ligne), "
-                 "SANS commentaire, sans titre, sans guillemets.")
-        usr = f"Consigne de révision : {instruction or 'améliore le style, fluidifie, supprime les redondances'}\n\n--- TEXTE À RÉVISER ---\n{old_text}"
+        sys_p = (
+            "Tu es un correcteur/éditeur littéraire. Tu fais une RÉVISION LÉGÈRE, pas une réécriture. "
+            "RÈGLES ABSOLUES :\n"
+            "- NE CHANGE PAS l'histoire, l'intrigue, les événements, les personnages, les noms, les "
+            "lieux, ni le sens des dialogues. N'INVENTE RIEN, ne supprime aucune information.\n"
+            "- Corrige UNIQUEMENT : orthographe, grammaire, ponctuation, et allège les lourdeurs "
+            "(redondances d'adjectifs/adverbes, répétitions) pour fluidifier.\n"
+            "- GARDE le même découpage en paragraphes (même nombre de lignes, même ordre) et reste "
+            "TRÈS proche du texte d'origine : ne modifie que ce qui doit l'être.\n"
+            "- Réponds UNIQUEMENT par le texte révisé (un paragraphe par ligne), SANS commentaire, "
+            "sans titre, sans guillemets.")
+        usr = (f"Consigne complémentaire : {instruction or 'corrige et fluidifie sans rien changer au fond'}\n\n"
+               f"--- TEXTE À RÉVISER (corrige légèrement, NE réécris PAS) ---\n{old_text}")
         resp = _sw._complete(model, [{"role": "system", "content": sys_p},
                                      {"role": "user", "content": usr}], tools_schema=None)
         txt = (resp.choices[0].message.content or "").strip()
