@@ -683,6 +683,85 @@ def document_translate(nextcloud_path: str, target_language: str, instruction: s
         return f"Erreur lors de la traduction : {e}"
 
 
+_FR_STOP = set((
+    "le la les un une des de du d l à a au aux et ou où mais donc or ni car que qui quoi dont "
+    "ce cet cette ces son sa ses leur leurs mon ma mes ton ta tes notre nos votre vos "
+    "je tu il elle on nous vous ils elles se s me te y en "
+    "ne pas plus moins très trop si comme dans sur sous pour par avec sans vers chez entre "
+    "est sont était étaient être eu été avoir avait avaient ai as ont avons avez "
+    "fait faire dit dire cela ceci celui celle ceux quand alors puis aussi bien tout toute tous toutes "
+    "lui leur même encore déjà ici là haut bas oui non lorsqu lorsque qu c n j m t l").split())
+
+
+def document_check_repetitions(nextcloud_path: str, chapter: str = "") -> str:
+    """
+    Détecte les RÉPÉTITIONS à l'échelle du document (sans LLM, exhaustif) : mots de contenu
+    surutilisés et tournures (groupes de mots) réemployées plusieurs fois. LECTURE SEULE.
+
+    Args:
+        nextcloud_path (str): Chemin du .docx sur Nextcloud.
+        chapter (str): Pour n'analyser qu'un chapitre (sinon tout le document).
+
+    Returns:
+        str: Rapport (mots surutilisés + tournures répétées).
+    """
+    import collections
+    res = document_open(nextcloud_path)
+    if "📄" not in res:
+        return res
+    name = _safe_name(nextcloud_path)
+    try:
+        txt = document_read(name, chapter=chapter) if chapter else None
+        if txt is None:
+            doc = _docx()(_local_path(name))
+            text = "\n".join(p.text for p in doc.paragraphs)
+        else:
+            text = "\n".join(txt.split("\n")[1:]) if txt.startswith("# ") else txt
+        words = re.findall(r"[a-zà-ÿ'’\-]{2,}", text.lower())
+        n_words = len(words)
+        if n_words < 50:
+            return "Texte trop court pour une analyse de répétitions pertinente."
+
+        # 1) Mots de CONTENU surutilisés (hors mots-outils, ≥ 4 lettres).
+        content = [w for w in words if len(w) >= 4 and w not in _FR_STOP]
+        freq = collections.Counter(content)
+        # seuil : net au-dessus de la moyenne (≥ 0.08 % du texte ET ≥ 6 occurrences).
+        thr = max(6, int(n_words * 0.0008))
+        over = [(w, c) for w, c in freq.most_common(40) if c >= thr][:15]
+
+        # 2) Tournures (n-grammes 3 et 4 mots) réemployées (≥ 3 fois), pas que des mots-outils.
+        def ngrams(n):
+            out = collections.Counter()
+            for i in range(len(words) - n + 1):
+                g = words[i:i + n]
+                if all(w in _FR_STOP for w in g):
+                    continue
+                out[" ".join(g)] += 1
+            return [(g, c) for g, c in out.most_common(40) if c >= 3]
+        # 4-grammes d'abord ; on retire les tournures incluses dans une autre déjà retenue
+        # (fenêtres glissantes du même tic) pour une liste lisible.
+        phrases = []
+        for g, c in sorted(ngrams(4) + ngrams(3), key=lambda x: (-x[1], -len(x[0]))):
+            if any(g in kept or kept in g for kept, _ in phrases):
+                continue
+            phrases.append((g, c))
+            if len(phrases) >= 12:
+                break
+
+        if not over and not phrases:
+            return f"✅ Aucune répétition notable détectée ({n_words} mots analysés)."
+        rep = [f"🔁 RÉPÉTITIONS ({n_words} mots analysés) — à ta main, rien n'a été modifié :"]
+        if over:
+            rep.append("\n• Mots de contenu surutilisés :")
+            rep += [f"   - « {w} » ×{c}" for w, c in over]
+        if phrases:
+            rep.append("\n• Tournures répétées :")
+            rep += [f"   - « {g} » ×{c}" for g, c in phrases]
+        return "\n".join(rep)
+    except Exception as e:
+        return f"Erreur lors de l'analyse des répétitions : {e}"
+
+
 def document_publish(filename: str) -> str:
     """
     Publie la copie révisée sur Nextcloud sous « <nom> — révisé.docx » (à côté de l'original,

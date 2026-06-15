@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.11.79 (Détection des répétitions à l'échelle du roman)
+
+### 🔁 document_check_repetitions
+- Nouvel outil **`document_check_repetitions(chemin)`** : analyse DÉTERMINISTE (sans LLM, exhaustive,
+  pas de saturation) qui repère les **mots de contenu surutilisés** et les **tournures-tics**
+  (groupes de mots réemployés) sur tout le document. LECTURE SEULE → rapport. Complète
+  `document_autorevise` (qui ne corrige que les répétitions locales).
+
+
 ## v0.11.78 (Traduction VIVANTE de roman)
 
 ### 🌍 document_translate : traduire un roman de façon vivante (pas mot-à-mot)
