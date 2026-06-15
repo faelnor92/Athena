@@ -146,6 +146,26 @@ def test_translate_creates_target_language_file():
     assert any(t.startswith("[EN]") for t in texts), texts
 
 
+def test_check_repetitions_detects_overused():
+    if not HAS_DOCX:
+        print("OK (python-docx absent — test sauté)")
+        return
+    from docx import Document
+    d = de._dir()
+    path = os.path.join(d, "Rep.docx")
+    doc = Document()
+    doc.add_heading("Chapitre 1", level=1)
+    for _ in range(4):
+        doc.add_paragraph("Un frisson parcourut son échine. " * 4
+                          + "Le ciel sombre, toujours le ciel sombre. ")
+    doc.save(path)
+    open(path + ".src", "w", encoding="utf-8").write("roman/Rep.docx")
+    with mock.patch.object(de, "document_open", lambda p: "📄 ouvert"):
+        out = de.document_check_repetitions("roman/Rep.docx")
+    assert "frisson" in out.lower() and "répétition" in out.lower(), out
+    assert "parcourut son échine" in out.lower(), out  # tournure-tic détectée
+
+
 def test_read_caps_large_document():
     if not HAS_DOCX:
         print("OK (python-docx absent — test sauté)")
