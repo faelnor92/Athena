@@ -690,6 +690,32 @@ function _initRedaction() {
         } catch (e) { setBusy(false); setResult("Erreur : " + e.message); }
     }
 
+    // Bouton de téléchargement du fichier révisé (apiFetch → blob → ancre, pour porter le jeton).
+    async function _redacAddDownload(container, url) {
+        const btn = document.createElement("button");
+        btn.className = "btn btn-primary";
+        btn.style.cssText = "margin-top:12px; padding:9px 14px; font-weight:bold;";
+        btn.textContent = "⬇️ Télécharger le fichier révisé";
+        btn.addEventListener("click", async () => {
+            btn.disabled = true; btn.textContent = "Téléchargement…";
+            try {
+                const r = await apiFetch(url);
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                const blob = await r.blob();
+                const name = decodeURIComponent((url.split("path=")[1] || "fichier.docx").split("/").pop());
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob); a.download = name;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+                btn.textContent = "✅ Téléchargé"; btn.disabled = false;
+            } catch (e) {
+                btn.textContent = "Échec — réessayer"; btn.disabled = false;
+            }
+        });
+        container.appendChild(document.createElement("br"));
+        container.appendChild(btn);
+    }
+
     function _redacPollJob(jobId) {
         _redacPoll = setInterval(async () => {
             try {
@@ -703,10 +729,11 @@ function _initRedaction() {
                     clearInterval(_redacPoll); _redacPoll = null;
                     setBusy(false);
                     let out = j.status === "error" ? ("❌ " + (j.error || "échec")) : (j.result || "(aucun résultat)");
-                    // Transforme un lien de téléchargement workspace en lien cliquable.
-                    out = out.replace(/(\/api\/workspace\/download\?path=[^\s)]+)/g,
-                        (m) => "\n👉 Télécharger : " + m);
-                    setResult(out);
+                    // Extrait un éventuel lien de téléchargement workspace pour en faire un BOUTON
+                    // (un <a href> ne porterait pas le jeton d'auth → on télécharge via apiFetch→blob).
+                    const dl = out.match(/\/api\/workspace\/download\?path=[^\s)]+/);
+                    resultEl.textContent = out;
+                    if (dl) _redacAddDownload(resultEl, dl[0]);
                 }
             } catch (e) {
                 clearInterval(_redacPoll); _redacPoll = null; setBusy(false);

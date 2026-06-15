@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.11.95 (Fichier révisé visible + téléchargeable)
+
+### ✍️ Le fichier révisé est enfin trouvable
+- Bug : le fichier révisé d'un .docx UPLOADÉ tombait sous ACTIVE_WORKSPACE_DIR/redaction/…
+  alors que l'UI et /api/workspace/download travaillent depuis get_workspace_dir() (projet
+  actif) → fichier hors périmètre, lien cassé, « créé mais introuvable ». _dir() s'appuie
+  désormais sur get_workspace_dir() (même base que l'UI).
+- Onglet Écriture : le résultat affiche un vrai BOUTON « Télécharger le fichier révisé »
+  (téléchargement via apiFetch→blob, qui porte le jeton d'auth ; un simple lien ne l'aurait pas).
+
+
 ## v0.11.94 (Catégories Gmail : Promotions, Réseaux sociaux…)
 
 ### 📬 Ménage par onglet Gmail

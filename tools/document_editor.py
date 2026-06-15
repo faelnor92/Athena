@@ -66,9 +66,16 @@ def _tolerant(fn):
 
 
 def _dir() -> str:
-    """Dossier de travail DÉDIÉ aux documents en cours d'édition (par utilisateur)."""
+    """Dossier de travail DÉDIÉ aux documents en cours d'édition (par utilisateur).
+    IMPORTANT : on s'appuie sur get_workspace_dir() (la MÊME base que celle navigée par l'UI et
+    servie par /api/workspace/download). Sinon le fichier révisé tombe hors du périmètre visible
+    (ex. quand un projet est actif) → lien de téléchargement cassé, fichier « introuvable »."""
     slug = re.sub(r"[^A-Za-z0-9_.-]", "_", user_config.current_user_key()) or "local"
-    base = os.environ.get("ACTIVE_WORKSPACE_DIR") or "workspace"
+    try:
+        from core.state import get_workspace_dir
+        base = get_workspace_dir()
+    except Exception:
+        base = os.environ.get("ACTIVE_WORKSPACE_DIR") or "workspace"
     d = os.path.join(base, "redaction", slug)
     os.makedirs(d, exist_ok=True)
     return d
