@@ -670,9 +670,10 @@ function _initRedaction() {
             chapSel.innerHTML = '<option value="">Tout le document</option>' +
                 (data.chapters || []).map(c => `<option value="${c.title.replace(/"/g, "&quot;")}">${c.title} (${c.paragraphs}¶)</option>`).join("");
             chapWrap.style.display = "flex";
-            // Mémorise le chemin workspace du fichier de travail (pour OnlyOffice) ; reset du révisé.
+            // Mémorise le fichier de travail + un éventuel révisé DÉJÀ existant (révision passée,
+            // possiblement via le chat) → le bouton OnlyOffice ouvre le révisé en priorité.
             _redacDocRel = data.ws_path || "";
-            _redacRevisedRel = "";
+            _redacRevisedRel = data.revised_path || "";
             if (typeof data.onlyoffice === "boolean") _ooConfigured = data.onlyoffice;
             _redacRefreshOpenBtn();
             setResult("✅ " + (data.chapters || []).length + " chapitre(s) détecté(s). Choisis une action.");
