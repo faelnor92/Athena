@@ -171,6 +171,14 @@ def _deliver(local_file: str, out_basename: str, meta: dict):
                          headers={"Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
                          timeout=30)
         if r.status_code in (200, 201, 204):
+            # On garde AUSSI une copie locale du révisé dans le workspace → le bouton OnlyOffice
+            # d'Athena (qui ouvre un fichier local) peut l'afficher, pas seulement Nextcloud.
+            try:
+                dest = os.path.join(_dir(), out_basename)
+                if os.path.abspath(dest) != os.path.abspath(local_file):
+                    shutil.copyfile(local_file, dest)
+            except Exception:
+                pass
             return True, f"Nextcloud : « {remote} » (l'original « {original_remote} » est intact)"
         return False, f"upload Nextcloud échoué ({r.status_code})"
     # Origine locale (upload) : on garde le fichier dans le workspace rédaction.
