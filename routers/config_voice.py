@@ -181,8 +181,106 @@ async def restart_kokoro_tts() -> Dict[str, Any]:
         res = await asyncio.to_thread(subprocess.run, ["docker", "ps", "-a", "-q", "-f", "name=kokoro-tts"], capture_output=True, text=True)
         if not res.stdout.strip():
             raise HTTPException(status_code=404, detail="Conteneur 'kokoro-tts' introuvable.")
-        
+
         await asyncio.to_thread(subprocess.run, ["docker", "restart", "kokoro-tts"], check=True)
         return {"status": "success", "message": "Serveur TTS redémarré avec succès."}
     except subprocess.CalledProcessError as e:
         raise HTTPException(status_code=500, detail=f"Erreur Docker: {e}")
+
+
+# ----------------------------------------------------------------- TTS (chat + satellites)
+def _kokoro_voices_url() -> str:
+    """Déduit l'URL de la liste des voix Kokoro depuis VOICE_TTS_HTTP_URL (…/v1/audio/speech)."""
+    base = (os.getenv("VOICE_TTS_HTTP_URL", "") or "").strip()
+    if not base:
+        return ""
+    if "/audio/speech" in base:
+        return base.replace("/audio/speech", "/audio/voices")
+    return base.rstrip("/") + "/v1/audio/voices"
+
+
+@router.get("/api/config/voice-tts")
+async def get_voice_tts() -> Dict[str, Any]:
+    """Réglages TTS courants (moteur, voix sélectionnée, dispo Kokoro)."""
+    return {
+        "engine": os.getenv("VOICE_TTS_ENGINE", "http"),
+        "voice": (os.getenv("VOICE_TTS_VOICE", "") or "").strip(),
+        "http_url": (os.getenv("VOICE_TTS_HTTP_URL", "") or "").strip(),
+    }
+
+
+@router.get("/api/voice/voices")
+async def list_voices() -> Dict[str, Any]:
+    """Liste DYNAMIQUE des voix proposées par le serveur Kokoro (pour le menu déroulant)."""
+    url = _kokoro_voices_url()
+    if not url:
+        return {"voices": [], "error": "VOICE_TTS_HTTP_URL non configuré."}
+    try:
+        import requests
+        r = await asyncio.to_thread(lambda: requests.get(url, timeout=8))
+        if r.status_code != 200:
+            return {"voices": [], "error": f"Kokoro a répondu {r.status_code}."}
+        data = r.json()
+        # Kokoro-FastAPI renvoie {"voices": [...]} ; on reste tolérant aux variantes.
+        voices = data.get("voices") if isinstance(data, dict) else data
+        if isinstance(voices, dict):
+            voices = list(voices.keys())
+        return {"voices": [str(v) for v in (voices or [])]}
+    except Exception as e:
+        return {"voices": [], "error": f"Kokoro injoignable : {e}"}
+
+
+class VoiceTtsSelect(BaseModel):
+    voice: str = ""
+
+
+@router.post("/api/config/voice-tts")
+async def set_voice_tts(req: VoiceTtsSelect) -> Dict[str, Any]:
+    """Choisit la voix TTS (partagée par le CHAT et les SATELLITES) → VOICE_TTS_VOICE."""
+    voice = (req.voice or "").strip()
+    try:
+        from setup_wizard import set_env_var
+        set_env_var("VOICE_TTS_VOICE", voice)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Écriture .env impossible : {e}")
+    os.environ["VOICE_TTS_VOICE"] = voice
+    return {"status": "success", "voice": voice}
+
+
+class TtsSpeakRequest(BaseModel):
+    text: str
+    voice: str = ""        # override ponctuel (sinon VOICE_TTS_VOICE)
+
+
+@router.post("/api/voice/tts")
+async def voice_tts(req: TtsSpeakRequest):
+    """Synthétise du texte avec le MÊME moteur que les satellites (Kokoro via voice/tts.py) et
+    renvoie un WAV → le chat le joue (au lieu de la voix robotique du navigateur)."""
+    from fastapi.responses import Response
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Texte vide.")
+    text = text[:2000]  # garde-fou longueur
+    prev = os.environ.get("VOICE_TTS_VOICE")
+    try:
+        from voice.config import voice_config
+        from voice.tts import TTS, TTSUnavailable
+        if (req.voice or "").strip():
+            os.environ["VOICE_TTS_VOICE"] = req.voice.strip()
+        c = voice_config()
+        tts = TTS(c["tts_engine"], c["piper_model"], c["piper_bin"])
+        wav = await asyncio.to_thread(tts.synth_wav_bytes, text)
+        if not wav:
+            raise HTTPException(status_code=502, detail="Synthèse vide.")
+        return Response(content=wav, media_type="audio/wav")
+    except HTTPException:
+        raise
+    except Exception as e:
+        # 502 → le front retombe proprement sur la voix du navigateur.
+        raise HTTPException(status_code=502, detail=f"TTS indisponible : {e}")
+    finally:
+        if (req.voice or "").strip():
+            if prev is None:
+                os.environ.pop("VOICE_TTS_VOICE", None)
+            else:
+                os.environ["VOICE_TTS_VOICE"] = prev
