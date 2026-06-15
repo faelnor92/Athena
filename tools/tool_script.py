@@ -27,7 +27,7 @@ SCRIPT_SAFE_TOOLS = {
     "read_file", "file_outline", "search_code", "find_definition", "find_references",
     "git_status", "git_diff", "git_log",
     # Documents / e-mails (lecture seule)
-    "analyze_document", "read_inbox", "read_email",
+    "analyze_document", "read_inbox", "read_email", "search_emails",
     # Édition de documents longs (.docx, romans) : flux open→read→revise→publish en UN script
     # → évite la narration étape par étape (le modèle tentait ces appels en script, qui échouaient).
     "document_open", "document_read", "document_revise", "document_publish",
