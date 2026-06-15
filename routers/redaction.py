@@ -67,11 +67,25 @@ async def list_chapters(req: ChaptersRequest):
     if "📄" not in out:
         raise HTTPException(status_code=400, detail=out)
     try:
-        doc = de._docx()(de._local_path(de._safe_name(path)))
+        local = de._local_path(de._safe_name(path))
+        doc = de._docx()(local)
         chaps = [{"title": t, "paragraphs": b - a} for (t, a, b) in de._chapters(doc)]
+        ws_rel = _ws_rel(local)  # chemin relatif workspace → ouverture OnlyOffice
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {"path": path, "chapters": chaps}
+    return {"path": path, "chapters": chaps, "ws_path": ws_rel,
+            "onlyoffice": onlyoffice.is_configured()}
+
+
+def _ws_rel(abs_path: str):
+    """Chemin RELATIF d'un fichier sous get_workspace_dir() (ou None s'il est en dehors)."""
+    try:
+        from core.state import get_workspace_dir
+        base = os.path.realpath(get_workspace_dir())
+        rel = os.path.relpath(os.path.realpath(abs_path), base)
+        return rel if not rel.startswith("..") else None
+    except Exception:
+        return None
 
 
 @router.post("/api/redaction/job")

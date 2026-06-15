@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.11.97 (Bouton « Ouvrir dans OnlyOffice » fiable)
+
+### 📝 Ouvrir n'importe quel doc chargé dans OnlyOffice
+- Le bouton n'apparaissait qu'après une révision (à côté du téléchargement) → ajout d'un BOUTON
+  PERMANENT « Ouvrir dans OnlyOffice » dans l'onglet Écriture, visible dès qu'un document est
+  chargé ET qu'OnlyOffice est configuré. Ouvre le fichier révisé s'il existe, sinon la copie de
+  travail.
+- /api/redaction/chapters renvoie désormais le chemin workspace du fichier (ws_path) + l'état
+  OnlyOffice → le bouton s'active sans recharger la page.
+
+
 ## v0.11.96 (Éditeur OnlyOffice embarqué dans l'onglet Écriture)
 
 ### 📝 Visualiser/éditer les .docx révisés in-app

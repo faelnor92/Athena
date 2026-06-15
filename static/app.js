@@ -614,6 +614,23 @@ function _initRedaction() {
     const progBar = document.getElementById("redac-progress-bar");
     const progText = document.getElementById("redac-progress-text");
     const jobLabel = document.getElementById("redac-job-label");
+    const openOoBtn = document.getElementById("redac-open-oo");
+
+    // Chemins workspace (relatifs) : fichier de travail chargé, et fichier révisé produit.
+    let _redacDocRel = "";
+    let _redacRevisedRel = "";
+    function _redacRefreshOpenBtn() {
+        if (!openOoBtn) return;
+        const target = _redacRevisedRel || _redacDocRel;
+        const show = _ooConfigured && !!target;
+        openOoBtn.style.display = show ? "block" : "none";
+        openOoBtn.textContent = _redacRevisedRel ? "📝 Ouvrir le révisé dans OnlyOffice"
+                                                 : "📝 Ouvrir dans OnlyOffice";
+    }
+    if (openOoBtn) openOoBtn.addEventListener("click", () => {
+        const target = _redacRevisedRel || _redacDocRel;
+        if (target) _redacOpenEditor(target);
+    });
 
     const setResult = (txt) => { resultEl.textContent = txt; };
     const setBusy = (b) => {
@@ -653,6 +670,11 @@ function _initRedaction() {
             chapSel.innerHTML = '<option value="">Tout le document</option>' +
                 (data.chapters || []).map(c => `<option value="${c.title.replace(/"/g, "&quot;")}">${c.title} (${c.paragraphs}¶)</option>`).join("");
             chapWrap.style.display = "flex";
+            // Mémorise le chemin workspace du fichier de travail (pour OnlyOffice) ; reset du révisé.
+            _redacDocRel = data.ws_path || "";
+            _redacRevisedRel = "";
+            if (typeof data.onlyoffice === "boolean") _ooConfigured = data.onlyoffice;
+            _redacRefreshOpenBtn();
             setResult("✅ " + (data.chapters || []).length + " chapitre(s) détecté(s). Choisis une action.");
         } catch (e) { setResult("Erreur : " + e.message); }
     });
@@ -720,6 +742,7 @@ function _initRedaction() {
             _ooConfigured = !!d.configured;
             ooSecret.value = "";
             ooStatus.textContent = d.configured ? "✅ Enregistré" : "URL manquante";
+            _redacRefreshOpenBtn();
         } catch (e) { ooStatus.textContent = "Erreur : " + e.message; }
         ooSave.disabled = false;
     });
@@ -811,7 +834,12 @@ function _initRedaction() {
                     // (un <a href> ne porterait pas le jeton d'auth → on télécharge via apiFetch→blob).
                     const dl = out.match(/\/api\/workspace\/download\?path=[^\s)]+/);
                     resultEl.textContent = out;
-                    if (dl) _redacAddDownload(resultEl, dl[0]);
+                    if (dl) {
+                        _redacAddDownload(resultEl, dl[0]);
+                        // Mémorise le révisé → le bouton OnlyOffice permanent l'ouvre directement.
+                        _redacRevisedRel = decodeURIComponent((dl[0].split("path=")[1] || ""));
+                        _redacRefreshOpenBtn();
+                    }
                 }
             } catch (e) {
                 clearInterval(_redacPoll); _redacPoll = null; setBusy(false);
