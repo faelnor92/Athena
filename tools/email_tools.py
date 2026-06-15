@@ -332,35 +332,37 @@ def _build_search_criteria(from_contains, subject_contains, older_than_days, new
     return crit or ["ALL"]
 
 
+def _archive_folder_name() -> str:
+    """Nom du dossier/libellé d'archive. Défaut « Archivés » : NON réservé par Gmail (« Archive »
+    sans accent est un nom système refusé → erreur « Label name is not allowed »)."""
+    return os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or "Archivés"
+
+
 def _archive_uids(conn, uids, source_folder="INBOX"):
-    """Archive une liste d'UID (déjà sélectionné en écriture). Renvoie (nb_ok, nb_échecs)."""
-    c = _cfg()
-    is_gmail = "gmail" in (c["host"] or "").lower()
-    archive_folder = os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or "Archive"
-    done, failed = 0, 0
-    if is_gmail:
-        label = '"' + archive_folder.replace('"', "") + '"'
-        for n in uids:
-            nb = n.encode() if isinstance(n, str) else n
-            t1, _ = conn.uid("store", nb, "+X-GM-LABELS", label)
-            if t1 != "OK":
-                failed += 1
-                continue
-            conn.uid("store", nb, "-X-GM-LABELS", "\\Inbox")
-            done += 1
-        return done, failed
+    """Archive une liste d'UID (dossier déjà sélectionné en écriture). Méthode UNIFORME et
+    robuste pour tous les serveurs, Gmail compris : créer le dossier/libellé au besoin, COPIER
+    les mails dedans (sur Gmail, copier vers un libellé = appliquer ce libellé), puis les retirer
+    de la source (\\Deleted + EXPUNGE). On évite X-GM-LABELS (qui refuse les noms réservés).
+    Traitement par LOTS (UID set) pour gérer des milliers de mails vite. Renvoie (ok, échecs)."""
+    archive_folder = _archive_folder_name()
+    norm = [u if isinstance(u, bytes) else str(u).encode() for u in uids]
+    if not norm:
+        return 0, 0
     try:
-        conn.create(archive_folder)
+        conn.create(archive_folder)  # no-op si déjà présent
     except Exception:
         pass
-    for n in uids:
-        nb = n.encode() if isinstance(n, str) else n
-        typ, _ = conn.uid("copy", nb, archive_folder)
+    done, failed = 0, 0
+    CH = 300  # lots de 300 UID par commande IMAP
+    for i in range(0, len(norm), CH):
+        chunk = norm[i:i + CH]
+        uid_set = b",".join(chunk)
+        typ, _ = conn.uid("copy", uid_set, archive_folder)
         if typ != "OK":
-            failed += 1
+            failed += len(chunk)
             continue
-        conn.uid("store", nb, "+FLAGS", "\\Deleted")
-        done += 1
+        conn.uid("store", uid_set, "+FLAGS", "\\Deleted")
+        done += len(chunk)
     if done:
         conn.expunge()
     return done, failed
@@ -423,7 +425,7 @@ def archive_emails(ids, folder: str = "INBOX") -> str:
     conn, err = _connect()
     if err:
         return err
-    archive_folder = os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or "Archive"
+    archive_folder = _archive_folder_name()
     try:
         ok, serr = _select_rw(conn, folder)
         if not ok:
@@ -496,7 +498,7 @@ def clean_inbox(from_contains: str = "", subject_contains: str = "", older_than_
                     done += 1
             return f"✅ {done} mail(s) marqué(s) comme lu(s) (critère appliqué côté serveur)."
         done, failed = _archive_uids(conn, uids, folder)
-        archive_folder = os.getenv("EMAIL_ARCHIVE_FOLDER", "").strip() or "Archive"
+        archive_folder = _archive_folder_name()
         msg = f"✅ {done} mail(s) archivé(s) sous « {archive_folder} » (retirés de {folder})."
         if failed:
             msg += f" ⚠️ {failed} échec(s)."

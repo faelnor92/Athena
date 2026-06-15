@@ -1,5 +1,18 @@
 # Historique des Versions (Changelog)
 
+## v0.11.91 (Archivage Gmail réparé : « Label name is not allowed: Archive »)
+
+### 📬 Le libellé d'archive fonctionne enfin sur Gmail
+- Erreur Gmail « Invalid Arguments: Label name is not allowed: Archive » : « Archive » est un
+  nom RÉSERVÉ par Gmail, refusé via X-GM-LABELS. Corrigé :
+  - méthode UNIFORME pour tous les serveurs (Gmail compris) : créer le dossier/libellé puis
+    COPIER les mails dedans (sur Gmail, copier vers un libellé = appliquer ce libellé) puis les
+    retirer de la boîte — on n'utilise plus X-GM-LABELS ;
+  - libellé par défaut renommé « Archivés » (non réservé) ; toujours configurable via
+    EMAIL_ARCHIVE_FOLDER ;
+  - archivage par LOTS de 300 UID → des milliers de mails traités rapidement.
+
+
 ## v0.11.90 (Ménage mail en masse par critère + fix STORE-in-AUTH)
 
 ### 🧹 clean_inbox : ménage de milliers de mails en un appel
