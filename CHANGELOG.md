@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.19.3] - 2026-06-16
+### Fixed
+- **Test/lecture vocale « NotSupportedError » (Kokoro)** : Kokoro renvoie un WAV « streaming » avec une **taille d'en-tête bidon** (`RIFF … 0xFFFFFFFF`) que Firefox refuse. L'endpoint `/api/voice/tts` **réécrit désormais les tailles RIFF/data réelles** (`_normalize_wav`) → WAV valide, lecture OK. Détection du format conservée (wav/mp3/ogg). Le bouton « Tester » affiche maintenant le format reçu (type/taille/octets) pour diagnostiquer en un clic.
+
+
 ## [0.19.2] - 2026-06-16
 ### Fixed
 - **Test vocal « NotSupportedError »** : le serveur TTS peut renvoyer du WAV, du MP3 ou de l'OGG ; l'endpoint `/api/voice/tts` **détecte le vrai format** (octets magiques) et pose le bon Content-Type (fini le mp3 étiqueté « audio/wav » que Firefox refusait), et **rejette proprement** une réponse non audio (erreur serveur).
