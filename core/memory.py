@@ -11,6 +11,72 @@ import chromadb
 # logger précis pour ne pas polluer les logs.
 logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
+
+# --- Embeddings : LOCAL par défaut (intégré ChromaDB, marche partout), ou ENDPOINT optionnel ---
+# Réglages (.env / UI) :
+#   EMBEDDING_PROVIDER = "local" (défaut) | "http"
+#   EMBEDDING_MODEL    = ex. "bge-m3" ou "qwen3-embedding" (si http)
+#   EMBEDDING_API_BASE = défaut CUSTOM_LLM_API_BASE ; EMBEDDING_API_KEY = défaut CUSTOM_LLM_API_KEY
+# Le défaut LOCAL (all-MiniLM intégré) garantit que l'app marche sans endpoint pour ceux qui la
+# téléchargent ; ceux qui ont un endpoint multilingue (bge-m3…) gagnent en qualité (FR).
+class _HttpEmbeddingFunction:
+    """Fonction d'embedding ChromaDB qui appelle un endpoint OpenAI-compatible /v1/embeddings.
+    Callable : (input: list[str]) -> list[list[float]]. Sans dépendance (requests)."""
+    def __init__(self, base: str, key: str, model: str):
+        self._base = base.rstrip("/")
+        self._key = key
+        self._model = model
+
+    def name(self) -> str:                  # requis par certaines versions de ChromaDB
+        return f"http_{self._model}"
+
+    def __call__(self, input):
+        import requests
+        texts = [str(t) for t in (input or [])]
+        if not texts:
+            return []
+        url = self._base + "/embeddings"
+        headers = {"Content-Type": "application/json"}
+        if self._key:
+            headers["Authorization"] = f"Bearer {self._key}"
+        r = requests.post(url, json={"model": self._model, "input": texts},
+                          headers=headers, timeout=30)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        return [d["embedding"] for d in data]
+
+
+def _embedding_config():
+    prov = (os.getenv("EMBEDDING_PROVIDER", "local") or "local").strip().lower()
+    if prov != "http":
+        return None  # défaut local (all-MiniLM intégré ChromaDB)
+    model = (os.getenv("EMBEDDING_MODEL", "") or "").strip() or "bge-m3"
+    base = (os.getenv("EMBEDDING_API_BASE", "") or os.getenv("CUSTOM_LLM_API_BASE", "") or "").strip()
+    key = (os.getenv("EMBEDDING_API_KEY", "") or os.getenv("CUSTOM_LLM_API_KEY", "") or "").strip()
+    if not base:
+        return None  # http demandé mais pas d'URL → repli local
+    return {"model": model, "base": base, "key": key}
+
+
+def _embedding_function():
+    cfg = _embedding_config()
+    if not cfg:
+        return None
+    try:
+        return _HttpEmbeddingFunction(cfg["base"], cfg["key"], cfg["model"])
+    except Exception:
+        return None
+
+
+def _embedding_tag() -> str:
+    """Suffixe de collection lié au moteur d'embedding (les dimensions diffèrent → on ISOLE les
+    collections par moteur pour éviter tout mélange/crash de dimensions)."""
+    cfg = _embedding_config()
+    if not cfg:
+        return ""  # local → pas de suffixe (rétro-compat avec les collections existantes)
+    import re
+    return "_" + re.sub(r"[^a-zA-Z0-9]", "", cfg["model"])[:20]
+
 class CoreMemory:
     """Mémoire clé-valeur (JSON) des faits/préférences — PAR UTILISATEUR.
 
@@ -125,13 +191,33 @@ class SemanticMemory:
         import re
         from core.user_config import user_slug
         safe = re.sub(r"[^a-zA-Z0-9]", "_", user_slug(user))[:55].strip("_") or "local"
+        # Suffixe par moteur d'embedding : isole les collections (dimensions différentes).
+        return f"um_{safe}{_embedding_tag()}"
+
+    @staticmethod
+    def _local_collection_name(user: str = None) -> str:
+        """Nom de collection pour l'embedding LOCAL par défaut (sans suffixe moteur)."""
+        import re
+        from core.user_config import user_slug
+        safe = re.sub(r"[^a-zA-Z0-9]", "_", user_slug(user))[:55].strip("_") or "local"
         return f"um_{safe}"
 
     def _coll(self):
         name = self.collection_name()
         coll = self._collections.get(name)
         if coll is None:
-            coll = self.client.get_or_create_collection(name=name)
+            ef = _embedding_function()  # None = défaut local (all-MiniLM intégré)
+            if not ef:
+                coll = self.client.get_or_create_collection(name=name)
+            else:
+                try:
+                    coll = self.client.get_or_create_collection(name=name, embedding_function=ef)
+                except Exception as e:
+                    # Endpoint d'embedding injoignable/incompatible → repli sur le défaut LOCAL
+                    # (collection séparée) pour ne JAMAIS casser la mémoire.
+                    logging.warning(f"[memory] embedding endpoint KO ({e}) → repli local.")
+                    name = self._local_collection_name()
+                    coll = self.client.get_or_create_collection(name=name)
             self._collections[name] = coll
         return coll
 
