@@ -2192,6 +2192,30 @@ code[class*="language-"] {
         height: 100vh !important;
     }
 
+    /* CLÉ : le contenu principal occupe la GRANDE ligne (haut), le dock la petite (bas).
+       Sans ces placements explicites, le dock (1er du DOM) prenait le 1fr et écrasait
+       le contenu à 60px → zone principale invisible. */
+    .main-content-view { grid-row: 1 !important; min-height: 0 !important; }
+    .sidebar-dock { grid-row: 2 !important; }
+
+    /* Chat : plein écran sur téléphone (pas de bande inutile) */
+    .right-chat-sidebar { width: 100vw !important; max-width: 100vw !important; }
+
+    /* Toute grille à colonnes (souvent en style inline) passe en UNE colonne dans les vues.
+       Le !important d'une feuille de style l'emporte sur le style inline NON-important. */
+    .viewport-panel [style*="grid-template-columns"],
+    .meeting-layout, .redac-layout { grid-template-columns: 1fr !important; }
+
+    /* Vue Tâches/Listes : les 2 colonnes sont en FLEX → on les empile (sinon débordement droite). */
+    .agenda-grid-layout { flex-direction: column !important; overflow: visible !important; }
+    .agenda-items-col, .agenda-actions-col { flex: none !important; width: 100% !important; height: auto !important; }
+    .agenda-items-col { min-height: 240px !important; }
+
+    /* Anti-débordement horizontal du contenu (sinon colonnes/bandeaux dépassent à droite). */
+    .main-content-view { overflow-x: hidden !important; }
+    .viewport-panel { overflow-x: hidden !important; }
+    .top-telemetry-bar { flex-wrap: wrap !important; height: auto !important; gap: 6px !important; }
+
     /* Le dock devient une barre horizontale en bas */
     .sidebar-dock {
         width: 100% !important;

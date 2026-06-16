@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.14.0 (UI responsive : utilisable sur téléphone/tablette)
+
+### 📱 Correctif majeur du layout mobile
+- BUG racine (≤600px) : le dock (1er du DOM) prenait la grande ligne de la grille et écrasait
+  le contenu principal à 60px → zone principale INVISIBLE / app inutilisable sur téléphone.
+  Corrigé : placement explicite (contenu en haut = 1fr, dock en bas = 60px).
+- Vues internes empilées sur téléphone : grilles 2 colonnes (Écriture, Réunions, inline) → 1
+  colonne ; vue Tâches/Listes (flex) → empilée ; anti-débordement horizontal ; bandeau du haut
+  qui s'enroule ; chat plein écran.
+- Vérifié au navigateur headless (Playwright) en 390px (tel) et 1440px (desktop intact).
+
+
 ## v0.13.11 (Skills auto : réseau + fichier autorisés, système bridé)
 
 ### 🛠️ Politique de validation assouplie (création confirmée)
