@@ -5189,7 +5189,9 @@ let isMicRecording = false;
 let currentTtsAudio = null;
 
 // Stoppe toute lecture en cours (audio serveur Kokoro OU voix navigateur).
+let _ttsGen = 0;   // incrémenté à chaque arrêt → invalide toute synthèse/lecture en cours
 function stopSpeaking() {
+    _ttsGen++;
     if (currentTtsAudio) {
         try { currentTtsAudio.pause(); currentTtsAudio.src = ""; } catch (e) {}
         currentTtsAudio = null;
@@ -5199,25 +5201,74 @@ function stopSpeaking() {
 
 // Lit un texte à voix haute. PRIORITÉ au TTS serveur (Kokoro — même voix que les satellites,
 // bien plus naturel) ; repli automatique sur la voix du navigateur si Kokoro est indisponible.
+// Découpe un texte en segments « parlables » : phrases (ponctuation forte ou saut de ligne),
+// regroupées pour atteindre une taille mini (évite de synthétiser « Oui. » tout seul).
+function _splitForTts(t) {
+    const raw = t.split(/(?<=[.!?…:])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+    const out = [];
+    let cur = "";
+    for (const s of raw) {
+        cur = cur ? cur + " " + s : s;
+        if (cur.length >= 60 || /[.!?…]$/.test(s)) { out.push(cur); cur = ""; }
+    }
+    if (cur) out.push(cur);
+    return out;
+}
+
+async function _ttsBlob(text) {
+    const r = await apiFetch("/api/voice/tts", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+    });
+    if (!r.ok) throw new Error("tts " + r.status);
+    return await r.blob();
+}
+
+// Lecture TTS à FAIBLE LATENCE : synthèse phrase par phrase en pipeline — on parle dès la
+// 1ʳᵉ phrase pendant que les suivantes se synthétisent en arrière-plan (au lieu d'attendre
+// la synthèse de TOUT le message). _ttsGen invalide une lecture quand une nouvelle démarre.
 async function speakText(text, agentName) {
     stopSpeaking();
     const cleanText = (text || "").replace(/<[^>]*>/g, "").replace(/[\*_`#]/g, "").trim();
     if (!cleanText) return;
-    try {
-        const r = await apiFetch("/api/voice/tts", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: cleanText })
-        });
-        if (r.ok) {
-            const blob = await r.blob();
-            const audio = new Audio(URL.createObjectURL(blob));
-            currentTtsAudio = audio;
-            audio.onended = () => { try { URL.revokeObjectURL(audio.src); } catch (e) {} if (currentTtsAudio === audio) currentTtsAudio = null; };
-            await audio.play();
-            return;   // Kokoro a parlé
+    const segments = _splitForTts(cleanText);
+    if (!segments.length) return;
+    const gen = _ttsGen;                 // figé par stopSpeaking() ci-dessus
+    const blobs = [];
+    let prodDone = false, failedFirst = false;
+
+    // PRODUCTEUR : synthèse séquentielle (pré-charge pendant la lecture).
+    (async () => {
+        for (let k = 0; k < segments.length; k++) {
+            if (gen !== _ttsGen) return;
+            try {
+                blobs.push(await _ttsBlob(segments[k]));
+            } catch (e) {
+                if (k === 0) { failedFirst = true; }  // 1ʳᵉ phrase KO → repli navigateur
+                break;
+            }
         }
-    } catch (e) { /* on bascule sur la voix du navigateur */ }
-    _speakBrowser(cleanText, agentName);
+        prodDone = true;
+    })();
+
+    // CONSOMMATEUR : joue chaque blob dès qu'il est prêt, dans l'ordre.
+    let i = 0;
+    const playNext = () => {
+        if (gen !== _ttsGen) return;
+        if (failedFirst && blobs.length === 0) { _speakBrowser(cleanText, agentName); return; }
+        if (i >= blobs.length) {
+            if (prodDone) return;            // tout joué
+            setTimeout(playNext, 60);         // attend le prochain segment synthétisé
+            return;
+        }
+        const blob = blobs[i++];
+        const audio = new Audio(URL.createObjectURL(blob));
+        currentTtsAudio = audio;
+        audio.onended = () => { try { URL.revokeObjectURL(audio.src); } catch (e) {} playNext(); };
+        audio.onerror = () => playNext();
+        audio.play().catch(() => playNext());
+    };
+    playNext();
 }
 
 // Repli : Web Speech API du navigateur (voix « robotique » système).

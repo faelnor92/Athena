@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.19.7] - 2026-06-16
+### Changed
+- **Latence vocale fortement réduite (chat)** : au lieu d'attendre la synthèse de TOUT le message avant de parler, Athena synthétise et lit désormais **phrase par phrase en pipeline** — la voix démarre dès la 1ʳᵉ phrase (~1 s) pendant que les suivantes se préparent en arrière-plan. Annulation propre si une nouvelle réponse arrive.
+
+
 ## [0.19.6] - 2026-06-16
 ### Fixed
 - **LA cause du « NotSupportedError » à la lecture vocale (chat + bouton Test), sur TOUS les navigateurs** : la Content-Security-Policy n'avait **pas de directive `media-src`** → `<audio>` chargé depuis un `blob:` retombait sur `default-src 'self'` et était **bloqué**. Ajout de `media-src 'self' blob: data:`. La voix (TTS) se lit désormais normalement. (Les corrections WAV/MP3 précédentes restent utiles selon le serveur TTS, mais le vrai verrou était la CSP.)
