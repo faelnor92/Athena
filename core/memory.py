@@ -30,9 +30,9 @@ class _HttpEmbeddingFunction:
     def name(self) -> str:                  # requis par certaines versions de ChromaDB
         return f"http_{self._model}"
 
-    def __call__(self, input):
+    def _embed(self, texts):
         import requests
-        texts = [str(t) for t in (input or [])]
+        texts = [str(t) for t in (texts or [])]
         if not texts:
             return []
         url = self._base + "/embeddings"
@@ -43,7 +43,22 @@ class _HttpEmbeddingFunction:
                           headers=headers, timeout=30)
         r.raise_for_status()
         data = r.json().get("data", [])
+        # On respecte l'ordre via l'index si fourni (certains serveurs ne garantissent pas l'ordre).
+        if data and isinstance(data[0], dict) and "index" in data[0]:
+            data = sorted(data, key=lambda d: d.get("index", 0))
         return [d["embedding"] for d in data]
+
+    # ChromaDB natif appelle __call__ ; certaines versions/intégrations attendent l'interface
+    # « LangChain » (embed_documents / embed_query). On expose les trois → compatible partout.
+    def __call__(self, input):
+        return self._embed(input)
+
+    def embed_documents(self, texts):
+        return self._embed(texts)
+
+    def embed_query(self, text):
+        out = self._embed([text])
+        return out[0] if out else []
 
 
 def _embedding_config():
