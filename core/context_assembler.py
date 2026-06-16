@@ -18,6 +18,15 @@ def situational_block(session_key: str) -> str:
     Renvoie "" s'il n'y a rien d'utile à signaler."""
     parts = []
 
+    # Objectifs ACTIFS (continuité de but : Athena ne perd pas le fil).
+    try:
+        import core.goals as goals
+        gsum = goals.summary(max_items=5)
+        if gsum:
+            parts.append("Objectifs en cours :\n" + gsum)
+    except Exception:
+        pass
+
     # Parenthèses ouvertes (pile de contextes).
     try:
         import core.context_stack as cs
