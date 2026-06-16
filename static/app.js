@@ -2943,6 +2943,8 @@ const BEHAVIOR_SCHEMA = [
         { key: "USER_MODELING", label: "Profil utilisateur évolutif", type: "toggle", def: "true" },
         { key: "SELF_IMPROVE_SKILLS", label: "Induction/réparation auto de compétences", type: "toggle", def: "true" },
         { key: "TOOL_SCRIPTS", label: "Autoriser run_tool_script (enchaînement d'outils)", type: "toggle", def: "true" },
+        { key: "AUTO_CONTINUE", label: "Agir auto après une intention annoncée (sans attendre « vas-y »)", type: "toggle", def: "true" },
+        { key: "AUTO_CONTINUE_MAX", label: "Relances auto max par tour", type: "number", def: "2" },
         { key: "PROMPT_CACHE", label: "Cache de prompt", type: "select", options: [["auto", "Auto (Anthropic)"], ["on", "Forcé"], ["off", "Désactivé"]], def: "auto" },
         { key: "EXPERIENCE_MAX", label: "Retours d'expérience conservés (max)", type: "number", def: "50" },
         { key: "DOC_MAX_CHUNKS", label: "Passages max analysés par document", type: "number", def: "60" },

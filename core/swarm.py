@@ -232,6 +232,29 @@ _TOOL_GROUP_KEYWORDS = {
 # Index inversé nom→groupe (un outil n'est dans qu'un seul groupe).
 _TOOL_DOMAIN = {name: grp for grp, names in _TOOL_GROUPS.items() for name in names}
 
+_INTENT_MARKERS = (
+    "je vais", "je lance", "laisse-moi", "laisse moi", "je m'en occupe", "je men occupe",
+    "un instant", "je vérifie", "je verifie", "je récupère", "je recupere", "je consulte",
+    "je regarde", "permets-moi", "permet moi", "je commence", "je procède", "je procede",
+    "je m'occupe", "je te prépare", "je prepare", "c'est parti", "tout de suite")
+_ASK_USER_MARKERS = (
+    "veux-tu", "veux tu", "souhaites-tu", "souhaites tu", "dois-je", "dois je",
+    "préfères-tu", "preferes-tu", "tu veux que", "tu préfères", "je te propose",
+    "puis-je", "puis je", "est-ce que tu veux")
+
+
+def looks_like_announced_intent(content: str) -> bool:
+    """Vrai si le message ANNONCE une action (« je vais… ») SANS poser de question à l'utilisateur.
+    Sert à l'auto-continuation : on relance l'agent pour qu'il EXÉCUTE au lieu de rendre la main.
+    On respecte les demandes d'avis/approbation (présence d'une question → False)."""
+    msg = (content or "").strip()
+    if not msg or len(msg) > 600:
+        return False
+    low = msg.lower()
+    if "?" in msg or any(p in low for p in _ASK_USER_MARKERS):
+        return False
+    return any(p in low for p in _INTENT_MARKERS)
+
 
 def select_tool_subset(text: str, available_names) -> set:
     """Renvoie le sous-ensemble de noms d'outils à EXPOSER pour cette requête.
@@ -1462,6 +1485,7 @@ class Swarm:
         skill_failures = []  # échecs de compétences dynamiques → réparées en fin de run
         _route_done = False   # routeur de délégation : décidé une seule fois par run
         _route_target = None  # spécialiste ciblé (nom) | "" (aucun) | None (non décidé)
+        _auto_continue = 0    # relances auto sur « intention annoncée mais non exécutée »
         # Disjoncteur anti-répétition (model-agnostic) : un modèle faible (qwen3) rappelle
         # souvent le MÊME outil avec les MÊMES arguments sans progresser → on borne le nombre
         # d'exécutions réelles d'une même signature (outil|args) et on pousse à conclure.
@@ -2444,7 +2468,32 @@ class Swarm:
                                     
                     if semantic_transitioned:
                         continue
-                        
+
+                # AUTO-CONTINUATION : l'agent a ANNONCÉ une action (« je vais… », « je lance… »)
+                # mais n'a appelé AUCUN outil → au lieu de rendre la main et d'attendre un
+                # « vas-y », on le relance pour qu'il EXÉCUTE tout de suite. Bornée (anti-boucle)
+                # et RESPECTUEUSE : si le message POSE une question à l'utilisateur (demande d'avis/
+                # d'approbation), on s'arrête — c'est à l'utilisateur de décider.
+                _ac_on = os.getenv("AUTO_CONTINUE", "true").lower() in ("true", "1", "yes")
+                _ac_cap = int(os.getenv("AUTO_CONTINUE_MAX", "2") or 2)
+                _msg = (message.content or "").strip()
+                _has_real_tools = any(not f.__name__.startswith(("transfer_to_", "delegate_to_"))
+                                      and f.__name__ not in ("query_agent", "debate_between_agents")
+                                      for f in effective_tools)
+                if (_ac_on and _auto_continue < _ac_cap and _has_real_tools
+                        and looks_like_announced_intent(_msg)):
+                    _auto_continue += 1
+                    print(f"[\033[96mSWARM\033[0m] auto-continuation ({_auto_continue}/{_ac_cap}) : "
+                          "intention annoncée sans appel d'outil → relance.")
+                    # On conserve le message annoncé puis on pousse à AGIR maintenant.
+                    messages.append({"role": "assistant", "name": current_agent.name, "content": _msg})
+                    messages.append({"role": "user", "content": (
+                        "[Système] Tu viens d'ANNONCER une action sans l'exécuter. Réalise-la "
+                        "MAINTENANT en appelant directement le bon outil (pas de nouveau message "
+                        "d'intention). Si une approbation utilisateur est réellement nécessaire, "
+                        "pose UNE question précise au lieu d'annoncer.")})
+                    continue
+
                 # Plus aucun outil appelé, on a fini le tour
                 break
                 
