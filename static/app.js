@@ -2960,6 +2960,12 @@ const BEHAVIOR_SCHEMA = [
         { key: "VISION_MODEL", label: "Modèle vision multimodal (ex. custom/chat-gemma)", type: "text", def: "custom/chat-gemma" },
         { key: "COMPUTER_USE", label: "Capture d'écran (machine AVEC écran — pas un serveur headless)", type: "toggle", def: "false" },
     ]},
+    { section: "Mémoire — Embeddings (RAG)", fields: [
+        { key: "EMBEDDING_PROVIDER", label: "Moteur d'embedding", type: "select", def: "local",
+          options: [["local", "Local intégré (défaut, marche partout)"], ["http", "Endpoint OpenAI-compatible (meilleur, ex. bge-m3)"]] },
+        { key: "EMBEDDING_MODEL", label: "Modèle embedding si endpoint (bge-m3, qwen3-embedding…)", type: "text", def: "bge-m3" },
+        { key: "EMBEDDING_API_BASE", label: "URL embeddings (vide = même que CUSTOM_LLM_API_BASE)", type: "text", def: "" },
+    ]},
     { section: "Présence / follow-me (optionnel)", fields: [
         { key: "PRESENCE_ENTITY", label: "Entité HA de pièce courante (vide = désactivé)", type: "text", def: "" },
     ]},

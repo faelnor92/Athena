@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.13.1 (Embeddings configurables : local par défaut, endpoint optionnel)
+
+### 🧠 Mémoire RAG : meilleur embedding au choix (sans casser le défaut)
+- L'embedding de la mémoire vectorielle (ChromaDB) était le défaut local (all-MiniLM, anglo-centré).
+  Désormais CONFIGURABLE : EMBEDDING_PROVIDER=local (défaut, marche partout, aucun endpoint requis)
+  ou =http (endpoint OpenAI-compatible /v1/embeddings : bge-m3, qwen3-embedding… → bien meilleur en
+  français). Repli automatique sur le local si l'endpoint est injoignable.
+- Collections ISOLÉES par moteur d'embedding (dimensions différentes → pas de mélange/crash) ;
+  l'embedding local garde le nom historique (rétro-compat).
+- Réglages dans l'UI (Comportement → « Mémoire — Embeddings ») : provider, modèle, URL.
+
+
 ## v0.13.0 (Vision : Athena voit les images)
 
 ### 👁️ Analyse d'images via le modèle multimodal de l'endpoint
