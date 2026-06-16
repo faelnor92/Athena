@@ -2572,3 +2572,57 @@ code[class*="language-"] {
     max-height: 70vh;
     overflow-y: auto;
 }
+
+/* ============================================================
+   RÉGLAGES « Comportement » — refonte user-friendly (cartes, switches, aide, recherche)
+   ============================================================ */
+.ath-settings-search {
+    width: 100%; box-sizing: border-box; margin: 0 0 14px;
+    padding: 10px 12px; border-radius: 10px;
+    background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.12); color: #fff;
+}
+.ath-settings-card {
+    background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; margin-bottom: 12px; overflow: hidden;
+    flex: 0 0 auto;   /* ne pas se faire compresser par le conteneur flex (sinon clippé) */
+}
+.ath-settings-sumr {
+    list-style: none; cursor: pointer; padding: 12px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-weight: 600; font-size: 0.92rem; color: #fff;
+    background: rgba(255,255,255,0.03);
+}
+.ath-settings-body { display: block; }
+.ath-settings-card.collapsed .ath-settings-body { display: none; }
+.ath-chev { opacity: 0.5; transition: transform 0.2s; }
+.ath-settings-card.collapsed .ath-chev { transform: rotate(-90deg); }
+.ath-setting-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 12px 14px; border-top: 1px solid rgba(255,255,255,0.05);
+}
+.ath-setting-txt { flex: 1; min-width: 0; }
+.ath-setting-label { font-size: 0.86rem; color: #fff; margin-bottom: 2px; }
+.ath-setting-help { font-size: 0.74rem; color: var(--text-muted, #9aa3b2); line-height: 1.35; opacity: 0.85; }
+.ath-setting-ctrl { flex-shrink: 0; }
+.ath-ctrl {
+    max-width: 220px; width: 220px; box-sizing: border-box;
+    background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.14);
+    color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 0.82rem;
+}
+/* Interrupteur (switch) */
+.ath-switch { position: relative; display: inline-block; width: 46px; height: 26px; flex-shrink: 0; }
+.ath-switch input { opacity: 0; width: 0; height: 0; }
+.ath-slider {
+    position: absolute; inset: 0; cursor: pointer; border-radius: 26px;
+    background: rgba(255,255,255,0.18); transition: 0.25s;
+}
+.ath-slider::before {
+    content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: 0.25s;
+}
+.ath-switch input:checked + .ath-slider { background: var(--accent-color, #00f0ff); }
+.ath-switch input:checked + .ath-slider::before { transform: translateX(20px); }
+@media (max-width: 600px) {
+    .ath-setting-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .ath-ctrl { width: 100%; max-width: none; }
+}
