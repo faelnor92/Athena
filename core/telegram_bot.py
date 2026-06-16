@@ -92,7 +92,10 @@ def _respond(chat_id: str, user_text: str) -> str:
     chan = f"telegram:{chat_id}"
     chan_token = channels.current_channel.set(chan)
     appr_token = approvals.auto_approve_var.set(channels.auto_approve_for(chan))
-    user_token = _current_username.set("local")
+    # L'utilisateur Athena dépend du chat : agenda/config/mémoire de SON compte
+    # (sinon Telegram tombe sur le bucket « local » et ne voit pas ton CalDAV).
+    from core import telegram_pairing
+    user_token = _current_username.set(telegram_pairing.user_for(chat_id))
     try:
         _next, new_chain, steps = swarm.run(_orch_agent(), chain)
         final = ""

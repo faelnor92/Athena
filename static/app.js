@@ -3979,10 +3979,34 @@ async function loadPairing() {
         } else if (d.required) {
             html += `<div style="opacity:0.55;font-size:0.72rem;">Aucune demande en attente.</div>`;
         }
-        const approved = d.approved || [];
-        if (approved.length) {
-            html += `<div style="font-size:0.72rem;opacity:0.75;margin-top:4px;">Approuvés : ` +
-                approved.map(c => `<span style="background:rgba(0,243,255,0.12);padding:1px 6px;border-radius:4px;margin:1px;">${c} <span data-revoke="${c}" style="cursor:pointer;color:#ff5b89;">✕</span></span>`).join("") + `</div>`;
+        // Chats AUTORISÉS = configurés (TELEGRAM_CHAT_ID) + approuvés. Les configurés ne sont
+        // pas révocables ici (ils viennent du .env), mais on peut quand même lier leur compte.
+        const configured = d.configured || [];
+        const approvedSet = new Set(d.approved || []);
+        const allChats = [...new Set([...configured, ...(d.approved || [])])];
+        const bindings = d.users || {};
+        // Comptes Athena disponibles (pour lier un chat à un agenda/config/mémoire).
+        let accounts = ["local"];
+        try {
+            const ru = await apiFetch("/api/telegram/pairing/users");
+            if (ru.ok) { const du = await ru.json(); if (Array.isArray(du.users) && du.users.length) accounts = du.users; }
+        } catch (e) {}
+        if (allChats.length) {
+            html += `<div style="font-size:0.72rem;opacity:0.75;margin-top:6px;margin-bottom:2px;">Chats autorisés — choisis le compte Athena utilisé (agenda, mémoire…) :</div>`;
+            html += allChats.map(c => {
+                const bound = bindings[c] || "";
+                const opts = accounts.map(u => `<option value="${u}" ${u === bound ? "selected" : ""}>${u}</option>`).join("");
+                const isCfg = !approvedSet.has(c) && configured.includes(c);
+                const revoke = isCfg
+                    ? `<span title="Défini dans TELEGRAM_CHAT_ID (.env)" style="margin-left:auto;opacity:0.45;">🔒</span>`
+                    : `<span data-revoke="${c}" title="Retirer l'accès" style="cursor:pointer;color:#ff5b89;margin-left:auto;">✕</span>`;
+                return `<div style="display:flex;align-items:center;gap:6px;font-size:0.76rem;background:rgba(0,243,255,0.08);padding:5px 8px;border-radius:6px;margin:2px 0;">
+                    <span>💬 <code>${c}</code></span>
+                    <span style="opacity:0.6;">→ compte</span>
+                    <select data-bind="${c}" class="ath-ctrl" style="padding:2px 6px;font-size:0.74rem;"><option value="">(défaut)</option>${opts}</select>
+                    ${revoke}
+                </div>`;
+            }).join("");
         }
         box.innerHTML = html;
         box.querySelectorAll("[data-approve]").forEach(b => b.addEventListener("click", async () => {
@@ -3992,6 +4016,9 @@ async function loadPairing() {
         box.querySelectorAll("[data-revoke]").forEach(b => b.addEventListener("click", async () => {
             await apiFetch("/api/telegram/pairing/revoke", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: b.getAttribute("data-revoke") }) });
             loadPairing();
+        }));
+        box.querySelectorAll("[data-bind]").forEach(sel => sel.addEventListener("change", async () => {
+            await apiFetch("/api/telegram/pairing/user", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: sel.getAttribute("data-bind"), username: sel.value }) });
         }));
     } catch (e) { box.innerHTML = `<div style="color:#ff5b89;font-size:0.72rem;">${e}</div>`; }
 }

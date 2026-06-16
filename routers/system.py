@@ -118,6 +118,11 @@ class PairingActionRequest(BaseModel):
     chat_id: str = ""
 
 
+class PairingUserRequest(BaseModel):
+    chat_id: str
+    username: str = ""   # vide = délier (revient au compte par défaut)
+
+
 @router.get("/api/telegram/pairing")
 async def telegram_pairing_status():
     """État du DM pairing Telegram (demandes en attente, contacts approuvés)."""
@@ -148,3 +153,27 @@ async def telegram_pairing_revoke(req: PairingActionRequest):
     from core import telegram_pairing
     ok = telegram_pairing.revoke_chat(req.chat_id) if req.chat_id else False
     return {"status": "success" if ok else "not_found", "pairing": telegram_pairing.status()}
+
+
+@router.get("/api/telegram/pairing/users")
+async def telegram_pairing_users_list():
+    """Comptes Athena disponibles pour lier un chat Telegram (agenda/config/mémoire par compte)."""
+    from core import telegram_pairing
+    try:
+        from core.users import user_store
+        users = [u.get("username") for u in user_store.list() if u.get("username")]
+    except Exception:
+        users = []
+    if "local" not in users:
+        users = ["local"] + users
+    return {"users": users, "bindings": telegram_pairing.status().get("users", {})}
+
+
+@router.post("/api/telegram/pairing/user")
+async def telegram_pairing_set_user(req: PairingUserRequest):
+    """Lie (ou délie) un chat Telegram à un compte Athena."""
+    from core import telegram_pairing
+    if not req.chat_id:
+        raise HTTPException(status_code=400, detail="chat_id requis.")
+    telegram_pairing.set_user(req.chat_id, req.username)
+    return {"status": "success", "pairing": telegram_pairing.status()}

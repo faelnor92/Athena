@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.14.4] - 2026-06-16
+### Fixed
+- **Telegram voyait le mauvais agenda/compte** : toutes les requêtes Telegram s'exécutaient en tant qu'utilisateur « local », alors que l'agenda/config/mémoire sont par compte. Du coup, en demandant par Telegram, Athena ne voyait que l'agenda local et jamais ton CalDAV. On peut désormais **lier chaque chat Telegram à un compte Athena** (Réglages → Messageries) : les messages de ce chat utilisent l'agenda, la config et la mémoire de CE compte. Liaison possible pour les chats approuvés ET configurés ; variable `TELEGRAM_DEFAULT_USER` comme repli.
+
+
 ## [0.14.3] - 2026-06-16
 ### Changed
 - **Modèles Vision et Rédaction = liste déroulante dynamique** (comme les agents) : les modèles disponibles sont récupérés en direct depuis l'endpoint (`/api/config/models`), groupés par fournisseur. La valeur courante reste préservée ; un modèle saisi manuellement et absent de la liste est conservé (« actuel »).
