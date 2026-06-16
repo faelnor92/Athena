@@ -17,7 +17,8 @@ def _legacy_file() -> str:
 
 
 def read_lists() -> Dict[str, List[Dict[str, Any]]]:
-    """Lit les listes de l'utilisateur courant (migre l'ancien fichier JSON si présent)."""
+    """Lit les listes de l'utilisateur courant (migre l'ancien fichier JSON si présent).
+    Si la sync Nextcloud Notes est active, rafraîchit depuis Nextcloud (source de vérité)."""
     user = current_user_key()
     data = shared_store.get(_NS, user)
     if data is None:
@@ -32,7 +33,47 @@ def read_lists() -> Dict[str, List[Dict[str, Any]]]:
             except Exception:
                 data = {}
             shared_store.set(_NS, user, data)  # persiste la migration (une seule fois)
-    return data if isinstance(data, dict) else {}
+    data = data if isinstance(data, dict) else {}
+    _sync_pull(data, user)
+    return data
+
+
+def _sync_pull(data: Dict[str, List[Dict[str, Any]]], user: str) -> None:
+    """Réconcilie les listes avec Nextcloud (si activé). Best-effort, jamais destructif
+    sur erreur réseau. Persiste localement ce qui a changé."""
+    try:
+        from tools import lists_sync
+        if not lists_sync.is_enabled():
+            return
+        changed = False
+        # Listes connues (locales) : rafraîchies depuis leur note.
+        for name in list(data.keys()):
+            pulled = lists_sync.pull(name, data.get(name, []))
+            if pulled is not None and pulled != data.get(name):
+                data[name] = pulled
+                changed = True
+        # Listes présentes seulement côté Nextcloud (créées dans l'app Notes).
+        for name in lists_sync.list_remote_notes():
+            if name not in data:
+                pulled = lists_sync.pull(name, [])
+                if pulled:
+                    data[name] = pulled
+                    changed = True
+        if changed:
+            shared_store.set(_NS, user, data)
+    except Exception:
+        pass
+
+
+def _sync_push(list_name: str) -> None:
+    """Pousse une liste vers Nextcloud après mutation (best-effort, sans redéclencher de pull)."""
+    try:
+        from tools import lists_sync
+        if lists_sync.is_enabled():
+            local = shared_store.get(_NS, current_user_key()) or {}
+            lists_sync.push(list_name, local.get(list_name.lower().strip(), []))
+    except Exception:
+        pass
 
 
 def write_lists(data: Dict[str, List[Dict[str, Any]]]):
@@ -55,6 +96,7 @@ def add_list_item(list_name: str, item_text: str) -> Dict[str, Any]:
         data.setdefault(list_name, []).append(item)
         return data
     _mutate(_add)
+    _sync_push(list_name)
     return item
 
 
@@ -76,6 +118,8 @@ def toggle_list_item(list_name: str, item_id: str) -> bool:
                 break
         return data
     _mutate(_toggle)
+    if outcome["ok"]:
+        _sync_push(list_name)
     return outcome["ok"]
 
 
@@ -91,4 +135,6 @@ def delete_list_item(list_name: str, item_id: str) -> bool:
             outcome["ok"] = len(data[list_name]) < before
         return data
     _mutate(_del)
+    if outcome["ok"]:
+        _sync_push(list_name)
     return outcome["ok"]

@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.14.6] - 2026-06-16
+### Added
+- **Listes (courses, tâches…) synchronisées avec Nextcloud Notes** (optionnel, par-utilisateur). Quand c'est activé (Réglages → Nextcloud), Nextcloud devient la source de vérité : une note Markdown (cases à cocher) par liste dans le dossier Notes, synchro **2 sens** (cocher/ajouter/supprimer depuis l'app Notes mobile se répercute dans Athena, et inversement). Réconciliation par texte pour préserver les éléments ; garde-fou anti-perte (jamais d'écrasement du local si Nextcloud est injoignable). Désactivé = listes purement locales (inchangé).
+
+
 ## [0.14.5] - 2026-06-16
 ### Added
 - **Vocal : routage par locuteur vers SON compte.** Le satellite reconnaît qui parle (empreinte vocale, `voice/speaker_id.py`) et transmet `as_user` à `/api/chat/stream` : agenda, listes et mémoire deviennent ceux du membre du foyer identifié. Mapping optionnel locuteur→compte via `VOICE_SPEAKER_ACCOUNTS` (JSON), sinon le nom enrôlé sert de compte. Sécurité : `as_user` honoré seulement si l'auth est désactivée (mono-poste) ou si l'appelant est admin.

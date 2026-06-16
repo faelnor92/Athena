@@ -19,6 +19,8 @@ class SaveNextcloudRequest(BaseModel):
     url: str = ""
     username: str = ""
     password: str = ""
+    lists_sync: bool = False        # synchroniser listes/tâches avec Nextcloud Notes
+    lists_folder: str = "Notes"     # dossier de l'app Notes
 
 
 def _allowlist_hint(url: str) -> str:
@@ -47,6 +49,8 @@ async def get_config_nextcloud() -> Dict[str, Any]:
         "username": user_config.get(nextcloud.K_USER, "") or "",
         "password": masked,
         "configured": nextcloud.is_configured(),
+        "lists_sync": str(user_config.get("LISTS_SYNC_NEXTCLOUD", "") or "").strip().lower() in ("1", "true", "yes", "on"),
+        "lists_folder": user_config.get("LISTS_NEXTCLOUD_FOLDER", "") or "Notes",
     }
 
 
@@ -55,6 +59,8 @@ async def save_config_nextcloud(req: SaveNextcloudRequest) -> Dict[str, str]:
     updates = {
         nextcloud.K_URL: (req.url or "").strip().rstrip("/"),
         nextcloud.K_USER: (req.username or "").strip(),
+        "LISTS_SYNC_NEXTCLOUD": "true" if req.lists_sync else "false",
+        "LISTS_NEXTCLOUD_FOLDER": (req.lists_folder or "Notes").strip().strip("/") or "Notes",
     }
     # Ne pas écraser le mot de passe s'il est masqué (non modifié).
     if req.password and "..." not in req.password and req.password != "***":

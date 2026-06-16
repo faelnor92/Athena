@@ -5757,6 +5757,10 @@ async function loadNextcloudConfig() {
         document.getElementById("nc-url").value = c.url || "";
         document.getElementById("nc-user").value = c.username || "";
         document.getElementById("nc-password").value = c.password || "";
+        const ls = document.getElementById("nc-lists-sync");
+        if (ls) ls.checked = !!c.lists_sync;
+        const lf = document.getElementById("nc-lists-folder");
+        if (lf) lf.value = c.lists_folder || "Notes";
     } catch (e) { /* silencieux */ }
     // Allowlist anti-SSRF (réglage global, dans .env).
     try {
@@ -5774,6 +5778,8 @@ async function saveNextcloudConfig() {
         url: document.getElementById("nc-url").value.trim(),
         username: document.getElementById("nc-user").value.trim(),
         password: document.getElementById("nc-password").value.trim(),
+        lists_sync: !!document.getElementById("nc-lists-sync")?.checked,
+        lists_folder: (document.getElementById("nc-lists-folder")?.value || "Notes").trim() || "Notes",
     };
     try {
         // 1) Allowlist anti-SSRF (global, .env) — enregistrée AVANT pour que le test fonctionne.
