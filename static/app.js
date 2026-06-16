@@ -2923,69 +2923,83 @@ if (modalTabPricing && panePricing) {
 // ONGLET : COMPORTEMENT & SÉCURITÉ (réglages data-driven, écrits dans .env)
 // -------------------------------------------------------------------------
 const BEHAVIOR_SCHEMA = [
-    { section: "Exécution & garde-fous", fields: [
-        { key: "SANDBOX_MODE", label: "Sandbox d'exécution de code/commandes", type: "select", options: [["docker", "Docker (isolé)"], ["off", "Local (NON isolé)"]], def: "docker" },
-        { key: "SELF_IMPROVE", label: "Auto-amélioration (retours d'expérience)", type: "toggle", def: "true" },
-        { key: "LLM_MAX_RETRIES", label: "Retries LLM sur erreur", type: "number", def: "2" },
-        { key: "SWARM_MAX_PARALLEL", label: "Agents/outils en parallèle (max)", type: "number", def: "4" },
-        { key: "SWARM_MAX_SECONDS", label: "Budget temps par requête (s, 0 = ∞)", type: "number", def: "0" },
-        { key: "SWARM_MAX_TOKENS", label: "Budget tokens par requête (0 = ∞)", type: "number", def: "0" },
-        { key: "BUDGET_DAILY_LIMIT", label: "Alerte si coût du jour dépasse (€, 0 = off)", type: "number", def: "0" },
+    { section: "Exécution & garde-fous", icon: "⚙️", fields: [
+        { key: "SANDBOX_MODE", label: "Sandbox d'exécution", help: "Où s'exécute le code/les commandes. « Docker » = isolé (recommandé). « Local » = sur la machine, sans isolation.", type: "select", options: [["docker", "Docker (isolé)"], ["off", "Local (NON isolé)"]], def: "docker" },
+        { key: "SELF_IMPROVE", label: "Auto-amélioration", help: "Athena tire des leçons de ses tâches pour s'améliorer au fil du temps.", type: "toggle", def: "true" },
+        { key: "LLM_MAX_RETRIES", label: "Réessais en cas d'erreur LLM", help: "Nombre de tentatives si le modèle échoue (réseau, surcharge).", type: "number", def: "2" },
+        { key: "SWARM_MAX_PARALLEL", label: "Tâches en parallèle (max)", help: "Combien d'outils/agents peuvent travailler en même temps.", type: "number", def: "4" },
+        { key: "SWARM_MAX_SECONDS", label: "Temps max par requête", help: "Durée maximale d'une réponse, en secondes. 0 = illimité.", type: "number", def: "0" },
+        { key: "SWARM_MAX_TOKENS", label: "Budget tokens par requête", help: "Limite de tokens consommés par réponse. 0 = illimité.", type: "number", def: "0" },
+        { key: "BUDGET_DAILY_LIMIT", label: "Alerte budget quotidien (€)", help: "Te prévient quand le coût du jour dépasse ce montant. 0 = désactivé.", type: "number", def: "0" },
     ]},
-    { section: "Sécurité", fields: [
-        { key: "AUTO_APPROVE_SENSITIVE", label: "Auto-approuver les outils sensibles (global)", type: "toggle", def: "false" },
-        { key: "SENSITIVE_TOOLS", label: "Outils sensibles (CSV ; vide = défaut)", type: "text", def: "" },
-        { key: "ADMIN_PASSWORD", label: "Mot de passe admin (réseau)", type: "password", def: "" },
-        { key: "HOST", label: "Écoute : 127.0.0.1 (local) ou 0.0.0.0 (réseau)", type: "text", def: "0.0.0.0" },
-        { key: "PORT", label: "Port", type: "number", def: "8000" },
-        { key: "ALLOWED_ORIGINS", label: "Origines CORS autorisées (CSV ; vide = local)", type: "text", def: "" },
-        { key: "SESSION_TTL_HOURS", label: "Durée de validité d'une session (heures)", type: "number", def: "168" },
-        { key: "TELEGRAM_REQUIRE_PAIRING", label: "Exiger un pairage Telegram (DM)", type: "toggle", def: "true" },
-        { key: "ACTIVE_WORKSPACE_DIR", label: "Dossier de travail (vide = workspace/)", type: "text", def: "" },
+    { section: "Sécurité", icon: "🔒", fields: [
+        { key: "AUTO_APPROVE_SENSITIVE", label: "Auto-approuver les actions sensibles", help: "Si activé, Athena exécute les actions risquées (shell, suppression…) SANS te demander. Déconseillé.", type: "toggle", def: "false" },
+        { key: "SENSITIVE_TOOLS", label: "Liste des outils sensibles", help: "Outils nécessitant une confirmation (séparés par des virgules). Vide = liste par défaut.", type: "text", def: "" },
+        { key: "ADMIN_PASSWORD", label: "Mot de passe administrateur", help: "Protège l'accès quand Athena est exposée sur le réseau. Vide = pas de mot de passe.", type: "password", def: "" },
+        { key: "HOST", label: "Interface d'écoute", help: "127.0.0.1 = accessible seulement sur cette machine. 0.0.0.0 = accessible depuis le réseau local.", type: "text", def: "0.0.0.0" },
+        { key: "PORT", label: "Port réseau", help: "Port sur lequel Athena répond (défaut 8000).", type: "number", def: "8000" },
+        { key: "ALLOWED_ORIGINS", label: "Origines web autorisées (CORS)", help: "Sites autorisés à appeler l'API (séparés par des virgules). Vide = usage local.", type: "text", def: "" },
+        { key: "SESSION_TTL_HOURS", label: "Durée d'une connexion", help: "Au bout de combien d'heures il faut se reconnecter.", type: "number", def: "168" },
+        { key: "TELEGRAM_REQUIRE_PAIRING", label: "Pairage Telegram obligatoire", help: "Exige une autorisation avant qu'un compte Telegram puisse parler à Athena.", type: "toggle", def: "true" },
+        { key: "ACTIVE_WORKSPACE_DIR", label: "Dossier de travail", help: "Où Athena lit/écrit les fichiers. Vide = dossier « workspace/ ».", type: "text", def: "" },
     ]},
-    { section: "Orchestration & agents (avancé)", fields: [
-        { key: "DELEGATION_ROUTER", label: "Aiguillage LLM vers le bon spécialiste", type: "toggle", def: "true" },
-        { key: "FAST_MODEL", label: "Modèle rapide pour micro-décisions (vide = modèle de l'agent)", type: "text", def: "" },
-        { key: "FALLBACK_MODELS", label: "Modèles de repli si échec (CSV)", type: "text", def: "" },
-        { key: "AUTO_CRITIC", label: "Auto-critique des réponses", type: "toggle", def: "false" },
-        { key: "USER_MODELING", label: "Profil utilisateur évolutif", type: "toggle", def: "true" },
-        { key: "SELF_IMPROVE_SKILLS", label: "Induction/réparation auto de compétences", type: "toggle", def: "true" },
-        { key: "TOOL_SCRIPTS", label: "Autoriser run_tool_script (enchaînement d'outils)", type: "toggle", def: "true" },
-        { key: "AUTO_CONTINUE", label: "Agir auto après une intention annoncée (sans attendre « vas-y »)", type: "toggle", def: "true" },
-        { key: "AUTO_CONTINUE_MAX", label: "Relances auto max par tour", type: "number", def: "2" },
-        { key: "PROMPT_CACHE", label: "Cache de prompt", type: "select", options: [["auto", "Auto (Anthropic)"], ["on", "Forcé"], ["off", "Désactivé"]], def: "auto" },
-        { key: "EXPERIENCE_MAX", label: "Retours d'expérience conservés (max)", type: "number", def: "50" },
-        { key: "DOC_MAX_CHUNKS", label: "Passages max analysés par document", type: "number", def: "60" },
+    { section: "Comportement d'Athena", icon: "🤖", fields: [
+        { key: "AUTO_CONTINUE", label: "Agir sans attendre « vas-y »", help: "Quand Athena annonce une action, elle l'exécute directement (sauf si elle te pose une question).", type: "toggle", def: "true" },
+        { key: "AUTO_CONTINUE_MAX", label: "Relances auto max", help: "Nombre de relances automatiques par tour (anti-boucle).", type: "number", def: "2" },
+        { key: "DELEGATION_ROUTER", label: "Aiguillage vers le bon agent", help: "Athena confie la tâche au spécialiste le plus adapté (Codeur, Auteur…).", type: "toggle", def: "true" },
+        { key: "AUTO_CRITIC", label: "Auto-critique des réponses", help: "Athena relit et corrige sa réponse avant de te la donner (plus lent, plus fiable).", type: "toggle", def: "false" },
+        { key: "USER_MODELING", label: "Profil utilisateur évolutif", help: "Athena retient tes préférences pour personnaliser ses réponses.", type: "toggle", def: "true" },
+        { key: "SELF_IMPROVE_SKILLS", label: "Création/réparation d'outils auto", help: "Athena peut se créer de nouveaux outils (avec validation) et réparer ceux qui cassent.", type: "toggle", def: "true" },
+        { key: "TOOL_SCRIPTS", label: "Enchaînement d'outils par script", help: "Permet à Athena d'enchaîner plusieurs outils en un seul script (tâches complexes).", type: "toggle", def: "true" },
+        { key: "FAST_MODEL", label: "Modèle rapide (micro-décisions)", help: "Petit modèle pour les décisions internes rapides. Vide = le modèle de l'agent.", type: "text", def: "" },
+        { key: "FALLBACK_MODELS", label: "Modèles de secours", help: "Modèles essayés si le principal échoue (séparés par des virgules).", type: "text", def: "" },
+        { key: "PROMPT_CACHE", label: "Cache de prompt", help: "Réutilise le contexte pour aller plus vite / coûter moins (Anthropic).", type: "select", options: [["auto", "Auto"], ["on", "Forcé"], ["off", "Désactivé"]], def: "auto" },
+        { key: "EXPERIENCE_MAX", label: "Souvenirs d'expérience gardés", help: "Nombre de retours d'expérience conservés pour l'auto-amélioration.", type: "number", def: "50" },
+        { key: "DOC_MAX_CHUNKS", label: "Passages max par document", help: "Quand Athena analyse un long document, combien de passages au maximum.", type: "number", def: "60" },
     ]},
-    { section: "Mémoire", fields: [
-        { key: "MEMORY_MAX_MESSAGES", label: "Compaction au-delà de N messages (0 = off)", type: "number", def: "40" },
-        { key: "MEMORY_KEEP_RECENT", label: "Messages récents gardés mot pour mot", type: "number", def: "12" },
+    { section: "Mémoire", icon: "🧠", fields: [
+        { key: "MEMORY_MAX_MESSAGES", label: "Compaction de conversation", help: "Au-delà de N messages, la conversation est résumée pour rester rapide. 0 = jamais.", type: "number", def: "40" },
+        { key: "MEMORY_KEEP_RECENT", label: "Messages récents gardés intacts", help: "Combien de messages récents sont conservés mot pour mot lors de la compaction.", type: "number", def: "12" },
+        { key: "EMBEDDING_PROVIDER", label: "Moteur de recherche mémoire", help: "« Local » marche partout sans config. « Endpoint » = meilleure recherche (ex. bge-m3) si tu as un serveur.", type: "select", def: "local",
+          options: [["local", "Local intégré (défaut)"], ["http", "Endpoint (meilleur, ex. bge-m3)"]] },
+        { key: "EMBEDDING_MODEL", label: "Modèle d'embedding (si endpoint)", help: "Ex. bge-m3 ou qwen3-embedding. Utilisé seulement avec le moteur « Endpoint ».", type: "text", def: "bge-m3" },
+        { key: "EMBEDDING_API_BASE", label: "URL des embeddings", help: "Vide = réutilise l'URL de ton modèle principal (CUSTOM_LLM_API_BASE).", type: "text", def: "" },
     ]},
-    { section: "Voix expressive", fields: [
-        { key: "VOICE_EMOTION_TAGS", label: "Émotions vocales (le LLM colore sa voix)", type: "toggle", def: "false" },
-        { key: "VOICE_TTS_HTTP_URL", label: "Serveur TTS expressif (URL, ex. XTTS/Chatterbox)", type: "text", def: "" },
-        { key: "VOICE_TTS_VOICE", label: "Voix / locuteur du TTS expressif", type: "text", def: "" },
+    { section: "Voix", icon: "🔊", fields: [
+        { key: "VOICE_EMOTION_TAGS", label: "Voix émotionnelle", help: "Athena colore sa voix selon le ton (joie, empathie…).", type: "toggle", def: "true" },
+        { key: "VOICE_TTS_HTTP_URL", label: "Serveur de voix (TTS)", help: "URL du serveur de synthèse vocale (Kokoro, XTTS, Fish-Speech…).", type: "text", def: "" },
+        { key: "VOICE_TTS_VOICE", label: "Voix utilisée", help: "Nom de la voix/locuteur (se choisit aussi dans Réglages → Satellites).", type: "text", def: "" },
     ]},
-    { section: "Rédaction (romans)", fields: [
-        { key: "DOCUMENT_MODEL", label: "Modèle pour réviser/traduire les romans (vide = modèle d'Athena)", type: "text", def: "" },
+    { section: "Rédaction (romans)", icon: "✍️", fields: [
+        { key: "DOCUMENT_MODEL", label: "Modèle pour réviser/traduire", help: "Modèle utilisé par l'atelier d'écriture. Vide = le modèle d'Athena. Ex. custom/gemma pour un rendu plus littéraire.", type: "text", def: "" },
     ]},
-    { section: "Vision (analyse d'images)", fields: [
-        { key: "VISION_MODEL", label: "Modèle vision multimodal (ex. custom/chat-gemma)", type: "text", def: "custom/chat-gemma" },
-        { key: "COMPUTER_USE", label: "Capture d'écran (machine AVEC écran — pas un serveur headless)", type: "toggle", def: "false" },
+    { section: "Vision (images)", icon: "👁️", fields: [
+        { key: "VISION_MODEL", label: "Modèle d'analyse d'images", help: "Modèle multimodal qui « voit » les images (ex. custom/chat-gemma).", type: "text", def: "custom/chat-gemma" },
+        { key: "COMPUTER_USE", label: "Capture d'écran", help: "Permet à Athena de capturer/analyser l'écran. Inutile sur un serveur sans écran.", type: "toggle", def: "false" },
     ]},
-    { section: "Mémoire — Embeddings (RAG)", fields: [
-        { key: "EMBEDDING_PROVIDER", label: "Moteur d'embedding", type: "select", def: "local",
-          options: [["local", "Local intégré (défaut, marche partout)"], ["http", "Endpoint OpenAI-compatible (meilleur, ex. bge-m3)"]] },
-        { key: "EMBEDDING_MODEL", label: "Modèle embedding si endpoint (bge-m3, qwen3-embedding…)", type: "text", def: "bge-m3" },
-        { key: "EMBEDDING_API_BASE", label: "URL embeddings (vide = même que CUSTOM_LLM_API_BASE)", type: "text", def: "" },
-    ]},
-    { section: "Présence / follow-me (optionnel)", fields: [
-        { key: "PRESENCE_ENTITY", label: "Entité HA de pièce courante (vide = désactivé)", type: "text", def: "" },
-    ]},
-    { section: "Automatisation (n8n)", fields: [
-        { key: "N8N_WORKFLOWS", label: "Workflows autorisés — JSON {\"nom\":\"url webhook\"}", type: "text", def: "" },
+    { section: "Domotique & automatisation", icon: "🏠", fields: [
+        { key: "PRESENCE_ENTITY", label: "Pièce courante (Home Assistant)", help: "Entité HA indiquant la pièce où tu es (pour « follow-me »). Vide = désactivé.", type: "text", def: "" },
+        { key: "N8N_WORKFLOWS", label: "Workflows n8n autorisés", help: "JSON {\"nom\": \"url du webhook\"} des automatisations qu'Athena peut déclencher.", type: "text", def: "" },
     ]},
 ];
+
+function _behaviorFieldControl(f, env) {
+    const has = env[f.key] !== undefined && env[f.key] !== "";
+    const cur = has ? env[f.key] : f.def;
+    if (f.type === "toggle") {
+        const on = String(cur).toLowerCase() === "true" || cur === "1";
+        // Interrupteur stylé (switch) plutôt qu'une case à cocher.
+        return `<label class="ath-switch"><input type="checkbox" class="behavior-input" data-key="${f.key}" data-type="toggle" ${on ? "checked" : ""}><span class="ath-slider"></span></label>`;
+    }
+    if (f.type === "select") {
+        return `<select class="behavior-input ath-ctrl" data-key="${f.key}" data-type="select">${f.options.map(([v, l]) => `<option value="${v}" ${String(cur) === v ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+    }
+    if (f.type === "password") {
+        const ph = (env[f.key] && String(env[f.key]).includes("...")) ? "Défini (masqué) — vide = inchangé" : "Aucun";
+        return `<input type="password" class="behavior-input ath-ctrl" data-key="${f.key}" data-type="password" placeholder="${ph}">`;
+    }
+    return `<input type="${f.type === "number" ? "number" : "text"}" class="behavior-input ath-ctrl" data-key="${f.key}" data-type="${f.type}" value="${String(cur).replace(/"/g, "&quot;")}">`;
+}
 
 async function loadConfigBehaviorPane() {
     const container = document.getElementById("behavior-fields");
@@ -2993,30 +3007,49 @@ async function loadConfigBehaviorPane() {
     let env = {};
     try { const r = await apiFetch("/api/config/env"); if (r.ok) env = await r.json(); } catch (e) {}
     container.innerHTML = "";
+
+    // Barre de recherche (filtre les réglages en direct).
+    const search = document.createElement("input");
+    search.type = "search";
+    search.placeholder = "🔎 Rechercher un réglage…";
+    search.className = "ath-settings-search";
+    container.appendChild(search);
+
     BEHAVIOR_SCHEMA.forEach(group => {
-        const h = document.createElement("h5");
-        h.textContent = group.section;
-        h.style.cssText = "margin: 10px 0 2px; color: var(--accent-cyan); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em;";
-        container.appendChild(h);
+        const card = document.createElement("div");
+        card.className = "ath-settings-card";
+        const hdr = document.createElement("div");
+        hdr.className = "ath-settings-sumr";
+        hdr.innerHTML = `<span>${group.icon || "•"} ${group.section}</span><span class="ath-chev">▾</span>`;
+        const body = document.createElement("div");
+        body.className = "ath-settings-body";
+        hdr.addEventListener("click", () => card.classList.toggle("collapsed"));
+        card.appendChild(hdr);
         group.fields.forEach(f => {
-            const has = env[f.key] !== undefined && env[f.key] !== "";
-            const cur = has ? env[f.key] : f.def;
             const row = document.createElement("div");
-            row.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 12px;";
-            let input;
-            if (f.type === "toggle") {
-                const on = String(cur).toLowerCase() === "true" || cur === "1";
-                input = `<input type="checkbox" class="behavior-input" data-key="${f.key}" data-type="toggle" ${on ? "checked" : ""} style="width: 18px; height: 18px; cursor: pointer;">`;
-            } else if (f.type === "select") {
-                input = `<select class="behavior-input" data-key="${f.key}" data-type="select" style="max-width: 210px;">${f.options.map(([v, l]) => `<option value="${v}" ${String(cur) === v ? "selected" : ""}>${l}</option>`).join("")}</select>`;
-            } else if (f.type === "password") {
-                const ph = (env[f.key] && String(env[f.key]).includes("...")) ? "Défini (masqué) — vide = inchangé" : "Aucun (auth désactivée)";
-                input = `<input type="password" class="behavior-input" data-key="${f.key}" data-type="password" placeholder="${ph}" style="max-width: 210px;">`;
-            } else {
-                input = `<input type="${f.type === "number" ? "number" : "text"}" class="behavior-input" data-key="${f.key}" data-type="${f.type}" value="${String(cur).replace(/"/g, "&quot;")}" style="max-width: 210px;">`;
-            }
-            row.innerHTML = `<label style="font-size: 0.8rem; flex: 1;">${f.label}</label>${input}`;
-            container.appendChild(row);
+            row.className = "ath-setting-row";
+            row.dataset.search = (f.label + " " + (f.help || "") + " " + f.key).toLowerCase();
+            row.innerHTML = `<div class="ath-setting-txt"><div class="ath-setting-label">${f.label}</div>`
+                + (f.help ? `<div class="ath-setting-help">${f.help}</div>` : "")
+                + `</div><div class="ath-setting-ctrl">${_behaviorFieldControl(f, env)}</div>`;
+            body.appendChild(row);
+        });
+        card.appendChild(body);
+        container.appendChild(card);
+    });
+
+    // Filtre live : masque les lignes (et les sections vides) qui ne matchent pas.
+    search.addEventListener("input", () => {
+        const q = search.value.trim().toLowerCase();
+        container.querySelectorAll(".ath-settings-card").forEach(card => {
+            let visible = 0;
+            card.querySelectorAll(".ath-setting-row").forEach(row => {
+                const match = !q || row.dataset.search.includes(q);
+                row.style.display = match ? "" : "none";
+                if (match) visible++;
+            });
+            card.style.display = visible ? "" : "none";
+            if (q) card.classList.remove("collapsed");  // déplie les sections qui matchent
         });
     });
 }

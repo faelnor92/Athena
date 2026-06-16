@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.14.1] - 2026-06-16
+### Changed
+- **Réglages « Comportement » repensés (user-friendly)** : sections en cartes repliables avec icône, chaque réglage accompagné d'une description en français clair, interrupteurs visuels (on/off), barre de recherche pour filtrer les réglages. Rendu responsive vérifié (desktop + mobile).
+
+
 ## v0.14.0 (UI responsive : utilisable sur téléphone/tablette)
 
 ### 📱 Correctif majeur du layout mobile
