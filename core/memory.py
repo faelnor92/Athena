@@ -19,46 +19,58 @@ logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICA
 #   EMBEDDING_API_BASE = défaut CUSTOM_LLM_API_BASE ; EMBEDDING_API_KEY = défaut CUSTOM_LLM_API_KEY
 # Le défaut LOCAL (all-MiniLM intégré) garantit que l'app marche sans endpoint pour ceux qui la
 # téléchargent ; ceux qui ont un endpoint multilingue (bge-m3…) gagnent en qualité (FR).
-class _HttpEmbeddingFunction:
-    """Fonction d'embedding ChromaDB qui appelle un endpoint OpenAI-compatible /v1/embeddings.
-    Callable : (input: list[str]) -> list[list[float]]. Sans dépendance (requests)."""
+try:
+    from chromadb.api.types import EmbeddingFunction as _ChromaEF
+except Exception:  # vieux chromadb / import partiel : repli sur une base neutre
+    class _ChromaEF:  # type: ignore
+        pass
+
+
+class _HttpEmbeddingFunction(_ChromaEF):
+    """Embedding ChromaDB via un endpoint OpenAI-compatible /v1/embeddings.
+
+    On HÉRITE de chromadb EmbeddingFunction → on bénéficie de embed_query / embed_with_retries
+    (qui délèguent à __call__ avec la bonne signature `input`). On n'implémente que __call__,
+    name() et get_config (persistance de la collection en chromadb 1.x)."""
+
     def __init__(self, base: str, key: str, model: str):
         self._base = base.rstrip("/")
         self._key = key
         self._model = model
-
-    def name(self) -> str:                  # requis par certaines versions de ChromaDB
-        return f"http_{self._model}"
 
     def _embed(self, texts):
         import requests
         texts = [str(t) for t in (texts or [])]
         if not texts:
             return []
-        url = self._base + "/embeddings"
         headers = {"Content-Type": "application/json"}
         if self._key:
             headers["Authorization"] = f"Bearer {self._key}"
-        r = requests.post(url, json={"model": self._model, "input": texts},
+        r = requests.post(self._base + "/embeddings",
+                          json={"model": self._model, "input": texts},
                           headers=headers, timeout=30)
         r.raise_for_status()
         data = r.json().get("data", [])
-        # On respecte l'ordre via l'index si fourni (certains serveurs ne garantissent pas l'ordre).
         if data and isinstance(data[0], dict) and "index" in data[0]:
             data = sorted(data, key=lambda d: d.get("index", 0))
         return [d["embedding"] for d in data]
 
-    # ChromaDB natif appelle __call__ ; certaines versions/intégrations attendent l'interface
-    # « LangChain » (embed_documents / embed_query). On expose les trois → compatible partout.
     def __call__(self, input):
+        # ChromaDB 1.x appelle TOUJOURS avec le paramètre `input` (liste de textes).
         return self._embed(input)
 
-    def embed_documents(self, texts):
-        return self._embed(texts)
+    def name(self) -> str:
+        return "http_embedding"
 
-    def embed_query(self, text):
-        out = self._embed([text])
-        return out[0] if out else []
+    # Persistance de la config de la collection (chromadb 1.x). On NE persiste PAS la clé.
+    def get_config(self):
+        return {"base": self._base, "model": self._model}
+
+    @classmethod
+    def build_from_config(cls, config):
+        import os as _os
+        return cls(config.get("base", ""), (_os.getenv("EMBEDDING_API_KEY", "")
+                   or _os.getenv("CUSTOM_LLM_API_KEY", "")), config.get("model", "bge-m3"))
 
 
 def _embedding_config():
