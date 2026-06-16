@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.13.11 (Skills auto : réseau + fichier autorisés, système bridé)
+
+### 🛠️ Politique de validation assouplie (création confirmée)
+- save_new_skill (créé À LA DEMANDE, confirmé par l'humain) accepte désormais le RÉSEAU
+  (requests/urllib/http…) et les FICHIERS (open/pathlib/shutil…) — utile pour des outils qui
+  appellent une API ou manipulent des fichiers. Le SYSTÈME reste BRIDÉ : subprocess, os.system,
+  os.popen/exec/spawn/fork, socket, ctypes, eval/exec/__import__ → refusés (utiliser
+  execute_bash_command pour le shell). Nouveau validate_skill ; l'AUTO-INDUCTION non supervisée
+  garde le validateur STRICT (fonction pure) — inchangé.
+
+
 ## v0.13.10 (Auto-création d'outils : Athena peut créer un outil quand il en manque)
 
 ### 🛠️ save_new_skill exposé à l'orchestrateur (proactif, validé)
