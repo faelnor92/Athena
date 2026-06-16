@@ -182,6 +182,33 @@ def _is_running(name: str) -> bool:
         return False
 
 
+def pause(key: str) -> bool:
+    """Gèle le conteneur dev `key` (docker pause) — fige mémoire/processus/fichiers temp.
+    Best-effort : renvoie True si la pause a réussi. Utilisé par la pile de contextes."""
+    if not key or not docker_available():
+        return False
+    name = container_name(key)
+    if not _is_running(name):
+        return False
+    try:
+        r = subprocess.run(["docker", "pause", name], capture_output=True, timeout=15)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def unpause(key: str) -> bool:
+    """Relance un conteneur dev `key` mis en pause (docker unpause). Best-effort."""
+    if not key or not docker_available():
+        return False
+    name = container_name(key)
+    try:
+        r = subprocess.run(["docker", "unpause", name], capture_output=True, timeout=15)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def _run_args(name: str, image: str) -> List[str]:
     ws = _workspace_dir()
     network = os.getenv("DEV_CONTAINER_NETWORK", "bridge").strip() or "bridge"

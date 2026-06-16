@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.16.0] - 2026-06-16
+### Added
+- **Context Stacker (« fil d'Ariane ») — pile de contextes (vers Jarvis).** Athena peut METTRE DE CÔTÉ la tâche en cours pour traiter une parenthèse, puis REPRENDRE exactement où elle s'était arrêtée. Outils orchestrateur : `open_context(sujet)` (PUSH), `close_context()` (POP), `list_contexts()`. S'appuie sur l'arbre de conversation natif (aucun snapshot lourd : on parque l'`active_node_id` et on repart sur une branche neuve) et **gèle/relance la sandbox Docker associée** (`docker pause`/`unpause`). Pile LIFO par session, persistée, imbrication supportée. Activable via `CONTEXT_STACK`.
+
+
 ## [0.15.1] - 2026-06-16
 ### Fixed
 - **Fiabilité du tool-calling (LLM qui « appelle » un outil en texte).** Le rattrapage des appels écrits en texte gère désormais le **JSON malformé** (virgules traînantes, quotes simples, None/True/False) et le **style Python** `outil({...})` / `outil()`, en plus des blocs ```json``` et balises `<tool_call>`. Et si le modèle DÉCRIT un appel sans le déclencher (et que rien n'est récupérable), Athena se **relance automatiquement** pour qu'il l'exécute vraiment au format structuré (`TOOLCALL_AUTOFIX`, borné par `TOOLCALL_FIX_MAX`). Anti faux-positif : ne s'active que si un outil réel est cité.
