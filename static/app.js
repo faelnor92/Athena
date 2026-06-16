@@ -7860,11 +7860,21 @@ function initMentionAutocomplete() {
                 e.preventDefault();
                 hideMentions();
             }
-        } else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-            // Entrée = ENVOYER ; Ctrl/Cmd/Maj+Entrée = saut de ligne (comportement défaut du textarea).
-            e.preventDefault();
-            if (typeof chatForm.requestSubmit === "function") chatForm.requestSubmit();
-            else chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
+        } else if (e.key === "Enter") {
+            if (e.ctrlKey || e.metaKey) {
+                // Ctrl/Cmd(+Maj)+Entrée = saut de ligne. Contrairement à Maj+Entrée, le
+                // textarea n'insère RIEN par défaut sur Ctrl+Entrée → on l'insère à la main.
+                e.preventDefault();
+                const s = chatInput.selectionStart, en = chatInput.selectionEnd, v = chatInput.value;
+                chatInput.value = v.slice(0, s) + "\n" + v.slice(en);
+                chatInput.selectionStart = chatInput.selectionEnd = s + 1;
+                chatInput.dispatchEvent(new Event("input")); // relance l'auto-grandissement
+            } else if (!e.shiftKey) {
+                // Entrée seule = ENVOYER (Maj+Entrée garde le saut de ligne natif).
+                e.preventDefault();
+                if (typeof chatForm.requestSubmit === "function") chatForm.requestSubmit();
+                else chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
+            }
         }
     });
     // Auto-grandissement du textarea (1 → plusieurs lignes), borné par max-height CSS.
