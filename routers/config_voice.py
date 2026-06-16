@@ -201,11 +201,13 @@ def _kokoro_voices_url() -> str:
 
 @router.get("/api/config/voice-tts")
 async def get_voice_tts() -> Dict[str, Any]:
-    """Réglages TTS courants (moteur, voix sélectionnée, dispo Kokoro)."""
+    """Réglages TTS courants (moteur, voix, URL serveur, émotion par marqueur, vitesse)."""
     return {
         "engine": os.getenv("VOICE_TTS_ENGINE", "http"),
         "voice": (os.getenv("VOICE_TTS_VOICE", "") or "").strip(),
         "http_url": (os.getenv("VOICE_TTS_HTTP_URL", "") or "").strip(),
+        "emotion_markers": os.getenv("VOICE_TTS_EMOTION_MARKERS", "false").lower() in ("true", "1", "yes"),
+        "speed": (os.getenv("VOICE_TTS_SPEED", "1.0") or "1.0").strip(),
     }
 
 
@@ -262,19 +264,34 @@ async def list_voices() -> Dict[str, Any]:
 
 class VoiceTtsSelect(BaseModel):
     voice: str = ""
+    http_url: str | None = None        # None = ne pas toucher ce réglage
+    emotion_markers: bool | None = None
+    speed: str | None = None
 
 
 @router.post("/api/config/voice-tts")
 async def set_voice_tts(req: VoiceTtsSelect) -> Dict[str, Any]:
-    """Choisit la voix TTS (partagée par le CHAT et les SATELLITES) → VOICE_TTS_VOICE."""
-    voice = (req.voice or "").strip()
-    try:
+    """Règle le TTS (voix + URL serveur + émotion par marqueur + vitesse), partagé CHAT +
+    SATELLITES. Les champs non fournis (None) sont laissés inchangés. Persisté en .env + à chaud."""
+    def _apply(key, val):
         from setup_wizard import set_env_var
-        set_env_var("VOICE_TTS_VOICE", voice)
+        set_env_var(key, val)
+        os.environ[key] = val
+    try:
+        _apply("VOICE_TTS_VOICE", (req.voice or "").strip())
+        if req.http_url is not None:
+            _apply("VOICE_TTS_HTTP_URL", req.http_url.strip())
+        if req.emotion_markers is not None:
+            _apply("VOICE_TTS_EMOTION_MARKERS", "true" if req.emotion_markers else "false")
+        if req.speed is not None:
+            try:
+                sp = max(0.5, min(2.0, float(str(req.speed).replace(",", "."))))
+            except Exception:
+                sp = 1.0
+            _apply("VOICE_TTS_SPEED", str(sp))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Écriture .env impossible : {e}")
-    os.environ["VOICE_TTS_VOICE"] = voice
-    return {"status": "success", "voice": voice}
+    return {"status": "success", "voice": (req.voice or "").strip()}
 
 
 class TtsSpeakRequest(BaseModel):

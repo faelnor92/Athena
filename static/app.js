@@ -3493,9 +3493,12 @@ if (_btnTtsRestart) _btnTtsRestart.addEventListener("click", async () => {
         if (st) st.textContent = "❌ " + e;
     }
 });
-// --- Sélecteur de voix Kokoro (partagé chat + satellites) ---------------------
+// --- Réglages voix/TTS (partagés chat + satellites) ---------------------------
 const _ttsVoiceSel = document.getElementById("tts-voice-select");
 const _ttsVoiceStatus = document.getElementById("tts-voice-status");
+const _ttsHttpUrl = document.getElementById("tts-http-url");
+const _ttsEmotion = document.getElementById("tts-emotion-markers");
+const _ttsSpeed = document.getElementById("tts-speed");
 let _ttsVoicesLoaded = false;
 async function loadTtsVoices() {
     if (!_ttsVoiceSel) return;
@@ -3506,10 +3509,14 @@ async function loadTtsVoices() {
         ]);
         const vd = await vr.json();
         const cd = await cr.json();
+        // Réglages serveur/émotion/vitesse
+        if (_ttsHttpUrl) _ttsHttpUrl.value = cd.http_url || "";
+        if (_ttsEmotion) _ttsEmotion.checked = !!cd.emotion_markers;
+        if (_ttsSpeed) _ttsSpeed.value = cd.speed || "1.0";
         const voices = vd.voices || [];   // [{id,label}]
         const current = (cd.voice || "").trim();
         if (!voices.length) {
-            _ttsVoiceSel.innerHTML = '<option value="">' + (vd.error || "Aucune voix (Kokoro injoignable)") + '</option>';
+            _ttsVoiceSel.innerHTML = '<option value="">' + (vd.error || "Aucune voix (serveur TTS injoignable)") + '</option>';
         } else {
             _ttsVoiceSel.innerHTML = voices.map(v =>
                 `<option value="${v.id}" ${v.id === current ? "selected" : ""}>${v.label || v.id}</option>`).join("");
@@ -3526,15 +3533,22 @@ const _btnTtsVoiceRefresh = document.getElementById("btn-tts-voice-refresh");
 if (_btnTtsVoiceRefresh) _btnTtsVoiceRefresh.addEventListener("click", () => { _ttsVoicesLoaded = false; loadTtsVoices(); });
 const _btnTtsVoiceSave = document.getElementById("btn-tts-voice-save");
 if (_btnTtsVoiceSave) _btnTtsVoiceSave.addEventListener("click", async () => {
-    const voice = _ttsVoiceSel ? _ttsVoiceSel.value : "";
+    const payload = {
+        voice: _ttsVoiceSel ? _ttsVoiceSel.value : "",
+        http_url: _ttsHttpUrl ? _ttsHttpUrl.value.trim() : null,
+        emotion_markers: _ttsEmotion ? _ttsEmotion.checked : null,
+        speed: _ttsSpeed ? _ttsSpeed.value : null,
+    };
     if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = "Enregistrement…";
     try {
         const r = await apiFetch("/api/config/voice-tts", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ voice })
+            body: JSON.stringify(payload)
         });
         const d = await r.json();
-        if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = r.ok ? ("✅ Voix « " + (d.voice || voice) + " » enregistrée (chat + satellites).") : ("❌ " + (d.detail || "erreur"));
+        if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = r.ok
+            ? "✅ Réglages voix enregistrés (chat + satellites). Si tu as changé l'URL du serveur, recharge les voix 🔄."
+            : ("❌ " + (d.detail || "erreur"));
     } catch (e) { if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = "❌ " + e; }
 });
 const _btnTtsVoiceTest = document.getElementById("btn-tts-voice-test");

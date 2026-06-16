@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.12.9 (Réglages TTS dans l'UI)
+
+### ⚙️ URL serveur TTS + émotion + vitesse réglables dans l'UI
+- Réglages → Satellites vocaux : en plus du menu de voix, on règle désormais depuis l'UI
+  l'URL du serveur TTS (VOICE_TTS_HTTP_URL), le toggle « Émotion par marqueur »
+  (VOICE_TTS_EMOTION_MARKERS) et la vitesse de base (VOICE_TTS_SPEED). Persisté en .env + à
+  chaud, partagé chat + satellites. Plus besoin d'éditer le .env à la main pour brancher
+  Kokoro/Fish-Speech/XTTS.
+
+
 ## v0.12.8 (Émotion par marqueur — prêt pour Fish-Speech)
 
 ### 🎭 [emotion:X] → marqueur natif « (sad) … » (émotion pilotée)
