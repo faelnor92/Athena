@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.13.3 (Fix def — embedding endpoint conforme à ChromaDB 1.x)
+
+### 🐛 Recherche RAG (embedding endpoint) enfin opérationnelle
+- L'embedding via endpoint plantait à la recherche : `_HttpEmbeddingFunction` n'héritait pas de
+  `chromadb.api.types.EmbeddingFunction` → erreurs « no attribute embed_query » puis
+  « embed_query() got unexpected keyword 'input' ». Corrigé en HÉRITANT de EmbeddingFunction
+  (chromadb 1.5.9) : on n'implémente que __call__(input)/name()/get_config ; embed_query &
+  embed_with_retries viennent de la base (signature `input` correcte). Testé store+search OK.
+
+
 ## v0.13.2 (Fix recherche RAG avec embedding endpoint)
 
 ### 🐛 « '_HttpEmbeddingFunction' object has no attribute 'embed_query' »
