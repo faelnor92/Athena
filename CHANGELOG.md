@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.19.1] - 2026-06-16
+### Fixed
+- **Sélecteur de voix affichait le dict brut** (`{'id': 'af_bella', ...}`) quand Kokoro renvoie des objets : `_voice_label` est désormais défensif (extrait l'ID même si un objet arrive) → libellés propres (« 🇺🇸 Bella (féminine) »). NB : nécessite un vrai redémarrage du service côté serveur.
+
+
 ## [0.19.0] - 2026-06-16
 ### Added
 - **Proactivité événementielle — agent « Vigie » (vers Jarvis).** Athena réagit à des événements POUSSÉS par la supervision (Zabbix, Grafana, LibreNMS, Home Assistant, traps SNMP via forwarder…). 100 % piloté par événement : **rien ne tourne en boucle**, un worker bloqué se réveille uniquement à l'arrivée d'un événement, l'analyse, alerte et propose un correctif (action sensible → validée via le HITL Telegram). Ingress `POST /api/events` (jeton dédié `X-Event-Token`, sans session), filtrage par sévérité + dé-duplication + file bornée (anti-tempête). **Configurable dans l'UI** (onglet 👁️ Vigie) **et par Athena** (`configure_monitoring`, `list_recent_events`). `core/events.py`, gate `EVENT_BROKER`.

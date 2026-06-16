@@ -218,6 +218,9 @@ _LANG_FLAG = {"a": "🇺🇸", "b": "🇬🇧", "e": "🇪🇸", "f": "🇫🇷"
 def _voice_label(vid: str) -> str:
     """Transforme un ID de voix Kokoro (ex. « ff_siwis », « am_adam ») en libellé lisible
     « 🇫🇷 Siwis (féminine) ». Conventions Kokoro : 1ʳᵉ lettre = langue, 2ᵉ = genre (f/m)."""
+    # Défensif : si un objet {id/name} arrive ici, on en extrait l'ID (jamais de dict brut affiché).
+    if isinstance(vid, dict):
+        vid = vid.get("id") or vid.get("name") or vid.get("voice") or ""
     s = str(vid).strip()
     flag, gender, name = "", "", s
     if len(s) >= 3 and s[2] == "_":
