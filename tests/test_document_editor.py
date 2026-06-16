@@ -2,10 +2,14 @@
 préservé, gardes (lecture seule / non ouvert). Réseau Nextcloud non sollicité (fichier local)."""
 import os
 import sys
+import tempfile
 import zipfile
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Espace de travail ISOLÉ (temp) → les tests ne polluent pas le dépôt (workspace/redaction).
+os.environ["ACTIVE_WORKSPACE_DIR"] = tempfile.mkdtemp(prefix="athena_test_ws_")
 
 import tools.document_editor as de  # noqa: E402
 

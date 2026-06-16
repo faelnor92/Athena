@@ -1,5 +1,18 @@
 # Historique des Versions (Changelog)
 
+## v0.13.4 (Ménage code & tests)
+
+### 🧹 Nettoyage
+- Suppression de fichiers cruft locaux (*.bak) et du script jetable scripts/diag_vision.py.
+- scripts/diag_agenda.py : retrait de la référence morte à core.google_oauth (feature OAuth
+  supprimée précédemment).
+- tests/test_email_tools.py : mock IMAP mis à jour (conn.uid) suite au passage des mails en UID.
+- tests/test_document_editor.py : écrit dans un workspace TEMPORAIRE → ne pollue plus le dépôt
+  (dossier redaction/ parasite supprimé + ignoré).
+- Revue : compilation complète OK, suite de tests verte (hors échecs PRÉ-EXISTANTS/optionnels :
+  computer_use=Playwright absent, claude_code=plugin off, skill_induction=déjà rouge avant session).
+
+
 ## v0.13.3 (Fix def — embedding endpoint conforme à ChromaDB 1.x)
 
 ### 🐛 Recherche RAG (embedding endpoint) enfin opérationnelle
