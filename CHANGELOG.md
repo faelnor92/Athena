@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.12.5 (Voix émotionnelle)
+
+### 🎭 Émotion de bout en bout (chat + satellites)
+- Les agents peuvent préfixer leur réponse d'une balise « [emotion: X] » (neutre, enjoué,
+  excité, triste, calme, sérieux, empathique, fâché, chuchoté) — instruction ajoutée au
+  préambule. La balise est extraite (voice/emotion.py) puis RETIRÉE du texte affiché (déjà
+  géré) et du texte prononcé.
+- L'émotion module désormais réellement la voix : mapping émotion → VITESSE Kokoro (seul levier
+  expressif de l'API OpenAI ; pas de pitch/volume), appliqué dans tous les chemins TTS (stream,
+  wav, satellites). Base réglable via VOICE_TTS_SPEED.
+
+
 ## v0.12.4 (Voix du chat : plus de repli robotique par défaut)
 
 ### 🔊 Voix Kokoro même sans voix enregistrée

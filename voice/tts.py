@@ -24,6 +24,19 @@ class TTS:
         self.piper_bin = piper_bin
         self._pyttsx = None
 
+    # Émotion → VITESSE (seul levier expressif de Kokoro via l'API OpenAI : pas de pitch/volume).
+    # Multiplicateurs appliqués sur VOICE_TTS_SPEED (défaut 1.0). Bornés à [0.5, 2.0] par Kokoro.
+    _EMOTION_SPEED = {
+        "neutral": 1.0, "cheerful": 1.08, "excited": 1.18, "sad": 0.85, "calm": 0.9,
+        "serious": 0.96, "empathetic": 0.92, "angry": 1.12, "whisper": 0.9,
+    }
+
+    @classmethod
+    def _emotion_speed(cls, emotion: str) -> float:
+        base = float(os.getenv("VOICE_TTS_SPEED", "1.0") or 1.0)
+        mult = cls._EMOTION_SPEED.get((emotion or "neutral"), 1.0)
+        return max(0.5, min(2.0, round(base * mult, 3)))
+
     # --------------------------------------------------- TTS expressif via HTTP
     def _get_http_payload(self, text: str, emotion: str):
         url = os.getenv("VOICE_TTS_HTTP_URL", "").strip()
@@ -31,11 +44,14 @@ class TTS:
             raise TTSUnavailable("VOICE_TTS_HTTP_URL non défini.")
         voice = os.getenv("VOICE_TTS_VOICE", "").strip()
         fmt = os.getenv("VOICE_TTS_FORMAT", "wav").strip() or "wav"
+        speed = self._emotion_speed(emotion)
         if "/audio/speech" in url:
+            # OpenAI-compatible (Kokoro-FastAPI) : pas de champ « emotion », on module la VITESSE.
             payload = {"model": os.getenv("VOICE_TTS_MODEL", "tts-1"), "input": text,
-                       "voice": voice or "alloy", "response_format": fmt}
+                       "voice": voice or "alloy", "response_format": fmt, "speed": speed}
         else:
-            payload = {"text": text, "voice": voice, "emotion": emotion, "format": fmt}
+            # Serveur expressif générique : on passe l'émotion ET la vitesse.
+            payload = {"text": text, "voice": voice, "emotion": emotion, "format": fmt, "speed": speed}
         headers = {"Content-Type": "application/json"}
         key = os.getenv("VOICE_TTS_API_KEY", "").strip()
         if key:
