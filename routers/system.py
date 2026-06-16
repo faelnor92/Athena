@@ -4,7 +4,7 @@ pairing Telegram (/api/telegram/pairing). Groupes autonomes (core.*).
 import asyncio
 import os
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -176,17 +176,30 @@ async def approvals_decide(approval_id: str, req: ApprovalDecisionRequest):
 
 
 @router.get("/api/telegram/pairing/users")
-async def telegram_pairing_users_list():
-    """Comptes Athena disponibles pour lier un chat Telegram (agenda/config/mémoire par compte)."""
+async def telegram_pairing_users_list(request: Request):
+    """Comptes Athena disponibles pour lier un chat Telegram (agenda/config/mémoire par compte).
+    Inclut : les comptes du user_store, le compte CONNECTÉ (utile en mode ADMIN_PASSWORD où
+    l'admin n'est pas dans le store), les comptes déjà liés, et 'local'."""
     from core import telegram_pairing
+    users: list = []
     try:
         from core.users import user_store
         users = [u.get("username") for u in user_store.list() if u.get("username")]
     except Exception:
         users = []
-    if "local" not in users:
-        users = ["local"] + users
-    return {"users": users, "bindings": telegram_pairing.status().get("users", {})}
+    bindings = telegram_pairing.status().get("users", {})
+    # Compte actuellement connecté (session) — clé pour l'admin via ADMIN_PASSWORD.
+    try:
+        sess = getattr(request.state, "user", None) or {}
+        cur = (sess.get("username") or "").strip()
+    except Exception:
+        cur = ""
+    # Fusionne (ordre stable) : connecté → store → déjà liés → local.
+    ordered = []
+    for u in ([cur] if cur else []) + list(users) + list(bindings.values()) + ["local"]:
+        if u and u not in ordered:
+            ordered.append(u)
+    return {"users": ordered, "bindings": bindings}
 
 
 @router.post("/api/telegram/pairing/user")

@@ -204,7 +204,7 @@ async def get_voice_tts() -> Dict[str, Any]:
     """Réglages TTS courants (moteur, voix, URL serveur, émotion par marqueur, vitesse)."""
     return {
         "engine": os.getenv("VOICE_TTS_ENGINE", "http"),
-        "voice": (os.getenv("VOICE_TTS_VOICE", "") or "").strip(),
+        "voice": _clean_voice(os.getenv("VOICE_TTS_VOICE", "")),
         "http_url": (os.getenv("VOICE_TTS_HTTP_URL", "") or "").strip(),
         "emotion_markers": os.getenv("VOICE_TTS_EMOTION_MARKERS", "false").lower() in ("true", "1", "yes"),
         "speed": (os.getenv("VOICE_TTS_SPEED", "1.0") or "1.0").strip(),
@@ -237,6 +237,37 @@ def _extract_voice_id(item) -> str:
     if isinstance(item, dict):
         return str(item.get("id") or item.get("name") or item.get("voice") or "").strip()
     return str(item).strip()
+
+
+def _audio_media_type(b: bytes):
+    """Devine le Content-Type d'un buffer audio par ses octets magiques. Renvoie None si ce
+    n'est manifestement PAS de l'audio (erreur JSON/HTML renvoyée en 200 par le serveur)."""
+    if not b or len(b) < 4:
+        return None
+    if b[:4] == b"RIFF":
+        return "audio/wav"
+    if b[:4] == b"OggS":
+        return "audio/ogg"
+    if b[:4] == b"fLaC":
+        return "audio/flac"
+    if b[:3] == b"ID3" or b[0] == 0xFF and (b[1] & 0xE0) == 0xE0:
+        return "audio/mpeg"
+    head = b[:64].lstrip()
+    if head[:1] in (b"{", b"[", b"<"):   # JSON / XML / HTML → pas de l'audio
+        return None
+    return "audio/wav"   # défaut prudent (PCM brut éventuel)
+
+
+def _clean_voice(v) -> str:
+    """Assainit une valeur de voix : ignore une valeur CORROMPUE héritée (un dict str()-isé
+    enregistré par erreur, ex. « {'id': 'af_bella', 'name': 'af_bella'} ») → renvoie "" pour
+    forcer le repli sur une vraie voix."""
+    s = str(v or "").strip()
+    if not s:
+        return ""
+    if s[:1] in ("{", "[") or "'id'" in s or '"id"' in s or "'name'" in s:
+        return ""
+    return s
 
 
 @router.get("/api/voice/voices")
@@ -281,7 +312,7 @@ async def set_voice_tts(req: VoiceTtsSelect) -> Dict[str, Any]:
         set_env_var(key, val)
         os.environ[key] = val
     try:
-        _apply("VOICE_TTS_VOICE", (req.voice or "").strip())
+        _apply("VOICE_TTS_VOICE", _clean_voice(req.voice))
         if req.http_url is not None:
             _apply("VOICE_TTS_HTTP_URL", req.http_url.strip())
         if req.emotion_markers is not None:
@@ -315,7 +346,7 @@ async def voice_tts(req: TtsSpeakRequest):
     try:
         from voice.config import voice_config
         from voice.tts import TTS, TTSUnavailable
-        chosen = (req.voice or "").strip() or (os.getenv("VOICE_TTS_VOICE", "") or "").strip()
+        chosen = _clean_voice(req.voice) or _clean_voice(os.getenv("VOICE_TTS_VOICE", ""))
         # Aucune voix définie → on prend AUTOMATIQUEMENT la 1ʳᵉ voix Kokoro dispo (sinon l'ancien
         # défaut « alloy » — inconnu de Kokoro — faisait échouer la synthèse → voix robotique).
         if not chosen:
@@ -333,7 +364,15 @@ async def voice_tts(req: TtsSpeakRequest):
         wav = await asyncio.to_thread(tts.synth_wav_bytes, text)
         if not wav:
             raise HTTPException(status_code=502, detail="Synthèse vide.")
-        return Response(content=wav, media_type="audio/wav")
+        # Le serveur TTS peut renvoyer du WAV, du MP3 ou de l'OGG (selon sa config). On
+        # DÉTECTE le vrai format (octets magiques) pour poser le bon Content-Type — sinon le
+        # navigateur reçoit du mp3 étiqueté « audio/wav » et refuse (NotSupportedError).
+        media = _audio_media_type(wav)
+        if media is None:
+            # Pas de l'audio (probablement une erreur JSON/HTML renvoyée en 200).
+            raise HTTPException(status_code=502,
+                                detail=f"Réponse du serveur TTS non audio : {wav[:160]!r}")
+        return Response(content=wav, media_type=media)
     except HTTPException:
         raise
     except Exception as e:

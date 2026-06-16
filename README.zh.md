@@ -1,6 +1,6 @@
 # 🎛️ Athena — 自托管多智能体框架
 
-![Version](https://img.shields.io/badge/version-0.19.1-blue.svg)
+![Version](https://img.shields.io/badge/version-0.19.2-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 

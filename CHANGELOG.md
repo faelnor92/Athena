@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## [0.19.2] - 2026-06-16
+### Fixed
+- **Test vocal « NotSupportedError »** : le serveur TTS peut renvoyer du WAV, du MP3 ou de l'OGG ; l'endpoint `/api/voice/tts` **détecte le vrai format** (octets magiques) et pose le bon Content-Type (fini le mp3 étiqueté « audio/wav » que Firefox refusait), et **rejette proprement** une réponse non audio (erreur serveur).
+- **Voix corrompue auto-nettoyée** : une valeur de voix héritée invalide (un dict enregistré par erreur) est ignorée (`_clean_voice`) → repli sur une vraie voix.
+- **Liaison Telegram → compte** : le menu inclut désormais le **compte connecté** (cas admin via `ADMIN_PASSWORD`, absent du user_store) + les comptes déjà liés, en plus du user_store et de « local ».
+
+
 ## [0.19.1] - 2026-06-16
 ### Fixed
 - **Sélecteur de voix affichait le dict brut** (`{'id': 'af_bella', ...}`) quand Kokoro renvoie des objets : `_voice_label` est désormais défensif (extrait l'ID même si un objet arrive) → libellés propres (« 🇺🇸 Bella (féminine) »). NB : nécessite un vrai redémarrage du service côté serveur.
