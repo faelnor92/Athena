@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## [0.16.1] - 2026-06-16
+### Added
+- **Conscience situationnelle (World Model, couche lecture)** : au début d'un run, Athena reçoit l'« état actuel » — les **parenthèses ouvertes** (tâches mises de côté) et la **pièce courante** (présence Home Assistant). Complète le profil utilisateur / graphe / RAG / Core Memory déjà injectés, sans doublon (`core/context_assembler.py`).
+- **Outil `reset_sandbox`** : réinitialise l'environnement d'exécution (conteneur Docker) si un script l'a cassé / saturé / mis en boucle. Les fichiers du workspace sont conservés. Donné automatiquement aux agents qui exécutent du code/des commandes.
+
+
 ## [0.16.0] - 2026-06-16
 ### Added
 - **Context Stacker (« fil d'Ariane ») — pile de contextes (vers Jarvis).** Athena peut METTRE DE CÔTÉ la tâche en cours pour traiter une parenthèse, puis REPRENDRE exactement où elle s'était arrêtée. Outils orchestrateur : `open_context(sujet)` (PUSH), `close_context()` (POP), `list_contexts()`. S'appuie sur l'arbre de conversation natif (aucun snapshot lourd : on parque l'`active_node_id` et on repart sur une branche neuve) et **gèle/relance la sandbox Docker associée** (`docker pause`/`unpause`). Pile LIFO par session, persistée, imbrication supportée. Activable via `CONTEXT_STACK`.
