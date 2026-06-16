@@ -47,6 +47,7 @@ import tools.code_nav
 import tools.presence
 import tools.n8n_tools
 import tools.computer_use
+import tools.vision_tools
 import tools.pipeline_tools
 import tools.playbooks
 import tools.claude_code_tool
@@ -152,6 +153,8 @@ AVAILABLE_TOOLS = {
     "get_current_room": tools.presence.get_current_room,
     "trigger_workflow": tools.n8n_tools.trigger_workflow,
     "computer_use_action": tools.computer_use.computer_use_action,
+    "analyze_image": tools.vision_tools.analyze_image,
+    "capture_screen": tools.vision_tools.capture_screen,
     "run_rigid_pipeline": tools.pipeline_tools.run_rigid_pipeline,
     "claude_code": tools.claude_code_tool.claude_code,  # plugin : délègue le code à Claude Code
 }
@@ -185,6 +188,7 @@ _TOOL_GROUPS = {
                   "document_autorevise", "document_check_coherence", "document_translate", "document_check_repetitions"},
     "skills": {"save_new_skill", "delete_skill"},
     "computer": {"computer_use_action"},
+    "vision": {"analyze_image", "capture_screen"},
 }
 _TOOL_GROUP_KEYWORDS = {
     "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",
@@ -220,7 +224,10 @@ _TOOL_GROUP_KEYWORDS = {
                   "répétitions", "repetitions", "traduis", "traduire", "traduction", "translate",
                   "en anglais", "en espagnol", "en allemand", "en italien"],
     "skills": ["compétence", "competence", "skill", "nouvel outil", "apprends à"],
-    "computer": ["souris", "clic", "écran", "ecran", "screenshot", "capture"],
+    "computer": ["souris", "clic", "navigateur", "navigue", "site web", "clique sur"],
+    "vision": ["image", "photo", "capture", "capture d'écran", "screenshot", "écran", "ecran",
+               "vois-tu", "que vois", "regarde l'image", "regarde cette image", "lis l'image",
+               "analyse l'image", "analyse cette image", "sur l'image", "cette image", "visuel"],
 }
 # Index inversé nom→groupe (un outil n'est dans qu'un seul groupe).
 _TOOL_DOMAIN = {name: grp for grp, names in _TOOL_GROUPS.items() for name in names}
@@ -1611,6 +1618,15 @@ class Swarm:
                             if _n not in existing and _n in AVAILABLE_TOOLS:
                                 effective_tools.append(AVAILABLE_TOOLS[_n])
                                 existing.add(_n)
+                except Exception:
+                    pass
+                # Vision : « analyse cette image / lis cette capture » → donné à l'orchestrateur
+                # (modèle multimodal de l'endpoint, base64). capture_screen reste gated (COMPUTER_USE).
+                try:
+                    from core import vision as _vis
+                    if _vis.is_enabled() and "analyze_image" not in existing and "analyze_image" in AVAILABLE_TOOLS:
+                        effective_tools.append(AVAILABLE_TOOLS["analyze_image"])
+                        existing.add("analyze_image")
                 except Exception:
                     pass
                 # Playbooks Markdown (savoir-faire procédural) : on expose load_playbook

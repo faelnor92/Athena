@@ -2956,6 +2956,10 @@ const BEHAVIOR_SCHEMA = [
         { key: "VOICE_TTS_HTTP_URL", label: "Serveur TTS expressif (URL, ex. XTTS/Chatterbox)", type: "text", def: "" },
         { key: "VOICE_TTS_VOICE", label: "Voix / locuteur du TTS expressif", type: "text", def: "" },
     ]},
+    { section: "Vision (analyse d'images)", fields: [
+        { key: "VISION_MODEL", label: "Modèle vision multimodal (ex. custom/chat-gemma)", type: "text", def: "custom/chat-gemma" },
+        { key: "COMPUTER_USE", label: "Capture d'écran (machine AVEC écran — pas un serveur headless)", type: "toggle", def: "false" },
+    ]},
     { section: "Présence / follow-me (optionnel)", fields: [
         { key: "PRESENCE_ENTITY", label: "Entité HA de pièce courante (vide = désactivé)", type: "text", def: "" },
     ]},
