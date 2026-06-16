@@ -53,6 +53,7 @@ import tools.pipeline_tools
 import tools.playbooks
 import tools.claude_code_tool
 import tools.context_tools
+import tools.goal_tools
 import tools.email_tools
 import tools.nextcloud_tools
 import tools.document_editor
@@ -165,6 +166,12 @@ AVAILABLE_TOOLS = {
     "close_context": tools.context_tools.close_context,
     "list_contexts": tools.context_tools.list_contexts,
     "reset_sandbox": tools.system_tools.reset_sandbox,    # nettoyage de l'env d'exécution
+    "create_goal": tools.goal_tools.create_goal,          # objectifs persistants (continuité de but)
+    "list_goals": tools.goal_tools.list_goals,
+    "update_goal_status": tools.goal_tools.update_goal_status,
+    "add_goal_step": tools.goal_tools.add_goal_step,
+    "complete_goal_step": tools.goal_tools.complete_goal_step,
+    "set_goal_priority": tools.goal_tools.set_goal_priority,
 }
 
 # ── Filtrage d'outils par pertinence (économie de tokens) ──────────────────────
@@ -1792,6 +1799,10 @@ class Swarm:
                 # Pile de contextes (« fil d'Ariane ») : mettre une tâche de côté / reprendre.
                 if os.getenv("CONTEXT_STACK", "true").lower() in ("true", "1", "yes"):
                     _auto_tools += ["open_context", "close_context", "list_contexts"]
+                # Objectifs persistants (continuité de but).
+                if os.getenv("GOAL_MANAGER", "true").lower() in ("true", "1", "yes"):
+                    _auto_tools += ["create_goal", "list_goals", "update_goal_status",
+                                    "add_goal_step", "complete_goal_step", "set_goal_priority"]
                 if _self_improve:
                     _auto_tools.append("save_new_skill")
                 for _n in _auto_tools:
@@ -2135,6 +2146,14 @@ class Swarm:
                     "- ROUTINES : pour une tâche RÉCURRENTE (briefing du matin, rappel périodique), tu "
                     "peux créer une routine planifiée avec `create_routine(...)` (l'utilisateur confirme) "
                     "au lieu de lui demander d'aller dans les réglages.\n")
+            if "create_goal" in _tool_names:
+                system_prompt += (
+                    "- OBJECTIFS : pour un BUT DURABLE de l'utilisateur (pas une tâche immédiate), "
+                    "suis-le avec `create_goal(titre, detail, priorité, étapes)` ; coche les étapes "
+                    "(`complete_goal_step`), mets à jour le statut (`update_goal_status`: done/paused/"
+                    "abandoned) et consulte-les (`list_goals`). Les objectifs ACTIFS te sont rappelés "
+                    "dans l'état actuel — garde le fil, mais n'agis JAMAIS sans l'accord de l'utilisateur "
+                    "pour les actions sensibles.\n")
             if "open_context" in _tool_names:
                 system_prompt += (
                     "- PARENTHÈSES (fil d'Ariane) : si l'utilisateur change FRANCHEMENT de sujet ou demande "

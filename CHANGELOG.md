@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.18.0] - 2026-06-16
+### Added
+- **Goal Manager — objectifs persistants (continuité de but, vers Jarvis).** Athena suit des buts à long terme par utilisateur : `create_goal(titre, detail, priorité, étapes)`, `list_goals`, `update_goal_status` (active/paused/done/abandoned), `add_goal_step`, `complete_goal_step`, `set_goal_priority`. Les objectifs ACTIFS sont rappelés dans la conscience situationnelle de chaque run → Athena « ne perd pas le fil ». Bridage : le module SUIT les objectifs, il n'exécute rien tout seul (toute action passe par les outils normaux + HITL). Par compte, persistant. Gate `GOAL_MANAGER`.
+
+
 ## [0.17.0] - 2026-06-16
 ### Added
 - **HITL multi-canal asynchrone (validation des actions critiques depuis le téléphone).** Quand une action SENSIBLE est déclenchée depuis Telegram, le run se **FIGE** (au lieu de « demander et s'arrêter ») et pousse une **notification actionnable** avec boutons inline **✅ Autoriser / ⛔ Refuser** (ou `/allow <id>` / `/deny <id>`). La décision **libère le run** : approuvé → l'outil s'exécute ; refusé/expiré → non exécuté. Endpoints `GET /api/approvals` et `POST /api/approvals/{id}/decision`. File `core/approval_queue.py` (timeout = refus sûr, `APPROVAL_TIMEOUT`). Gate `APPROVAL_ASYNC` (canaux push uniquement ; web/voix restent in-band). `APPROVAL_ASYNC_ALL` pour étendre au web.
