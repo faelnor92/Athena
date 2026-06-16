@@ -155,6 +155,26 @@ async def telegram_pairing_revoke(req: PairingActionRequest):
     return {"status": "success" if ok else "not_found", "pairing": telegram_pairing.status()}
 
 
+class ApprovalDecisionRequest(BaseModel):
+    approve: bool = True
+
+
+@router.get("/api/approvals")
+async def approvals_list():
+    """Demandes d'approbation HITL en attente (actions sensibles figées)."""
+    from core import approval_queue
+    return {"pending": approval_queue.pending_list()}
+
+
+@router.post("/api/approvals/{approval_id}/decision")
+async def approvals_decide(approval_id: str, req: ApprovalDecisionRequest):
+    """Autorise (approve=true) ou refuse une action sensible en attente → libère le run."""
+    from core import approval_queue
+    ok = approval_queue.resolve(approval_id, bool(req.approve))
+    return {"status": "success" if ok else "not_found",
+            "decision": "approved" if req.approve else "denied"}
+
+
 @router.get("/api/telegram/pairing/users")
 async def telegram_pairing_users_list():
     """Comptes Athena disponibles pour lier un chat Telegram (agenda/config/mémoire par compte)."""
