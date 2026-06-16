@@ -52,6 +52,7 @@ import tools.routine_tools
 import tools.pipeline_tools
 import tools.playbooks
 import tools.claude_code_tool
+import tools.context_tools
 import tools.email_tools
 import tools.nextcloud_tools
 import tools.document_editor
@@ -160,6 +161,9 @@ AVAILABLE_TOOLS = {
     "list_routines": tools.routine_tools.list_routines,
     "run_rigid_pipeline": tools.pipeline_tools.run_rigid_pipeline,
     "claude_code": tools.claude_code_tool.claude_code,  # plugin : délègue le code à Claude Code
+    "open_context": tools.context_tools.open_context,    # pile de contextes (« fil d'Ariane »)
+    "close_context": tools.context_tools.close_context,
+    "list_contexts": tools.context_tools.list_contexts,
 }
 
 # ── Filtrage d'outils par pertinence (économie de tokens) ──────────────────────
@@ -1763,6 +1767,9 @@ class Swarm:
                 # l'orchestrateur quand l'auto-amélioration est active (SELF_IMPROVE_SKILLS).
                 _self_improve = os.getenv("SELF_IMPROVE_SKILLS", "true").lower() in ("true", "1", "yes")
                 _auto_tools = ["create_routine", "list_routines"]
+                # Pile de contextes (« fil d'Ariane ») : mettre une tâche de côté / reprendre.
+                if os.getenv("CONTEXT_STACK", "true").lower() in ("true", "1", "yes"):
+                    _auto_tools += ["open_context", "close_context", "list_contexts"]
                 if _self_improve:
                     _auto_tools.append("save_new_skill")
                 for _n in _auto_tools:
@@ -2097,6 +2104,15 @@ class Swarm:
                     "- ROUTINES : pour une tâche RÉCURRENTE (briefing du matin, rappel périodique), tu "
                     "peux créer une routine planifiée avec `create_routine(...)` (l'utilisateur confirme) "
                     "au lieu de lui demander d'aller dans les réglages.\n")
+            if "open_context" in _tool_names:
+                system_prompt += (
+                    "- PARENTHÈSES (fil d'Ariane) : si l'utilisateur change FRANCHEMENT de sujet ou demande "
+                    "explicitement de « mettre de côté » la tâche en cours pour autre chose, appelle "
+                    "`open_context(\"sujet\")` AVANT de traiter le nouveau sujet (la tâche précédente est "
+                    "parquée, son environnement gelé). Quand il dit « on reprend / reviens à ce qu'on faisait », "
+                    "appelle `close_context()` pour restaurer la tâche précédente. `list_contexts()` les liste. "
+                    "N'ouvre une parenthèse que pour un VRAI changement de contexte, pas pour une simple "
+                    "sous-question.\n")
             # Serveurs SSH disponibles : l'agent peut exécuter À DISTANCE via le registre
             # multi-hôtes (pas seulement la console codeur).
             if "execute_bash_command" in _tool_names:
