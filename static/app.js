@@ -2971,10 +2971,10 @@ const BEHAVIOR_SCHEMA = [
         { key: "VOICE_TTS_VOICE", label: "Voix utilisée", help: "Nom de la voix/locuteur (se choisit aussi dans Réglages → Satellites).", type: "text", def: "" },
     ]},
     { section: "Rédaction (romans)", icon: "✍️", fields: [
-        { key: "DOCUMENT_MODEL", label: "Modèle pour réviser/traduire", help: "Modèle utilisé par l'atelier d'écriture. Vide = le modèle d'Athena. Ex. custom/gemma pour un rendu plus littéraire.", type: "text", def: "" },
+        { key: "DOCUMENT_MODEL", label: "Modèle pour réviser/traduire", help: "Modèle utilisé par l'atelier d'écriture. Vide = le modèle d'Athena. Ex. custom/gemma pour un rendu plus littéraire.", type: "model", def: "", emptyLabel: "⭐ Modèle d'Athena (défaut)" },
     ]},
     { section: "Vision (images)", icon: "👁️", fields: [
-        { key: "VISION_MODEL", label: "Modèle d'analyse d'images", help: "Modèle multimodal qui « voit » les images (ex. custom/chat-gemma).", type: "text", def: "custom/chat-gemma" },
+        { key: "VISION_MODEL", label: "Modèle d'analyse d'images", help: "Modèle multimodal qui « voit » les images (ex. custom/chat-gemma).", type: "model", def: "custom/chat-gemma" },
         { key: "COMPUTER_USE", label: "Capture d'écran", help: "Permet à Athena de capturer/analyser l'écran. Inutile sur un serveur sans écran.", type: "toggle", def: "false" },
     ]},
     { section: "Domotique & automatisation", icon: "🏠", fields: [
@@ -2993,6 +2993,14 @@ function _behaviorFieldControl(f, env) {
     }
     if (f.type === "select") {
         return `<select class="behavior-input ath-ctrl" data-key="${f.key}" data-type="select">${f.options.map(([v, l]) => `<option value="${v}" ${String(cur) === v ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+    }
+    if (f.type === "model") {
+        // Liste dynamique des modèles (peuplée après coup via /api/config/models, comme les agents).
+        // On pose dès maintenant l'option « vide » (si autorisée) + l'option de la valeur courante,
+        // pour que la sélection survive même si l'endpoint des modèles est injoignable.
+        const empty = (f.def === "") ? `<option value="">${f.emptyLabel || "Défaut"}</option>` : "";
+        const curOpt = (cur && String(cur) !== "") ? `<option value="${String(cur).replace(/"/g, "&quot;")}" selected>${String(cur).replace(/</g, "&lt;")}</option>` : "";
+        return `<select class="behavior-input ath-ctrl" data-key="${f.key}" data-type="model" data-model-picker="1" data-current="${String(cur).replace(/"/g, "&quot;")}">${empty}${curOpt}</select>`;
     }
     if (f.type === "password") {
         const ph = (env[f.key] && String(env[f.key]).includes("...")) ? "Défini (masqué) — vide = inchangé" : "Aucun";
@@ -3038,6 +3046,9 @@ async function loadConfigBehaviorPane() {
         container.appendChild(card);
     });
 
+    // Peuple les sélecteurs de modèle (Vision, Rédaction…) avec la liste dynamique de l'endpoint.
+    _populateModelPickers(container);
+
     // Filtre live : masque les lignes (et les sections vides) qui ne matchent pas.
     search.addEventListener("input", () => {
         const q = search.value.trim().toLowerCase();
@@ -3051,6 +3062,37 @@ async function loadConfigBehaviorPane() {
             card.style.display = visible ? "" : "none";
             if (q) card.classList.remove("collapsed");  // déplie les sections qui matchent
         });
+    });
+}
+
+// Remplit tous les <select data-model-picker> avec les modèles dispo (groupés par fournisseur),
+// exactement comme le sélecteur de modèle des agents. La valeur courante est préservée :
+// si elle figure dans la liste on la sélectionne, sinon on garde l'option déjà posée.
+async function _populateModelPickers(container) {
+    const pickers = container.querySelectorAll("select[data-model-picker]");
+    if (!pickers.length) return;
+    let data = {};
+    try {
+        const r = await apiFetch("/api/config/models");
+        if (r.ok) data = await r.json();
+    } catch (e) { return; } // endpoint injoignable → on garde l'option courante déjà en place
+    pickers.forEach(sel => {
+        const cur = sel.dataset.current || "";
+        const hasEmpty = sel.options.length && sel.options[0].value === "";
+        const emptyHTML = hasEmpty ? sel.options[0].outerHTML : "";
+        let found = false, opts = "";
+        Object.keys(data).forEach(provider => {
+            const items = (data[provider] || []).map(m => {
+                const isCur = String(m) === String(cur);
+                if (isCur) found = true;
+                const label = m.includes("/") ? m.split("/").slice(1).join("/") : m;
+                return `<option value="${String(m).replace(/"/g, "&quot;")}"${isCur ? " selected" : ""}>${label}</option>`;
+            }).join("");
+            if (items) opts += `<optgroup label="${provider}">${items}</optgroup>`;
+        });
+        // Si la valeur courante n'est dans aucun groupe, on la garde en tête (modèle « manuel »).
+        const keepCur = (cur && !found) ? `<option value="${String(cur).replace(/"/g, "&quot;")}" selected>${String(cur).replace(/</g, "&lt;")} (actuel)</option>` : "";
+        sel.innerHTML = emptyHTML + keepCur + opts;
     });
 }
 

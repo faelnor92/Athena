@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.14.3] - 2026-06-16
+### Changed
+- **Modèles Vision et Rédaction = liste déroulante dynamique** (comme les agents) : les modèles disponibles sont récupérés en direct depuis l'endpoint (`/api/config/models`), groupés par fournisseur. La valeur courante reste préservée ; un modèle saisi manuellement et absent de la liste est conservé (« actuel »).
+
+
 ## [0.14.2] - 2026-06-16
 ### Fixed
 - **Ctrl+Entrée / Ctrl+Maj+Entrée insèrent enfin un saut de ligne** dans le chat et dans AthenaDesign. Un `<textarea>` n'insère rien par défaut sur Ctrl+Entrée (seul Maj+Entrée le fait) : le saut est désormais inséré à la main. Entrée seule = envoyer.
