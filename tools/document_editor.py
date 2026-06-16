@@ -81,6 +81,20 @@ def _dir() -> str:
     return d
 
 
+def _doc_model() -> str:
+    """Modèle LLM pour la RÉDACTION (révision/cohérence/traduction de romans). Configurable via
+    DOCUMENT_MODEL (ex. « custom/gemma » pour un rendu plus littéraire) ; vide = modèle de
+    l'orchestrateur Athena (défaut)."""
+    m = (os.getenv("DOCUMENT_MODEL", "") or "").strip()
+    if m:
+        return m
+    try:
+        from core.state import swarm as _sw
+        return getattr(_sw.agents.get(getattr(_sw, "orchestrator_name", "Athena")), "model", None) or "gpt-4o-mini"
+    except Exception:
+        return "gpt-4o-mini"
+
+
 def _safe_name(name: str) -> str:
     """Nom de fichier local sûr (pas de traversal)."""
     return os.path.basename((name or "").strip()) or "document.docx"
@@ -643,7 +657,7 @@ def _autorevise_run(nextcloud_path, instruction="", chapter="", progress=None):
             return "Aucun chapitre détecté à réviser."
 
         from core.state import swarm as _sw
-        model = getattr(_sw.agents.get(getattr(_sw, "orchestrator_name", "Athena")), "model", None) or "gpt-4o-mini"
+        model = _doc_model()
 
         rev = _Rev()
         done, total_corr = [], 0
@@ -749,7 +763,7 @@ def _coherence_run(nextcloud_path, chapter="", progress=None):
         else:
             targets = [t for (t, a, b) in chaps]
         from core.state import swarm as _sw
-        model = getattr(_sw.agents.get(getattr(_sw, "orchestrator_name", "Athena")), "model", None) or "gpt-4o-mini"
+        model = _doc_model()
 
         canon = ""
         report = []
@@ -847,7 +861,7 @@ def _translate_run(nextcloud_path, target_language, instruction="", progress=Non
         _CHUNK = int(os.getenv("DOCUMENT_TRANSLATE_CHUNK", "5000") or 5000)
         n_chunks = 0
         from core.state import swarm as _sw
-        model = getattr(_sw.agents.get(getattr(_sw, "orchestrator_name", "Athena")), "model", None) or "gpt-4o-mini"
+        model = _doc_model()
 
         total = len(chaps)
         _p(0, total, f"Traduction de {total} chapitre(s) en {target_language}…")

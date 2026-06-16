@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.13.6 (Modèle de rédaction configurable)
+
+### ✍️ Choisir le LLM qui révise les romans
+- La révision/cohérence/traduction de romans utilisait toujours le modèle de l'orchestrateur
+  (chat-qwen). Nouveau DOCUMENT_MODEL (réglage UI « Rédaction (romans) ») : permet d'utiliser un
+  modèle plus littéraire (ex. custom/gemma) pour la rédaction tout en gardant chat-qwen pour
+  l'orchestration. Vide = modèle d'Athena (comportement par défaut inchangé).
+
+
 ## v0.13.5 (Auto-continuation : Athena agit après avoir annoncé)
 
 ### ⚡ Plus besoin de dire « vas-y »
