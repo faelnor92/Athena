@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.15.0] - 2026-06-16
+### Added
+- **Chronos — mémoire relationnelle automatique (vers Jarvis).** En fin de run, Athena extrait les FAITS DURABLES de l'échange (identité/préférences de l'utilisateur, personnes, lieux, machines et leurs relations) et les range dans la mémoire-graphe par-utilisateur (`GRAPH_AUTO_EXTRACT`). Au début d'un run, le contexte-graphe pertinent (entités citées dans la demande) est injecté — « ce que je sais déjà » — pour résoudre les références implicites (« le serveur de dev », « ma femme »…) (`GRAPH_CONTEXT_INJECT`, `GRAPH_CONTEXT_TOPK`). Le moteur graphe (triplets, voisinage) existait déjà ; ceci le câble en automatique.
+
+
 ## [0.14.6] - 2026-06-16
 ### Added
 - **Listes (courses, tâches…) synchronisées avec Nextcloud Notes** (optionnel, par-utilisateur). Quand c'est activé (Réglages → Nextcloud), Nextcloud devient la source de vérité : une note Markdown (cases à cocher) par liste dans le dossier Notes, synchro **2 sens** (cocher/ajouter/supprimer depuis l'app Notes mobile se répercute dans Athena, et inversement). Réconciliation par texte pour préserver les éléments ; garde-fou anti-perte (jamais d'écrasement du local si Nextcloud est injoignable). Désactivé = listes purement locales (inchangé).

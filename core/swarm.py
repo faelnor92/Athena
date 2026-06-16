@@ -1240,6 +1240,61 @@ class Swarm:
         except Exception as e:
             print(f"[\033[91mAuto-amélioration erreur\033[0m] {e}")
 
+    def _extract_graph_facts(self, agent: Agent, messages: list, steps: list):
+        """CHRONOS — mémoire relationnelle à long terme. Extrait de l'échange les FAITS
+        DURABLES (sujet, relation, objet) sur l'utilisateur, ses proches, lieux, machines
+        et préférences, puis les range dans la mémoire-graphe (par-utilisateur). Ignore
+        l'éphémère. Gate GRAPH_AUTO_EXTRACT (défaut: activé)."""
+        if os.getenv("GRAPH_AUTO_EXTRACT", "true").lower() not in ("true", "1", "yes"):
+            return
+        try:
+            # Assez de matière utilisateur pour qu'il y ait quelque chose à apprendre.
+            user_txt = " ".join(str(m.get("content", "") or "") for m in messages if m.get("role") == "user")
+            if len(user_txt.strip()) < 15:
+                return
+            lines = []
+            for m in messages[-12:]:
+                role = m.get("role")
+                if role == "user":
+                    lines.append(f"UTILISATEUR: {m.get('content','')}")
+                elif role == "assistant" and m.get("content"):
+                    lines.append(f"{m.get('name','assistant')}: {m.get('content','')}")
+            transcript = "\n".join(lines)[:6000]
+            if not transcript.strip():
+                return
+            prompt = [
+                {"role": "system", "content": (
+                    "Tu es Chronos, la mémoire à long terme de l'assistant. À partir de l'échange, "
+                    "EXTRAIS uniquement les FAITS DURABLES et réutilisables : identité et préférences "
+                    "de l'utilisateur, personnes/lieux/appareils/serveurs et leurs RELATIONS. "
+                    "IGNORE tout ce qui est éphémère (météo, heure, contenu d'une tâche ponctuelle, "
+                    "politesses). Réponds en JSON STRICT, rien d'autre :\n"
+                    '{"facts":[{"s":"sujet","r":"relation","o":"objet"}]}\n'
+                    "Chaque fait court et atomique (ex. {\"s\":\"serveur de dev\",\"r\":\"est hébergé sur\","
+                    "\"o\":\"Dell R430\"}). Si rien de durable : {\"facts\":[]}."
+                )},
+                {"role": "user", "content": transcript},
+            ]
+            resp = self._complete(agent.model, prompt, tools_schema=None)
+            raw = (resp.choices[0].message.content or "").strip()
+            import json as _json, re as _re
+            m = _re.search(r"\{.*\}", raw, _re.S)
+            if not m:
+                return
+            data = _json.loads(m.group(0))
+            facts = data.get("facts") or []
+            triples = [(f.get("s"), f.get("r"), f.get("o")) for f in facts
+                       if isinstance(f, dict) and f.get("s") and f.get("o") and f.get("r")]
+            if not triples:
+                return
+            import core.graph_memory as _gm
+            n = _gm.add_triples(triples)
+            if n:
+                steps.append({"type": "graph_learned", "agent": agent.name, "count": n})
+                print(f"[\033[96mCHRONOS\033[0m] {n} fait(s) durable(s) ajouté(s) au graphe.")
+        except Exception as e:
+            print(f"[\033[91mChronos erreur\033[0m] {e}")
+
     def _update_user_profile(self, agent: Agent, messages: list, steps: list):
         """Met à jour le profil utilisateur évolutif à partir du dernier échange
         (personnalisation durable, façon Hermes/Honcho). Gate USER_MODELING."""
@@ -1489,6 +1544,7 @@ class Swarm:
         started_at = time.time()
         tokens_used = 0
         _rag_injected = False     # RAG sobre : on n'injecte les chunks qu'UNE fois par run
+        _graph_injected = False   # contexte-graphe (Chronos) : injecté UNE fois par run
         skill_failures = []  # échecs de compétences dynamiques → réparées en fin de run
         _route_done = False   # routeur de délégation : décidé une seule fois par run
         _route_target = None  # spécialiste ciblé (nom) | "" (aucun) | None (non décidé)
@@ -2248,7 +2304,26 @@ class Swarm:
                         volatile_context += rag_context
                 except Exception as e:
                     print(f"[\033[91mRAG Erreur\033[0m] {e}")
-            
+
+            # CONTEXTE-GRAPHE (Chronos) — SOBRE : une fois par run, on injecte les faits
+            # connus dont une entité apparaît dans la demande (« ce que je sais déjà »).
+            # Résout les références implicites (« le serveur de dev », « ma femme »…).
+            if (os.getenv("GRAPH_CONTEXT_INJECT", "true").lower() in ("true", "1", "yes")
+                    and user_messages and not _graph_injected):
+                _graph_injected = True
+                try:
+                    import core.graph_memory as _gm
+                    _gtr = _gm.relevant_triples(user_messages[-1]["content"],
+                                                limit=int(os.getenv("GRAPH_CONTEXT_TOPK", "12") or 12))
+                    if _gtr:
+                        gctx = "\n=== CE QUE JE SAIS DÉJÀ (mémoire relationnelle) ===\n"
+                        for tr in _gtr:
+                            gctx += f"- {tr['s']} {tr['r']} {tr['o']}\n"
+                        gctx += "========================================================\n"
+                        volatile_context += gctx
+                except Exception as e:
+                    print(f"[\033[91mGraphe Erreur\033[0m] {e}")
+
             # Renforcer les consignes de transfert pour le superviseur — UNIQUEMENT s'il
             # existe d'autres agents à qui déléguer (sinon l'orchestrateur seul doit
             # répondre directement, pas refuser le travail).
@@ -2762,5 +2837,6 @@ class Swarm:
         self._write_experience_report(starting_agent, messages, steps)
         self._induce_skill(starting_agent, messages, steps)
         self._update_user_profile(current_agent, messages, steps)
+        self._extract_graph_facts(starting_agent, messages, steps)  # Chronos : mémoire relationnelle
 
         return current_agent, messages, steps
