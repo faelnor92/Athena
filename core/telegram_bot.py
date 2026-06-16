@@ -54,6 +54,42 @@ def _call(method: str, **params):
     return r.json()
 
 
+def send_approval_request(chat_id, aid: str, tool: str, notice: str):
+    """Envoie une demande d'approbation ACTIONNABLE (boutons inline + repli /allow //deny)."""
+    text = (f"🔐 Validation requise — action « {tool} ».\n{notice}\n\n"
+            f"Ou réponds : /allow {aid}  /  /deny {aid}")
+    markup = {"inline_keyboard": [[
+        {"text": "✅ Autoriser", "callback_data": f"allow:{aid}"},
+        {"text": "⛔ Refuser", "callback_data": f"deny:{aid}"},
+    ]]}
+    try:
+        _call("sendMessage", chat_id=chat_id, text=text, reply_markup=markup)
+    except Exception as e:
+        print(f"[Telegram] demande d'approbation échouée : {e}")
+
+
+def _handle_callback(cb: dict):
+    """Traite un appui sur un bouton inline (approbation HITL)."""
+    cb_id = cb.get("id")
+    data = cb.get("data") or ""
+    chat_id = str((cb.get("message") or {}).get("chat", {}).get("id", ""))
+    if not telegram_pairing.is_allowed(chat_id):
+        try: _call("answerCallbackQuery", callback_query_id=cb_id, text="⛔ Non autorisé.")
+        except Exception: pass
+        return
+    if ":" in data:
+        action, aid = data.split(":", 1)
+        from core import approval_queue
+        ok = approval_queue.resolve(aid, action == "allow")
+        txt = ("✅ Autorisé." if action == "allow" else "⛔ Refusé.") if ok else "Demande introuvable ou déjà traitée."
+    else:
+        txt = "Action inconnue."
+    try: _call("answerCallbackQuery", callback_query_id=cb_id, text=txt)
+    except Exception: pass
+    try: send_message(chat_id, txt)
+    except Exception: pass
+
+
 def send_message(chat_id, text: str):
     """Envoie un message (découpé si > limite Telegram de 4096)."""
     text = text or "(réponse vide)"
@@ -143,6 +179,21 @@ def _handle_message(msg: dict):
         send_message(chat_id, "🧹 Conversation oubliée.")
         return
 
+    # /allow <id> et /deny <id> : approbation/refus d'une ACTION sensible en attente (HITL).
+    if low.startswith("/allow") or low.startswith("/deny"):
+        if not telegram_pairing.is_allowed(chat_id):
+            send_message(chat_id, "⛔ Réservé à un compte autorisé.")
+            return
+        parts = text.split()
+        aid = parts[1].strip() if len(parts) > 1 else ""
+        from core import approval_queue
+        ok = approval_queue.resolve(aid, low.startswith("/allow"))
+        if ok:
+            send_message(chat_id, "✅ Action autorisée." if low.startswith("/allow") else "⛔ Action refusée.")
+        else:
+            send_message(chat_id, "Demande introuvable ou déjà traitée.")
+        return
+
     # /approve <code> : réservé aux chats DÉJÀ autorisés (l'admin approuve un inconnu).
     if low.startswith("/approve"):
         if not telegram_pairing.is_allowed(chat_id):
@@ -222,6 +273,13 @@ def _loop():
             _last_error = ""
             for upd in data.get("result", []):
                 _offset = upd["update_id"] + 1
+                cb = upd.get("callback_query")
+                if cb:
+                    try:
+                        _handle_callback(cb)
+                    except Exception as e:
+                        print(f"[Telegram] callback : {e}")
+                    continue
                 msg = upd.get("message") or upd.get("edited_message")
                 if msg:
                     try:

@@ -615,6 +615,26 @@ def parse_text_tool_calls(content: str, valid_names) -> list:
     return out
 
 
+def _push_approval_notice(aid: str, tool: str, notice: str, channel: str) -> None:
+    """Pousse une notification ACTIONNABLE pour une approbation HITL en attente."""
+    # Canal Telegram : message direct au chat concerné (boutons inline Autoriser/Refuser).
+    try:
+        if (channel or "").startswith("telegram:"):
+            chat_id = channel.split(":", 1)[1]
+            from core import telegram_bot
+            telegram_bot.send_approval_request(chat_id, aid, tool, notice)
+            return
+    except Exception as e:
+        print(f"[Approval] notif Telegram échouée : {e}")
+    # Repli : notification générale (canaux configurés).
+    try:
+        import tools.notify_tools as _nt
+        _nt.send_notification(
+            f"🔐 Validation requise — « {tool} ». {notice} (réponds /allow {aid} ou /deny {aid})")
+    except Exception:
+        pass
+
+
 class SwarmStepsList(list):
     """Liste personnalisée qui intercepte les ajouts d'étapes pour les diffuser
     en temps réel dans le run courant (isolé par ContextVar, sûr en concurrence)."""
@@ -2892,12 +2912,41 @@ class Swarm:
                     continue
 
                 if blocked:
-                    # Action sensible non confirmée : on n'exécute pas, on demande l'accord.
-                    msg = approvals.confirmation_message(func_name, args)
-                    steps.append({"type": "approval_required", "agent": current_agent.name, "tool": func_name, "args": args})
-                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": msg})
-                    steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": msg})
-                    continue
+                    from core import approval_queue
+                    _chan = channels.current_channel.get() or "web"
+                    # HITL ASYNC (Telegram/Matrix) : on FIGE le run, on pousse une notif
+                    # actionnable, et on attend la décision (approuver/refuser depuis le tel).
+                    if approval_queue.async_enabled(_chan):
+                        notice = approvals.confirmation_message(func_name, args)
+                        aid = approval_queue.request(func_name, args, current_agent.name, _chan)
+                        steps.append({"type": "approval_pending", "agent": current_agent.name,
+                                      "tool": func_name, "args": args, "id": aid})
+                        _push_approval_notice(aid, func_name, notice, _chan)
+                        decision = approval_queue.wait(aid, approval_queue.timeout_seconds())
+                        if decision == "approved":
+                            if approvals.accepts_kw(func, "user_confirmed"):
+                                call_args["user_confirmed"] = True
+                            print(f"[\033[92mSWARM\033[0m] approbation reçue ({aid}) → exécution de {func_name}")
+                            steps.append({"type": "approval_resolved", "agent": current_agent.name,
+                                          "tool": func_name, "decision": "approved"})
+                            results[i] = _run_tool(func, call_args)
+                            # pas de `continue` : on tombe dans le traitement normal du résultat.
+                        else:
+                            refus = (f"⛔ Action « {func_name} » REFUSÉE par l'utilisateur."
+                                     if decision == "denied" else
+                                     f"⌛ Action « {func_name} » non confirmée (délai dépassé) — NON exécutée.")
+                            steps.append({"type": "approval_resolved", "agent": current_agent.name,
+                                          "tool": func_name, "decision": decision})
+                            messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": refus})
+                            steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": refus})
+                            continue
+                    else:
+                        # In-band (web/voix) : on n'exécute pas, on demande l'accord dans le fil.
+                        msg = approvals.confirmation_message(func_name, args)
+                        steps.append({"type": "approval_required", "agent": current_agent.name, "tool": func_name, "args": args})
+                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": msg})
+                        steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": msg})
+                        continue
 
                 if is_repeat:
                     # Appel identique déjà exécuté : on ne relance pas, on rappelle au modèle

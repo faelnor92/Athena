@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.17.0] - 2026-06-16
+### Added
+- **HITL multi-canal asynchrone (validation des actions critiques depuis le téléphone).** Quand une action SENSIBLE est déclenchée depuis Telegram, le run se **FIGE** (au lieu de « demander et s'arrêter ») et pousse une **notification actionnable** avec boutons inline **✅ Autoriser / ⛔ Refuser** (ou `/allow <id>` / `/deny <id>`). La décision **libère le run** : approuvé → l'outil s'exécute ; refusé/expiré → non exécuté. Endpoints `GET /api/approvals` et `POST /api/approvals/{id}/decision`. File `core/approval_queue.py` (timeout = refus sûr, `APPROVAL_TIMEOUT`). Gate `APPROVAL_ASYNC` (canaux push uniquement ; web/voix restent in-band). `APPROVAL_ASYNC_ALL` pour étendre au web.
+
+
 ## [0.16.1] - 2026-06-16
 ### Added
 - **Conscience situationnelle (World Model, couche lecture)** : au début d'un run, Athena reçoit l'« état actuel » — les **parenthèses ouvertes** (tâches mises de côté) et la **pièce courante** (présence Home Assistant). Complète le profil utilisateur / graphe / RAG / Core Memory déjà injectés, sans doublon (`core/context_assembler.py`).
