@@ -81,7 +81,8 @@ Dans **Réglages > 🔌 Plugins**, activez des extensions. Le **plugin Claude Co
 - **Extensions MCP (Avancé)** : Athena supporte le protocole MCP. Cela lui permet de brancher des plugins complexes (comme un accès profond à la base de données de Home Assistant pour créer des automatisations, ou tout autre serveur MCP existant).
 - **Conscience Spatiale** : L'IA peut savoir dans quelle pièce vous vous trouvez (si vous avez des capteurs) pour adapter ses actions (ex: *"Allume la lumière"* allumera celle de la pièce où vous êtes).
 - **Météo & Temps** : Prévisions météorologiques sur plusieurs jours et synchronisation temporelle.
-- **Listes & Courses** : Demandez-lui de rajouter du lait sur votre liste de courses ou de créer une Todo-list.
+- **Listes & Courses** : Demandez-lui de rajouter du lait sur votre liste de courses ou de créer une Todo-list. Option : **synchronisation bidirectionnelle avec Nextcloud Notes** (Réglages → Nextcloud) — vos listes deviennent des notes Markdown modifiables depuis l'app Notes sur mobile, et inversement.
+- **Voix : qui parle ?** Avec un satellite vocal, Athena peut **reconnaître chaque membre du foyer** (empreinte vocale) et répondre avec **son** agenda / ses listes / sa mémoire. Enrôlement : `python3 voice_assistant.py enroll prénom échantillon.wav`.
 
 ### 📅 Productivité & Communication
 - **Agenda & Planification** : Synchronisation avec vos calendriers (iCal, CalDAV) pour lire et créer des événements.
@@ -92,6 +93,19 @@ Dans **Réglages > 🔌 Plugins**, activez des extensions. Le **plugin Claude Co
 
 ### ⏰ Routines Proactives
 Athena n'attend pas que vous lui parliez. Demandez-lui : *"Fais-moi un résumé de ma journée tous les matins à 7h30"*. Elle se réveillera toute seule, analysera votre agenda, la météo, l'état de votre maison, et pourra même déclencher la cafetière !
+
+### 🧭 Continuité : objectifs & « fil d'Ariane »
+Athena garde le fil sur la durée :
+- **Objectifs persistants** : dites *"Note comme objectif : migrer le serveur mail, en 3 étapes"*. Elle suit l'objectif, ses étapes et leur avancement, et vous le rappelle d'elle-même au fil des échanges (*"où en est-on sur la migration ?"*).
+- **Mettre une tâche de côté (parenthèse)** : en plein travail, dites *"Attends, mets ça de côté, on regarde un souci sur la base de données"*. Athena **gèle** la tâche en cours (et son environnement Docker) et démarre un fil propre. Quand vous dites *"c'est bon, on reprend"*, elle **restaure tout** exactement où vous en étiez.
+- **Mémoire qui apprend (Chronos)** : elle retient les faits durables (vos proches, vos machines, vos préférences) et les réutilise — plus besoin de tout réexpliquer.
+
+### 👁️ Surveillance proactive (Vigie)
+Athena peut **réagir toute seule** quand quelque chose se passe sur votre infrastructure :
+- Vos outils de supervision (Zabbix, Grafana, LibreNMS, Home Assistant, sondes SNMP…) **poussent** un événement vers Athena. Rien ne tourne en boucle : elle ne se réveille que lorsqu'un événement arrive.
+- Elle **analyse**, vous **alerte** (Telegram/notification) et **propose un correctif**.
+- **Validation à distance (HITL)** : pour toute action sensible (redémarrer un service, modifier une config…), Athena **se met en pause** et vous envoie une demande avec boutons **✅ Autoriser / ⛔ Refuser** sur Telegram. Vous décidez depuis votre téléphone ; l'action ne s'exécute qu'après votre accord.
+- Réglage dans **Réglages → 👁️ Vigie** : activez, choisissez la sévérité minimale, le chat Telegram destinataire, et générez le **jeton** à mettre dans vos outils de supervision (`POST /api/events`, en-tête `X-Event-Token`).
 
 ---
 
@@ -140,6 +154,8 @@ C'est la section la plus importante pour ajuster le comportement global et les s
 #### 4. Mémoire
 - `Base de faits (Core Memory)` : Liste tout ce qu'Athena a appris sur vous de façon permanente (vos goûts, votre métier). Vous pouvez y supprimer des éléments.
 - `Knowledge Graph` : En plus des faits simples, l'IA construit un réseau de relations ("Graphe") entre les entités pour mieux comprendre votre contexte.
+- `Chronos (extraction automatique)` : à la fin d'un échange, Athena range automatiquement les faits durables dans le graphe ; au début, elle réinjecte ce qui est pertinent. Résultat : elle résout « le serveur de dev » ou « ma femme » sans qu'on réexplique. (Réglable via `GRAPH_AUTO_EXTRACT` / `GRAPH_CONTEXT_INJECT`.)
+- `Objectifs & conscience situationnelle` : les objectifs actifs, les parenthèses en cours et la pièce courante sont rappelés à Athena à chaque échange — elle ne perd pas le fil.
 - `Compaction au-delà de N messages` : Pour éviter de faire exploser la facture, Athena résume automatiquement les vieilles parties de la conversation au bout de N messages (40 par défaut).
 - `Messages récents gardés mot pour mot` : Athena garde toujours les N derniers échanges stricts en mémoire à court terme (12 par défaut).
 
@@ -153,11 +169,19 @@ C'est la section la plus importante pour ajuster le comportement global et les s
 #### 7. Automatisation (n8n)
 - `Workflows autorisés` : Vous pouvez connecter Athena à des automatisations n8n complexes en lui donnant accès à des adresses web (Webhooks).
 
+#### 8. Rédaction & Vision (modèles dédiés)
+- `Modèle de rédaction` (atelier d'écriture) et `Modèle d'analyse d'images` se choisissent désormais dans une **liste déroulante dynamique** (les modèles réellement disponibles sur votre endpoint, comme pour les agents). Laissez vide pour le modèle d'Athena par défaut.
+
+> 💡 Le panneau **« Comportement »** a été repensé : réglages en **cartes repliables** avec descriptions en clair, **interrupteurs** visuels et **barre de recherche** pour retrouver un réglage. L'interface est aussi **responsive** (mobile/tablette).
+
 ### Les autres Onglets du Panneau de Réglages
 En plus de "Comportement", la barre latérale des réglages vous donne accès à d'autres menus spécialisés :
 
 * **Onglet "Connaissances (RAG)"** : C'est ici que vous pouvez demander à l'IA d'analyser (ou de purger) les documents que vous avez placés dans l'Explorateur de fichiers.
 * **Onglet "Routines"** : Permet de programmer des tâches automatiques (ex: "Fais le résumé de la maison tous les jours à 7h00"). Vous pouvez aussi y récupérer les adresses "Webhooks" de ces routines, ou faire en sorte qu'une routine **déclenche un Workflow** déterministe (champ « Workflow » du formulaire) au lieu d'une simple tâche.
+* **Onglet "👁️ Vigie (événements)"** : Active la **surveillance proactive**. Activez-la, choisissez la sévérité minimale traitée, le compte et le **chat Telegram** destinataire des alertes/validations, et **générez le jeton** à donner à vos outils de supervision. Ceux-ci poussent alors les alertes sur `POST /api/events` (en-tête `X-Event-Token`). Bouton **« Émettre un test »** pour vérifier le pipeline de bout en bout, et un **journal** des derniers événements reçus.
+* **Onglet "Messageries"** : Gère le bot **Telegram** (appairage des contacts) et — important — permet de **lier chaque chat Telegram à un compte Athena**. Sans cette liaison, les messages Telegram tournent sur le compte « local » et ne voient pas votre agenda/mémoire personnels.
+* **Onglet "Nextcloud"** : URL/identifiants Nextcloud (fichiers, tâches, contacts) **et** l'option de **synchronisation des listes avec Nextcloud Notes**.
 * **Onglet "Satellites Vocaux"** : Permet de configurer les enceintes ESP32 connectées à Athena.
 * **Onglet "Extensions MCP"** : Permet de brancher des plugins externes standards (ex: connecteur GitHub, connecteur Home Assistant) à l'IA.
 * **Onglet "Diagnostics & Système"** : Vérifie la santé de l'installation (base de données, STT, TTS). C'est ici que se trouve le bouton d'urgence **Redémarrer le moteur Vocal (Kokoro)** en cas de bug sonore, ainsi que les options de **Sauvegarde & Restauration** de votre environnement complet.

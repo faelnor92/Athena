@@ -24,6 +24,9 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 ### 🧠 Moteur d'Orchestration & LLM
 * **Multi-Modèles** : OpenAI, Anthropic, Gemini, Ollama, Groq, Mistral, Qwen, APIs locales compatibles.
 * **Swarm (Essaim)** : Routage automatique entre agents spécialisés (handoffs), exécution concurrente, débats inter-agents.
+* **Context Stacker (« fil d'Ariane »)** : mettez une tâche de côté (PUSH) pour traiter une urgence, puis reprenez **exactement où vous en étiez** (POP) — sans pollution de contexte. La sandbox Docker associée est **gelée puis relancée** (`docker pause`/`unpause`). Pile LIFO par session, imbrication supportée.
+* **Objectifs persistants (Goal Manager)** : Athena suit vos buts à long terme (décomposés en étapes, prioritisés) et **ne perd jamais le fil** — les objectifs actifs lui sont rappelés à chaque échange.
+* **Fiabilité du tool-calling** : auto-réparation des appels d'outils mal formés (JSON cassé, style Python, appel écrit en texte) + relance automatique — fini les outils « oubliés » par les modèles légers.
 * **Pipelines Rigides (Optionnel)** : Possibilité de forcer une chaîne de montage stricte où les agents s'enchaînent séquentiellement sans autonomie de déviation.
 * **Architecture Modulaire** : Backend FastAPI découpé par routeurs fonctionnels, soutenu par une base de données **SQLite** robuste et thread-safe.
 * **Isolation des Tâches** : État isolé par exécution (ContextVars). Plusieurs requêtes parallèles n'interfèrent jamais.
@@ -33,8 +36,9 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 * **Cockpit & Télémétrie** : Suivi en direct de la consommation (tokens, coûts financiers par utilisateur), exécutions et erreurs.
 * **Observabilité** : Historique complet et panneau de Logs en temps réel dans l'UI pour auditer les appels d'outils et le système.
 * **Éditeur intégré (mini-IDE)** : Explorateur de fichiers **éditable** — édition multi-onglets (CodeMirror), coloration, autocomplétion, sauvegarde Ctrl+S (lecture seule pour les Lecteurs), panneau redimensionnable, et **live-reload** quand l'agent modifie un fichier ouvert.
-* **Outils Intégrés** : Agenda, listes, terminal, et galerie de médias générés.
-* **Réglages No-Code** : Gestion complète du comportement (routines, mémoire, rôles) via des interfaces claires.
+* **Outils Intégrés** : Agenda, listes, terminal, galerie de médias, et onglet **👁️ Vigie** (surveillance proactive).
+* **Réglages No-Code** : Gestion complète du comportement (routines, mémoire, rôles, modèles, Vigie) via des interfaces claires — réglages **repensés** (cartes + descriptions + recherche), sélecteurs de modèles **dynamiques**.
+* **Responsive** : interface utilisable sur **mobile et tablette**. Saisie multiligne (Entrée envoie, Ctrl/Maj+Entrée = saut de ligne).
 
 ### 🧰 Outils & Extensibilité (Skills)
 * **Serveurs MCP (Model Context Protocol)** : Branchez des serveurs externes sans coder. Le connecteur Home Assistant MCP est vendorisé localement pour une sécurité absolue.
@@ -57,22 +61,27 @@ Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des
 * **Plugin Claude Code** : délègue le code lourd à l'agent **Claude Code** (CLI), scopé au projet actif ; donné automatiquement au Codeur quand il est activé.
 * **Auto-correction (self-healing)** : le design (Python) et le **Codeur** (Code-Test-Fix : `pytest`/`npm test`) corrigent automatiquement leurs erreurs en boucle bornée.
 
-### 🏠 Domotique & Automatisations
+### 🏠 Domotique, Proactivité & Automatisations
 * **Domotique Native (Home Assistant)** : Lecture d'état et exécution d'actions domotiques (lumières, volets, capteurs) de façon instantanée.
 * **Conscience Spatiale** : Sait dans quelle pièce vous êtes pour diriger ses actions sur votre environnement physique.
+* **Proactivité événementielle (agent « Vigie »)** : Athena réagit à des événements **poussés** par votre supervision (Zabbix, Grafana, LibreNMS, Home Assistant, traps SNMP via forwarder…) sur `POST /api/events`. **Rien ne tourne en boucle** : le Vigie ne se réveille que sur événement, analyse, alerte, et propose un correctif (action sensible → validée). Filtrage par sévérité, dé-duplication anti-tempête, configurable dans l'UI **et par Athena**.
+* **Validation à distance (HITL multi-canal)** : une action sensible déclenchée depuis Telegram **fige l'exécution** et vous envoie une notification avec boutons **✅ Autoriser / ⛔ Refuser** — vous validez depuis votre téléphone, l'exécution reprend (ou non).
 * **Routines Proactives & Workflows** : Planification de tâches (CRON) isolées par utilisateur, déclenchements webhooks, intégrations poussées avec **n8n**.
-* **Agenda & Listes** : Synchronisation bidirectionnelle Google Calendar, iCal et CalDAV. Gestion de vos Todos et listes de courses.
+* **Agenda & Listes** : Synchronisation bidirectionnelle Google Calendar, iCal et CalDAV. Listes (courses, tâches) **synchronisables avec Nextcloud Notes** (2 sens, optionnel).
 * **Notifications Actives** : Alertes autonomes de la part d'Athena vers Telegram, Discord, Slack, Email et Webhooks.
 
 ### 💾 Mémoire & Apprentissage
-* **Base Vectorielle RAG** : Indexation sémantique automatique de documents via ChromaDB.
+* **Base Vectorielle RAG** : Indexation sémantique automatique de documents via ChromaDB (embeddings locaux ou HTTP au choix).
 * **Knowledge Graph & Core Memory** : Archivage de faits durables et modélisation de relations en réseau (Graphes).
+* **Chronos (mémoire relationnelle automatique)** : en fin d'échange, Athena **extrait les faits durables** (vos préférences, vos proches, vos machines et leurs relations) vers le graphe ; au début d'un échange, le **contexte pertinent est réinjecté** — elle résout « le serveur de dev », « ma femme »… toute seule.
+* **Conscience situationnelle** : l'« ici et maintenant » (objectifs actifs, parenthèses en cours, pièce courante) est rappelé à chaque échange.
 * **Auto-Amélioration** : Retour d'expérience persistant après une tâche complexe pour affiner le comportement futur.
 * **Sauvegarde & Restauration** : Système complet de backup/restore de l'état (conversations, RAG, routines, configurations).
 
 ### 🎙️ Assistant Vocal (STT/TTS)
 * **100% Local & Fluide** : Synthèse vocale très haute vitesse via **Kokoro TTS** (API Docker locale avec redémarrage UI) et transcription via **Whisper STT** optimisé.
 * **Détection de Mot-Clé (Wake Word)** : openWakeWord avec support du "barge-in" (interruption de la parole IA).
+* **Reconnaissance du locuteur** : identification par empreinte vocale (resemblyzer) → **chaque membre du foyer est routé vers SON compte** (agenda, listes, mémoire personnels). Enrôlement simple en une commande.
 * **Satellites ESP32-S3** : Connexion directe de satellites vocaux ESPHome au framework (S2S), sans passer par Home Assistant.
 
 ## 🚀 Installation Rapide (1-Liner)
@@ -144,7 +153,8 @@ puis dans `.env` : `OPENINFERENCE_ENABLED=true` et `OTEL_EXPORTER_OTLP_ENDPOINT=
 | **Protection Données** | **Masquage des secrets (logs)** | **Oui (clés API / mots de passe redacted)** | Non | Partiel | N/A | N/A |
 | | **Chiffrement au repos** | **Oui (Fernet/AES-128 sur conversations + traces)** | Non | Dépend du stockage | N/A | N/A |
 | | **Isolation multi-locataires** | **Oui (mémoire/agenda/budget isolés par user)** | Non | Par workspace | N/A | N/A |
-| | **Approbation humaine (HITL)** | **Oui (interception des actions sensibles dans l'UI)** | Oui (via chat) | Basique | À coder soi-même | À coder soi-même |
+| | **Approbation humaine (HITL)** | **Oui — interception dans l'UI + validation asynchrone multi-canal (boutons ✅/⛔ Telegram, le run gèle et reprend)** | Oui (via chat) | Basique | À coder soi-même | À coder soi-même |
+| **Proactivité** | **Réaction autonome aux événements** | **Oui (agent Vigie : ingress d'événements supervision → analyse/alerte/correctif validé)** | Non | Cron/canaux | Non | Non |
 
 ## 📄 Licence
 
