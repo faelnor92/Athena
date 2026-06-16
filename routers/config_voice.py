@@ -295,8 +295,19 @@ async def voice_tts(req: TtsSpeakRequest):
     try:
         from voice.config import voice_config
         from voice.tts import TTS, TTSUnavailable
-        if (req.voice or "").strip():
-            os.environ["VOICE_TTS_VOICE"] = req.voice.strip()
+        chosen = (req.voice or "").strip() or (os.getenv("VOICE_TTS_VOICE", "") or "").strip()
+        # Aucune voix définie → on prend AUTOMATIQUEMENT la 1ʳᵉ voix Kokoro dispo (sinon l'ancien
+        # défaut « alloy » — inconnu de Kokoro — faisait échouer la synthèse → voix robotique).
+        if not chosen:
+            try:
+                vres = await list_voices()
+                vlist = vres.get("voices") or []
+                if vlist:
+                    chosen = vlist[0]["id"]
+            except Exception:
+                pass
+        if chosen:
+            os.environ["VOICE_TTS_VOICE"] = chosen
         c = voice_config()
         tts = TTS(c["tts_engine"], c["piper_model"], c["piper_bin"])
         wav = await asyncio.to_thread(tts.synth_wav_bytes, text)
@@ -309,8 +320,8 @@ async def voice_tts(req: TtsSpeakRequest):
         # 502 → le front retombe proprement sur la voix du navigateur.
         raise HTTPException(status_code=502, detail=f"TTS indisponible : {e}")
     finally:
-        if (req.voice or "").strip():
-            if prev is None:
-                os.environ.pop("VOICE_TTS_VOICE", None)
-            else:
-                os.environ["VOICE_TTS_VOICE"] = prev
+        # Restaure l'état d'origine (on a pu surcharger VOICE_TTS_VOICE pour ce seul appel).
+        if prev is None:
+            os.environ.pop("VOICE_TTS_VOICE", None)
+        else:
+            os.environ["VOICE_TTS_VOICE"] = prev
