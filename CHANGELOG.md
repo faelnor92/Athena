@@ -1,5 +1,13 @@
 # Historique des Versions (Changelog)
 
+## v0.13.2 (Fix recherche RAG avec embedding endpoint)
+
+### 🐛 « '_HttpEmbeddingFunction' object has no attribute 'embed_query' »
+- La recherche mémoire (ChromaDB query) échouait avec un embedding via endpoint : ChromaDB
+  attendait aussi l'interface embed_query/embed_documents (style LangChain), pas seulement
+  __call__. Ajout des trois méthodes → recherche RAG opérationnelle avec bge-m3 / qwen3-embedding.
+
+
 ## v0.13.1 (Embeddings configurables : local par défaut, endpoint optionnel)
 
 ### 🧠 Mémoire RAG : meilleur embedding au choix (sans casser le défaut)
