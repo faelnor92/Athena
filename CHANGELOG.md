@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.13.5 (Auto-continuation : Athena agit après avoir annoncé)
+
+### ⚡ Plus besoin de dire « vas-y »
+- Quand Athena ANNONCE une action (« je vais vérifier tes mails », « je lance l'archivage… »)
+  mais n'appelle aucun outil, elle est désormais RELANCÉE automatiquement pour EXÉCUTER tout de
+  suite, au lieu de rendre la main et d'attendre une relance manuelle.
+- Bornée (AUTO_CONTINUE_MAX=2 par tour, anti-boucle) et RESPECTUEUSE : si le message pose une
+  question à l'utilisateur (demande d'avis/approbation), on s'arrête — c'est à l'utilisateur de
+  décider. Réglages dans l'UI (Comportement → AUTO_CONTINUE / AUTO_CONTINUE_MAX).
+
+
 ## v0.13.4 (Ménage code & tests)
 
 ### 🧹 Nettoyage

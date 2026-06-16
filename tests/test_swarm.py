@@ -416,3 +416,17 @@ if __name__ == "__main__":
     test_hook_auto_amelioration_archive_un_retour()
     test_outils_multiples_executes_en_parallele()
     test_annulation_arrete_le_run()
+
+
+def test_looks_like_announced_intent():
+    """Auto-continuation : on relance sur une intention annoncée, mais PAS si l'agent pose une
+    question à l'utilisateur (on respecte la demande d'avis/approbation)."""
+    from core.swarm import looks_like_announced_intent as f
+    assert f("Je vais vérifier tes mails.")
+    assert f("Je lance l'archivage.")
+    assert f("Laisse-moi récupérer le fichier.")
+    assert not f("Voici le résumé de ton agenda : ...")     # vraie réponse
+    assert not f("Veux-tu que je supprime ces mails ?")      # demande d'avis
+    assert not f("Je vais le faire, mais préfères-tu A ou B ?")  # annonce + question → respect
+    assert not f("")
+    print("OK: looks_like_announced_intent (intention vs question)")
