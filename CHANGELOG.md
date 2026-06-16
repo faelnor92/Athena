@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## v0.13.9 (Auto-amélioration : Athena crée ses routines)
+
+### 🤖 create_routine (avec validation)
+- Nouvel outil create_routine : Athena peut créer une routine planifiée (briefing matinal,
+  rappel récurrent…) directement par la conversation, sans aller dans l'UI. Marqué SENSIBLE
+  (_requires_approval) → l'utilisateur CONFIRME avant création (reste bridé). + list_routines
+  (lecture). Auto-injectés à l'orchestrateur, exposés par mots-clés (routine/chaque matin…).
+- Complète l'auto-création d'OUTILS déjà possible (save_new_skill, validé par AST).
+
+
 ## v0.13.8 (Confort fichiers & projets)
 
 ### 📂 Navigateur de fichiers + vue workspace dans Écriture

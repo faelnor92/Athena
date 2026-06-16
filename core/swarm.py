@@ -48,6 +48,7 @@ import tools.presence
 import tools.n8n_tools
 import tools.computer_use
 import tools.vision_tools
+import tools.routine_tools
 import tools.pipeline_tools
 import tools.playbooks
 import tools.claude_code_tool
@@ -155,6 +156,8 @@ AVAILABLE_TOOLS = {
     "computer_use_action": tools.computer_use.computer_use_action,
     "analyze_image": tools.vision_tools.analyze_image,
     "capture_screen": tools.vision_tools.capture_screen,
+    "create_routine": tools.routine_tools.create_routine,
+    "list_routines": tools.routine_tools.list_routines,
     "run_rigid_pipeline": tools.pipeline_tools.run_rigid_pipeline,
     "claude_code": tools.claude_code_tool.claude_code,  # plugin : délègue le code à Claude Code
 }
@@ -189,6 +192,7 @@ _TOOL_GROUPS = {
     "skills": {"save_new_skill", "delete_skill"},
     "computer": {"computer_use_action"},
     "vision": {"analyze_image", "capture_screen"},
+    "routines": {"create_routine", "list_routines"},
 }
 _TOOL_GROUP_KEYWORDS = {
     "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",
@@ -228,6 +232,9 @@ _TOOL_GROUP_KEYWORDS = {
     "vision": ["image", "photo", "capture", "capture d'écran", "screenshot", "écran", "ecran",
                "vois-tu", "que vois", "regarde l'image", "regarde cette image", "lis l'image",
                "analyse l'image", "analyse cette image", "sur l'image", "cette image", "visuel"],
+    "routines": ["routine", "routines", "chaque matin", "tous les matins", "chaque jour",
+                 "tous les jours", "chaque semaine", "rappel récurrent", "automatise", "périodique",
+                 "programme une tâche", "planifie tous les", "récurrent"],
 }
 # Index inversé nom→groupe (un outil n'est dans qu'un seul groupe).
 _TOOL_DOMAIN = {name: grp for grp, names in _TOOL_GROUPS.items() for name in names}
@@ -1653,6 +1660,11 @@ class Swarm:
                         existing.add("analyze_image")
                 except Exception:
                     pass
+                # Routines : Athena peut créer/lister ses propres routines (création = confirmée).
+                for _n in ("create_routine", "list_routines"):
+                    if _n not in existing and _n in AVAILABLE_TOOLS:
+                        effective_tools.append(AVAILABLE_TOOLS[_n])
+                        existing.add(_n)
                 # Playbooks Markdown (savoir-faire procédural) : on expose load_playbook
                 # UNIQUEMENT s'il existe au moins un playbook (sinon outil inutile).
                 if "load_playbook" not in existing and tools.playbooks.list_playbooks():
