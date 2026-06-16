@@ -78,6 +78,9 @@
 - **Home Assistant** : `get_ha_state`, `call_ha_service`.
 - **Présence / follow-me** : `get_current_room`.
 - Météo (`get_weather`), heure (`get_time`), **briefing quotidien** (`get_daily_briefing`).
+- **Monitoring d'infrastructure** : la télémétrie des serveurs/baie (température, hyperviseurs)
+  remonte via Home Assistant / capteurs ESP, et peut être interrogée par Athena. Une alerte
+  critique peut déclencher une notification (et, à terme, un correctif proposé en sandbox).
 
 ## 11. Code & développement
 - **Sandbox Docker persistante** : `execute_bash_command`, `execute_python_code`, `run_tool_script`.
@@ -87,6 +90,11 @@
   `git_diff`, `git_log`, `git_status`.
 - **Auto-fix** de code, tests (`run_checks`).
 - **Claude Code** intégré (`claude_code`).
+- **`reset_sandbox`** : réinitialise l'environnement d'exécution (conteneur cassé/saturé),
+  workspace conservé.
+- **Virtualisation / hyperviseurs** : aujourd'hui via **SSH** (commandes sur l'hôte : `virsh`,
+  `docker`, `pct/qm` Proxmox…). Un **MCP d'environnement** dédié (Proxmox/VM en natif) est prévu
+  dans la roadmap pour lire/agir sur l'état des VM sans passer par des commandes brutes.
 
 ## 12. Rédaction (romans) — onglet Écriture
 - Révision / traduction / cohérence / répétitions de chapitres :
@@ -94,6 +102,9 @@
   `document_check_repetitions`, `document_autorevise`, `document_read`, `document_publish`.
 - **Modèle LLM configurable** pour la rédaction.
 - Intégration **OnlyOffice** (édition en ligne).
+- **Cohérence de l'univers (lore) via le graphe de connaissances** : fiches personnages,
+  règles de l'univers et relations stockées dans la mémoire-graphe (Chronos) → Émilie (l'agent
+  auteur) vérifie qu'un élément (mythologie, cyberpunk…) reste cohérent d'un chapitre à l'autre.
 
 ## 13. AthenaDesign — onglet Design
 - Génération de sites / projets web (iframe dédiée).
@@ -157,37 +168,32 @@ UI responsive (mobile / tablette). Réglages repensés (cartes + descriptions + 
 - **Proactivité de base** : routines planifiées créables et gérables par l'agent.
 - **Fiabilité du tool-calling** : réparation du JSON malformé / appels en texte + auto-correction.
 - **Identité par compte unifiée** (web / Telegram / voix → agenda, listes, mémoire du bon membre).
+- **Context Stacker (« fil d'Ariane »)** : mettre une tâche de côté (PUSH) / reprendre (POP),
+  avec `docker pause`/`unpause` de la sandbox. Outils `open_context` / `close_context` / `list_contexts`.
+- **Conscience situationnelle** (parenthèses ouvertes + pièce courante injectées au run).
+- **HITL multi-canal asynchrone** : action sensible via Telegram → run figé + notification
+  actionnable (boutons ✅/⛔) + déverrouillage par un clic. Timeout = refus.
 
 ### 🔜 Prévu (prochaines briques)
-1. **Context Stacker (« fil d'Ariane »)** — *priorité*
-   - Pile LIFO de contextes par session : commandes **PUSH** (« mets ça de côté ») /
-     **POP** (« on reprend »).
-   - Un `ContextFrame` capture : sujet, agent actif, instantané de l'historique,
-     identifiant du conteneur Docker, résumé.
-   - Intégration sandbox : **`docker pause`** au PUSH / **`docker unpause`** au POP
-     (l'agent retrouve son environnement intact).
-   - Implémenté en **middleware de session dédié** (pas dans le routeur d'agents).
-   - But : interrompre une tâche complexe pour une urgence, puis reprendre sans pollution
-     de contexte.
-
-2. **HITL multi-canal asynchrone**
-   - Pour les actions critiques (redémarrer un conteneur prod, modifier une règle réseau) :
-     **gel du run** (asyncio.Event) + **notification actionnable** (Telegram / Home Assistant)
-     + **déverrouillage par un clic** depuis le téléphone (« Autoriser » / « Refuser »).
-   - Aujourd'hui : approbations « demande et s'arrête » in-band ; à faire : le gel + reprise asynchrone.
-
-3. **Proactivité événementielle (Event broker)**
+1. **Proactivité événementielle (Event broker)**
    - Entrée d'événements externes (Zabbix / LibreNMS / Home Assistant) via webhook + file asyncio.
    - Un **agent Vigie** intercepte (`disk_almost_full`, `high_temperature_rack`…), synthétise,
      et décide d'alerter ou de préparer un correctif en sandbox **avant** qu'on demande quoi que ce soit.
 
-4. **MCP d'environnement**
+2. **MCP d'environnement**
    - Serveurs MCP branchés sur Proxmox, le terminal, l'éditeur.
    - Injection d'un **« contexte système invisible »** au début d'une discussion
      (dernières lignes de logs en erreur, charge du cluster) → ne plus avoir à expliquer le problème.
 
+3. **Goal manager (objectifs persistants)**
+   - Store d'objectifs (actif / en pause / abandonné) décomposables, relus par une routine.
+   - Exécution **déclenchée + validée (HITL)**, jamais d'autonomie non bornée.
+
 ### 💡 Idées « effet Jarvis » à creuser
-- **Briefing matinal vocal** (« Good morning sir » : agenda, météo, état de l'infra).
+- **Briefing matinal CONTEXTUEL** (pas juste lu à heure fixe) : déclenché quand le capteur de
+  présence du bureau/chambre s'active le matin (Home Assistant) **et** s'il n'y a pas d'alerte
+  infra critique → Athena lance le briefing (agenda du jour + météo + état infra) de façon fluide
+  dès que tu entres. Lie Agenda (§7) + Domotique (§10) + Routines.
 - **Scènes domotiques** (« soirée film » → lumières, etc. via Home Assistant).
 - **Vision temps réel** (caméra / sonnette : « qui est à la porte ? »).
 - **Anticipation par habitudes** (croisement graphe de connaissances + routines).
