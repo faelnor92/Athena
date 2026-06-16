@@ -510,6 +510,31 @@ class _TextToolCall:
         self.function = _TextToolCallFunc(name, arguments)
 
 
+def _loads_lenient(raw):
+    """json.loads TOLÉRANT : répare les fautes fréquentes des LLM (virgules traînantes,
+    littéraux Python None/True/False, quotes simples). Renvoie l'objet ou None."""
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+    import re as _re
+    s = (raw or "").strip()
+    s = _re.sub(r",\s*([}\]])", r"\1", s)                      # virgules traînantes
+    s = _re.sub(r"\bNone\b", "null", s)
+    s = _re.sub(r"\bTrue\b", "true", s)
+    s = _re.sub(r"\bFalse\b", "false", s)
+    try:
+        return json.loads(s)
+    except Exception:
+        pass
+    if '"' not in s and "'" in s:                              # quotes simples → doubles
+        try:
+            return json.loads(s.replace("'", '"'))
+        except Exception:
+            pass
+    return None
+
+
 def parse_text_tool_calls(content: str, valid_names) -> list:
     """RÉCUPÈRE les appels d'outils écrits en TEXTE par le modèle (qwen3 & co. émettent
     parfois le tool-call dans le contenu — bloc ```json, balise <tool_call>… — au lieu du
@@ -535,9 +560,8 @@ def parse_text_tool_calls(content: str, valid_names) -> list:
 
     out = []
     for raw in candidates:
-        try:
-            data = json.loads(raw)
-        except Exception:
+        data = _loads_lenient(raw)
+        if data is None:
             continue
         for it in (data if isinstance(data, list) else [data]):
             if not isinstance(it, dict):
@@ -566,6 +590,23 @@ def parse_text_tool_calls(content: str, valid_names) -> list:
             out.append(_TextToolCall(name, args_str, len(out) + 1))
         if out:
             break  # un bloc valide suffit
+
+    # Repli : appel « style Python » écrit en texte — outil({...}) ou outil().
+    # On n'accepte qu'un nom d'outil RÉELLEMENT disponible (anti faux-positif).
+    if not out:
+        for m in _re.finditer(r"\b([a-zA-Z_]\w*)\s*\(\s*(\{.*?\})?\s*\)", content, _re.DOTALL):
+            name = m.group(1)
+            if name not in valid:
+                continue
+            data = _loads_lenient(m.group(2) or "{}")
+            if not isinstance(data, dict):
+                continue
+            try:
+                args_str = json.dumps(data, ensure_ascii=False)
+            except Exception:
+                args_str = "{}"
+            out.append(_TextToolCall(name, args_str, len(out) + 1))
+            break
     return out
 
 
@@ -1549,6 +1590,7 @@ class Swarm:
         _route_done = False   # routeur de délégation : décidé une seule fois par run
         _route_target = None  # spécialiste ciblé (nom) | "" (aucun) | None (non décidé)
         _auto_continue = 0    # relances auto sur « intention annoncée mais non exécutée »
+        _toolcall_fix = 0     # auto-correction : relances sur outil décrit en texte mais non appelé
         # Disjoncteur anti-répétition (model-agnostic) : un modèle faible (qwen3) rappelle
         # souvent le MÊME outil avec les MÊMES arguments sans progresser → on borne le nombre
         # d'exécutions réelles d'une même signature (outil|args) et on pousse à conclure.
@@ -2600,9 +2642,38 @@ class Swarm:
                         "pose UNE question précise au lieu d'annoncer.")})
                     continue
 
+                # AUTO-CORRECTION du tool-calling : le modèle a DÉCRIT un appel d'outil en
+                # texte (JSON cassé, style Python, ou simple mention) sans le déclencher, et
+                # le rattrapage n'a rien pu extraire → on le relance pour qu'il l'appelle
+                # vraiment, au format structuré. Bornée (anti-boucle) ; ne se déclenche que si
+                # le texte cite un OUTIL réellement disponible (anti faux-positif).
+                _tcfix_on = os.getenv("TOOLCALL_AUTOFIX", "true").lower() in ("true", "1", "yes")
+                _tcfix_cap = int(os.getenv("TOOLCALL_FIX_MAX", "2") or 2)
+                _content = (message.content or "")
+                if _tcfix_on and _toolcall_fix < _tcfix_cap and _content.strip() and _has_real_tools:
+                    import re as _reTc
+                    _valid_names = {f.__name__ for f in _secured_tools}
+                    _cl = _content.lower()
+                    # Indice d'intention d'outil : nom d'outil cité, ou JSON/balise d'appel présents.
+                    _named = any(_reTc.search(rf"\b{_reTc.escape(n.lower())}\b", _cl) for n in _valid_names)
+                    _jsonish = ("<tool_call>" in _cl or "```" in _content
+                                or ('{' in _content and '"' in _content))
+                    if _named or _jsonish:
+                        _toolcall_fix += 1
+                        print(f"[\033[96mSWARM\033[0m] auto-correction tool-call "
+                              f"({_toolcall_fix}/{_tcfix_cap}) : outil décrit en texte → relance.")
+                        messages.append({"role": "assistant", "name": current_agent.name, "content": _content})
+                        messages.append({"role": "user", "content": (
+                            "[Système] Tu as DÉCRIT un appel d'outil dans ta réponse au lieu de "
+                            "l'EXÉCUTER (aucun outil n'a été déclenché). N'écris PAS le JSON ni le "
+                            "nom de l'outil dans le texte : appelle réellement l'outil via le "
+                            "mécanisme d'appel de fonction. Si finalement aucun outil n'est "
+                            "nécessaire, réponds normalement à l'utilisateur.")})
+                        continue
+
                 # Plus aucun outil appelé, on a fini le tour
                 break
-                
+
             tool_calls = list(getattr(message, "tool_calls", None) or []) + list(_rescued_tcs)
 
             # Anti-délégation parasite : si l'orchestrateur a DÉJÀ produit une vraie réponse
