@@ -59,6 +59,22 @@ def list_speakers() -> list:
     return [os.path.splitext(os.path.basename(f))[0] for f in glob.glob(os.path.join(SPEAKERS_DIR, "*.npy"))]
 
 
+def account_for(speaker: str) -> str:
+    """Compte Athena à utiliser pour ce locuteur (agenda/listes/mémoire de SON compte).
+    Mapping optionnel VOICE_SPEAKER_ACCOUNTS (JSON, ex. {"papa":"faelnor","maman":"claire"}) ;
+    à défaut, le nom du locuteur enrôlé sert directement de nom de compte."""
+    if not speaker:
+        return ""
+    import json
+    try:
+        m = json.loads(os.getenv("VOICE_SPEAKER_ACCOUNTS", "") or "{}")
+        if isinstance(m, dict) and m.get(speaker):
+            return str(m[speaker]).strip()
+    except Exception:
+        pass
+    return speaker
+
+
 def _profiles():
     import numpy as np
     profs = {}

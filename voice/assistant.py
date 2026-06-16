@@ -148,6 +148,16 @@ class VoiceAssistant:
         if speaker:
             text = f"[Locuteur identifié : {speaker}]\n{text}"
         payload = {"message": text, "client_id": client_id}
+        # Router vers le compte Athena du locuteur (agenda/listes/mémoire personnels).
+        # Honoré côté serveur seulement si le token vocal est admin (ou auth désactivée).
+        if speaker:
+            try:
+                from .speaker_id import account_for
+                acct = account_for(speaker)
+                if acct:
+                    payload["as_user"] = acct
+            except Exception:
+                pass
         event = None
         run_id = None
         interrupted = threading.Event()

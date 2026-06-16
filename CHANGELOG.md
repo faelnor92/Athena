@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## [0.14.5] - 2026-06-16
+### Added
+- **Vocal : routage par locuteur vers SON compte.** Le satellite reconnaît qui parle (empreinte vocale, `voice/speaker_id.py`) et transmet `as_user` à `/api/chat/stream` : agenda, listes et mémoire deviennent ceux du membre du foyer identifié. Mapping optionnel locuteur→compte via `VOICE_SPEAKER_ACCOUNTS` (JSON), sinon le nom enrôlé sert de compte. Sécurité : `as_user` honoré seulement si l'auth est désactivée (mono-poste) ou si l'appelant est admin.
+  - Enrôlement : `python3 voice_assistant.py enroll <nom> <échantillon.wav>`.
+
+
 ## [0.14.4] - 2026-06-16
 ### Fixed
 - **Telegram voyait le mauvais agenda/compte** : toutes les requêtes Telegram s'exécutaient en tant qu'utilisateur « local », alors que l'agenda/config/mémoire sont par compte. Du coup, en demandant par Telegram, Athena ne voyait que l'agenda local et jamais ton CalDAV. On peut désormais **lier chaque chat Telegram à un compte Athena** (Réglages → Messageries) : les messages de ce chat utilisent l'agenda, la config et la mémoire de CE compte. Liaison possible pour les chats approuvés ET configurés ; variable `TELEGRAM_DEFAULT_USER` comme repli.

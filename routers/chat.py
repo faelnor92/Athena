@@ -30,10 +30,32 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Chat"])
 
+
+def _maybe_impersonate(as_user: str):
+    """Applique « agir en tant que <as_user> » (agenda/listes/mémoire de ce compte) si
+    l'appelant en a le droit. Autorisé seulement quand l'auth est DÉSACTIVÉE (mode local
+    mono-poste) ou que l'appelant est ADMIN (ex. service vocal avec un token admin).
+    Cas d'usage : reconnaissance du locuteur sur un satellite vocal → router vers SON
+    compte. Renvoie un token contextvar à réinitialiser, ou None si rien n'a changé."""
+    target = (as_user or "").strip()
+    if not target:
+        return None
+    from core.state import _current_username, _current_role
+    try:
+        from routers.auth import _auth_active
+        allowed = (not _auth_active()) or (_current_role.get() == "admin")
+    except Exception:
+        allowed = False  # défaut prudent : on refuse l'impersonation en cas de doute
+    if not allowed:
+        logger.warning("as_user='%s' ignoré : appelant non autorisé à impersonifier.", target)
+        return None
+    return _current_username.set(target)
+
 class ChatRequest(BaseModel):
     message: str
     parent_id: Optional[str] = None
     client_id: str = "web"  # canal/session : web (défaut), cli, voice, ...
+    as_user: str = ""       # « agir en tant que » (ex. locuteur vocal identifié) — admin/local uniquement
 
 class ChatResponse(BaseModel):
     agent: str
@@ -419,6 +441,9 @@ async def chat_stream(req: ChatRequest):
         token = current_run_id.set(run_id)
         chan_token = channels.current_channel.set(req.client_id)
         appr_token = approvals.auto_approve_var.set(channels.auto_approve_for(req.client_id))
+        # « Agir en tant que » (locuteur vocal identifié) : posé AVANT copy_context()
+        # pour que le worker (agenda/listes/mémoire) tourne sous le bon compte.
+        imp_token = _maybe_impersonate(req.as_user)
         try:
             if not sess.active_agent:
                 yield _sse("error", {"detail": f"{_app_name()} n'est pas initialisé."})
@@ -485,6 +510,9 @@ async def chat_stream(req: ChatRequest):
             current_run_id.reset(token)
             channels.current_channel.reset(chan_token)
             approvals.auto_approve_var.reset(appr_token)
+            if imp_token is not None:
+                from core.state import _current_username
+                _current_username.reset(imp_token)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
