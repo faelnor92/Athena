@@ -260,6 +260,19 @@ async def create_project(request: Request, payload: dict = Body(...)):
     write_db(user, db)
     return db[proj["id"]]
 
+@router.post("/projects/{project_id}/rename")
+async def rename_design_project(request: Request, project_id: str, payload: dict = Body(...)):
+    """Renomme un projet (registre unifié code+design)."""
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nom vide.")
+    if not code_projects.rename(project_id, name):
+        raise HTTPException(status_code=404, detail="Renommage impossible.")
+    return {"status": "success", "id": project_id, "name": name}
+
+
 @router.delete("/projects/{project_id}")
 async def delete_design_project(request: Request, project_id: str, remove_files: bool = True):
     """Supprime un projet (registre UNIFIÉ avec la partie code) : dossier code + entrée
