@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.19.6] - 2026-06-16
+### Fixed
+- **LA cause du « NotSupportedError » à la lecture vocale (chat + bouton Test), sur TOUS les navigateurs** : la Content-Security-Policy n'avait **pas de directive `media-src`** → `<audio>` chargé depuis un `blob:` retombait sur `default-src 'self'` et était **bloqué**. Ajout de `media-src 'self' blob: data:`. La voix (TTS) se lit désormais normalement. (Les corrections WAV/MP3 précédentes restent utiles selon le serveur TTS, mais le vrai verrou était la CSP.)
+
+
 ## [0.19.5] - 2026-06-16
 ### Fixed
 - **Aperçu/chat vocal lu sur TOUS les navigateurs** : l'endpoint navigateur `/api/voice/tts` demande désormais du **MP3** (universellement lisible) au lieu du WAV de Kokoro (en-tête « streaming » + chunk LIST refusés par Edge/Firefox). Sans effet sur les satellites (chemin séparé). Réglable via `BROWSER_TTS_FORMAT` (défaut mp3). La normalisation WAV reste en repli. Vérifié contre un vrai Kokoro (sortie `audio/mpeg`).
