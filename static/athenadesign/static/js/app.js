@@ -1448,6 +1448,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Chat form sending
+    // Entrée = ENVOYER le prompt ; Ctrl/Cmd/Maj+Entrée = saut de ligne (cohérent avec le chat).
+    promptInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            if (typeof chatForm.requestSubmit === "function") chatForm.requestSubmit();
+            else chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
+        }
+    });
+
     chatForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const promptText = promptInput.value.trim();

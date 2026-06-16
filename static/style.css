@@ -1652,6 +1652,8 @@ code[class*="language-"] {
     color: #fff;
     font-size: 0.85rem;
     padding: 6px 10px;
+    font-family: inherit;        /* textarea : éviter le monospace par défaut */
+    align-self: center;
 }
 
 #chat-input::placeholder {

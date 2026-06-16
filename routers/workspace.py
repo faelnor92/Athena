@@ -243,6 +243,38 @@ async def workspace_presence(req: PresenceRequest):
     others = [u for u in (d or {}) if u != user]
     return {"viewers": others}
 
+@router.delete("/api/workspace/file")
+async def delete_workspace_file(path: str, project_id: str = None):
+    """Supprime un fichier (ou un dossier vide/avec contenu) du workspace. Anti-traversée stricte.
+    Le rôle LECTEUR (viewer) ne peut pas supprimer."""
+    try:
+      with _project_scope(project_id):
+        try:
+            from core import projects as _proj
+            if not _proj.can_write():
+                raise HTTPException(status_code=403, detail="Projet en lecture seule.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+        base_dir = get_workspace_dir()
+        clean_path = os.path.abspath(os.path.join(base_dir, path or ""))
+        if clean_path == base_dir or os.path.commonpath([clean_path, base_dir]) != base_dir:
+            raise HTTPException(status_code=403, detail="Accès interdit.")
+        if not os.path.exists(clean_path):
+            raise HTTPException(status_code=404, detail="Introuvable.")
+        import shutil as _sh
+        if os.path.isdir(clean_path):
+            _sh.rmtree(clean_path)
+        else:
+            os.remove(clean_path)
+        return {"status": "success", "deleted": os.path.relpath(clean_path, base_dir)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/api/workspace/download")
 async def download_workspace_file(path: str, project_id: str = None):
     try:
