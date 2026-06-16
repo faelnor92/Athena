@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.19.5] - 2026-06-16
+### Fixed
+- **Aperçu/chat vocal lu sur TOUS les navigateurs** : l'endpoint navigateur `/api/voice/tts` demande désormais du **MP3** (universellement lisible) au lieu du WAV de Kokoro (en-tête « streaming » + chunk LIST refusés par Edge/Firefox). Sans effet sur les satellites (chemin séparé). Réglable via `BROWSER_TTS_FORMAT` (défaut mp3). La normalisation WAV reste en repli. Vérifié contre un vrai Kokoro (sortie `audio/mpeg`).
+
+
 ## [0.19.4] - 2026-06-16
 ### Fixed
 - **Lecture vocale impossible sur TOUS les navigateurs (Edge inclus), pas seulement Firefox** : le WAV de Kokoro contient un chunk `LIST/INFO` (métadonnées libav) **et** des tailles d'en-tête bidon que les décodeurs navigateur refusent. `_normalize_wav` **réémet désormais un WAV canonique** (`fmt `+`data` uniquement, tailles exactes) via le module `wave` → fichier universellement lisible. Vérifié de bout en bout contre un vrai serveur Kokoro.
