@@ -208,6 +208,8 @@ from routers import athenadesign as _athenadesign_router
 app.include_router(_athenadesign_router.router)
 from routers import plugins as _plugins_router
 app.include_router(_plugins_router.router)
+from routers import config_events as _config_events_router
+app.include_router(_config_events_router.router)
 
 
 # Bot Telegram ENTRANT (long-polling) — démarre seulement si TELEGRAM_BOT_TOKEN est défini.

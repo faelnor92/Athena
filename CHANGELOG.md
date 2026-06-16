@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.19.0] - 2026-06-16
+### Added
+- **Proactivité événementielle — agent « Vigie » (vers Jarvis).** Athena réagit à des événements POUSSÉS par la supervision (Zabbix, Grafana, LibreNMS, Home Assistant, traps SNMP via forwarder…). 100 % piloté par événement : **rien ne tourne en boucle**, un worker bloqué se réveille uniquement à l'arrivée d'un événement, l'analyse, alerte et propose un correctif (action sensible → validée via le HITL Telegram). Ingress `POST /api/events` (jeton dédié `X-Event-Token`, sans session), filtrage par sévérité + dé-duplication + file bornée (anti-tempête). **Configurable dans l'UI** (onglet 👁️ Vigie) **et par Athena** (`configure_monitoring`, `list_recent_events`). `core/events.py`, gate `EVENT_BROKER`.
+
+
 ## [0.18.0] - 2026-06-16
 ### Added
 - **Goal Manager — objectifs persistants (continuité de but, vers Jarvis).** Athena suit des buts à long terme par utilisateur : `create_goal(titre, detail, priorité, étapes)`, `list_goals`, `update_goal_status` (active/paused/done/abandoned), `add_goal_step`, `complete_goal_step`, `set_goal_priority`. Les objectifs ACTIFS sont rappelés dans la conscience situationnelle de chaque run → Athena « ne perd pas le fil ». Bridage : le module SUIT les objectifs, il n'exécute rien tout seul (toute action passe par les outils normaux + HITL). Par compte, persistant. Gate `GOAL_MANAGER`.

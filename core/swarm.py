@@ -54,6 +54,7 @@ import tools.playbooks
 import tools.claude_code_tool
 import tools.context_tools
 import tools.goal_tools
+import tools.event_tools
 import tools.email_tools
 import tools.nextcloud_tools
 import tools.document_editor
@@ -172,6 +173,8 @@ AVAILABLE_TOOLS = {
     "add_goal_step": tools.goal_tools.add_goal_step,
     "complete_goal_step": tools.goal_tools.complete_goal_step,
     "set_goal_priority": tools.goal_tools.set_goal_priority,
+    "configure_monitoring": tools.event_tools.configure_monitoring,  # Vigie (proactivité)
+    "list_recent_events": tools.event_tools.list_recent_events,
 }
 
 # ── Filtrage d'outils par pertinence (économie de tokens) ──────────────────────
@@ -1803,6 +1806,9 @@ class Swarm:
                 if os.getenv("GOAL_MANAGER", "true").lower() in ("true", "1", "yes"):
                     _auto_tools += ["create_goal", "list_goals", "update_goal_status",
                                     "add_goal_step", "complete_goal_step", "set_goal_priority"]
+                # Surveillance proactive (Vigie) : Athena peut la régler / la consulter.
+                if os.getenv("EVENT_BROKER", "true").lower() in ("true", "1", "yes"):
+                    _auto_tools += ["configure_monitoring", "list_recent_events"]
                 if _self_improve:
                     _auto_tools.append("save_new_skill")
                 for _n in _auto_tools:
