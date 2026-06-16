@@ -1,5 +1,18 @@
 # Historique des Versions (Changelog)
 
+## v0.13.0 (Vision : Athena voit les images)
+
+### 👁️ Analyse d'images via le modèle multimodal de l'endpoint
+- core/vision.py + tools/vision_tools.py : `analyze_image(filename, question)` → Athena décrit/lit
+  une image uploadée (capture, photo, schéma, doc scanné) via un modèle vision (défaut
+  custom/chat-gemma), en BASE64 (contrainte de l'endpoint). Auto-injecté à l'orchestrateur,
+  exposé par mots-clés (image/capture/« que vois-tu »…).
+- `capture_screen` : 1ʳᵉ brique « computer use » — capture l'écran de la machine et l'analyse.
+  OPTIONNEL/GATÉ (COMPUTER_USE=true) et inutile sur serveur headless. Le contrôle souris/clavier
+  reste à part (l'automatisation NAVIGATEUR existe déjà via computer_use_action / Playwright).
+- Réglages dans l'UI (Comportement) : VISION_MODEL + COMPUTER_USE.
+
+
 ## v0.12.10 (Routines : envoi du résultat sur Telegram)
 
 ### 📲 Briefing matinal (et toute routine) livré sur Telegram
