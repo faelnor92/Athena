@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.12.6 (Voix émotionnelle activée par défaut + dédup)
+
+### 🎭 Correctif
+- Une instruction d'émotion gated « VOICE_EMOTION_TAGS » existait déjà mais était DÉSACTIVÉE par
+  défaut (false) → les agents n'émettaient jamais de balise, l'émotion ne marchait pas. Passée à
+  ACTIVE par défaut (le tag ne fuite jamais — retiré à l'affichage et de la prononciation ;
+  VOICE_EMOTION_TAGS=false pour couper). Suppression de l'instruction dupliquée ajoutée en 0.12.5.
+
+
 ## v0.12.5 (Voix émotionnelle)
 
 ### 🎭 Émotion de bout en bout (chat + satellites)

@@ -1855,15 +1855,6 @@ class Swarm:
                     )
             except Exception:
                 pass
-            # Émotion vocale : l'agent PEUT préfixer sa réponse d'une balise d'émotion. Elle COLORE
-            # la voix (TTS) et est AUTOMATIQUEMENT retirée du texte affiché → elle ne « fuite » pas.
-            system_prompt += (
-                "- TON ÉMOTIONNEL (optionnel) : tu peux COMMENCER ta réponse par une balise "
-                "« [emotion: X] » pour colorer la voix, où X ∈ {neutre, enjoué, excité, triste, "
-                "calme, sérieux, empathique, fâché, chuchoté}. Choisis selon le contexte (ex. "
-                "[emotion: empathique] pour réconforter, [emotion: enjoué] pour une bonne nouvelle). "
-                "La balise est retirée du texte affiché ; n'en mets qu'UNE, au tout début.\n"
-            )
             # Renfort anti-fabrication (levier B) : si l'agent a des outils, une donnée réelle
             # qu'il ne possède pas DOIT venir d'un appel d'outil, jamais d'une valeur inventée.
             if _tool_names:
@@ -2097,9 +2088,10 @@ class Swarm:
                         "\n🧰 OUTILS DISPONIBLES (détails dans le schéma ; ne dis JAMAIS « je ne peux pas » "
                         "pour ce qu'un de ces outils permet — appelle-le) : " + ", ".join(_tool_names_list) + "\n")
 
-            # Expressivité vocale (optionnelle) : autorise une balise d'émotion en TÊTE
-            # de réponse, retirée du texte affiché et exploitée par le TTS expressif.
-            if os.getenv("VOICE_EMOTION_TAGS", "false").lower() in ("true", "1", "yes"):
+            # Expressivité vocale : balise d'émotion en TÊTE de réponse, retirée du texte affiché
+            # ET prononcé, exploitée par le TTS (mapping émotion→vitesse Kokoro). Active par DÉFAUT
+            # désormais (le tag ne fuite jamais) ; VOICE_EMOTION_TAGS=false pour la désactiver.
+            if os.getenv("VOICE_EMOTION_TAGS", "true").lower() in ("true", "1", "yes"):
                 system_prompt += (
                     "\n🎭 EXPRESSIVITÉ : tu peux commencer ta réponse par UNE balise d'émotion "
                     "entre crochets, ex. « [emotion: enjoué] », « [emotion: calme] », "
