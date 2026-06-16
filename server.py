@@ -78,6 +78,7 @@ _DEFAULT_CSP = (
     "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
     "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
     "img-src 'self' data: blob:; connect-src 'self'; "
+    "media-src 'self' blob: data:; "  # lecture TTS (chat/aperçu voix) via Blob/object URL
     "frame-src 'self' blob:; "  # aperçu PDF (object URL) + studio AthenaDesign en iframe
     # 'self' (et non 'none') : Athena peut embarquer ses PROPRES pages (ex. AthenaDesign
     # Studio à /athenadesign/) ; un site externe ne peut toujours pas framer Athena.
