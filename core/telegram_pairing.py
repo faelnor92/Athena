@@ -21,9 +21,10 @@ def _load() -> dict:
             d = json.load(f)
         d.setdefault("approved", [])
         d.setdefault("pending", {})
+        d.setdefault("users", {})   # chat_id -> nom d'utilisateur Athena (agenda/config/mémoire)
         return d
     except Exception:
-        return {"approved": [], "pending": {}}
+        return {"approved": [], "pending": {}, "users": {}}
 
 
 def _save(d: dict):
@@ -112,8 +113,34 @@ def revoke_chat(chat_id) -> bool:
         d = _load()
         before = len(d["approved"])
         d["approved"] = [c for c in d["approved"] if c != cid]
+        d.get("users", {}).pop(cid, None)   # plus autorisé → on oublie son utilisateur lié
         _save(d)
         return len(d["approved"]) < before
+
+
+def set_user(chat_id, username: str) -> bool:
+    """Lie un chat Telegram à un utilisateur Athena (agenda/config/mémoire de CE compte).
+    username vide = on retire la liaison (retour au compte par défaut)."""
+    cid = str(chat_id)
+    uname = (username or "").strip()
+    with _lock:
+        d = _load()
+        users = d.setdefault("users", {})
+        if uname:
+            users[cid] = uname
+        else:
+            users.pop(cid, None)
+        _save(d)
+        return True
+
+
+def user_for(chat_id) -> str:
+    """Utilisateur Athena sous lequel exécuter les messages de ce chat.
+    Priorité : liaison explicite → TELEGRAM_DEFAULT_USER → 'local'."""
+    cid = str(chat_id)
+    with _lock:
+        u = (_load().get("users", {}) or {}).get(cid)
+    return u or (os.getenv("TELEGRAM_DEFAULT_USER", "").strip() or "local")
 
 
 def pending() -> dict:
@@ -125,4 +152,5 @@ def status() -> dict:
     with _lock:
         d = _load()
     return {"required": required(), "configured": sorted(_configured()),
-            "approved": d.get("approved", []), "pending": d.get("pending", {})}
+            "approved": d.get("approved", []), "pending": d.get("pending", {}),
+            "users": d.get("users", {})}
