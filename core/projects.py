@@ -178,6 +178,23 @@ def create_project(name: str):
     return proj
 
 
+def rename(pid: str, new_name: str) -> bool:
+    """Renomme un projet (métadonnée 'name' ; le dossier sur disque n'est pas déplacé)."""
+    new_name = (new_name or "").strip()
+    if not new_name:
+        return False
+    projs = _own_projects()
+    changed = False
+    for p in projs:
+        if p.get("id") == pid:
+            p["name"] = new_name
+            changed = True
+            break
+    if changed:
+        user_config.set("projects", projs)
+    return changed
+
+
 def select(pid: str) -> bool:
     # Autorise un projet propre OU partagé (membre).
     if any(p.get("id") == pid for p in list_projects()):

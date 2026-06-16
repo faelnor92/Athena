@@ -640,6 +640,14 @@ function _initRedaction() {
         if (!b) { progBar.style.width = "0%"; progText.textContent = ""; }
     };
 
+    // Bouton « Parcourir le workspace » → sélecteur de fichiers (filtré .docx) → remplit le champ.
+    const browseBtn = document.getElementById("redac-browse");
+    if (browseBtn) browseBtn.addEventListener("click", () => openWorkspacePicker({
+        filter: /\.docx$/i,
+        title: "Choisir un document (.docx) du workspace",
+        onPick: (p) => { pathEl.value = p; }
+    }));
+
     // Upload local d'un .docx → réutilise /api/workspace/upload puis pré-remplit le nom.
     if (dropEl) dropEl.addEventListener("click", () => fileEl.click());
     if (fileEl) fileEl.addEventListener("change", async () => {
@@ -5228,6 +5236,50 @@ function initSpeech() {
 // =========================================================================
 // GESTIONNAIRE DE FICHIERS DU WORKSPACE
 // =========================================================================
+// Sélecteur de fichiers du WORKSPACE (modal réutilisable) : liste /api/workspace/files,
+// filtre optionnel (regex), renvoie le chemin choisi via onPick. Sert aux champs « chemin ».
+async function openWorkspacePicker(opts) {
+    const { filter = null, title = "Choisir un fichier", onPick = () => {} } = opts || {};
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "background:#1c1f26;border:1px solid rgba(255,255,255,0.15);border-radius:12px;width:min(560px,92vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden;";
+    box.innerHTML = `<div style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;justify-content:space-between;align-items:center;">
+        <strong style="font-size:0.95rem;">${title}</strong>
+        <button type="button" id="wsp-close" style="background:none;border:none;color:#fff;font-size:1.2rem;cursor:pointer;">×</button></div>
+        <input id="wsp-filter" placeholder="Filtrer…" style="margin:10px 16px;padding:8px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#fff;">
+        <div id="wsp-list" style="overflow-y:auto;padding:0 8px 12px;flex:1;"><div style="padding:12px;opacity:0.6;">Chargement…</div></div>`;
+    overlay.appendChild(box); document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    box.querySelector("#wsp-close").addEventListener("click", close);
+    let files = [];
+    try {
+        const r = await apiFetch("/api/workspace/files");
+        files = (await r.json()) || [];
+    } catch (e) { box.querySelector("#wsp-list").innerHTML = `<div style="padding:12px;color:#ff8;">Erreur: ${e}</div>`; return; }
+    if (filter) files = files.filter(f => filter.test(f.path));
+    const listEl = box.querySelector("#wsp-list");
+    const render = (q) => {
+        const ql = (q || "").toLowerCase();
+        const shown = files.filter(f => !ql || f.path.toLowerCase().includes(ql))
+                           .sort((a, b) => a.path.localeCompare(b.path));
+        listEl.innerHTML = shown.length ? "" : '<div style="padding:12px;opacity:0.6;">Aucun fichier.</div>';
+        shown.forEach(f => {
+            const row = document.createElement("div");
+            row.style.cssText = "padding:8px 10px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;gap:10px;";
+            row.onmouseenter = () => row.style.background = "rgba(255,255,255,0.07)";
+            row.onmouseleave = () => row.style.background = "";
+            row.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📄 ${f.path}</span>
+                             <span style="opacity:0.5;font-size:0.72rem;white-space:nowrap;">${((f.size||0)/1024).toFixed(1)} KB</span>`;
+            row.addEventListener("click", () => { onPick(f.path); close(); });
+            listEl.appendChild(row);
+        });
+    };
+    render("");
+    box.querySelector("#wsp-filter").addEventListener("input", (e) => render(e.target.value));
+}
+
 async function loadWorkspaceFiles() {
     const listContainer = document.getElementById("files-list-container");
     if (!listContainer) return;

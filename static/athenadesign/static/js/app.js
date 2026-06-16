@@ -116,6 +116,27 @@ document.addEventListener("DOMContentLoaded", () => {
     const pythonDrawingCanvas = document.getElementById("python-drawing-canvas");
     const pythonCommentPinsContainer = document.getElementById("python-comment-pins-container");
 
+    // Renommer un projet : clic sur son titre → invite + POST rename (cohérent avec les autres fetch).
+    if (currentProjectTitle) {
+        currentProjectTitle.style.cursor = "pointer";
+        currentProjectTitle.title = "Cliquer pour renommer le projet";
+        currentProjectTitle.addEventListener("click", async () => {
+            if (!currentProjectId) return;
+            const nn = prompt("Nouveau nom du projet :", currentProjectTitle.textContent.trim());
+            if (!nn || !nn.trim()) return;
+            try {
+                const r = await fetch(`/api/athenadesign/projects/${currentProjectId}/rename`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: nn.trim() })
+                });
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                currentProjectTitle.textContent = nn.trim();
+                if (currentProjectData) currentProjectData.name = nn.trim();
+                if (typeof loadProjects === "function") loadProjects();
+            } catch (e) { alert("Renommage impossible : " + e.message); }
+        });
+    }
+
     // Application State
     let currentProjectId = null;
     let currentProjectData = null;

@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.13.8 (Confort fichiers & projets)
+
+### 📂 Navigateur de fichiers + vue workspace dans Écriture
+- Bouton 📂 à côté du champ chemin de l'onglet Écriture → sélecteur de fichiers du workspace
+  (filtré .docx, recherche intégrée) → remplit le champ. Sélecteur réutilisable (openWorkspacePicker).
+
+### ✏️ Renommer les projets Design
+- Clic sur le titre du projet (AthenaDesign) → renommage. Endpoint POST
+  /api/athenadesign/projects/{id}/rename + core.projects.rename (registre unifié code+design).
+
+
 ## v0.13.7 (UX quick wins — saisie & fichiers)
 
 ### ⌨️ Saisie cohérente partout
