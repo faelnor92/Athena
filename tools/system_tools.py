@@ -196,6 +196,41 @@ def list_ssh_hosts() -> str:
             "execute_bash_command) :\n" + "\n".join(lines))
 
 
+def reset_sandbox() -> str:
+    """
+    Réinitialise l'environnement d'exécution sandbox (conteneur Docker du codeur). Utile si un
+    script a cassé l'environnement, saturé le disque, ou laissé un processus en boucle.
+
+    Les fichiers du workspace (montés depuis l'hôte) sont CONSERVÉS ; seuls les paquets installés
+    DANS le conteneur et les processus en cours sont perdus. Un environnement propre est recréé à
+    la commande suivante.
+
+    Returns:
+        str: Message de confirmation.
+    """
+    try:
+        from core import projects
+        if not projects.can_write():
+            return "Erreur : projet en LECTURE SEULE — réinitialisation refusée."
+    except Exception:
+        pass
+    try:
+        from tools import dev_container, sandbox_runner
+        if not sandbox_runner.docker_available():
+            return "Pas de sandbox Docker (exécution locale directe) — rien à réinitialiser."
+        key = dev_container.active_key()
+        if key:
+            ok = dev_container.stop(key)
+            return ("✅ Sandbox réinitialisée : un environnement propre sera recréé à la prochaine "
+                    "commande (les fichiers du workspace sont conservés)." if ok else
+                    "Aucun conteneur persistant à réinitialiser (déjà propre).")
+        present = dev_container.list_containers()
+        return ("La sandbox est éphémère (un conteneur jetable par commande) — rien à réinitialiser. "
+                + (f"Conteneurs dev présents : {', '.join(present)}." if present else ""))
+    except Exception as e:
+        return f"Erreur lors de la réinitialisation de la sandbox : {e}"
+
+
 def execute_bash_command(command: str, user_confirmed: bool = False, host: str = "") -> str:
     """
     Exécute une commande système Bash sécurisée (locale, ou distante via SSH).

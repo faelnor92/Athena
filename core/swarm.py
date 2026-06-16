@@ -164,6 +164,7 @@ AVAILABLE_TOOLS = {
     "open_context": tools.context_tools.open_context,    # pile de contextes (« fil d'Ariane »)
     "close_context": tools.context_tools.close_context,
     "list_contexts": tools.context_tools.list_contexts,
+    "reset_sandbox": tools.system_tools.reset_sandbox,    # nettoyage de l'env d'exécution
 }
 
 # ── Filtrage d'outils par pertinence (économie de tokens) ──────────────────────
@@ -1590,6 +1591,7 @@ class Swarm:
         tokens_used = 0
         _rag_injected = False     # RAG sobre : on n'injecte les chunks qu'UNE fois par run
         _graph_injected = False   # contexte-graphe (Chronos) : injecté UNE fois par run
+        _situ_injected = False    # conscience situationnelle (parenthèses, pièce) : 1 fois/run
         skill_failures = []  # échecs de compétences dynamiques → réparées en fin de run
         _route_done = False   # routeur de délégation : décidé une seule fois par run
         _route_target = None  # spécialiste ciblé (nom) | "" (aucun) | None (non décidé)
@@ -1792,6 +1794,15 @@ class Swarm:
                                  or bool(_names & {"write_file", "edit_file", "apply_patch", "execute_bash_command"}))
                     if _is_coder and "claude_code" not in _names:
                         effective_tools.append(tools.claude_code_tool.claude_code)
+            except Exception:
+                pass
+
+            # reset_sandbox : compagnon de l'exécution de commandes/code → donné automatiquement
+            # à tout agent qui peut exécuter (pour nettoyer un env cassé / saturé sans config).
+            try:
+                _names2 = {f.__name__ for f in effective_tools}
+                if (_names2 & {"execute_bash_command", "execute_python_code"}) and "reset_sandbox" not in _names2:
+                    effective_tools.append(AVAILABLE_TOOLS["reset_sandbox"])
             except Exception:
                 pass
 
@@ -2381,6 +2392,21 @@ class Swarm:
                         volatile_context += gctx
                 except Exception as e:
                     print(f"[\033[91mGraphe Erreur\033[0m] {e}")
+
+            # CONSCIENCE SITUATIONNELLE — une fois par run : parenthèses ouvertes (pile de
+            # contextes) + pièce courante. C'est l'« ici et maintenant » que le LLM ne peut
+            # pas deviner ; le profil/graphe/RAG sont injectés ailleurs (pas de doublon).
+            if not _situ_injected:
+                _situ_injected = True
+                try:
+                    from core import context_assembler, channels as _ch
+                    from core.state import sessions as _sessions
+                    _skey = _ch.current_channel.get() or "web"
+                    _situ = context_assembler.situational_block(_sessions.get(_skey).client_id)
+                    if _situ:
+                        volatile_context += _situ
+                except Exception as e:
+                    print(f"[\033[91mConscience situ. Erreur\033[0m] {e}")
 
             # Renforcer les consignes de transfert pour le superviseur — UNIQUEMENT s'il
             # existe d'autres agents à qui déléguer (sinon l'orchestrateur seul doit
