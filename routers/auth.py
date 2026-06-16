@@ -150,6 +150,9 @@ async def auth_middleware(request: Request, call_next):
               # l'écran de connexion (sinon « v0.0.0 » et « Vérification… » restent figés).
               or path == "/api/system/version"
               or path == "/api/system/update_check"
+              # Ingress d'événements externes (monitoring) : pas de session, jeton dédié
+              # validé DANS l'endpoint (cf. routers/config_events.py).
+              or (request.method == "POST" and path == "/api/events")
               # Partage AthenaDesign en lecture seule par jeton (non énumérable).
               or path.startswith("/api/athenadesign/shared/")
               # OnlyOffice Document Server (server-to-server) : ne porte pas de session ; ces

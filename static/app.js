@@ -459,6 +459,8 @@ const modalTabPlugins = document.getElementById("modal-tab-plugins");
 const panePlugins = document.getElementById("pane-plugins");
 const modalTabRoutines = document.getElementById("modal-tab-routines");
 const paneRoutines = document.getElementById("pane-routines");
+const modalTabVigie = document.getElementById("modal-tab-events");
+const paneVigie = document.getElementById("pane-events");
 const modalTabWorkflows = document.getElementById("modal-tab-workflows");
 const paneWorkflows = document.getElementById("pane-workflows");
 const modalTabKnowledge = document.getElementById("modal-tab-knowledge");
@@ -2886,8 +2888,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabPlugins, modalTabRoutines, modalTabWorkflows, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor, modalTabMessaging].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, panePlugins, paneRoutines, paneWorkflows, paneKnowledge, paneUsers, paneSatellites, paneDoctor, paneMessaging].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabPlugins, modalTabRoutines, modalTabVigie, modalTabWorkflows, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor, modalTabMessaging].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, panePlugins, paneRoutines, paneVigie, paneWorkflows, paneKnowledge, paneUsers, paneSatellites, paneDoctor, paneMessaging].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -4251,6 +4253,69 @@ if (modalTabRoutines && paneRoutines) {
         paneRoutines.style.display = "block";
         loadRoutinesPane();
     }));
+}
+if (modalTabVigie && paneVigie) {
+    modalTabVigie.addEventListener("click", () => switchModalTab(modalTabVigie, () => {
+        paneVigie.style.display = "block";
+        loadEventsConfig();
+        loadRecentEvents();
+    }));
+}
+async function loadEventsConfig() {
+    try {
+        const r = await apiFetch("/api/config/events");
+        const c = await r.json();
+        const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+        const chk = (id, v) => { const e = document.getElementById(id); if (e) e.checked = !!v; };
+        chk("ev-enabled", c.enabled); set("ev-min-severity", c.min_severity || "warning");
+        chk("ev-auto-investigate", c.auto_investigate); set("ev-owner", c.owner_user || "local");
+        set("ev-telegram", c.telegram_chat_id || ""); set("ev-token", "");
+        const tok = document.getElementById("ev-token");
+        if (tok && c.ingest_token) tok.placeholder = "Défini (" + c.ingest_token + ") — vide = inchangé";
+    } catch (e) { /* silencieux */ }
+}
+async function saveEventsConfig() {
+    const st = document.getElementById("ev-status");
+    if (st) st.textContent = "⏳…";
+    const payload = {
+        enabled: document.getElementById("ev-enabled").checked,
+        min_severity: document.getElementById("ev-min-severity").value,
+        auto_investigate: document.getElementById("ev-auto-investigate").checked,
+        owner_user: document.getElementById("ev-owner").value.trim() || "local",
+        telegram_chat_id: document.getElementById("ev-telegram").value.trim(),
+    };
+    const tok = document.getElementById("ev-token").value.trim();
+    if (tok) payload.ingest_token = tok;
+    try {
+        const r = await apiFetch("/api/config/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        if (st) st.innerHTML = r.ok ? '<span style="color:var(--success-color)">✅ Enregistré</span>' : '<span style="color:#ff5555">❌ Erreur</span>';
+        loadEventsConfig();
+    } catch (e) { if (st) st.innerHTML = `<span style="color:#ff5555">❌ ${e}</span>`; }
+}
+async function testEvent() {
+    const st = document.getElementById("ev-status");
+    if (st) st.textContent = "⏳ Émission…";
+    try {
+        const r = await apiFetch("/api/events/test", { method: "POST" });
+        const d = await r.json();
+        if (st) st.textContent = "Test : " + (d.status || "?");
+        setTimeout(loadRecentEvents, 1500);
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+}
+async function loadRecentEvents() {
+    const box = document.getElementById("ev-recent");
+    if (!box) return;
+    try {
+        const r = await apiFetch("/api/events/recent");
+        const d = await r.json();
+        const evs = d.events || [];
+        if (!evs.length) { box.innerHTML = '<span style="opacity:0.5;">Aucun événement reçu.</span>'; return; }
+        const col = { info: "#7fd", warning: "#fc6", critical: "#f57" };
+        box.innerHTML = evs.map(e => `<div style="background:rgba(255,255,255,0.04);padding:4px 8px;border-radius:5px;">
+            <span style="color:${col[e.severity] || '#aaa'};">●</span> <b>${e.type}</b> / ${e.source}
+            <span style="opacity:0.6;">— ${(e.message || '').slice(0, 100)}</span>
+            <span style="float:right;opacity:0.5;">${e.status}</span></div>`).join("");
+    } catch (e) { box.innerHTML = `<span style="color:#ff5555;">${e}</span>`; }
 }
 if (modalTabWorkflows && paneWorkflows) {
     modalTabWorkflows.addEventListener("click", () => switchModalTab(modalTabWorkflows, () => {
