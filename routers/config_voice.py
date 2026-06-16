@@ -209,9 +209,34 @@ async def get_voice_tts() -> Dict[str, Any]:
     }
 
 
+_LANG_FLAG = {"a": "🇺🇸", "b": "🇬🇧", "e": "🇪🇸", "f": "🇫🇷", "h": "🇮🇳",
+              "i": "🇮🇹", "j": "🇯🇵", "p": "🇧🇷", "z": "🇨🇳"}
+
+
+def _voice_label(vid: str) -> str:
+    """Transforme un ID de voix Kokoro (ex. « ff_siwis », « am_adam ») en libellé lisible
+    « 🇫🇷 Siwis (féminine) ». Conventions Kokoro : 1ʳᵉ lettre = langue, 2ᵉ = genre (f/m)."""
+    s = str(vid).strip()
+    flag, gender, name = "", "", s
+    if len(s) >= 3 and s[2] == "_":
+        flag = _LANG_FLAG.get(s[0].lower(), "")
+        gender = {"f": "féminine", "m": "masculine"}.get(s[1].lower(), "")
+        name = s[3:]
+    name = name.replace("_", " ").strip().title() or s
+    parts = [p for p in (flag, name, (f"({gender})" if gender else "")) if p]
+    return " ".join(parts)
+
+
+def _extract_voice_id(item) -> str:
+    """Récupère l'ID propre d'une voix, que Kokoro renvoie une chaîne ou un objet {id/name}."""
+    if isinstance(item, dict):
+        return str(item.get("id") or item.get("name") or item.get("voice") or "").strip()
+    return str(item).strip()
+
+
 @router.get("/api/voice/voices")
 async def list_voices() -> Dict[str, Any]:
-    """Liste DYNAMIQUE des voix proposées par le serveur Kokoro (pour le menu déroulant)."""
+    """Liste DYNAMIQUE des voix Kokoro (ID propre + libellé lisible) pour le menu déroulant."""
     url = _kokoro_voices_url()
     if not url:
         return {"voices": [], "error": "VOICE_TTS_HTTP_URL non configuré."}
@@ -221,11 +246,16 @@ async def list_voices() -> Dict[str, Any]:
         if r.status_code != 200:
             return {"voices": [], "error": f"Kokoro a répondu {r.status_code}."}
         data = r.json()
-        # Kokoro-FastAPI renvoie {"voices": [...]} ; on reste tolérant aux variantes.
+        # Kokoro-FastAPI : {"voices": [...]} (chaînes OU objets) ; on reste tolérant.
         voices = data.get("voices") if isinstance(data, dict) else data
         if isinstance(voices, dict):
             voices = list(voices.keys())
-        return {"voices": [str(v) for v in (voices or [])]}
+        out = []
+        for it in (voices or []):
+            vid = _extract_voice_id(it)
+            if vid:
+                out.append({"id": vid, "label": _voice_label(vid)})
+        return {"voices": out}
     except Exception as e:
         return {"voices": [], "error": f"Kokoro injoignable : {e}"}
 

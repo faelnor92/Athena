@@ -3506,14 +3506,14 @@ async function loadTtsVoices() {
         ]);
         const vd = await vr.json();
         const cd = await cr.json();
-        const voices = vd.voices || [];
+        const voices = vd.voices || [];   // [{id,label}]
         const current = (cd.voice || "").trim();
         if (!voices.length) {
             _ttsVoiceSel.innerHTML = '<option value="">' + (vd.error || "Aucune voix (Kokoro injoignable)") + '</option>';
         } else {
             _ttsVoiceSel.innerHTML = voices.map(v =>
-                `<option value="${v}" ${v === current ? "selected" : ""}>${v}</option>`).join("");
-            if (current && !voices.includes(current)) {
+                `<option value="${v.id}" ${v.id === current ? "selected" : ""}>${v.label || v.id}</option>`).join("");
+            if (current && !voices.some(v => v.id === current)) {
                 _ttsVoiceSel.insertAdjacentHTML("afterbegin", `<option value="${current}" selected>${current} (actuelle)</option>`);
             }
         }

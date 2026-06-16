@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.12.3 (Voix Kokoro : libellés lisibles + écoute fonctionnelle)
+
+### 🔊 Liste des voix propre
+- Les voix s'affichaient en ID bruts (« af_heart ») voire en objets « {id:…} », ce qui cassait
+  aussi le test (valeur invalide envoyée à Kokoro). /api/voice/voices renvoie désormais un ID
+  PROPRE + un LIBELLÉ lisible (ex. « 🇫🇷 Siwis (féminine) », « 🇺🇸 Adam (masculine) »), avec
+  extraction robuste (chaîne ou objet). Le bouton ▶️ Tester fonctionne (ID valide transmis).
+
+
 ## v0.12.2 (Voix du chat = Kokoro + sélecteur de voix dynamique)
 
 ### 🔊 Le chat parle avec Kokoro (même voix que les satellites)
