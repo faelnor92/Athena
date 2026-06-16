@@ -49,6 +49,24 @@ class TTS:
     def _emotion_gain(cls, emotion: str) -> float:
         return cls._EMOTION_GAIN.get((emotion or "neutral"), 1.0)
 
+    # Émotion → MARQUEUR texte (moteurs à marqueurs type Fish-Speech / OpenAudio S1). On préfixe
+    # le texte par « (happy) », « (sad) »… → vraie émotion PILOTÉE (pas juste vitesse/volume).
+    # Activé par VOICE_TTS_EMOTION_MARKERS=true. Inconnu → aucun marqueur (jamais lu à voix haute).
+    _EMOTION_MARKER = {
+        "cheerful": "happy", "excited": "excited", "sad": "sad", "calm": "calm",
+        "serious": "serious", "empathetic": "gentle", "angry": "angry", "whisper": "whispering",
+    }
+
+    def _emotion_text(self, text: str, emotion: str) -> str:
+        """Injecte le marqueur d'émotion EN TÊTE du texte si le moteur le supporte (Fish-Speech).
+        Sans effet pour piper/pyttsx3 (sinon « (sad) » serait prononcé)."""
+        if self.engine != "http":
+            return text
+        if os.getenv("VOICE_TTS_EMOTION_MARKERS", "false").lower() not in ("true", "1", "yes"):
+            return text
+        marker = self._EMOTION_MARKER.get((emotion or "neutral"))
+        return f"({marker}) {text}" if marker else text
+
     @staticmethod
     def _apply_gain_wav(wav_bytes: bytes, gain: float) -> bytes:
         """Applique un GAIN de volume à un WAV (numpy uniquement). gain≈1.0 → no-op. Sans clip
@@ -235,6 +253,7 @@ class TTS:
         (barge-in). pyttsx3 ne supporte pas l'interruption."""
         emotion, text = split_emotion(text or "")
         text = text.strip()
+        text = self._emotion_text(text, emotion)
         if not text:
             return
         if self.engine == "pyttsx3":
@@ -273,6 +292,7 @@ class TTS:
         """Synthétise et renvoie les octets WAV (pour streaming vers un satellite)."""
         emotion, text = split_emotion(text or "")
         text = text.strip()
+        text = self._emotion_text(text, emotion)
         if not text:
             return b""
         if self.engine == "pyttsx3":
@@ -304,6 +324,7 @@ class TTS:
         """Générateur : synthétise et stream l'audio PCM 16-bit au sample rate cible (idéal pour ESP32)."""
         emotion, text = split_emotion(text or "")
         text = text.strip()
+        text = self._emotion_text(text, emotion)
         if not text:
             return
         

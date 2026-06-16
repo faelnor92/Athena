@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## v0.12.8 (Émotion par marqueur — prêt pour Fish-Speech)
+
+### 🎭 [emotion:X] → marqueur natif « (sad) … » (émotion pilotée)
+- Nouveau VOICE_TTS_EMOTION_MARKERS=true : Athena traduit l'émotion de l'agent en MARQUEUR injecté
+  en tête du texte envoyé au TTS (enjoué→(happy), triste→(sad), fâché→(angry), chuchoté→
+  (whispering)…), pour les moteurs à marqueurs type Fish-Speech / OpenAudio S1. Vraie émotion
+  pilotée (au-delà de la vitesse/volume). Sans effet sur piper/pyttsx3 (jamais prononcé).
+- docs/fish-speech-server.md : recette complète serveur Fish-Speech français/émotion/clonage sur
+  GPU dédié (docker-compose + shim OpenAI /v1/audio/speech + /v1/audio/voices + sécurisation 24/7).
+
+
 ## v0.12.7 (Voix : nuance d'intensité par émotion, CPU)
 
 ### 🎭 Volume modulé par l'émotion (en plus de la vitesse)
