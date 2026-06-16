@@ -67,7 +67,8 @@ def test_induction_complete_et_refus():
     s._complete = lambda model, msgs, tools_schema=None: _resp(
         '{"skill": true, "name": "calc_remise", "description": "remise",'
         ' "code": "def calc_remise(prix, pct):\\n    \\"r\\"\\n    return round(prix*(1-pct/100), 2)"}')
-    steps = [{"type": "tool_call"}]
+    # Tâche SUBSTANTIELLE (garde anti-bruit : ≥ SKILL_MIN_TOOL_CALLS appels) → induction déclenchée.
+    steps = [{"type": "tool_call"} for _ in range(5)]
     s._induce_skill(agent, [{"role": "user", "content": "remise 10% sur 50"}], steps)
     assert saved.get("name") == "calc_remise", "la skill pure aurait dû être enregistrée"
     assert any(st.get("type") == "skill_learned" for st in steps)

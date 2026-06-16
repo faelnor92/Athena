@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.13.10 (Auto-création d'outils : Athena peut créer un outil quand il en manque)
+
+### 🛠️ save_new_skill exposé à l'orchestrateur (proactif, validé)
+- save_new_skill n'était PAS dans les outils d'Athena (réservé à l'induction interne) → elle ne
+  pouvait pas créer un outil À LA DEMANDE. Désormais auto-injecté à l'orchestrateur (si
+  SELF_IMPROVE_SKILLS), retiré du filtrage par mots-clés (toujours disponible), + préambule qui
+  l'encourage pour une opération réutilisable manquante. Reste bridé : fonction PURE validée par
+  AST + confirmation utilisateur.
+- Préambule create_routine pour les tâches récurrentes.
+- Fix test_skill_induction (périmé) : aligné sur le garde anti-bruit (≥ SKILL_MIN_TOOL_CALLS).
+
+
 ## v0.13.9 (Auto-amélioration : Athena crée ses routines)
 
 ### 🤖 create_routine (avec validation)

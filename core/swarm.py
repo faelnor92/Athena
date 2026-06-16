@@ -189,7 +189,7 @@ _TOOL_GROUPS = {
                   "nextcloud_delete_file", "nextcloud_list_tasks", "nextcloud_search_contacts"},
     "redaction": {"document_open", "document_read", "document_revise", "document_publish",
                   "document_autorevise", "document_check_coherence", "document_translate", "document_check_repetitions"},
-    "skills": {"save_new_skill", "delete_skill"},
+    "skills": {"delete_skill"},  # save_new_skill : hors groupe → jamais filtré (créer un outil à tout moment)
     "computer": {"computer_use_action"},
     "vision": {"analyze_image", "capture_screen"},
     "routines": {"create_routine", "list_routines"},
@@ -1660,8 +1660,14 @@ class Swarm:
                         existing.add("analyze_image")
                 except Exception:
                     pass
-                # Routines : Athena peut créer/lister ses propres routines (création = confirmée).
-                for _n in ("create_routine", "list_routines"):
+                # Auto-amélioration : Athena peut CRÉER ses propres outils (save_new_skill, validé +
+                # confirmé) et ses routines (create_routine, confirmée) + les lister. Donnés à
+                # l'orchestrateur quand l'auto-amélioration est active (SELF_IMPROVE_SKILLS).
+                _self_improve = os.getenv("SELF_IMPROVE_SKILLS", "true").lower() in ("true", "1", "yes")
+                _auto_tools = ["create_routine", "list_routines"]
+                if _self_improve:
+                    _auto_tools.append("save_new_skill")
+                for _n in _auto_tools:
                     if _n not in existing and _n in AVAILABLE_TOOLS:
                         effective_tools.append(AVAILABLE_TOOLS[_n])
                         existing.add(_n)
@@ -1980,6 +1986,19 @@ class Swarm:
                     "réponse. **N'affirme JAMAIS** avoir révisé/publié/analysé/délégué sans avoir APPELÉ "
                     "l'outil et reçu son résultat (pas de « c'est fait », pas de livrable inventé).\n"
                 )
+            # Auto-amélioration : encourage la création PROACTIVE d'un outil quand il en manque un.
+            if "save_new_skill" in _tool_names:
+                system_prompt += (
+                    "- AUTO-OUTILS : s'il te MANQUE un outil pour une opération réutilisable et "
+                    "DÉTERMINISTE (un calcul, une conversion, un formatage…), tu peux en CRÉER un avec "
+                    "`save_new_skill(nom, code, description)` — une fonction Python PURE (pas de réseau, "
+                    "fichier, ni système ; ça sera refusé). Il devient ensuite appelable. L'utilisateur "
+                    "CONFIRME avant création. Ne crée un outil que si c'est vraiment réutilisable.\n")
+            if "create_routine" in _tool_names:
+                system_prompt += (
+                    "- ROUTINES : pour une tâche RÉCURRENTE (briefing du matin, rappel périodique), tu "
+                    "peux créer une routine planifiée avec `create_routine(...)` (l'utilisateur confirme) "
+                    "au lieu de lui demander d'aller dans les réglages.\n")
             # Serveurs SSH disponibles : l'agent peut exécuter À DISTANCE via le registre
             # multi-hôtes (pas seulement la console codeur).
             if "execute_bash_command" in _tool_names:
