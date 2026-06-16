@@ -387,6 +387,10 @@ async def voice_tts(req: TtsSpeakRequest):
         raise HTTPException(status_code=400, detail="Texte vide.")
     text = text[:2000]  # garde-fou longueur
     prev = os.environ.get("VOICE_TTS_VOICE")
+    prev_fmt = os.environ.get("VOICE_TTS_FORMAT")
+    # Aperçu/chat NAVIGATEUR : on demande du MP3 (lu par TOUS les navigateurs, aucun souci
+    # d'en-tête WAV). N'affecte PAS les satellites (autre chemin, voice/assistant.py).
+    os.environ["VOICE_TTS_FORMAT"] = (os.getenv("BROWSER_TTS_FORMAT", "mp3") or "mp3").strip()
     try:
         from voice.config import voice_config
         from voice.tts import TTS, TTSUnavailable
@@ -425,8 +429,12 @@ async def voice_tts(req: TtsSpeakRequest):
         # 502 → le front retombe proprement sur la voix du navigateur.
         raise HTTPException(status_code=502, detail=f"TTS indisponible : {e}")
     finally:
-        # Restaure l'état d'origine (on a pu surcharger VOICE_TTS_VOICE pour ce seul appel).
+        # Restaure l'état d'origine (on a pu surcharger VOICE_TTS_VOICE/FORMAT pour ce seul appel).
         if prev is None:
             os.environ.pop("VOICE_TTS_VOICE", None)
         else:
             os.environ["VOICE_TTS_VOICE"] = prev
+        if prev_fmt is None:
+            os.environ.pop("VOICE_TTS_FORMAT", None)
+        else:
+            os.environ["VOICE_TTS_FORMAT"] = prev_fmt
