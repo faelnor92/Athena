@@ -1455,6 +1455,7 @@
                     <div class="form-group" id="routine-weekday-row" style="display: none;"><label>Jour</label><select id="routine-weekday"><option value="0">Lundi</option><option value="1">Mardi</option><option value="2">Mercredi</option><option value="3">Jeudi</option><option value="4">Vendredi</option><option value="5">Samedi</option><option value="6">Dimanche</option></select></div>
                     <div class="form-group" id="routine-interval-row" style="display: none;"><label>Intervalle (minutes)</label><input id="routine-minutes" type="number" min="1" value="60"></div>
                     <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;"><input id="routine-notify" type="checkbox" checked style="width: 16px; height: 16px;"><label style="margin: 0;">Notifier le résultat</label></div>
+                    <div class="form-group"><label>Envoyer sur Telegram (chat ID — optionnel)</label><input id="routine-telegram" type="text" placeholder="ex. 123456789 (écris au bot pour connaître ton chat ID)"></div>
                     <button type="button" id="btn-save-routine" class="btn btn-primary" style="width: 100%;">➕ Ajouter la routine</button>
                     <div id="routine-save-status" style="text-align: center; margin-top: 8px; font-size: 0.8rem; opacity: 0.7;"></div>
                 </div>
@@ -1761,7 +1762,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260616_ttscfg"></script>
+    <script src="app.js?v=20260616_routinetg"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>

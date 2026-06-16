@@ -44,6 +44,25 @@ def _check_budget():
             title="Alerte Budget Athena"
         )
 
+def _deliver_routine(routine: dict, message: str, title: str = None):
+    """Diffuse le résultat d'une routine : notification interne + (optionnel) message Telegram."""
+    if not message:
+        return
+    if routine.get("notify", True):
+        broadcast_notification(message, title=title)
+    chat_id = (routine.get("telegram_chat_id") or "").strip()
+    if chat_id:
+        try:
+            from core import telegram_bot
+            if telegram_bot.is_enabled():
+                head = f"🗓️ {routine.get('name', 'Routine')}\n\n" if title is None else f"{title}\n\n"
+                telegram_bot.send_message(chat_id, head + message)
+            else:
+                print("[Routine] Telegram non configuré (TELEGRAM_BOT_TOKEN) — envoi ignoré.")
+        except Exception as e:
+            print(f"[Routine] envoi Telegram échoué : {e}")
+
+
 def _run_routine(routine: dict):
     import logging
     logger = logging.getLogger("athena.routines")
@@ -70,9 +89,8 @@ def _run_routine(routine: dict):
                 logger.warning("routine '%s' : pipeline %s introuvable", routine.get("name"), pid)
                 return
             res = run_pipeline(p, routine.get("prompt") or "")
-            if routine.get("notify", True):
-                msg = res.get("error") or res.get("final") or "Workflow terminé."
-                broadcast_notification(msg, title=f"🛠️ {routine.get('name', p.get('name'))}")
+            msg = res.get("error") or res.get("final") or "Workflow terminé."
+            _deliver_routine(routine, msg, title=f"🛠️ {routine.get('name', p.get('name'))}")
         except Exception:
             logger.exception("Erreur pipeline routine '%s'", routine.get("name"))
         finally:
@@ -116,8 +134,7 @@ def _run_routine(routine: dict):
             duration_ms=int((time.time() - started) * 1000), steps=steps, created_at=started,
         )
         logger.info("routine '%s' exécutée (run %s)", routine.get("name"), rid)
-        if routine.get("notify", True) and resp:
-            broadcast_notification(resp, title=f"🗓️ {routine.get('name', 'Routine')}")
+        _deliver_routine(routine, resp, title=None)
         _check_budget()
     except Exception as e:
         logger.exception("Erreur routine '%s'", routine.get("name"))
@@ -141,6 +158,7 @@ class RoutineRequest(BaseModel):
     notify: bool = True
     secret: str | None = None
     pipeline_id: str | None = None  # si défini : la routine déclenche ce workflow déterministe
+    telegram_chat_id: str | None = None  # si défini : le résultat est ENVOYÉ sur ce chat Telegram
 
 def _me() -> str:
     from core.user_config import current_user_key
