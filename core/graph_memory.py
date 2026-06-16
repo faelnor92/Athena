@@ -165,6 +165,38 @@ def neighborhood(entity, depth=1):
                 
     return result_triples
 
+def entities():
+    """Toutes les entités distinctes (sujets ∪ objets) — pour repérer celles citées dans un texte."""
+    with closing(_get_conn()) as conn:
+        rows = conn.execute("SELECT s FROM triples UNION SELECT o FROM triples").fetchall()
+    return [r[0] for r in rows]
+
+
+def relevant_triples(text, limit=12, min_len=3):
+    """Triplets dont une entité (sujet ou objet) apparaît dans `text`. Sert à injecter un
+    CONTEXTE-GRAPHE pertinent au début d'un run (« ce que je sais déjà »)."""
+    t = (text or "").lower()
+    if not t:
+        return []
+    hits = []
+    seen_keys = set()
+    seen_ent = set()
+    for ent in entities():
+        el = ent.lower().strip()
+        if len(el) < min_len or el in seen_ent:
+            continue
+        if el in t:
+            seen_ent.add(el)
+            for tr in neighborhood(ent, depth=1):
+                key = (tr["s"], tr["r"], tr["o"])
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    hits.append(tr)
+                    if len(hits) >= limit:
+                        return hits
+    return hits
+
+
 def stats():
     with closing(_get_conn()) as conn:
         count = conn.execute("SELECT COUNT(*) FROM triples").fetchone()[0]
