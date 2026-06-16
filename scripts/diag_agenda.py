@@ -57,12 +57,6 @@ for user, cfg in buckets.items():
         print(f"    {k:18} = {v!r}")
     gkey = os.path.join("workspace", f"google_credentials_{_slug(user)}.json")
     print(f"    clé Google (compte service) : {'présente' if os.path.exists(gkey) else 'absente'} ({gkey})")
-    # OAuth ?
-    try:
-        from core import google_oauth, user_config as uc
-        print(f"    OAuth Google connecté : {bool(uc.get(google_oauth._K_REFRESH, user=user))}")
-    except Exception as e:
-        print(f"    OAuth Google : (check impossible : {e})")
 
     # --- Test CalDAV en direct, avec la config de CET utilisateur ---
     caldav_url = cfg.get("CALDAV_URL", "")

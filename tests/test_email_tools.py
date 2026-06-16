@@ -40,6 +40,14 @@ def test_read_email_wraps_untrusted():
 
     class _Conn:
         def select(self, *a, **k): return ("OK", [b""])
+        # L'implémentation utilise conn.uid("fetch"/"search", …) (UID = identifiants stables).
+        def uid(self, cmd, *a, **k):
+            c = str(cmd).lower()
+            if c == "fetch":
+                return ("OK", [(b"1", raw)])
+            if c == "search":
+                return ("OK", [b"1"])
+            return ("OK", [b""])
         def fetch(self, *a, **k): return ("OK", [(b"1", raw)])
         def logout(self): pass
 
