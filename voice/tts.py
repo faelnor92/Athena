@@ -37,6 +37,43 @@ class TTS:
         mult = cls._EMOTION_SPEED.get((emotion or "neutral"), 1.0)
         return max(0.5, min(2.0, round(base * mult, 3)))
 
+    # Émotion → GAIN (volume), 2ᵉ levier expressif applicable sur CPU (numpy seul). On REBAISSE
+    # surtout les émotions douces (chuchoté, triste, calme) → pas de saturation. Les énergiques
+    # gardent ~1.0 (+ la vitesse fait l'effet). Donne une vraie nuance douceur/intensité.
+    _EMOTION_GAIN = {
+        "neutral": 1.0, "cheerful": 1.0, "excited": 1.0, "serious": 1.0, "angry": 1.0,
+        "empathetic": 0.92, "calm": 0.88, "sad": 0.82, "whisper": 0.55,
+    }
+
+    @classmethod
+    def _emotion_gain(cls, emotion: str) -> float:
+        return cls._EMOTION_GAIN.get((emotion or "neutral"), 1.0)
+
+    @staticmethod
+    def _apply_gain_wav(wav_bytes: bytes, gain: float) -> bytes:
+        """Applique un GAIN de volume à un WAV (numpy uniquement). gain≈1.0 → no-op. Sans clip
+        car on ne fait que réduire (gain ≤ 1) ; on clippe quand même par sécurité."""
+        if not wav_bytes or abs(gain - 1.0) < 0.02:
+            return wav_bytes
+        try:
+            import io as _io
+            import wave as _wave
+            import numpy as np
+            with _wave.open(_io.BytesIO(wav_bytes), "rb") as wf:
+                params = wf.getparams()
+                frames = wf.readframes(wf.getnframes())
+            if params.sampwidth != 2:
+                return wav_bytes  # on ne traite que du PCM 16-bit
+            data = np.frombuffer(frames, dtype=np.int16).astype(np.float32) * gain
+            data = np.clip(data, -32768, 32767).astype(np.int16)
+            out = _io.BytesIO()
+            with _wave.open(out, "wb") as ww:
+                ww.setparams(params)
+                ww.writeframes(data.tobytes())
+            return out.getvalue()
+        except Exception:
+            return wav_bytes
+
     # --------------------------------------------------- TTS expressif via HTTP
     def _get_http_payload(self, text: str, emotion: str):
         url = os.getenv("VOICE_TTS_HTTP_URL", "").strip()
@@ -119,6 +156,7 @@ class TTS:
             raise TTSUnavailable("sounddevice/numpy requis pour la lecture audio streaming.") from e
 
         r = self._open_stream(emotion, text)
+        gain = self._emotion_gain(emotion)
         stream = None
         try:
             for sample_rate, chunk in self._iter_pcm(r):
@@ -129,7 +167,10 @@ class TTS:
                     stream = sd.OutputStream(samplerate=sample_rate, channels=1,
                                              dtype='int16', latency='low')
                     stream.start()
-                stream.write(np.frombuffer(chunk, dtype=np.int16))
+                buf = np.frombuffer(chunk, dtype=np.int16)
+                if abs(gain - 1.0) >= 0.02:
+                    buf = np.clip(buf.astype(np.float32) * gain, -32768, 32767).astype(np.int16)
+                stream.write(buf)
         finally:
             if stream is not None:
                 # Barge-in : abort() coupe immédiatement (stop() viderait le buffer).
@@ -252,7 +293,9 @@ class TTS:
             wav_path = self._piper_to_wav(text)
         try:
             with open(wav_path, "rb") as f:
-                return f.read()
+                data = f.read()
+            # Nuance d'intensité par émotion (volume) en plus de la vitesse.
+            return self._apply_gain_wav(data, self._emotion_gain(emotion))
         finally:
             if os.path.exists(wav_path):
                 os.remove(wav_path)

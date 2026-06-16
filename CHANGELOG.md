@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.12.7 (Voix : nuance d'intensité par émotion, CPU)
+
+### 🎭 Volume modulé par l'émotion (en plus de la vitesse)
+- 2ᵉ levier expressif applicable sur CPU (numpy seul) : l'émotion module désormais aussi le
+  VOLUME — chuchoté nettement plus doux, triste/calme/empathique adoucis ; les émotions
+  énergiques gardent l'intensité (+ la vitesse fait l'effet). Sans saturation (réduction
+  uniquement + clip de sécurité). Appliqué au chat (WAV) et aux satellites (stream).
+- Note : sur CPU sans GPU, Kokoro reste le meilleur compromis basse-latence ; pour une
+  expressivité bien supérieure, brancher un moteur XTTS sur une machine dédiée via
+  VOICE_TTS_HTTP_URL (l'architecture le permet déjà).
+
+
 ## v0.12.6 (Voix émotionnelle activée par défaut + dédup)
 
 ### 🎭 Correctif
