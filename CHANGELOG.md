@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.14.2] - 2026-06-16
+### Fixed
+- **Ctrl+Entrée / Ctrl+Maj+Entrée insèrent enfin un saut de ligne** dans le chat et dans AthenaDesign. Un `<textarea>` n'insère rien par défaut sur Ctrl+Entrée (seul Maj+Entrée le fait) : le saut est désormais inséré à la main. Entrée seule = envoyer.
+
+
 ## [0.14.1] - 2026-06-16
 ### Changed
 - **Réglages « Comportement » repensés (user-friendly)** : sections en cartes repliables avec icône, chaque réglage accompagné d'une description en français clair, interrupteurs visuels (on/off), barre de recherche pour filtrer les réglages. Rendu responsive vérifié (desktop + mobile).
