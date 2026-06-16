@@ -239,6 +239,31 @@ def _extract_voice_id(item) -> str:
     return str(item).strip()
 
 
+def _normalize_wav(b: bytes) -> bytes:
+    """Corrige un en-tête WAV « streaming » à taille bidon (RIFF/data = 0xFFFFFFFF, comme
+    Kokoro le renvoie) en réécrivant les tailles réelles. Sinon Firefox refuse le fichier
+    (NotSupportedError). No-op si ce n'est pas un WAV ou si les tailles sont déjà correctes."""
+    import struct
+    if len(b) < 44 or b[:4] != b"RIFF" or b[8:12] != b"WAVE":
+        return b
+    buf = bytearray(b)
+    total = len(buf)
+    struct.pack_into("<I", buf, 4, total - 8)          # taille du chunk RIFF
+    i = 12
+    while i + 8 <= total:
+        cid = bytes(buf[i:i + 4])
+        size = struct.unpack_from("<I", buf, i + 4)[0]
+        if cid == b"data":
+            real = total - (i + 8)
+            if size != real:                            # taille data réelle
+                struct.pack_into("<I", buf, i + 4, real)
+            break
+        if size == 0xFFFFFFFF or i + 8 + size > total:  # taille bidon sur un autre chunk → stop
+            break
+        i += 8 + size + (size & 1)                       # word-aligned
+    return bytes(buf)
+
+
 def _audio_media_type(b: bytes):
     """Devine le Content-Type d'un buffer audio par ses octets magiques. Renvoie None si ce
     n'est manifestement PAS de l'audio (erreur JSON/HTML renvoyée en 200 par le serveur)."""
@@ -372,6 +397,8 @@ async def voice_tts(req: TtsSpeakRequest):
             # Pas de l'audio (probablement une erreur JSON/HTML renvoyée en 200).
             raise HTTPException(status_code=502,
                                 detail=f"Réponse du serveur TTS non audio : {wav[:160]!r}")
+        if media == "audio/wav":
+            wav = _normalize_wav(wav)   # répare l'en-tête « streaming » (taille bidon)
         return Response(content=wav, media_type=media)
     except HTTPException:
         raise

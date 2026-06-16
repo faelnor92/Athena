@@ -3660,13 +3660,22 @@ if (_btnTtsVoiceTest) _btnTtsVoiceTest.addEventListener("click", async () => {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text: "Bonjour, ceci est un test de la voix sélectionnée.", voice })
         });
-        if (!r.ok) throw new Error("TTS " + r.status);
-        const blob = await r.blob();
+        const ctype = r.headers.get("content-type") || "?";
+        if (!r.ok) {
+            let detail = "";
+            try { detail = (await r.clone().json()).detail || ""; } catch (e) { try { detail = await r.text(); } catch (_) {} }
+            throw new Error("HTTP " + r.status + (detail ? " — " + String(detail).slice(0, 200) : ""));
+        }
+        const buf = await r.arrayBuffer();
+        const sig = Array.from(new Uint8Array(buf.slice(0, 4))).map(b => b.toString(16).padStart(2, "0")).join(" ");
+        const info = `type=${ctype}, ${buf.byteLength} o, octets=${sig}`;
+        const blob = new Blob([buf], { type: ctype.startsWith("audio") ? ctype : "audio/wav" });
         stopSpeaking();
         const audio = new Audio(URL.createObjectURL(blob));
         currentTtsAudio = audio;
+        audio.onerror = () => { if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = `❌ Format non lisible par le navigateur (${info}). Astuce : règle VOICE_TTS_FORMAT=mp3 (ou wav) selon ton serveur.`; };
         await audio.play();
-        if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = "";
+        if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = `✅ Lu (${info})`;
     } catch (e) { if (_ttsVoiceStatus) _ttsVoiceStatus.textContent = "❌ Test impossible : " + e; }
 });
 
