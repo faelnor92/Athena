@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.15.1] - 2026-06-16
+### Fixed
+- **Fiabilité du tool-calling (LLM qui « appelle » un outil en texte).** Le rattrapage des appels écrits en texte gère désormais le **JSON malformé** (virgules traînantes, quotes simples, None/True/False) et le **style Python** `outil({...})` / `outil()`, en plus des blocs ```json``` et balises `<tool_call>`. Et si le modèle DÉCRIT un appel sans le déclencher (et que rien n'est récupérable), Athena se **relance automatiquement** pour qu'il l'exécute vraiment au format structuré (`TOOLCALL_AUTOFIX`, borné par `TOOLCALL_FIX_MAX`). Anti faux-positif : ne s'active que si un outil réel est cité.
+
+
 ## [0.15.0] - 2026-06-16
 ### Added
 - **Chronos — mémoire relationnelle automatique (vers Jarvis).** En fin de run, Athena extrait les FAITS DURABLES de l'échange (identité/préférences de l'utilisateur, personnes, lieux, machines et leurs relations) et les range dans la mémoire-graphe par-utilisateur (`GRAPH_AUTO_EXTRACT`). Au début d'un run, le contexte-graphe pertinent (entités citées dans la demande) est injecté — « ce que je sais déjà » — pour résoudre les références implicites (« le serveur de dev », « ma femme »…) (`GRAPH_CONTEXT_INJECT`, `GRAPH_CONTEXT_TOPK`). Le moteur graphe (triplets, voisinage) existait déjà ; ceci le câble en automatique.
