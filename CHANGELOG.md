@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.19.4] - 2026-06-16
+### Fixed
+- **Lecture vocale impossible sur TOUS les navigateurs (Edge inclus), pas seulement Firefox** : le WAV de Kokoro contient un chunk `LIST/INFO` (métadonnées libav) **et** des tailles d'en-tête bidon que les décodeurs navigateur refusent. `_normalize_wav` **réémet désormais un WAV canonique** (`fmt `+`data` uniquement, tailles exactes) via le module `wave` → fichier universellement lisible. Vérifié de bout en bout contre un vrai serveur Kokoro.
+
+
 ## [0.19.3] - 2026-06-16
 ### Fixed
 - **Test/lecture vocale « NotSupportedError » (Kokoro)** : Kokoro renvoie un WAV « streaming » avec une **taille d'en-tête bidon** (`RIFF … 0xFFFFFFFF`) que Firefox refuse. L'endpoint `/api/voice/tts` **réécrit désormais les tailles RIFF/data réelles** (`_normalize_wav`) → WAV valide, lecture OK. Détection du format conservée (wav/mp3/ogg). Le bouton « Tester » affiche maintenant le format reçu (type/taille/octets) pour diagnostiquer en un clic.

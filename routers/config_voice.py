@@ -240,12 +240,15 @@ def _extract_voice_id(item) -> str:
 
 
 def _normalize_wav(b: bytes) -> bytes:
-    """Corrige un en-tête WAV « streaming » à taille bidon (RIFF/data = 0xFFFFFFFF, comme
-    Kokoro le renvoie) en réécrivant les tailles réelles. Sinon Firefox refuse le fichier
-    (NotSupportedError). No-op si ce n'est pas un WAV ou si les tailles sont déjà correctes."""
+    """Rend lisible par les navigateurs un WAV « streaming » à la Kokoro :
+    1) corrige les tailles bidon (RIFF/data = 0xFFFFFFFF) pour pouvoir le parser ;
+    2) RÉÉMET un WAV CANONIQUE (uniquement `fmt `+`data`) — ça supprime le chunk `LIST/INFO`
+       (métadonnées libav) que des décodeurs navigateur (Edge/Firefox) refusent.
+    No-op si ce n'est pas un WAV."""
     import struct
     if len(b) < 44 or b[:4] != b"RIFF" or b[8:12] != b"WAVE":
         return b
+    # 1) Réparation des tailles d'en-tête.
     buf = bytearray(b)
     total = len(buf)
     struct.pack_into("<I", buf, 4, total - 8)          # taille du chunk RIFF
@@ -261,7 +264,23 @@ def _normalize_wav(b: bytes) -> bytes:
         if size == 0xFFFFFFFF or i + 8 + size > total:  # taille bidon sur un autre chunk → stop
             break
         i += 8 + size + (size & 1)                       # word-aligned
-    return bytes(buf)
+    fixed = bytes(buf)
+    # 2) Réémission canonique (fmt + data uniquement) via le module wave.
+    try:
+        import io
+        import wave
+        with wave.open(io.BytesIO(fixed), "rb") as r:
+            p = r.getparams()
+            frames = r.readframes(r.getnframes())
+        out = io.BytesIO()
+        with wave.open(out, "wb") as w:
+            w.setnchannels(p.nchannels)
+            w.setsampwidth(p.sampwidth)
+            w.setframerate(p.framerate)
+            w.writeframes(frames)
+        return out.getvalue()
+    except Exception:
+        return fixed   # au pire, le WAV à tailles corrigées (mieux que rien)
 
 
 def _audio_media_type(b: bytes):
