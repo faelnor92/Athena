@@ -4106,15 +4106,18 @@ function saveNewRoutineFromForm() {
     const pipeline_id = pipeSel ? (pipeSel.value || null) : null;
     // Une routine doit avoir au moins une tâche OU un workflow.
     if (!name || (!prompt && !pipeline_id)) { const st = document.getElementById("routine-save-status"); if (st) st.textContent = "❌ Nom et (tâche ou workflow) requis."; return; }
+    const _tgEl = document.getElementById("routine-telegram");
     saveRoutine({
         name, prompt,
         agent: document.getElementById("routine-agent").value || orchestratorName(),
         schedule,
         notify: document.getElementById("routine-notify").checked,
+        telegram_chat_id: _tgEl ? _tgEl.value.trim() : "",
         pipeline_id
     });
     document.getElementById("routine-name").value = "";
     document.getElementById("routine-prompt").value = "";
+    if (_tgEl) _tgEl.value = "";
     if (pipeSel) pipeSel.value = "";
 }
 

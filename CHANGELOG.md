@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.12.10 (Routines : envoi du résultat sur Telegram)
+
+### 📲 Briefing matinal (et toute routine) livré sur Telegram
+- Nouvelle option « Envoyer sur Telegram (chat ID) » dans les routines : le résultat de la
+  routine (ex. briefing du matin) est ENVOYÉ sur le chat Telegram indiqué, en plus de la
+  notification interne. Couvre les routines à prompt ET les workflows. Si Telegram n'est pas
+  configuré, l'envoi est ignoré proprement.
+
+
 ## v0.12.9 (Réglages TTS dans l'UI)
 
 ### ⚙️ URL serveur TTS + émotion + vitesse réglables dans l'UI
