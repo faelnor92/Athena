@@ -1,5 +1,17 @@
 # Historique des Versions (Changelog)
 
+## v0.13.7 (UX quick wins — saisie & fichiers)
+
+### ⌨️ Saisie cohérente partout
+- Chat : le champ devient un TEXTAREA multiligne — Entrée = envoyer, Ctrl/Cmd/Maj+Entrée = saut
+  de ligne, avec auto-grandissement.
+- AthenaDesign : Entrée envoie le prompt (Ctrl/Maj+Entrée = saut de ligne).
+
+### 🗑️ Suppression de fichiers dans l'onglet Code
+- Bouton 🗑️ (avec confirmation) sur chaque fichier/dossier de l'explorateur ; nouvel endpoint
+  DELETE /api/workspace/file (anti-traversée, refus en lecture seule).
+
+
 ## v0.13.6 (Modèle de rédaction configurable)
 
 ### ✍️ Choisir le LLM qui révise les romans

@@ -5287,8 +5287,9 @@ function _renderFileTree(container, files) {
                 caret.style.cssText = "width:10px;display:inline-block;opacity:.7;transition:transform .15s;";
                 const lbl = document.createElement("span");
                 lbl.textContent = "📁 " + child.name;
-                lbl.style.cssText = "overflow:hidden;text-overflow:ellipsis;";
+                lbl.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;";
                 row.appendChild(caret); row.appendChild(lbl);
+                row.appendChild(_treeDeleteBtn(child.path, true));
                 const wrap = document.createElement("div");
                 wrap.style.display = "none";
                 let built = false;
@@ -5308,6 +5309,7 @@ function _renderFileTree(container, files) {
                 sz.textContent = (child.size / 1024).toFixed(1) + " KB";
                 sz.style.cssText = "font-size:0.72rem;opacity:0.5;";
                 row.appendChild(caretSpace); row.appendChild(lbl); row.appendChild(sz);
+                row.appendChild(_treeDeleteBtn(child.path, false));
                 row.addEventListener("click", () => {
                     document.querySelectorAll(".file-item-row").forEach(el => el.style.borderLeft = "");
                     row.style.borderLeft = "3px solid var(--accent-color)";
@@ -5318,6 +5320,25 @@ function _renderFileTree(container, files) {
         });
     }
     renderInto(root, container, 0);
+}
+
+// Petit bouton de suppression d'un fichier/dossier du workspace (avec confirmation).
+function _treeDeleteBtn(path, isDir) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = "🗑️"; b.title = "Supprimer";
+    b.style.cssText = "background:none;border:none;cursor:pointer;opacity:0.45;font-size:0.8rem;padding:0 4px;";
+    b.addEventListener("mouseenter", () => b.style.opacity = "1");
+    b.addEventListener("mouseleave", () => b.style.opacity = "0.45");
+    b.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Supprimer « ${path} » ?` + (isDir ? "\n(dossier et son contenu)" : ""))) return;
+        try {
+            const r = await apiFetch("/api/workspace/file?path=" + encodeURIComponent(path), { method: "DELETE" });
+            if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || ("HTTP " + r.status)); }
+            loadWorkspaceFiles();
+        } catch (err) { alert("Suppression impossible : " + err.message); }
+    });
+    return b;
 }
 
 let activeSelectedFilePath = null;
@@ -7754,8 +7775,18 @@ function initMentionAutocomplete() {
                 e.preventDefault();
                 hideMentions();
             }
+        } else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+            // Entrée = ENVOYER ; Ctrl/Cmd/Maj+Entrée = saut de ligne (comportement défaut du textarea).
+            e.preventDefault();
+            if (typeof chatForm.requestSubmit === "function") chatForm.requestSubmit();
+            else chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
         }
     });
+    // Auto-grandissement du textarea (1 → plusieurs lignes), borné par max-height CSS.
+    const _autoGrow = () => { chatInput.style.height = "auto"; chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + "px"; };
+    chatInput.addEventListener("input", _autoGrow);
+    // Après envoi, le formulaire vide le champ → on remet la hauteur d'origine.
+    chatForm.addEventListener("submit", () => setTimeout(() => { chatInput.style.height = "auto"; }, 0));
 
     // Mettre à jour visuellement l'élément sélectionné
     function updateActiveItem() {
