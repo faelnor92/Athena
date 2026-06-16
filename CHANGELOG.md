@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## v0.12.4 (Voix du chat : plus de repli robotique par défaut)
+
+### 🔊 Voix Kokoro même sans voix enregistrée
+- Si aucune voix n'était choisie, le TTS envoyait « alloy » (voix OpenAI inconnue de Kokoro) →
+  échec → repli sur la voix robotique du navigateur. Désormais, sans voix définie, le serveur
+  prend AUTOMATIQUEMENT la 1ʳᵉ voix Kokoro disponible → le chat parle en Kokoro dès le départ.
+  (Choisir + 💾 une voix dans Réglages → Satellites reste recommandé.)
+
+
 ## v0.12.3 (Voix Kokoro : libellés lisibles + écoute fonctionnelle)
 
 ### 🔊 Liste des voix propre
