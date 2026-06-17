@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.20.1] - 2026-06-17
+### Changed
+- **Proxmox : `proxmox_status` montre la charge CPU, RAM ET disque** par nœud / VM / conteneur, plus l'espace des **stockages** (datastores). Un seul appel `/cluster/resources`. (Pour une VM QEMU, l'usage disque réel nécessite l'agent invité ; sinon la taille allouée est indiquée.)
+
+
 ## [0.20.0] - 2026-06-17
 ### Added
 - **Intégration Proxmox VE native (MCP d'environnement)** : Athena lit l'état du cluster (nœuds, VM QEMU, conteneurs LXC, CPU/RAM) via `proxmox_status`, et peut **démarrer/arrêter/redémarrer** une VM/LXC via `proxmox_vm_action` (action SENSIBLE → validation/HITL). API REST native (jeton d'API, anti-SSRF, TLS optionnel), sans SDK ni dépendance MCP tierce. Config par-utilisateur dans l'UI (Réglages → 🖧 Proxmox) ; auto-exposée à l'orchestrateur quand configurée (« état de mes VM », « redémarre la VM 100 »).
