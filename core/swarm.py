@@ -1099,7 +1099,13 @@ class Swarm:
 
         # Plafond de tokens pour forcer des réponses concises (optimisation des coûts)
         max_t = int(os.getenv("LLM_MAX_TOKENS", "4000"))
-        completion_kwargs = {"model": model, "messages": messages, "tools": tools_schema, "max_tokens": max_t}
+        # `_internal` est un marqueur INTERNE (échafaudage auto-continuation/relais) : utile
+        # pour la persistance/affichage, mais non-standard côté API → on l'enlève de la copie
+        # envoyée au LLM (sans muter la liste d'origine qui sert encore au scope visible).
+        _api_messages = [
+            {k: v for k, v in m.items() if k != "_internal"} if isinstance(m, dict) and "_internal" in m else m
+            for m in messages]
+        completion_kwargs = {"model": model, "messages": _api_messages, "tools": tools_schema, "max_tokens": max_t}
         custom_base = _u("CUSTOM_LLM_API_BASE")
         custom_key = _u("CUSTOM_LLM_API_KEY")
         m = (model or "").strip()
@@ -2629,13 +2635,30 @@ class Swarm:
                 "completion_tokens": completion_tokens
             })
 
+            # Va-t-on AUTO-CONTINUER ce tour ? (intention annoncée sans appel d'outil → on
+            # relancera l'agent pour qu'il AGISSE). Calculé ici pour que l'échafaudage reste
+            # INVISIBLE : ni bulle de chat (step discret), ni persistance (marqueur _internal).
+            _ac_on = os.getenv("AUTO_CONTINUE", "true").lower() in ("true", "1", "yes")
+            _ac_cap = int(os.getenv("AUTO_CONTINUE_MAX", "2") or 2)
+            _has_real_tools = any(not f.__name__.startswith(("transfer_to_", "delegate_to_"))
+                                  and f.__name__ not in ("query_agent", "debate_between_agents")
+                                  for f in effective_tools)
+            _will_autocontinue = bool(
+                message.content and not getattr(message, "tool_calls", None) and not _rescued_tcs
+                and _ac_on and _auto_continue < _ac_cap and _has_real_tools
+                and looks_like_announced_intent((message.content or "").strip()))
+            if _will_autocontinue and messages and messages[-1].get("role") == "assistant":
+                # Tour purement intentionnel : conservé en contexte pour le modèle, mais
+                # exclu de la conversation visible (sera remplacé par la VRAIE réponse).
+                messages[-1]["_internal"] = True
+
             if message.content and not _rescued_tcs:
                 print(f"\033[92m{current_agent.name}:\033[0m {message.content}")
                 _has_tools = bool(getattr(message, "tool_calls", None))
-                # Narration COURTE qui précède un appel d'outil (« je vais utiliser… ») →
-                # step discret 'thought' (pas une bulle de chat), pour éviter le spam de
-                # messages intermédiaires avant une délégation.
-                if _has_tools and len(message.content.strip()) < 200:
+                # Narration COURTE qui précède un appel d'outil (« je vais utiliser… »), ou
+                # intention qu'on va auto-continuer → step discret 'thought' (pas une bulle de
+                # chat), pour éviter le spam de messages intermédiaires.
+                if (_has_tools and len(message.content.strip()) < 200) or _will_autocontinue:
                     steps.append({"type": "thought", "agent": current_agent.name, "content": message.content})
                 else:
                     steps.append({
@@ -2720,6 +2743,7 @@ class Swarm:
                                 })
                                 messages.append({
                                     "role": "user",
+                                    "_internal": True,
                                     "content": f"[Relais système : la demande a été transférée à l'agent {target_name} ({target_agent.display_name or target_name}). Réponds à l'utilisateur.]"
                                 })
                                 semantic_transitioned = True
@@ -2732,20 +2756,14 @@ class Swarm:
                 # « vas-y », on le relance pour qu'il EXÉCUTE tout de suite. Bornée (anti-boucle)
                 # et RESPECTUEUSE : si le message POSE une question à l'utilisateur (demande d'avis/
                 # d'approbation), on s'arrête — c'est à l'utilisateur de décider.
-                _ac_on = os.getenv("AUTO_CONTINUE", "true").lower() in ("true", "1", "yes")
-                _ac_cap = int(os.getenv("AUTO_CONTINUE_MAX", "2") or 2)
-                _msg = (message.content or "").strip()
-                _has_real_tools = any(not f.__name__.startswith(("transfer_to_", "delegate_to_"))
-                                      and f.__name__ not in ("query_agent", "debate_between_agents")
-                                      for f in effective_tools)
-                if (_ac_on and _auto_continue < _ac_cap and _has_real_tools
-                        and looks_like_announced_intent(_msg)):
+                if _will_autocontinue:
                     _auto_continue += 1
                     print(f"[\033[96mSWARM\033[0m] auto-continuation ({_auto_continue}/{_ac_cap}) : "
                           "intention annoncée sans appel d'outil → relance.")
-                    # On conserve le message annoncé puis on pousse à AGIR maintenant.
-                    messages.append({"role": "assistant", "name": current_agent.name, "content": _msg})
-                    messages.append({"role": "user", "content": (
+                    # Le tour annoncé est DÉJÀ dans `messages` (marqué _internal plus haut) ; on
+                    # se contente de pousser la consigne d'AGIR. Marqueur _internal → la consigne
+                    # système n'apparaît jamais comme un message « Vous » dans la conversation.
+                    messages.append({"role": "user", "_internal": True, "content": (
                         "[Système] Tu viens d'ANNONCER une action sans l'exécuter. Réalise-la "
                         "MAINTENANT en appelant directement le bon outil (pas de nouveau message "
                         "d'intention). Si une approbation utilisateur est réellement nécessaire, "
@@ -2772,8 +2790,15 @@ class Swarm:
                         _toolcall_fix += 1
                         print(f"[\033[96mSWARM\033[0m] auto-correction tool-call "
                               f"({_toolcall_fix}/{_tcfix_cap}) : outil décrit en texte → relance.")
-                        messages.append({"role": "assistant", "name": current_agent.name, "content": _content})
-                        messages.append({"role": "user", "content": (
+                        # Le tour fautif est DÉJÀ dans `messages` : on le marque interne (gardé
+                        # en contexte, masqué de la conversation) et on retire sa bulle de chat.
+                        if messages and messages[-1].get("role") == "assistant":
+                            messages[-1]["_internal"] = True
+                        for _s in reversed(steps):
+                            if _s.get("type") == "message":
+                                _s["type"] = "thought"
+                                break
+                        messages.append({"role": "user", "_internal": True, "content": (
                             "[Système] Tu as DÉCRIT un appel d'outil dans ta réponse au lieu de "
                             "l'EXÉCUTER (aucun outil n'a été déclenché). N'écris PAS le JSON ni le "
                             "nom de l'outil dans le texte : appelle réellement l'outil via le "

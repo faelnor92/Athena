@@ -129,8 +129,12 @@ def _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_ch
     prev_id = sess.active_node_id
     msgs = sess.messages
     for msg in new_chain[original_chain_len:]:
+        # Échafaudage interne (auto-continuation, relais, auto-correction) : conservé en
+        # contexte le temps du run mais JAMAIS persisté/affiché dans la conversation.
+        if msg.get("_internal"):
+            continue
         new_id = uuid.uuid4().hex
-        msgs.append({"id": new_id, "parent_id": prev_id, **msg})
+        msgs.append({"id": new_id, "parent_id": prev_id, **{k: v for k, v in msg.items() if k != "_internal"}})
         prev_id = new_id
     sess.messages = msgs
     sess.active_node_id = prev_id
@@ -277,6 +281,8 @@ def _run_swarm_ephemeral(message: str):
         final = ""
         agent = _orch_name()
         for m in reversed(new_chain):
+            if m.get("_internal"):
+                continue
             if m.get("role") == "assistant" and (m.get("content") or "").strip():
                 final = m["content"].strip()
                 agent = m.get("name") or agent
@@ -1146,7 +1152,7 @@ async def terminal_coder(req: TerminalRequest):
         # MÉMOIRE de la console (isolée du chat) : on sauvegarde l'historique, en retirant la
         # carte injectée (messages système) et borné aux 40 derniers messages.
         try:
-            persist = [m for m in new_chain if m.get("role") != "system"][-40:]
+            persist = [m for m in new_chain if m.get("role") != "system" and not m.get("_internal")][-40:]
             shared_store.set("coder_console", _console_key, persist)
         except Exception:
             import logging
