@@ -63,8 +63,9 @@ def proxmox_status() -> str:
     des stockages (datastores). À utiliser pour « comment vont mes VM / le serveur », surveiller
     la charge, ou avant une action.
 
-    NB : pour une VM QEMU, l'usage disque réel n'est visible que si l'agent invité (qemu-guest-agent)
-    est installé ; sinon c'est la taille provisionnée qui s'affiche. L'usage CPU/RAM, lui, est toujours là.
+    NB : pour une VM QEMU, l'usage disque RÉEL est récupéré via l'agent invité (qemu-guest-agent)
+    s'il est installé/activé ; sinon c'est la taille provisionnée (« alloué ») qui s'affiche. Les
+    conteneurs LXC montrent toujours l'usage réel. CPU/RAM sont toujours disponibles.
     """
     if not proxmox.is_configured():
         return _not_configured()
@@ -108,7 +109,14 @@ def proxmox_status() -> str:
             if running and mem and maxmem:
                 metr.append(f"ram {_go(mem)}/{_go(maxmem)} Go ({mem/maxmem*100:.0f}%)")
             if maxdsk:
-                if dsk:
+                real = None
+                if running and v.get("type") == "qemu":
+                    real = _vm_real_disk(v.get("node"), v.get("vmid"))  # via agent invité
+                if real:
+                    u, t = real
+                    metr.append(f"disque {_go(u)}/{_go(t)} Go ({u/t*100:.0f}%) réel")
+                elif dsk:
+                    # LXC : usage réel ; QEMU : usage si dispo via cluster/resources.
                     metr.append(f"disque {_go(dsk)}/{_go(maxdsk)} Go ({dsk/maxdsk*100:.0f}%)")
                 else:
                     metr.append(f"disque {_go(maxdsk)} Go (alloué)")
@@ -137,6 +145,31 @@ def proxmox_status() -> str:
                      "ou « critique » ; précise toujours qu'il s'agit d'espace ALLOUÉ/provisionné au pool, "
                      "pas de l'écrit réel — sauf si l'utilisateur a demandé l'usage réel via zfs list/df.]")
     return "\n".join(lines)
+
+
+_FS_SKIP = {"tmpfs", "devtmpfs", "overlay", "overlayfs", "squashfs", "iso9660",
+            "ramfs", "efivarfs", "autofs", "fuse.gvfsd-fuse", "proc", "sysfs"}
+
+
+def _vm_real_disk(node, vmid):
+    """Usage disque RÉEL (écrit) à l'intérieur d'une VM QEMU via l'agent invité
+    (qemu-guest-agent). Renvoie (used_bytes, total_bytes) ou None si l'agent est absent."""
+    data, err = _get(f"/nodes/{node}/qemu/{vmid}/agent/get-fsinfo")
+    if err or not isinstance(data, dict):
+        return None
+    used = total = 0
+    seen = set()
+    for f in (data.get("result") or []):
+        t = (f.get("type") or "").lower()
+        mp = f.get("mountpoint") or ""
+        tb = f.get("total-bytes") or 0
+        ub = f.get("used-bytes") or 0
+        if t in _FS_SKIP or tb <= 0 or mp in seen:
+            continue
+        seen.add(mp)
+        total += tb
+        used += ub
+    return (used, total) if total > 0 else None
 
 
 def _find_vm(vmid):
