@@ -115,9 +115,7 @@ def proxmox_status() -> str:
             lines.append(head + (("  · " + " · ".join(metr)) if metr else ""))
 
     if stores:
-        lines.append("💽 Stockages :")
-        # Types « thin » : le chiffre reflète l'alloué/référencé, pas forcément l'écrit réel.
-        _THIN = {"lvmthin", "zfspool", "zfs", "rbd", "rbdpool"}
+        lines.append("💽 Stockages (jauge Proxmox) :")
         seen = set()
         for s in sorted(stores, key=lambda x: x.get("storage", "")):
             key = s.get("storage")
@@ -127,12 +125,14 @@ def proxmox_status() -> str:
             ptype = s.get("plugintype", "") or s.get("type", "")
             used = s.get("disk"); total = s.get("maxdisk")
             tag = f" [{ptype}]" if ptype else ""
-            note = " — provisionné/alloué (usage réel possiblement inférieur)" if ptype in _THIN else ""
             if total:
                 pct = f" ({used/total*100:.0f}%)" if used else ""
-                lines.append(f"  - {key}{tag} : {_go(used or 0)}/{_go(total)} Go{pct}{note}")
+                lines.append(f"  - {key}{tag} : {_go(used or 0)}/{_go(total)} Go{pct}")
             else:
                 lines.append(f"  - {key}{tag} : {s.get('status','?')}")
+        lines.append("  ℹ️ Chiffres = jauge Proxmox (espace alloué/réservé au niveau du pool/FS). "
+                     "Sur ZFS/LVM-thin — y compris un stockage « dir » posé sur un pool ZFS — "
+                     "l'espace RÉELLEMENT écrit peut être bien inférieur. Pour le réel : `zfs list` / `df` sur le nœud.")
     return "\n".join(lines)
 
 
