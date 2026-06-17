@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## [0.23.0] - 2026-06-17
+### Refactor — `core/swarm.py` découpé en package (phase 1)
+- L'ancien module monolithique (~3050 lignes) devient le **package `core/swarm/`** :
+  - `engine.py` : la classe `Swarm` (boucle `run`, routage, complétion, apprentissage) + `AVAILABLE_TOOLS` ;
+  - `schema.py` : conversion fonction→schéma d'outil + coercition/validation des arguments ;
+  - `text_tools.py` : sélection d'outils par pertinence, récupération de tool-calls écrits en texte, détection d'intention annoncée, skills dynamiques ;
+  - `__init__.py` : **ré-exporte l'API publique historique** → tout `from core.swarm import …` existant fonctionne à l'identique.
+- Contrat de test préservé : `core.swarm.completion` reste monkeypatchable (le moteur l'appelle via le namespace du package) ; `_TOOL_CACHE`, `_delegate_depth`, `DELEGATE_BLOCKED_TOOLS` ré-exportés.
+- **Iso-comportement** : tous les tests qui passaient passent toujours (les 2 échecs restants — `test_memory`, `test_claude_code` — préexistaient sur `main`).
+
+
 ## [0.22.1] - 2026-06-17
 ### Fix — l'échafaudage interne ne fuit plus dans la conversation
 - L'**auto-continuation** (« tu viens d'ANNONCER une action… »), l'**auto-correction de tool-call** et les **relais système** étaient écrits dans la conversation visible : on voyait le message d'intention de l'agent ET la consigne système affichée comme un message « Vous ». Désormais ces messages sont marqués `_internal` : conservés dans le contexte du modèle le temps du run, mais **jamais affichés ni persistés** (filtrés à la finalisation, retirés de la copie envoyée au LLM).
