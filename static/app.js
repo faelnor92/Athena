@@ -461,6 +461,8 @@ const modalTabRoutines = document.getElementById("modal-tab-routines");
 const paneRoutines = document.getElementById("pane-routines");
 const modalTabVigie = document.getElementById("modal-tab-events");
 const paneVigie = document.getElementById("pane-events");
+const modalTabProxmox = document.getElementById("modal-tab-proxmox");
+const paneProxmox = document.getElementById("pane-proxmox");
 const modalTabWorkflows = document.getElementById("modal-tab-workflows");
 const paneWorkflows = document.getElementById("pane-workflows");
 const modalTabKnowledge = document.getElementById("modal-tab-knowledge");
@@ -2888,8 +2890,8 @@ modalClose.addEventListener("click", () => {
 
 // Alternance entre les onglets de la modale paramètres
 function switchModalTab(activeTab, activePaneFn) {
-    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabPlugins, modalTabRoutines, modalTabVigie, modalTabWorkflows, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor, modalTabMessaging].forEach(t => t && t.classList.remove("active"));
-    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, panePlugins, paneRoutines, paneVigie, paneWorkflows, paneKnowledge, paneUsers, paneSatellites, paneDoctor, paneMessaging].forEach(p => p && (p.style.display = "none"));
+    [modalTabAgents, modalTabKeys, modalTabSsh, modalTabAgenda, modalTabPricing, modalTabBehavior, modalTabMcp, modalTabPlugins, modalTabRoutines, modalTabVigie, modalTabProxmox, modalTabWorkflows, modalTabKnowledge, modalTabUsers, modalTabSatellites, modalTabDoctor, modalTabMessaging].forEach(t => t && t.classList.remove("active"));
+    [paneAgents, paneKeys, paneSsh, paneAgenda, panePricing, paneBehavior, paneMcp, panePlugins, paneRoutines, paneVigie, paneProxmox, paneWorkflows, paneKnowledge, paneUsers, paneSatellites, paneDoctor, paneMessaging].forEach(p => p && (p.style.display = "none"));
     activeTab && activeTab.classList.add("active");
     activePaneFn();
 }
@@ -4269,6 +4271,49 @@ if (modalTabVigie && paneVigie) {
         loadEventsConfig();
         loadRecentEvents();
     }));
+}
+if (modalTabProxmox && paneProxmox) {
+    modalTabProxmox.addEventListener("click", () => switchModalTab(modalTabProxmox, () => {
+        paneProxmox.style.display = "block";
+        loadProxmoxConfig();
+    }));
+}
+async function loadProxmoxConfig() {
+    try {
+        const r = await apiFetch("/api/config/proxmox");
+        const c = await r.json();
+        const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+        set("px-url", c.url || ""); set("px-token-id", c.token_id || ""); set("px-token-secret", "");
+        const tls = document.getElementById("px-verify-tls"); if (tls) tls.checked = !!c.verify_tls;
+        const sec = document.getElementById("px-token-secret");
+        if (sec && c.token_secret) sec.placeholder = "Défini (" + c.token_secret + ") — vide = inchangé";
+    } catch (e) { /* silencieux */ }
+}
+async function saveProxmoxConfig() {
+    const st = document.getElementById("px-status");
+    if (st) st.textContent = "⏳…";
+    const payload = {
+        url: document.getElementById("px-url").value.trim(),
+        token_id: document.getElementById("px-token-id").value.trim(),
+        verify_tls: !!document.getElementById("px-verify-tls")?.checked,
+    };
+    const sec = document.getElementById("px-token-secret").value.trim();
+    if (sec) payload.token_secret = sec;
+    try {
+        const r = await apiFetch("/api/config/proxmox", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (st) st.innerHTML = r.ok ? `<span style="color:var(--success-color)">✅ ${d.message || "Enregistré"}</span>` : `<span style="color:#ff5555">❌ ${d.detail || "Erreur"}</span>`;
+        loadProxmoxConfig();
+    } catch (e) { if (st) st.innerHTML = `<span style="color:#ff5555">❌ ${e}</span>`; }
+}
+async function testProxmoxConfig() {
+    const st = document.getElementById("px-status");
+    if (st) st.textContent = "⏳ Test…";
+    try {
+        const r = await apiFetch("/api/config/proxmox/test");
+        const d = await r.json();
+        if (st) st.innerHTML = d.ok ? `<span style="color:var(--success-color)">${d.detail}</span>` : `<span style="color:#ffae42">⚠️ ${d.detail}</span>`;
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
 }
 async function loadEventsConfig() {
     try {

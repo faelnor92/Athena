@@ -57,6 +57,7 @@ import tools.goal_tools
 import tools.event_tools
 import tools.email_tools
 import tools.nextcloud_tools
+import tools.proxmox_tools
 import tools.document_editor
 
 # Profondeur de DÉLÉGATION du contexte courant (anti-récursion infinie entre sous-agents).
@@ -175,6 +176,8 @@ AVAILABLE_TOOLS = {
     "set_goal_priority": tools.goal_tools.set_goal_priority,
     "configure_monitoring": tools.event_tools.configure_monitoring,  # Vigie (proactivité)
     "list_recent_events": tools.event_tools.list_recent_events,
+    "proxmox_status": tools.proxmox_tools.proxmox_status,            # hyperviseur Proxmox
+    "proxmox_vm_action": tools.proxmox_tools.proxmox_vm_action,
 }
 
 # ── Filtrage d'outils par pertinence (économie de tokens) ──────────────────────
@@ -208,6 +211,7 @@ _TOOL_GROUPS = {
     "computer": {"computer_use_action"},
     "vision": {"analyze_image", "capture_screen"},
     "routines": {"create_routine", "list_routines"},
+    "proxmox": {"proxmox_status", "proxmox_vm_action"},
 }
 _TOOL_GROUP_KEYWORDS = {
     "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",
@@ -220,6 +224,9 @@ _TOOL_GROUP_KEYWORDS = {
     "domotique": ["lumière", "lumiere", "lampe", "allume", "éteins", "eteins", "chauffage",
                   "volet", "prise", "salon", "chambre", "cuisine", "maison", "home assistant",
                   "thermostat", "scène", "scene", "domotique", "radiateur", "store", "interrupteur"],
+    "proxmox": ["proxmox", "vm", "machine virtuelle", "hyperviseur", "lxc", "conteneur",
+                "container", "cluster", "nœud", "noeud", "qemu", "pve", "vmid", "redémarre la vm",
+                "démarre la vm", "arrête la vm", "hôte", "host"],
     "web": ["cherche", "recherche", "web", "internet", "google", "actualité", "actualite",
             "news", "nouvelle", "site", "url", "http", "lien", "en ligne", "scrape"],
     "media": ["image", "dessine", "dessin", "photo", "illustration", "vidéo", "video", "logo",
@@ -1759,6 +1766,18 @@ class Swarm:
                                 if _n not in existing and _n in AVAILABLE_TOOLS:
                                     effective_tools.append(AVAILABLE_TOOLS[_n])
                                     existing.add(_n)
+                except Exception:
+                    pass
+                # Proxmox (hyperviseur) : donné à l'orchestrateur SI configuré → « état des VM »,
+                # « redémarre la VM 100 » marchent sans déléguer. Le filtre par domaine ne les
+                # expose que pour une requête infra/VM. proxmox_vm_action reste HITL.
+                try:
+                    from core import proxmox as _px
+                    if _px.is_configured():
+                        for _n in _TOOL_GROUPS.get("proxmox", ()):
+                            if _n not in existing and _n in AVAILABLE_TOOLS:
+                                effective_tools.append(AVAILABLE_TOOLS[_n])
+                                existing.add(_n)
                 except Exception:
                     pass
                 # Mails (LECTURE IMAP + BROUILLONS, jamais d'envoi) : donnés à l'orchestrateur

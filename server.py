@@ -211,6 +211,8 @@ from routers import plugins as _plugins_router
 app.include_router(_plugins_router.router)
 from routers import config_events as _config_events_router
 app.include_router(_config_events_router.router)
+from routers import config_proxmox as _config_proxmox_router
+app.include_router(_config_proxmox_router.router)
 
 
 # Bot Telegram ENTRANT (long-polling) — démarre seulement si TELEGRAM_BOT_TOKEN est défini.
