@@ -8,7 +8,9 @@ from tools.list_tools import get_list_items
 
 def get_daily_briefing(city: str = "Paris") -> str:
     """
-    Génère un superbe bulletin quotidien de l'assistant (météo, agenda du jour, tâches).
+    Génère un bulletin quotidien : météo, agenda du jour, tâches & courses, et — si Proxmox
+    est configuré — un point INFRASTRUCTURE (VM en marche/arrêt, stockages élevés) ainsi que
+    les alertes Vigie des dernières 24 h. Idéal en routine matinale (livrée sur Telegram).
     """
     today_str = datetime.now().strftime("%Y-%m-%d")
     readable_today = datetime.now().strftime("%A %d %B %Y")
@@ -69,6 +71,49 @@ def get_daily_briefing(city: str = "Paris") -> str:
     else:
         briefing += "- *Rien à acheter de prévu.* 🛒\n"
         
+    # 4. INFRASTRUCTURE (Proxmox) — uniquement si configuré pour l'utilisateur courant.
+    try:
+        from core import proxmox
+        if proxmox.is_configured():
+            from tools import proxmox_tools as _px
+            data, err = _px._get("/cluster/resources")
+            if not err and isinstance(data, list):
+                vms = [r for r in data if r.get("type") in ("qemu", "lxc")]
+                running = sum(1 for v in vms if v.get("status") == "running")
+                stopped = [v for v in vms if v.get("status") != "running"]
+                briefing += "\n🖧 **Infrastructure (Proxmox)** :\n"
+                briefing += f"- {running}/{len(vms)} VM/conteneurs en marche.\n"
+                if stopped:
+                    noms = ", ".join(f"{v.get('name','?')} ({v.get('vmid')})" for v in stopped[:6])
+                    briefing += f"- ⚠️ À l'arrêt : {noms}\n"
+                seen, full = set(), []
+                for s in data:
+                    if s.get("type") != "storage" or not s.get("maxdisk"):
+                        continue
+                    k = s.get("storage")
+                    if k in seen:
+                        continue
+                    seen.add(k)
+                    pct = (s.get("disk") or 0) / s["maxdisk"] * 100
+                    if pct >= 90:
+                        full.append(f"{k} ({pct:.0f}%)")
+                if full:
+                    briefing += f"- 💽 Stockage élevé (alloué) : {', '.join(full)}\n"
+    except Exception as e:
+        print(f"🖧 [Briefing Erreur Proxmox] {e}")
+
+    # 5. ALERTES VIGIE récentes (dernières 24 h).
+    try:
+        import time as _t
+        from core import events
+        alerts = [e for e in events.recent() if (_t.time() - e.get("ts", 0)) < 86400]
+        if alerts:
+            briefing += "\n👁️ **Alertes récentes (Vigie)** :\n"
+            for e in alerts[:5]:
+                briefing += f"- [{e.get('severity', '?')}] {(e.get('message') or '')[:120]}\n"
+    except Exception:
+        pass
+
     try:
         from core.state import _app_name
         app_name = _app_name()

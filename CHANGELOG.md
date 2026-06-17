@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.21.3] - 2026-06-17
+### Changed
+- **Briefing quotidien enrichi (infra)** : `get_daily_briefing` ajoute — si Proxmox est configuré — un point INFRASTRUCTURE (VM en marche/arrêt, stockages élevés) + les **alertes Vigie des dernières 24 h**, en plus de météo/agenda/tâches/courses. Parfait en routine matinale livrée sur Telegram (« briefing tous les jours à 7h30 »).
+
+
 ## [0.21.2] - 2026-06-17
 ### Added
 - **Vigie Proxmox — alertes automatiques** : un moniteur léger (poll non-LLM, `core/proxmox_monitor.py`) vérifie périodiquement Proxmox et POUSSE un événement à la Vigie en cas d'incident → VM/LXC qui tombe, nœud offline, RAM ou disque (réel) au-dessus d'un seuil. Détection par transition (pas de spam). Le LLM ne se réveille que sur incident. Réglable dans Réglages → 👁️ Vigie (case « Surveiller Proxmox » + intervalle + seuils RAM/disque). **Ne tourne (ne poll) que si la Vigie est activée ET Proxmox configuré** — sinon le thread dort (coût nul).
