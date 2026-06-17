@@ -168,6 +168,7 @@ AVAILABLE_TOOLS = {
     "close_context": tools.context_tools.close_context,
     "list_contexts": tools.context_tools.list_contexts,
     "reset_sandbox": tools.system_tools.reset_sandbox,    # nettoyage de l'env d'exécution
+    "self_update": tools.system_tools.self_update,        # MAJ d'Athena (git pull + restart, détaché)
     "create_goal": tools.goal_tools.create_goal,          # objectifs persistants (continuité de but)
     "list_goals": tools.goal_tools.list_goals,
     "update_goal_status": tools.goal_tools.update_goal_status,
@@ -1818,7 +1819,7 @@ class Swarm:
                 # confirmé) et ses routines (create_routine, confirmée) + les lister. Donnés à
                 # l'orchestrateur quand l'auto-amélioration est active (SELF_IMPROVE_SKILLS).
                 _self_improve = os.getenv("SELF_IMPROVE_SKILLS", "true").lower() in ("true", "1", "yes")
-                _auto_tools = ["create_routine", "list_routines"]
+                _auto_tools = ["create_routine", "list_routines", "self_update"]
                 # Pile de contextes (« fil d'Ariane ») : mettre une tâche de côté / reprendre.
                 if os.getenv("CONTEXT_STACK", "true").lower() in ("true", "1", "yes"):
                     _auto_tools += ["open_context", "close_context", "list_contexts"]

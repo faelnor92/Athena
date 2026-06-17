@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.21.1] - 2026-06-17
+### Added
+- **Athena peut se mettre à jour sur demande** (`self_update`) : lance `update.sh` en arrière-plan DÉTACHÉ (git pull + dépendances + redémarrage) → survit au restart, contrairement à un `update.sh` lancé via `execute_bash_command` (qui couperait Athena en plein run). Action SENSIBLE → validation HITL. Exposé à l'orchestrateur (« Athena, mets-toi à jour »).
+
+
 ## [0.21.0] - 2026-06-17
 ### Added
 - **Proxmox : exécuter une commande DANS une VM** (`proxmox_vm_exec`) via l'agent invité (qemu-guest-agent), sans SSH. Lance la commande (`/agent/exec`), attend la fin (`/agent/exec-status`) et renvoie sortie/erreur/code. **Action très sensible → validation HITL obligatoire.** Gère les cas « guest-exec désactivé » et droits insuffisants (PVEAdmin requis). Pour un LXC : passer par SSH.

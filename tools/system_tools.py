@@ -231,6 +231,48 @@ def reset_sandbox() -> str:
         return f"Erreur lors de la réinitialisation de la sandbox : {e}"
 
 
+def self_update(user_confirmed: bool = False) -> str:
+    """
+    Met Athena à jour : récupère le code (git pull), met à jour les dépendances et redémarre le
+    service. Le script tourne en arrière-plan DÉTACHÉ, donc Athena redémarre juste après (sans se
+    couper en pleine commande). ACTION SENSIBLE → confirmation utilisateur requise.
+
+    NE PAS lancer update.sh via execute_bash_command (le redémarrage tuerait Athena en plein run) —
+    utiliser CET outil, prévu pour survivre au redémarrage.
+
+    Args:
+        user_confirmed (bool): True une fois l'utilisateur d'accord.
+    Returns:
+        str: message de confirmation (Athena redémarre ensuite).
+    """
+    if not user_confirmed:
+        return ("⚠️ Mise à jour d'Athena (git pull + dépendances + REDÉMARRAGE). Demande "
+                "confirmation à l'utilisateur, puis rappelle l'outil avec user_confirmed=True.")
+    import subprocess
+    from core.platform_info import get_platform_info
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        if get_platform_info().get("is_windows"):
+            script = os.path.join(root_dir, "update.ps1")
+            kwargs = {}
+            if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+                kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            subprocess.Popen(["powershell", "-ExecutionPolicy", "Bypass", "-File", script],
+                             cwd=root_dir, start_new_session=True, **kwargs)
+        else:
+            script = os.path.join(root_dir, "update.sh")
+            log_f = open(os.path.join(root_dir, "update.log"), "w", encoding="utf-8")
+            subprocess.Popen(["bash", script], cwd=root_dir, start_new_session=True,
+                             preexec_fn=os.setsid, stdout=log_f, stderr=subprocess.STDOUT)
+        return ("🔄 Mise à jour lancée (git pull + dépendances + redémarrage), journal dans update.log. "
+                "Je vais redémarrer dans un instant — reparle-moi après pour vérifier la nouvelle version.")
+    except Exception as e:
+        return f"Erreur lors du lancement de la mise à jour : {e}"
+
+
+self_update._requires_approval = True
+
+
 def execute_bash_command(command: str, user_confirmed: bool = False, host: str = "") -> str:
     """
     Exécute une commande système Bash sécurisée (locale, ou distante via SSH).
