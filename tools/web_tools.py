@@ -133,3 +133,50 @@ def web_scrape(url: str) -> str:
         return clean_text
     except Exception as e:
         return f"Erreur lors du scraping de la page Web : {str(e)}"
+
+
+def deep_research(query: str, max_pages: int = 3) -> str:
+    """
+    Recherche web APPROFONDIE (deep research) : cherche le sujet, LIT réellement plusieurs pages,
+    puis SYNTHÉTISE une réponse factuelle et SOURCÉE à la question. Plus lent que web_search (il
+    ouvre les pages), mais bien plus complet — à utiliser pour une vraie question de fond, une
+    comparaison, un état de l'art, etc.
+
+    Args:
+        query (str): la question / le sujet à approfondir.
+        max_pages (int): nombre de pages à lire (1-5, défaut 3).
+    Returns:
+        str: synthèse sourcée + liste des sources consultées.
+    """
+    results = web_search(query)
+    if results.startswith("Erreur") or "Aucun résultat" in results:
+        return results
+    urls = [u for u in re.findall(r"Lien:\s*(\S+)", results) if u.startswith("http")]
+    urls = urls[: max(1, min(int(max_pages or 3), 5))]
+    if not urls:
+        return results
+    docs = []
+    for u in urls:
+        content = web_scrape(u)
+        if content and not content.startswith("Erreur"):
+            docs.append(f"=== SOURCE : {u} ===\n{content}")
+    if not docs:
+        return "Recherche approfondie : les pages trouvées sont inaccessibles. Résultats bruts :\n\n" + results
+    corpus = "\n\n".join(docs)[:14000]
+    try:
+        from core.state import swarm, _orch_agent
+        msgs = [
+            {"role": "system", "content": (
+                "Tu es un assistant de recherche. À partir UNIQUEMENT des SOURCES web ci-dessous, "
+                "rédige une réponse SYNTHÉTIQUE, factuelle et structurée à la question, en CITANT "
+                "les sources (URL entre crochets) après chaque affirmation clé. Si les sources se "
+                "contredisent ou sont insuffisantes, dis-le explicitement. N'invente RIEN.")},
+            {"role": "user", "content": f"QUESTION : {query}\n\nSOURCES :\n{corpus}"},
+        ]
+        resp = swarm._complete(_orch_agent().model, msgs, tools_schema=None)
+        synth = (resp.choices[0].message.content or "").strip()
+    except Exception as e:
+        return ("Synthèse indisponible (" + str(e) + "). Pages consultées :\n"
+                + "\n".join(f"- {u}" for u in urls))
+    src = "\n".join(f"- {u}" for u in urls)
+    return f"{synth}\n\n📚 Sources consultées :\n{src}"
