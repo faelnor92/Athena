@@ -78,7 +78,10 @@ async def main():
                 else:
                     raw_cmd = user_input[1:].strip()
                 print_system_msg(f"Exécution directe du shell: {raw_cmd}")
-                os.system(raw_cmd)
+                # Console LOCALE de l'opérateur (pas une surface réseau) : le préfixe ! lance
+                # volontairement TA commande dans TON shell. subprocess.run plutôt qu'os.system.
+                import subprocess
+                subprocess.run(raw_cmd, shell=True)  # nosec B602 — passthrough shell voulu, usage local
                 continue
 
             messages.append({"role": "user", "content": user_input})
