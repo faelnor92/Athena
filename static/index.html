@@ -759,6 +759,7 @@
                 <button class="modal-tab-btn" id="modal-tab-agenda" data-i18n="tab.agenda">📅 Agenda</button>
                 <button class="modal-tab-btn" id="modal-tab-messaging" data-i18n="tab.messaging">📨 Messageries</button>
                 <button class="modal-tab-btn" id="modal-tab-satellites" data-i18n="tab.satellites">🛰️ Satellites vocaux</button>
+                <button class="modal-tab-btn" id="modal-tab-proxmox" data-i18n="tab.proxmox">🖧 Proxmox</button>
                 <div class="modal-tab-group" data-i18n="group.system">Système</div>
                 <button class="modal-tab-btn" id="modal-tab-behavior" data-i18n="tab.behavior">⚙️ Comportement</button>
                 <button class="modal-tab-btn" id="modal-tab-pricing" data-i18n="tab.pricing">💰 Tarifs LLM</button>
@@ -1455,6 +1456,34 @@
                     </div>
                 </div>
 
+                <div class="modal-pane" id="pane-proxmox" style="display: none;">
+                    <h3>🖧 Proxmox VE (hyperviseur)</h3>
+                    <p class="section-desc">Athena lit l'état du cluster (nœuds, VM, conteneurs) et peut les démarrer/arrêter/redémarrer (action soumise à validation). Auth par <strong>jeton d'API</strong> : Proxmox → Datacenter → Permissions → API Tokens.</p>
+                    <div class="form-group">
+                        <label for="px-url">URL Proxmox</label>
+                        <input type="url" id="px-url" placeholder="Ex: https://192.168.1.20:8006" style="width:100%;padding:8px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.2);color:#fff;">
+                    </div>
+                    <div class="form-group">
+                        <label for="px-token-id">ID de jeton (USER@REALM!TOKENID)</label>
+                        <input type="text" id="px-token-id" placeholder="Ex: root@pam!athena" style="width:100%;padding:8px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.2);color:#fff;">
+                    </div>
+                    <div class="form-group">
+                        <label for="px-token-secret">Secret du jeton</label>
+                        <input type="password" id="px-token-secret" placeholder="Laisser vide si inchangé" style="width:100%;padding:8px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.2);color:#fff;">
+                    </div>
+                    <div class="form-group">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="px-verify-tls" style="width:auto;"> <span>Vérifier le certificat TLS (décoché = accepte l'auto-signé, fréquent en homelab)</span>
+                        </label>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <button type="button" class="btn btn-primary" style="padding:8px 16px;font-weight:bold;" onclick="saveProxmoxConfig()">Enregistrer</button>
+                        <button type="button" class="btn btn-secondary" style="padding:8px 16px;" onclick="testProxmoxConfig()">Tester la connexion</button>
+                        <span id="px-status" style="font-size:0.82rem;"></span>
+                    </div>
+                    <p style="font-size:0.74rem;opacity:0.6;margin-top:10px;">⚠️ Proxmox en IP privée : ajoute son hôte à <code>NET_GUARD_ALLOW_HOSTS</code> (onglet Nextcloud) pour l'anti-SSRF. Les actions (démarrer/arrêter) sont toujours soumises à <strong>validation</strong>.</p>
+                </div>
+
                 <div class="modal-pane" id="pane-events" style="display: none;">
                     <h3>👁️ Vigie — surveillance proactive</h3>
                     <p class="section-desc">Athena réagit à des événements POUSSÉS par tes outils de supervision (Zabbix, Grafana, LibreNMS, Home Assistant, traps SNMP via forwarder…). Rien ne tourne en boucle : le Vigie ne se réveille que sur événement, analyse, t'alerte (et propose un correctif, validé via Telegram pour les actions sensibles).</p>
@@ -1823,7 +1852,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260616_ttsstream"></script>
+    <script src="app.js?v=20260617_proxmox"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>

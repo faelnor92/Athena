@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.20.0] - 2026-06-17
+### Added
+- **Intégration Proxmox VE native (MCP d'environnement)** : Athena lit l'état du cluster (nœuds, VM QEMU, conteneurs LXC, CPU/RAM) via `proxmox_status`, et peut **démarrer/arrêter/redémarrer** une VM/LXC via `proxmox_vm_action` (action SENSIBLE → validation/HITL). API REST native (jeton d'API, anti-SSRF, TLS optionnel), sans SDK ni dépendance MCP tierce. Config par-utilisateur dans l'UI (Réglages → 🖧 Proxmox) ; auto-exposée à l'orchestrateur quand configurée (« état de mes VM », « redémarre la VM 100 »).
+
+
 ## [0.19.7] - 2026-06-16
 ### Changed
 - **Latence vocale fortement réduite (chat)** : au lieu d'attendre la synthèse de TOUT le message avant de parler, Athena synthétise et lit désormais **phrase par phrase en pipeline** — la voix démarre dès la 1ʳᵉ phrase (~1 s) pendant que les suivantes se préparent en arrière-plan. Annulation propre si une nouvelle réponse arrive.
