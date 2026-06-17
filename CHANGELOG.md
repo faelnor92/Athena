@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.20.3] - 2026-06-17
+### Changed
+- **Proxmox : jauge stockage clarifiée (honnêteté)** — les chiffres affichés sont la jauge Proxmox (espace alloué/réservé au niveau pool/FS) ; une note rappelle que sur ZFS/LVM-thin — y compris un stockage « dir » posé sur un pool ZFS — l'espace réellement écrit peut être bien inférieur (`zfs list`/`df` pour le réel). Plus de fausse distinction dir = « réel ».
+
+
 ## [0.20.2] - 2026-06-17
 ### Changed
 - **Proxmox : affichage stockage plus clair** — chaque stockage indique son **type** (`dir`, `zfspool`, `lvmthin`, `pbs`…) et les types « thin » (LVM-thin/ZFS/RBD) sont annotés **« provisionné/alloué »** (l'usage réel peut être inférieur). Le disque du nœud est étiqueté **« disque root »** (système) pour ne pas le confondre avec les stockages.
