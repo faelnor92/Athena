@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.21.7] - 2026-06-17
+### Changed
+- **Capteurs satellites : config optimisée** — les capteurs de gaz (SGP30, SGP40, ENS160) reçoivent automatiquement une **compensation température/humidité** (précision nettement meilleure) dès qu'un capteur temp+humidité (AHT20/SHT3x/BME280/DHT) est aussi choisi sur le même satellite ; sinon, pas de compensation (aucune référence morte). Audit : toutes les sorties capteurs sont lisibles (le BME680 brut était le seul « chiffre obscur », déjà corrigé en IAQ).
+
+
 ## [0.21.6] - 2026-06-17
 ### Added
 - **Satellites : options bluetooth_proxy, improv BLE et boutons volume** (cases à cocher). bluetooth_proxy (relais BLE → HA, présence/follow-me) et improv (config WiFi par Bluetooth) **n'utilisent aucun GPIO** ; les boutons volume ont des broches sûres par défaut (GPIO47/21) avec **détection de conflit GPIO** (avertissement si une broche est déjà prise par l'audio/I2C/LED/capteur).
