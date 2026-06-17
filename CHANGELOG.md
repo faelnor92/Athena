@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## [0.21.9] - 2026-06-17
+### Added
+- **Recherche web APPROFONDIE (`deep_research`)** — vraie « deep search » : cherche le sujet, LIT réellement plusieurs pages (web_scrape), puis SYNTHÉTISE une réponse factuelle et SOURCÉE (URL citées) via le LLM. Complète `web_search` (rapide) ; exposée à l'orchestrateur sur les requêtes web/approfondies.
+### Security
+- **`coder_cli`** : les arguments d'outils affichés en console sont passés par `redact_secrets` (plus de fuite de clés/mots de passe dans le terminal).
+
+
 ## [0.21.8] - 2026-06-17
 ### Security / Robustesse (passe de durcissement, suite à revue de code)
 - **Rate-limiting : fuite mémoire corrigée** — purge GLOBALE une fois par minute (toute entrée d'une minute écoulée), au lieu d'attendre 5000 entrées. Comportement par-worker documenté (limite globale = reverse-proxy).

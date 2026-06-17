@@ -86,6 +86,12 @@ def run_command(swarm, agent, messages, command_text):
             for tc in tool_calls:
                 func_name = tc.get("function", {}).get("name", "")
                 func_args = tc.get("function", {}).get("arguments", "")
+                # Masque les éventuels secrets (clés API, mots de passe) avant affichage console.
+                try:
+                    from core.redaction import redact_secrets
+                    func_args = redact_secrets(str(func_args))
+                except Exception:
+                    pass
                 print(f"\n⚙️  [{COLOR_MAGENTA}{agent_name}{COLOR_RESET}] Appel de l'outil : {COLOR_BOLD}{func_name}{COLOR_RESET} (args: {func_args})")
                 
             results = step.get("results", [])
