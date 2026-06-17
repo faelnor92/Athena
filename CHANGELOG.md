@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.20.5] - 2026-06-17
+### Added
+- **Proxmox : disque RÉELLEMENT utilisé des VM** via l'agent invité (`qemu-guest-agent`) — `proxmox_status` interroge `/agent/get-fsinfo` pour chaque VM en marche et affiche l'espace réel écrit (somme des systèmes de fichiers, hors pseudo-FS), marqué « réel ». Si l'agent est absent → « alloué » (taille provisionnée), comme avant. Les LXC montrent toujours le réel.
+
+
 ## [0.20.4] - 2026-06-17
 ### Changed
 - **Proxmox : le résumé de l'assistant n'alarme plus à tort sur le stockage** — une consigne dans le résultat de `proxmox_status` demande à l'IA de ne PAS présenter les % comme « presque plein/critique » sans préciser qu'il s'agit d'espace ALLOUÉ/provisionné au pool (ZFS/LVM-thin), pas de l'écrit réel.
