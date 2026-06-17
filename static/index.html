@@ -1401,6 +1401,20 @@
                     </div>
                     <p style="font-size:0.72rem; opacity:0.6; margin:2px 0 0;">GPIO48 = LED RGB intégrée à la carte ESP32-S3-DevKitC (aucun composant à ajouter). Le schéma de câblage complet est inclus en tête du YAML généré.</p>
 
+                    <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                            <input type="checkbox" id="sat-bt-proxy" style="width:auto;"> <span>📶 Bluetooth proxy (relais BLE → HA, présence/follow-me — sans GPIO)</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                            <input type="checkbox" id="sat-improv" style="width:auto;"> <span>🔧 Improv BLE (config WiFi par Bluetooth à la 1re install — sans GPIO)</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; flex-wrap:wrap;">
+                            <input type="checkbox" id="sat-vol-enabled" style="width:auto;"> <span>🔊 Boutons volume +/-</span>
+                            <input id="sat-vol-up" type="text" value="GPIO47" title="Broche Vol+" style="width:80px;">
+                            <input id="sat-vol-down" type="text" value="GPIO21" title="Broche Vol-" style="width:80px;">
+                        </label>
+                    </div>
+
                     <!-- Bus I2C (affiché seulement si un capteur I2C est choisi) -->
                     <div id="sat-i2c-row" class="form-group" style="display: none; margin-top: 8px;">
                         <label>Bus I²C (broches SDA / SCL) — pour les capteurs I²C</label>

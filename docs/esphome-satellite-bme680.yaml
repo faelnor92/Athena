@@ -1,6 +1,12 @@
 # Satellite ESP32-S3 piloté DIRECTEMENT par Athena (voix), capteurs visibles aussi par HA.
 # Généré par Athena pour « salon ». Adapte les broches (I2S + capteurs) à ta carte.
 #
+# --- CÂBLAGE ---
+#   INMP441 (micro)  : VDD→3V3 · GND→GND · L/R→GND · WS→GPIO18 · SCK→GPIO2 · SD→GPIO4
+#   MAX98357A (ampli): VIN→5V(ou 3V3) · GND→GND · LRC→GPIO6 · BCLK→GPIO7 · DIN→GPIO8 · HP sur +/-
+#   Capteur I2C      : VCC→3V3 · GND→GND · SDA→GPIO15 · SCL→GPIO16
+#   LED statut       : DIN→GPIO48 (WS2812B ; GPIO48 = LED RGB EMBARQUÉE sur la devkit, rien à câbler)
+#
 # Compiler + flasher (USB la 1re fois, OTA WiFi ensuite) :
 #   pip install esphome
 #   esphome run athena-satellite-salon.yaml
@@ -34,6 +40,10 @@ i2c:
   scl: GPIO16
   scan: true
 
+bme680_bsec2:
+  address: 0x76   # essaie 0x77 si non détecté
+  state_save_interval: 6h
+
 # --- Audio (ADAPTE LES BROCHES) : micro I2S standard, sortie I2S numérique ---
 i2s_audio:
   - id: i2s_in
@@ -65,16 +75,74 @@ voice_assistant:
   microphone: mic
   speaker: spk
   use_wake_word: false
+  on_client_disconnected:
+    - light.turn_on:
+        id: status_led
+        red: 100%
+        green: 0%
+        blue: 0%
+        effect: "Slow Pulse"
+  on_client_connected:
+    - light.turn_off: status_led
+  on_listening:
+    - light.turn_on:
+        id: status_led
+        red: 0%
+        green: 0%
+        blue: 100%
+  on_stt_vad_end:
+    - light.turn_on:
+        id: status_led
+        red: 60%
+        green: 0%
+        blue: 100%
+        effect: "Fast Pulse"
+  on_tts_start:
+    - light.turn_on:
+        id: status_led
+        red: 0%
+        green: 100%
+        blue: 60%
+  on_end:
+    - light.turn_off: status_led
+  on_error:
+    - light.turn_on:
+        id: status_led
+        red: 100%
+        green: 0%
+        blue: 0%
+        effect: "Fast Pulse"
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: status_led
+    pin: GPIO48
+    num_leds: 1
+    rgb_order: GRB
+    chipset: ws2812
+    name: "LED statut"
+    default_transition_length: 0s
+    effects:
+      - pulse:
+          name: "Slow Pulse"
+          transition_length: 250ms
+          update_interval: 250ms
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 100ms
+          update_interval: 100ms
 
 sensor:
-  - platform: bme680
-    address: 0x76
+  - platform: bme680_bsec2
     temperature:
       name: "Température Salon"
     humidity:
       name: "Humidité Salon"
     pressure:
       name: "Pression Salon"
-    gas_resistance:
-      name: "Qualité air Salon"
-    update_interval: 60s
+    iaq:
+      name: "Qualité air Salon (IAQ)"
+    co2_equivalent:
+      name: "CO2 équivalent Salon"
+    breath_voc_equivalent:
+      name: "COV équivalent Salon"
