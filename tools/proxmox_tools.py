@@ -144,6 +144,8 @@ def proxmox_status() -> str:
         lines.append("  [Consigne assistant : NE présente PAS ces pourcentages comme « presque plein » "
                      "ou « critique » ; précise toujours qu'il s'agit d'espace ALLOUÉ/provisionné au pool, "
                      "pas de l'écrit réel — sauf si l'utilisateur a demandé l'usage réel via zfs list/df.]")
+    lines.append("[Consigne assistant : restitue les valeurs ABSOLUES en Go ET les pourcentages "
+                 "(ex. « RAM 1.0/2.0 Go (54%) · disque 12.3/32 Go (38%) »), ne réduis PAS aux seuls %.]")
     return "\n".join(lines)
 
 
