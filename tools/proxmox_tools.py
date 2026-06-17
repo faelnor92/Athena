@@ -49,46 +49,85 @@ def _get(path: str):
         return None, "Proxmox : réponse illisible."
 
 
+def _go(n):
+    try:
+        return f"{n/1e9:.1f}"
+    except Exception:
+        return "?"
+
+
 def proxmox_status() -> str:
     """
-    Donne l'état du cluster Proxmox : nœuds (hôtes physiques) et toutes les VM (QEMU) et
-    conteneurs (LXC) avec leur statut (running/stopped), CPU et mémoire. À utiliser pour
-    « comment va le serveur / mes VM », avant une action, ou pour diagnostiquer.
+    Donne l'état du cluster Proxmox : nœuds (hôtes physiques), VM (QEMU) et conteneurs (LXC)
+    avec statut (running/stopped) et leur charge — **CPU, RAM et disque** — ainsi que l'espace
+    des stockages (datastores). À utiliser pour « comment vont mes VM / le serveur », surveiller
+    la charge, ou avant une action.
+
+    NB : pour une VM QEMU, l'usage disque réel n'est visible que si l'agent invité (qemu-guest-agent)
+    est installé ; sinon c'est la taille provisionnée qui s'affiche. L'usage CPU/RAM, lui, est toujours là.
     """
     if not proxmox.is_configured():
         return _not_configured()
-    res, err = _get("/cluster/resources?type=vm")
+    res, err = _get("/cluster/resources")          # tout : node, qemu, lxc, storage
     if err:
         return err
-    nodes, _ = _get("/nodes")
+    res = res or []
+    nodes = [r for r in res if r.get("type") == "node"]
+    vms = [r for r in res if r.get("type") in ("qemu", "lxc")]
+    stores = [r for r in res if r.get("type") == "storage"]
 
     lines = []
-    if isinstance(nodes, list) and nodes:
+    if nodes:
         lines.append("🖥️ Nœuds :")
-        for n in nodes:
-            st = n.get("status", "?")
-            cpu = n.get("cpu")
-            mem = n.get("mem")
-            maxmem = n.get("maxmem")
-            extra = ""
+        for n in sorted(nodes, key=lambda x: x.get("node", "")):
+            cpu = n.get("cpu"); mem = n.get("mem"); maxmem = n.get("maxmem")
+            dsk = n.get("disk"); maxdsk = n.get("maxdisk")
+            parts = [n.get("status", "?")]
             if cpu is not None:
-                extra += f" cpu {cpu*100:.0f}%"
+                parts.append(f"cpu {cpu*100:.0f}%")
             if mem and maxmem:
-                extra += f" ram {mem/1e9:.1f}/{maxmem/1e9:.1f} Go"
-            lines.append(f"  - {n.get('node')} : {st}{extra}")
+                parts.append(f"ram {_go(mem)}/{_go(maxmem)} Go ({mem/maxmem*100:.0f}%)")
+            if dsk and maxdsk:
+                parts.append(f"disque {_go(dsk)}/{_go(maxdsk)} Go ({dsk/maxdsk*100:.0f}%)")
+            lines.append(f"  - {n.get('node')} : " + " · ".join(parts))
 
-    vms = [r for r in (res or []) if r.get("type") in ("qemu", "lxc")]
     if not vms:
         lines.append("Aucune VM/conteneur trouvé.")
     else:
         lines.append("📦 VM & conteneurs :")
         for v in sorted(vms, key=lambda x: (x.get("node", ""), x.get("vmid", 0))):
             kind = "VM" if v.get("type") == "qemu" else "LXC"
-            ico = "🟢" if v.get("status") == "running" else "⚪"
-            mem = v.get("mem"); maxmem = v.get("maxmem")
-            ram = f" ram {mem/1e9:.1f}/{maxmem/1e9:.1f} Go" if (mem and maxmem) else ""
-            lines.append(f"  {ico} [{kind} {v.get('vmid')}] {v.get('name','?')} "
-                         f"@ {v.get('node','?')} — {v.get('status','?')}{ram}")
+            running = v.get("status") == "running"
+            ico = "🟢" if running else "⚪"
+            head = f"  {ico} [{kind} {v.get('vmid')}] {v.get('name','?')} @ {v.get('node','?')} — {v.get('status','?')}"
+            metr = []
+            cpu = v.get("cpu"); mem = v.get("mem"); maxmem = v.get("maxmem")
+            dsk = v.get("disk"); maxdsk = v.get("maxdisk")
+            if running and cpu is not None:
+                metr.append(f"cpu {cpu*100:.0f}%")
+            if running and mem and maxmem:
+                metr.append(f"ram {_go(mem)}/{_go(maxmem)} Go ({mem/maxmem*100:.0f}%)")
+            if maxdsk:
+                if dsk:
+                    metr.append(f"disque {_go(dsk)}/{_go(maxdsk)} Go ({dsk/maxdsk*100:.0f}%)")
+                else:
+                    metr.append(f"disque {_go(maxdsk)} Go (alloué)")
+            lines.append(head + (("  · " + " · ".join(metr)) if metr else ""))
+
+    if stores:
+        lines.append("💽 Stockages :")
+        seen = set()
+        for s in sorted(stores, key=lambda x: x.get("storage", "")):
+            key = s.get("storage")
+            if key in seen:   # un stockage partagé apparaît par nœud → une seule ligne
+                continue
+            seen.add(key)
+            used = s.get("disk"); total = s.get("maxdisk")
+            if total:
+                pct = f" ({used/total*100:.0f}%)" if used else ""
+                lines.append(f"  - {key} : {_go(used or 0)}/{_go(total)} Go{pct}")
+            else:
+                lines.append(f"  - {key} : {s.get('status','?')}")
     return "\n".join(lines)
 
 
