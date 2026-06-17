@@ -363,15 +363,30 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     if led.get("enabled"):
         led_pin = (led.get("pin") or "GPIO48").strip()
         led_num = int(led.get("num") or 1)
-        led_block = (f"\nlight:\n  - platform: esp32_rmt_led_strip\n    id: status_led\n"
-                     f"    pin: {led_pin}\n    num_leds: {led_num}\n    rgb_order: GRB\n"
-                     f"    chipset: ws2812\n    name: \"LED statut\"\n")
+        led_block = (
+            f"\nlight:\n  - platform: esp32_rmt_led_strip\n    id: status_led\n"
+            f"    pin: {led_pin}\n    num_leds: {led_num}\n    rgb_order: GRB\n"
+            f"    chipset: ws2812\n    name: \"LED statut\"\n    default_transition_length: 0s\n"
+            "    effects:\n"
+            "      - pulse:\n          name: \"Slow Pulse\"\n          transition_length: 250ms\n          update_interval: 250ms\n"
+            "      - pulse:\n          name: \"Fast Pulse\"\n          transition_length: 100ms\n          update_interval: 100ms\n")
+
+        def _on(color, effect=None):
+            r, g, b = color
+            s = (f"        id: status_led\n        red: {r}%\n        green: {g}%\n        blue: {b}%\n")
+            if effect:
+                s += f"        effect: \"{effect}\"\n"
+            return "    - light.turn_on:\n" + s
+
+        # Machine à états via les événements du voice_assistant + connexion à Athena.
         led_feedback = (
-            "  on_listening:\n    - light.turn_on:\n        id: status_led\n"
-            "        red: 0%\n        green: 0%\n        blue: 100%\n"
-            "  on_tts_start:\n    - light.turn_on:\n        id: status_led\n"
-            "        red: 0%\n        green: 100%\n        blue: 60%\n"
-            "  on_end:\n    - light.turn_off: status_led\n")
+            "  on_client_disconnected:\n" + _on((100, 0, 0), "Slow Pulse") +      # rouge : Athena déconnectée
+            "  on_client_connected:\n    - light.turn_off: status_led\n" +         # prêt (au repos)
+            "  on_listening:\n" + _on((0, 0, 100)) +                               # bleu : à l'écoute
+            "  on_stt_vad_end:\n" + _on((60, 0, 100), "Fast Pulse") +             # violet : réflexion
+            "  on_tts_start:\n" + _on((0, 100, 60)) +                              # cyan : répond
+            "  on_end:\n    - light.turn_off: status_led\n" +                      # retour repos
+            "  on_error:\n" + _on((100, 0, 0), "Fast Pulse"))                      # rouge clignotant : erreur
 
     # Bloc d'activation (mains-libres) : wake word embarqué (microWakeWord, sur l'ESP)
     # ou serveur (openWakeWord, dans Athena ; l'ESP streame en continu).
