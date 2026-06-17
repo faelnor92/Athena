@@ -12,13 +12,31 @@ from typing import Callable, Tuple, List, Dict, Any, Optional, Set
 import logging
 
 logger = logging.getLogger("athena.swarm")
-from litellm import completion
-from .agent import Agent, Result
-from . import approvals
-from . import run_context
-from . import channels
-from . import tool_policy
-from . import platform_info
+from core.agent import Agent, Result
+from core import approvals
+from core import run_context
+from core import channels
+from core import tool_policy
+from core import platform_info
+# Fonctions pures extraites dans des sous-modules du package (cf. core/swarm/).
+from core.swarm.schema import (
+    function_to_schema, coerce_arguments, validate_args_schema,
+    _annotation_to_json_type, _coerce_value,
+)
+from core.swarm.text_tools import (
+    looks_like_announced_intent, select_tool_subset, select_relevant_funcs,
+    parse_text_tool_calls, load_dynamic_skills,
+    _TOOL_GROUPS, _TOOL_GROUP_KEYWORDS, _TOOL_DOMAIN,
+)
+
+
+def _completion(*args, **kwargs):
+    """Appelle `litellm.completion` via le namespace du PACKAGE (`core.swarm.completion`).
+    Indirection volontaire : après le découpage en package, les tests continuent de
+    monkeypatcher `core.swarm.completion` — cette résolution à l'exécution garantit que
+    le patch atteint bien la boucle du moteur (contrat historique préservé)."""
+    import core.swarm as _pkg
+    return _pkg.completion(*args, **kwargs)
 import tools.home_assistant
 import tools.memory_tools
 import tools.code_sandbox
@@ -183,297 +201,6 @@ AVAILABLE_TOOLS = {
     "proxmox_vm_exec": tools.proxmox_tools.proxmox_vm_exec,          # commande DANS une VM (agent invité)
 }
 
-# ── Filtrage d'outils par pertinence (économie de tokens) ──────────────────────
-# Les schémas des ~47 outils pèsent ~5 000 tokens RÉ-ENVOYÉS à chaque tour. La plupart
-# des requêtes n'en utilisent que 0–2. On range les outils « lourds et spécialisés » en
-# GROUPES-DOMAINE activés par mots-clés ; tout outil HORS groupe (mémoire, infos de base,
-# planification, orchestration, skills dynamiques, MCP, transfer_/delegate_) reste TOUJOURS
-# exposé. Principe de sûreté : on ne RETIRE qu'un outil explicitement rangé dans un groupe
-# NON activé → jamais de coupe d'un outil cœur ou inconnu.
-_TOOL_GROUPS = {
-    "code": {
-        "execute_python_code", "execute_bash_command", "read_file", "write_file",
-        "edit_file", "apply_patch", "run_checks", "search_code", "find_definition",
-        "find_references", "file_outline", "git_status", "git_diff", "git_log",
-        "git_create_branch", "git_commit", "git_create_worktree", "git_list_worktrees",
-        "git_remove_worktree", "run_rigid_pipeline", "list_ssh_hosts",
-    },
-    "domotique": {"get_ha_state", "call_ha_service", "get_current_room", "trigger_workflow"},
-    "web": {"web_search", "web_scrape", "render_page", "deep_research"},
-    "media": {"generate_image", "generate_artistic_image", "generate_artistic_video"},
-    "agenda": {"add_calendar_event", "list_calendar_events", "delete_calendar_event",
-               "add_list_item", "get_list_items", "toggle_list_item", "delete_list_item"},
-    "email": {"read_inbox", "read_email", "create_email_draft", "search_emails",
-              "mark_emails_read", "archive_emails", "clean_inbox", "list_mail_folders"},
-    "documents": {"analyze_document", "transcribe_and_summarize_meeting", "ingest_file"},
-    "nextcloud": {"nextcloud_list_files", "nextcloud_read_file", "nextcloud_write_file",
-                  "nextcloud_delete_file", "nextcloud_list_tasks", "nextcloud_search_contacts"},
-    "redaction": {"document_open", "document_read", "document_revise", "document_publish",
-                  "document_autorevise", "document_check_coherence", "document_translate", "document_check_repetitions"},
-    "skills": {"delete_skill"},  # save_new_skill : hors groupe → jamais filtré (créer un outil à tout moment)
-    "computer": {"computer_use_action"},
-    "vision": {"analyze_image", "capture_screen"},
-    "routines": {"create_routine", "list_routines"},
-    "proxmox": {"proxmox_status", "proxmox_vm_action", "proxmox_vm_exec"},
-}
-_TOOL_GROUP_KEYWORDS = {
-    "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",
-             "fonction", "function", "fichier", "file", "git", "commit", "refactor", "compil",
-             "erreur", "debug", "débug", "dépôt", "repo", "classe", "class", "variable",
-             "lint", "patch", "branche", "branch", "terminal", "bash", "shell", "déploie",
-             "ssh", "serveur", "server", "vm", "hôte", "host", "machine", "distant", "remote",
-             "connecte", "connecte-toi", "connexion", "connecter", "nas", "openmediavault", "omv",
-             "synology", "raspberry", "raspberrypi", "proxmox", "docker"],
-    "domotique": ["lumière", "lumiere", "lampe", "allume", "éteins", "eteins", "chauffage",
-                  "volet", "prise", "salon", "chambre", "cuisine", "maison", "home assistant",
-                  "thermostat", "scène", "scene", "domotique", "radiateur", "store", "interrupteur"],
-    "proxmox": ["proxmox", "vm", "machine virtuelle", "hyperviseur", "lxc", "conteneur",
-                "container", "cluster", "nœud", "noeud", "qemu", "pve", "vmid", "redémarre la vm",
-                "démarre la vm", "arrête la vm", "hôte", "host"],
-    "web": ["cherche", "recherche", "web", "internet", "google", "actualité", "actualite",
-            "approfondi", "approfondie", "deep", "état de l'art", "etat de l'art", "compare", "comparer", "dossier",
-            "news", "nouvelle", "site", "url", "http", "lien", "en ligne", "scrape"],
-    "media": ["image", "dessine", "dessin", "photo", "illustration", "vidéo", "video", "logo",
-              "picture", "génère une image", "genere une image", "affiche"],
-    "agenda": ["agenda", "calendrier", "rendez-vous", "rdv", "événement", "evenement", "réunion",
-               "reunion", "liste", "courses", "tâche", "tache", "todo", "to-do", "rappelle",
-               "planifie", "planning", "échéance", "deadline"],
-    "email": ["mail", "email", "e-mail", "courriel", "inbox", "boîte", "boite",
-              "brouillon", "messagerie", "archive", "archiver", "ménage", "menage",
-              "newsletter", "spam", "publicité", "publicite", "non lus", "non-lus",
-              "promotion", "promotions", "réseaux sociaux", "reseaux sociaux"],
-    "documents": ["document", "pdf", "résume ce", "resume ce", "analyse ce", "compte rendu",
-                  "compte-rendu", "transcris", "transcription", "ingère", "ingere"],
-    "nextcloud": ["nextcloud", "webdav", "carddav", "contact", "carnet d'adresses", "fichier nextcloud",
-                  "mon cloud", "drive perso"],
-    "redaction": ["roman", "chapitre", "manuscrit", "docx", "document word", ".docx", "réviser",
-                  "reviser", "relire", "relis", "réécris", "reecris", "corrige le", "corrige mon",
-                  "modifications suivies", "révision", "revision", "mon document", "mon texte",
-                  # cohérence + répétitions + traduction (sinon ces demandes n'exposent pas les outils)
-                  "cohérence", "coherence", "incohérence", "incoherence", "répétition", "repetition",
-                  "répétitions", "repetitions", "traduis", "traduire", "traduction", "translate",
-                  "en anglais", "en espagnol", "en allemand", "en italien"],
-    "skills": ["compétence", "competence", "skill", "nouvel outil", "apprends à"],
-    "computer": ["souris", "clic", "navigateur", "navigue", "site web", "clique sur"],
-    "vision": ["image", "photo", "capture", "capture d'écran", "screenshot", "écran", "ecran",
-               "vois-tu", "que vois", "regarde l'image", "regarde cette image", "lis l'image",
-               "analyse l'image", "analyse cette image", "sur l'image", "cette image", "visuel"],
-    "routines": ["routine", "routines", "chaque matin", "tous les matins", "chaque jour",
-                 "tous les jours", "chaque semaine", "rappel récurrent", "automatise", "périodique",
-                 "programme une tâche", "planifie tous les", "récurrent"],
-}
-# Index inversé nom→groupe (un outil n'est dans qu'un seul groupe).
-_TOOL_DOMAIN = {name: grp for grp, names in _TOOL_GROUPS.items() for name in names}
-
-_INTENT_MARKERS = (
-    "je vais", "je lance", "laisse-moi", "laisse moi", "je m'en occupe", "je men occupe",
-    "un instant", "je vérifie", "je verifie", "je récupère", "je recupere", "je consulte",
-    "je regarde", "permets-moi", "permet moi", "je commence", "je procède", "je procede",
-    "je m'occupe", "je te prépare", "je prepare", "c'est parti", "tout de suite")
-_ASK_USER_MARKERS = (
-    "veux-tu", "veux tu", "souhaites-tu", "souhaites tu", "dois-je", "dois je",
-    "préfères-tu", "preferes-tu", "tu veux que", "tu préfères", "je te propose",
-    "puis-je", "puis je", "est-ce que tu veux")
-
-
-def looks_like_announced_intent(content: str) -> bool:
-    """Vrai si le message ANNONCE une action (« je vais… ») SANS poser de question à l'utilisateur.
-    Sert à l'auto-continuation : on relance l'agent pour qu'il EXÉCUTE au lieu de rendre la main.
-    On respecte les demandes d'avis/approbation (présence d'une question → False)."""
-    msg = (content or "").strip()
-    if not msg or len(msg) > 600:
-        return False
-    low = msg.lower()
-    if "?" in msg or any(p in low for p in _ASK_USER_MARKERS):
-        return False
-    return any(p in low for p in _INTENT_MARKERS)
-
-
-def select_tool_subset(text: str, available_names) -> set:
-    """Renvoie le sous-ensemble de noms d'outils à EXPOSER pour cette requête.
-    On active les groupes-domaine dont un mot-clé apparaît dans `text` ; on conserve
-    TOUJOURS les outils hors groupe. Voir _TOOL_GROUPS pour le détail/sûreté."""
-    text_l = (text or "").lower()
-    active = {g for g, kws in _TOOL_GROUP_KEYWORDS.items() if any(k in text_l for k in kws)}
-    keep = set()
-    for name in available_names:
-        grp = _TOOL_DOMAIN.get(name)
-        if grp is None or grp in active:
-            keep.add(name)
-    return keep
-
-
-def select_relevant_funcs(text, funcs, top_n):
-    """Top-N fonctions les plus PERTINENTES pour `text`, par recouvrement de tokens sur
-    (nom + 1re ligne de docstring). Utilisé pour borner les outils « extra » non groupés
-    (skills auto-induites + outils MCP, souvent 20-50 par serveur) sans gonfler le contexte.
-    Sans embedding : zéro coût/latence, déterministe. Les fonctions sans recouvrement
-    gardent un score 0 et sont départagées par leur ordre d'origine (tri stable)."""
-    import re
-    _word = re.compile(r"[a-zà-ÿ0-9_]{3,}", re.IGNORECASE)
-    def _toks(s):
-        return {w.lower() for w in _word.findall(s or "")}
-    q = _toks(text)
-    scored = []
-    for i, f in enumerate(funcs):
-        name = getattr(f, "__name__", "")
-        head = (getattr(f, "__doc__", "") or "").strip().split("\n", 1)[0]
-        # le nom (mots dé-soulignés) compte double : signal fort de pertinence.
-        score = len(q & _toks(name + " " + head)) + len(q & _toks(name.replace("_", " ")))
-        scored.append((-score, i, f))
-    scored.sort()
-    # On ne garde que les fonctions RÉELLEMENT pertinentes (recouvrement > 0). Avant, on
-    # « comblait » le top-N avec des outils sans rapport (ex. 12 outils Home Assistant exposés
-    # pour une requête « calendrier » → l'agent partait sur HA). Rien ne matche ⇒ liste vide.
-    return [f for negscore, _, f in scored if negscore < 0][:top_n]
-
-
-def load_dynamic_skills() -> dict:
-    """Charge dynamiquement tous les scripts Python du dossier skills/ comme des fonctions."""
-    skills = {}
-    if not os.path.exists("skills"):
-        return skills
-    for file_path in glob.glob("skills/*.py"):
-        file_name = os.path.basename(file_path)
-        skill_name = file_name.replace(".py", "")
-        try:
-            # Importation dynamique
-            spec = importlib.util.spec_from_file_location(skill_name, file_path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            # Récupère la fonction qui porte le même nom que le fichier
-            func = getattr(module, skill_name, None)
-            if func:
-                skills[skill_name] = func
-        except Exception as e:
-            print(f"[\033[91mErreur Skill\033[0m] Impossible de charger {file_name} : {e}")
-    return skills
-
-def _annotation_to_json_type(annotation) -> str:
-    """Mappe une annotation Python vers un type JSON Schema. Défaut: string."""
-    import typing
-    direct = {
-        str: "string", int: "integer", float: "number",
-        bool: "boolean", list: "array", dict: "object",
-    }
-    if annotation in direct:
-        return direct[annotation]
-    origin = typing.get_origin(annotation)
-    if origin in (list, tuple, set):
-        return "array"
-    if origin is dict:
-        return "object"
-    # Optional[X] / Union[...] : on prend le 1er argument non-None.
-    if origin is typing.Union:
-        for arg in typing.get_args(annotation):
-            if arg is not type(None):
-                return _annotation_to_json_type(arg)
-    return "string"
-
-
-def function_to_schema(func: Callable) -> dict:
-    """Convertit une fonction Python en schéma d'outil OpenAI avec descriptions de paramètres.
-
-    Si la fonction porte un attribut `_mcp_schema` (outils MCP), ce schéma JSON
-    fourni par le serveur MCP est utilisé tel quel pour les `parameters`."""
-    sig = inspect.signature(func)
-    doc = func.__doc__ or ""
-
-    # Cas des outils MCP : schéma d'entrée fourni par le serveur, on le respecte.
-    mcp_schema = getattr(func, "_mcp_schema", None)
-    if isinstance(mcp_schema, dict) and mcp_schema:
-        return {
-            "type": "function",
-            "function": {
-                "name": func.__name__,
-                "description": doc.strip().split("\n")[0] if doc.strip() else f"Appelle {func.__name__}",
-                "parameters": mcp_schema,
-            }
-        }
-
-    # Extraire les descriptions de paramètres à partir du docstring
-    param_descriptions = {}
-    lines = doc.split("\n")
-    for line in lines:
-        line_str = line.strip()
-        # Supporter le format "param_name (type): description" ou "param_name: description"
-        if ":" in line_str:
-            parts = line_str.split(":", 1)
-            left = parts[0].strip()
-            right = parts[1].strip()
-            # Enlever le type éventuel ex: "key (str)" -> "key"
-            param_name = left.split("(")[0].strip()
-            if param_name in sig.parameters:
-                param_descriptions[param_name] = right
-
-    parameters = {
-        "type": "object",
-        "properties": {},
-        "required": []
-    }
-    for name, param in sig.parameters.items():
-        # `context_variables` = état partagé du run, injecté CÔTÉ SERVEUR (façon
-        # openai/swarm) → on le MASQUE du modèle (jamais dans le schéma exposé).
-        if name == "context_variables":
-            continue
-        desc = param_descriptions.get(name, f"Paramètre {name}")
-        # Type JSON déduit de l'annotation de signature (string par défaut).
-        json_type = "string"
-        if param.annotation is not inspect.Parameter.empty:
-            json_type = _annotation_to_json_type(param.annotation)
-        parameters["properties"][name] = {
-            "type": json_type,
-            "description": desc
-        }
-        if param.default == inspect.Parameter.empty:
-            parameters["required"].append(name)
-
-    # Outil sensible : on expose un paramètre user_confirmed (optionnel) pour le
-    # gate human-in-the-loop, même si la fonction ne le déclare pas.
-    if approvals.is_sensitive(func) and "user_confirmed" not in parameters["properties"]:
-        parameters["properties"]["user_confirmed"] = {
-            "type": "boolean",
-            "description": "Mettre à True UNIQUEMENT après accord explicite de l'utilisateur (action sensible).",
-        }
-
-    return {
-        "type": "function",
-        "function": {
-            "name": func.__name__,
-            "description": doc.strip().split("\n")[0] if doc.strip() else f"Appelle {func.__name__}",
-            "parameters": parameters
-        }
-    }
-
-
-def _coerce_value(value, json_type):
-    """Coerce une valeur (souvent une string fournie par le modèle) vers le type attendu."""
-    if json_type == "integer" and isinstance(value, str):
-        try:
-            return int(value.strip())
-        except ValueError:
-            return value
-    if json_type == "number" and isinstance(value, str):
-        try:
-            return float(value.strip())
-        except ValueError:
-            return value
-    if json_type == "boolean" and isinstance(value, str):
-        low = value.strip().lower()
-        if low in ("true", "1", "yes", "oui"):
-            return True
-        if low in ("false", "0", "no", "non"):
-            return False
-        return value
-    if json_type in ("array", "object") and isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-            return parsed
-        except Exception:
-            return value
-    return value
-
-
 # --- Garde-fous qualité : cache de résultats d'outils + validation JSON-schema ---
 _TOOL_CACHE = {}
 _TOOL_CACHE_LOCK = threading.Lock()
@@ -489,151 +216,6 @@ def _tool_cache_ttl() -> int:
         return int(os.getenv("TOOL_CACHE_TTL", "300") or 0)
     except ValueError:
         return 0
-
-
-def validate_args_schema(func: Callable, args: dict):
-    """Valide les arguments contre le schéma JSON de l'outil (outils MCP surtout).
-    Renvoie un message d'erreur clair si invalide, sinon None."""
-    schema = getattr(func, "_mcp_schema", None)
-    if not isinstance(schema, dict) or not schema:
-        return None
-    try:
-        import jsonschema
-        jsonschema.validate(args, schema)
-        return None
-    except ImportError:
-        return None
-    except Exception as e:
-        return f"Arguments invalides pour '{getattr(func, '__name__', '?')}' : {getattr(e, 'message', str(e))}"
-
-
-def coerce_arguments(func: Callable, args: dict) -> dict:
-    """Valide/coerce les arguments d'un tool_call selon le schéma JSON de l'outil.
-    Évite les échecs quand le modèle renvoie '5' pour un entier ou 'true' pour un booléen."""
-    if not isinstance(args, dict):
-        return args
-    try:
-        props = function_to_schema(func)["function"]["parameters"].get("properties", {})
-    except Exception:
-        return args
-    return {k: _coerce_value(v, props.get(k, {}).get("type")) for k, v in args.items()}
-
-
-class _TextToolCallFunc:
-    """Fonction d'un tool_call SYNTHÉTIQUE (récupéré depuis du texte). Même interface
-    que les tool_calls structurés de litellm/OpenAI : .name + .arguments (str JSON)."""
-    __slots__ = ("name", "arguments")
-    def __init__(self, name: str, arguments: str):
-        self.name = name
-        self.arguments = arguments
-
-
-class _TextToolCall:
-    __slots__ = ("id", "type", "function")
-    def __init__(self, name: str, arguments: str, idx: int):
-        self.id = f"call_text_{idx}"
-        self.type = "function"
-        self.function = _TextToolCallFunc(name, arguments)
-
-
-def _loads_lenient(raw):
-    """json.loads TOLÉRANT : répare les fautes fréquentes des LLM (virgules traînantes,
-    littéraux Python None/True/False, quotes simples). Renvoie l'objet ou None."""
-    try:
-        return json.loads(raw)
-    except Exception:
-        pass
-    import re as _re
-    s = (raw or "").strip()
-    s = _re.sub(r",\s*([}\]])", r"\1", s)                      # virgules traînantes
-    s = _re.sub(r"\bNone\b", "null", s)
-    s = _re.sub(r"\bTrue\b", "true", s)
-    s = _re.sub(r"\bFalse\b", "false", s)
-    try:
-        return json.loads(s)
-    except Exception:
-        pass
-    if '"' not in s and "'" in s:                              # quotes simples → doubles
-        try:
-            return json.loads(s.replace("'", '"'))
-        except Exception:
-            pass
-    return None
-
-
-def parse_text_tool_calls(content: str, valid_names) -> list:
-    """RÉCUPÈRE les appels d'outils écrits en TEXTE par le modèle (qwen3 & co. émettent
-    parfois le tool-call dans le contenu — bloc ```json, balise <tool_call>… — au lieu du
-    format structuré, et l'outil n'est alors jamais exécuté). Renvoie une liste d'objets
-    tool_call synthétiques (compatibles avec la boucle), ou [].
-
-    Garde-fou anti faux-positif : on n'accepte QUE des appels dont le nom correspond à un
-    outil RÉELLEMENT disponible — sinon le modèle montre peut-être juste du JSON à l'usager.
-    """
-    if not content or not valid_names:
-        return []
-    import re as _re
-    valid = set(valid_names)
-    candidates = []
-    # 1) Balises <tool_call>{…}</tool_call> (style Hermes/Qwen).
-    candidates += _re.findall(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", content, _re.DOTALL)
-    # 2) Blocs de code ```json … ``` / ```tool_call … ``` (objet ou liste).
-    candidates += _re.findall(r"```(?:json|tool_call|tool)?\s*(\[.*?\]|\{.*?\})\s*```", content, _re.DOTALL)
-    # 3) Repli : le contenu entier est peut-être un JSON nu.
-    _stripped = content.strip()
-    if not candidates and (_stripped.startswith("{") or _stripped.startswith("[")):
-        candidates.append(_stripped)
-
-    out = []
-    for raw in candidates:
-        data = _loads_lenient(raw)
-        if data is None:
-            continue
-        for it in (data if isinstance(data, list) else [data]):
-            if not isinstance(it, dict):
-                continue
-            name = it.get("name") or it.get("tool") or it.get("tool_name")
-            args = it.get("arguments")
-            if args is None:
-                args = it.get("args") or it.get("parameters") or it.get("tool_input") or it.get("input")
-            # Style OpenAI imbriqué : {"function": {"name": …, "arguments": …}}.
-            fn = it.get("function")
-            if isinstance(fn, dict):
-                name = name or fn.get("name")
-                if args is None:
-                    args = fn.get("arguments")
-            if args is None:
-                args = {}
-            if not name or name not in valid:
-                continue
-            if isinstance(args, str):
-                args_str = args
-            else:
-                try:
-                    args_str = json.dumps(args, ensure_ascii=False)
-                except Exception:
-                    args_str = "{}"
-            out.append(_TextToolCall(name, args_str, len(out) + 1))
-        if out:
-            break  # un bloc valide suffit
-
-    # Repli : appel « style Python » écrit en texte — outil({...}) ou outil().
-    # On n'accepte qu'un nom d'outil RÉELLEMENT disponible (anti faux-positif).
-    if not out:
-        for m in _re.finditer(r"\b([a-zA-Z_]\w*)\s*\(\s*(\{.*?\})?\s*\)", content, _re.DOTALL):
-            name = m.group(1)
-            if name not in valid:
-                continue
-            data = _loads_lenient(m.group(2) or "{}")
-            if not isinstance(data, dict):
-                continue
-            try:
-                args_str = json.dumps(data, ensure_ascii=False)
-            except Exception:
-                args_str = "{}"
-            out.append(_TextToolCall(name, args_str, len(out) + 1))
-            break
-    return out
 
 
 def _push_approval_notice(aid: str, tool: str, notice: str, channel: str) -> None:
@@ -878,7 +460,7 @@ class Swarm:
         tool_acc = {}   # index -> {id, name, arguments}
         finish_reason = None
 
-        stream_obj = completion(**completion_kwargs)
+        stream_obj = _completion(**completion_kwargs)
         # Compat : si l'objet renvoyé est déjà une réponse complète (provider sans
         # streaming, ou tests), on émet le contenu d'un bloc et on le renvoie tel quel.
         _choices = getattr(stream_obj, "choices", None)
@@ -1179,7 +761,7 @@ class Swarm:
             try:
                 if stream:
                     return self._complete_streaming(dict(completion_kwargs), on_delta)
-                response = completion(**completion_kwargs)
+                response = _completion(**completion_kwargs)
                 # Recolle automatiquement les réponses tronquées (finish_reason=length).
                 if allow_continuation:
                     response = self._maybe_continue(model, messages, response)
@@ -1394,7 +976,7 @@ class Swarm:
         if os.getenv("USER_MODELING", "true").lower() not in ("true", "1", "yes"):
             return
         try:
-            from .user_profile import user_profile
+            from core.user_profile import user_profile
             lines = []
             for m in messages[-10:]:
                 role = m.get("role")
@@ -2293,7 +1875,7 @@ class Swarm:
                 volatile_context += tools.memory_tools.core_mem.get_as_prompt()
                 # Profil utilisateur évolutif (personnalisation durable).
                 try:
-                    from .user_profile import user_profile
+                    from core.user_profile import user_profile
                     volatile_context += user_profile.as_prompt()
                 except Exception:
                     pass
