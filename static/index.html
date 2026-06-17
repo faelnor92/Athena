@@ -1393,6 +1393,13 @@
                     <p class="section-desc" style="font-size: 0.74rem;">Choisis dans la liste ce qui est câblé sur l'ESP pour ne pas le perdre au flash. Ces entités restent visibles par <strong>HA et Athena</strong> en parallèle.</p>
                     <div id="sat-sensors-list" style="display: flex; flex-direction: column; gap: 6px; margin: 6px 0;"></div>
                     <button type="button" id="btn-sat-sensor-add" class="btn" style="width: 100%; margin-top: 4px;">＋ Ajouter un capteur</button>
+                    <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                            <input type="checkbox" id="sat-led-enabled" style="width:auto;"> <span>💡 LED de statut (écoute / réponse)</span>
+                        </label>
+                        <input id="sat-led-pin" type="text" value="GPIO48" placeholder="GPIO48" title="GPIO48 = LED RGB embarquée sur la devkit S3 (rien à câbler)" style="width:90px;">
+                    </div>
+                    <p style="font-size:0.72rem; opacity:0.6; margin:2px 0 0;">GPIO48 = LED RGB intégrée à la carte ESP32-S3-DevKitC (aucun composant à ajouter). Le schéma de câblage complet est inclus en tête du YAML généré.</p>
 
                     <!-- Bus I2C (affiché seulement si un capteur I2C est choisi) -->
                     <div id="sat-i2c-row" class="form-group" style="display: none; margin-top: 8px;">
@@ -1865,7 +1872,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260617_vigiepx"></script>
+    <script src="app.js?v=20260617_satopts"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>
