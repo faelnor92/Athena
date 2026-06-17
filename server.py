@@ -36,8 +36,8 @@ logger = get_logger("athena.server")
 try:
     from core import observability
     observability.setup()
-except Exception:
-    pass
+except Exception as e:
+    logger.debug("Observabilité non initialisée (normal si désactivée) : %s", e)
 
 from core.swarm import Swarm
 from core.tracing import run_store
@@ -133,9 +133,13 @@ async def security_headers(request, call_next):
 # --- Rate-limiting général par IP (anti-abus / boucles emballées) -------------
 # Fenêtre fixe d'une minute, en mémoire par-process (rapide, sans contention DB) :
 # avec N workers la limite effective est ~N×, ce qui reste un garde-fou utile. 0 = off.
+# Rate-limiting PAR WORKER (en mémoire). Avec N workers uvicorn, la limite effective par IP
+# est ~N × RATE_LIMIT_PER_MIN. Pour une vraie limite globale en multi-worker, applique le
+# rate-limiting au REVERSE-PROXY (Nginx/Traefik/Caddy) — recommandé en prod exposée.
 _RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "300") or 0)
 _rl_state = {}
 _rl_lock = threading.Lock()
+_rl_last_purge = [0]
 
 
 @app.middleware("http")
@@ -145,12 +149,14 @@ async def rate_limit(request, call_next):
         ip = (xff.split(",")[0].strip() if xff else (request.client.host if request.client else "?"))
         bucket = int(time.time() // 60)
         with _rl_lock:
+            # Purge GLOBALE une fois par minute : toute entrée d'une minute écoulée est jetée
+            # (anti-fuite mémoire — indépendant du nombre d'IP, plus du seuil à 5000).
+            if bucket > _rl_last_purge[0]:
+                for k in [k for k, v in _rl_state.items() if v[0] < bucket]:
+                    _rl_state.pop(k, None)
+                _rl_last_purge[0] = bucket
             st = _rl_state.get(ip)
             if not st or st[0] != bucket:
-                # Changement de minute → purge des entrées d'une autre minute (anti-fuite mémoire).
-                if len(_rl_state) > 5000:
-                    for k in [k for k, v in _rl_state.items() if v[0] != bucket]:
-                        _rl_state.pop(k, None)
                 st = [bucket, 0]
                 _rl_state[ip] = st
             st[1] += 1
@@ -220,7 +226,7 @@ try:
     from core import telegram_bot
     telegram_bot.start()
 except Exception as e:
-    logger.warning("Démarrage du bot Telegram ignoré : %s", e)
+    logger.warning("Démarrage du bot Telegram ignoré : %s", e, exc_info=True)
 
 # Moniteur Proxmox (poll léger → événements Vigie). Inactif tant que la Vigie + le moniteur
 # ne sont pas activés (le thread dort sinon) ; aucun coût au repos.
@@ -228,7 +234,7 @@ try:
     from core import proxmox_monitor
     proxmox_monitor.start()
 except Exception as e:
-    logger.warning("Démarrage du moniteur Proxmox ignoré : %s", e)
+    logger.warning("Démarrage du moniteur Proxmox ignoré : %s", e, exc_info=True)
 
 
 # Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Athena →

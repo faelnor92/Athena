@@ -1,5 +1,16 @@
 # Historique des Versions (Changelog)
 
+## [0.21.8] - 2026-06-17
+### Security / Robustesse (passe de durcissement, suite à revue de code)
+- **Rate-limiting : fuite mémoire corrigée** — purge GLOBALE une fois par minute (toute entrée d'une minute écoulée), au lieu d'attendre 5000 entrées. Comportement par-worker documenté (limite globale = reverse-proxy).
+- **Scripts de migration `extract_*.py` supprimés** (dette technique, basés sur des numéros de ligne, non importés).
+- **`except Exception` de démarrage durcis** : traceback loggé (Telegram, moniteur Proxmox) au lieu d'un message muet ; observabilité loggée en debug.
+- **`athena_cli.py`** : `os.system` → `subprocess.run` (console locale opérateur, passthrough shell assumé).
+- **README** : note explicite que le rate-limiting applicatif est par-worker (utiliser le reverse-proxy pour une limite globale).
+### Note
+- La garde réseau existait déjà : le serveur REFUSE de démarrer si bind exposé sans `ADMIN_PASSWORD` ni utilisateur (`_enforce_network_security`).
+
+
 ## [0.21.7] - 2026-06-17
 ### Changed
 - **Capteurs satellites : config optimisée** — les capteurs de gaz (SGP30, SGP40, ENS160) reçoivent automatiquement une **compensation température/humidité** (précision nettement meilleure) dès qu'un capteur temp+humidité (AHT20/SHT3x/BME280/DHT) est aussi choisi sur le même satellite ; sinon, pas de compensation (aucune référence morte). Audit : toutes les sorties capteurs sont lisibles (le BME680 brut était le seul « chiffre obscur », déjà corrigé en IAQ).

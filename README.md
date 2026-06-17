@@ -1,6 +1,6 @@
 # 🎛️ Athena — Framework Multi-Agent Auto-Hébergé
 
-![Version](https://img.shields.io/badge/version-0.21.7-blue.svg)
+![Version](https://img.shields.io/badge/version-0.21.8-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
@@ -110,6 +110,8 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 > [!NOTE]
 > **RAG en multi-worker.** En mono-process, la base vectorielle est embarquée (ChromaDB local). Pour le multi-worker, définissez **`CHROMA_SERVER_HOST`** (+ `CHROMA_SERVER_PORT`) : tous les workers parlent alors au même serveur ChromaDB (écritures concurrentes sûres). Le `docker-compose.yml` fourni inclut déjà ce service `chroma` et le câblage. Tout le reste de l'état est multi-worker-safe nativement.
+>
+> **Rate-limiting en multi-worker.** Le rate-limiting applicatif (`RATE_LIMIT_PER_MIN`) est **par worker** (compteur mémoire) : avec N workers, la limite effective par IP ≈ N × la valeur. Pour une limite **globale** stricte en prod exposée, applique le rate-limiting au **reverse-proxy** (Nginx `limit_req`, Traefik, Caddy) en amont.
 
 ### 🔒 Sécurité en production
 - **TLS obligatoire** : placez Athena derrière un reverse-proxy HTTPS (Caddy, Nginx, Traefik). Le serveur émet automatiquement **HSTS** quand il détecte HTTPS (`X-Forwarded-Proto: https`).
