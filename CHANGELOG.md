@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## [0.22.0] - 2026-06-17
+### Robustesse multi-worker (suite à revue de code)
+- **Migration JSON→SQLite rendue ATOMIQUE** (`shared_store.migrate_json_dict`) : réservation via `update`/`BEGIN IMMEDIATE` → plus de double-migration ni de doublons en multi-worker ; en cas d'échec, le verrou est relâché (réessai sûr).
+- **`telegram_pairing` → store SQLite partagé** (fini le `telegram_paired.json` corruptible) ; migration douce de l'ancien fichier. La liaison chat→compte est désormais multi-worker-safe.
+- **`plan_store` → store SQLite partagé**, mutations **atomiques** (`update`) ; migration douce de l'ancien `plans.json`. API inchangée.
+### Note
+- Caches `_tool_cache` / `_summary_cache` : volontairement **par-worker** (caches bornés, pas des fuites) — les partager via SQLite coûterait plus cher que recalculer. Rate-limiting : par-worker (cf. note README) → limite globale = reverse-proxy.
+
+
 ## [0.21.9] - 2026-06-17
 ### Added
 - **Recherche web APPROFONDIE (`deep_research`)** — vraie « deep search » : cherche le sujet, LIT réellement plusieurs pages (web_scrape), puis SYNTHÉTISE une réponse factuelle et SOURCÉE (URL citées) via le LLM. Complète `web_search` (rapide) ; exposée à l'orchestrateur sur les requêtes web/approfondies.

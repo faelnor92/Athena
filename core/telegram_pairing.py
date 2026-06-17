@@ -6,31 +6,33 @@ Les chats listés dans TELEGRAM_CHAT_ID sont autorisés d'office. Désactivable 
 TELEGRAM_REQUIRE_PAIRING=false. Au tout premier contact (aucun chat configuré ni
 approuvé), ce contact est auto-approuvé (amorçage du propriétaire).
 """
-import json
 import os
 import secrets
 import threading
 
+from core import shared_store
+
+# Persistance dans le store SQLite partagé (multi-worker-safe, pas de JSON corruptible).
+# Migration douce de l'ancien fichier telegram_paired.json au premier accès.
 _PATH = os.getenv("TELEGRAM_PAIRING_PATH", "telegram_paired.json")
+_NS = "telegram_pairing"
 _lock = threading.Lock()
 
 
 def _load() -> dict:
-    try:
-        with open(_PATH, "r", encoding="utf-8") as f:
-            d = json.load(f)
-        d.setdefault("approved", [])
-        d.setdefault("pending", {})
-        d.setdefault("users", {})   # chat_id -> nom d'utilisateur Athena (agenda/config/mémoire)
-        return d
-    except Exception:
-        return {"approved": [], "pending": {}, "users": {}}
+    shared_store.migrate_json_dict(_PATH, _NS)   # importe l'ancien JSON une seule fois
+    return {
+        "approved": shared_store.get(_NS, "approved") or [],
+        "pending": shared_store.get(_NS, "pending") or {},
+        "users": shared_store.get(_NS, "users") or {},   # chat_id -> compte Athena
+    }
 
 
 def _save(d: dict):
     try:
-        with open(_PATH, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=2)
+        shared_store.set(_NS, "approved", d.get("approved", []))
+        shared_store.set(_NS, "pending", d.get("pending", {}))
+        shared_store.set(_NS, "users", d.get("users", {}))
     except Exception as e:
         print(f"[Pairing] écriture impossible : {e}")
 
