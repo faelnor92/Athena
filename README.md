@@ -1,6 +1,6 @@
 # 🎛️ Athena — Framework Multi-Agent Auto-Hébergé
 
-![Version](https://img.shields.io/badge/version-0.20.1-blue.svg)
+![Version](https://img.shields.io/badge/version-0.20.2-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 

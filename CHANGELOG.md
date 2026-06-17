@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.20.2] - 2026-06-17
+### Changed
+- **Proxmox : affichage stockage plus clair** — chaque stockage indique son **type** (`dir`, `zfspool`, `lvmthin`, `pbs`…) et les types « thin » (LVM-thin/ZFS/RBD) sont annotés **« provisionné/alloué »** (l'usage réel peut être inférieur). Le disque du nœud est étiqueté **« disque root »** (système) pour ne pas le confondre avec les stockages.
+
+
 ## [0.20.1] - 2026-06-17
 ### Changed
 - **Proxmox : `proxmox_status` montre la charge CPU, RAM ET disque** par nœud / VM / conteneur, plus l'espace des **stockages** (datastores). Un seul appel `/cluster/resources`. (Pour une VM QEMU, l'usage disque réel nécessite l'agent invité ; sinon la taille allouée est indiquée.)
