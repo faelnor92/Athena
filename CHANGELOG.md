@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.21.2] - 2026-06-17
+### Added
+- **Vigie Proxmox — alertes automatiques** : un moniteur léger (poll non-LLM, `core/proxmox_monitor.py`) vérifie périodiquement Proxmox et POUSSE un événement à la Vigie en cas d'incident → VM/LXC qui tombe, nœud offline, RAM ou disque (réel) au-dessus d'un seuil. Détection par transition (pas de spam). Le LLM ne se réveille que sur incident. Réglable dans Réglages → 👁️ Vigie (case « Surveiller Proxmox » + intervalle + seuils RAM/disque). **Ne tourne (ne poll) que si la Vigie est activée ET Proxmox configuré** — sinon le thread dort (coût nul).
+
+
 ## [0.21.1] - 2026-06-17
 ### Added
 - **Athena peut se mettre à jour sur demande** (`self_update`) : lance `update.sh` en arrière-plan DÉTACHÉ (git pull + dépendances + redémarrage) → survit au restart, contrairement à un `update.sh` lancé via `execute_bash_command` (qui couperait Athena en plein run). Action SENSIBLE → validation HITL. Exposé à l'orchestrateur (« Athena, mets-toi à jour »).

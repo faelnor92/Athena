@@ -222,6 +222,14 @@ try:
 except Exception as e:
     logger.warning("Démarrage du bot Telegram ignoré : %s", e)
 
+# Moniteur Proxmox (poll léger → événements Vigie). Inactif tant que la Vigie + le moniteur
+# ne sont pas activés (le thread dort sinon) ; aucun coût au repos.
+try:
+    from core import proxmox_monitor
+    proxmox_monitor.start()
+except Exception as e:
+    logger.warning("Démarrage du moniteur Proxmox ignoré : %s", e)
+
 
 # Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Athena →
 # Athena » au rafraîchissement : le HTML statique contenait le nom en dur).

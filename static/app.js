@@ -4326,6 +4326,10 @@ async function loadEventsConfig() {
         set("ev-telegram", c.telegram_chat_id || ""); set("ev-token", "");
         const tok = document.getElementById("ev-token");
         if (tok && c.ingest_token) tok.placeholder = "Défini (" + c.ingest_token + ") — vide = inchangé";
+        chk("ev-px-monitor", c.proxmox_monitor);
+        set("ev-px-interval", c.proxmox_interval || 300);
+        set("ev-px-ram", c.proxmox_ram_pct || 90);
+        set("ev-px-disk", c.proxmox_disk_pct || 90);
     } catch (e) { /* silencieux */ }
 }
 async function saveEventsConfig() {
@@ -4337,6 +4341,10 @@ async function saveEventsConfig() {
         auto_investigate: document.getElementById("ev-auto-investigate").checked,
         owner_user: document.getElementById("ev-owner").value.trim() || "local",
         telegram_chat_id: document.getElementById("ev-telegram").value.trim(),
+        proxmox_monitor: !!document.getElementById("ev-px-monitor")?.checked,
+        proxmox_interval: parseInt(document.getElementById("ev-px-interval")?.value) || 300,
+        proxmox_ram_pct: parseInt(document.getElementById("ev-px-ram")?.value) || 90,
+        proxmox_disk_pct: parseInt(document.getElementById("ev-px-disk")?.value) || 90,
     };
     const tok = document.getElementById("ev-token").value.trim();
     if (tok) payload.ingest_token = tok;
