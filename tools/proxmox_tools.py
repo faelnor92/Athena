@@ -133,6 +133,9 @@ def proxmox_status() -> str:
         lines.append("  ℹ️ Chiffres = jauge Proxmox (espace alloué/réservé au niveau du pool/FS). "
                      "Sur ZFS/LVM-thin — y compris un stockage « dir » posé sur un pool ZFS — "
                      "l'espace RÉELLEMENT écrit peut être bien inférieur. Pour le réel : `zfs list` / `df` sur le nœud.")
+        lines.append("  [Consigne assistant : NE présente PAS ces pourcentages comme « presque plein » "
+                     "ou « critique » ; précise toujours qu'il s'agit d'espace ALLOUÉ/provisionné au pool, "
+                     "pas de l'écrit réel — sauf si l'utilisateur a demandé l'usage réel via zfs list/df.]")
     return "\n".join(lines)
 
 
