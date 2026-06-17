@@ -138,12 +138,24 @@ SENSOR_CATALOG = [
 _CATALOG_BY_ID = {c["id"]: c for c in SENSOR_CATALOG}
 
 
-def _sensor_block(module: dict):
+def _sensor_block(module: dict, is_src: bool = False, has_src: bool = False):
     """Retourne un dict décrivant le bloc YAML d'un capteur choisi :
-    {section, item, needs_i2c, onewire_pin}. section ∈ {sensor, binary_sensor, switch}."""
+    {section, item, needs_i2c, onewire_pin}. section ∈ {sensor, binary_sensor, switch}.
+
+    is_src  : ce capteur temp/humidité sert de SOURCE de compensation (émet id: ath_temp/ath_hum).
+    has_src : une source temp/humidité existe → les capteurs COV/eCO2 ajoutent la compensation
+              (précision nettement meilleure)."""
     t = (module.get("type") or "").strip()
     nm = (module.get("name") or t or "capteur").strip()
     pin = (module.get("pin") or "").strip() or (_CATALOG_BY_ID.get(t, {}).get("default_pin") or "GPIO4")
+    # Identifiants de source de compensation (posés sur le 1er capteur temp/humidité).
+    tid = "\n      id: ath_temp" if is_src else ""
+    hid = "\n      id: ath_hum" if is_src else ""
+    # Bloc de compensation pour les capteurs de gaz (selon la syntaxe de chaque plateforme).
+    comp_src = ("\n    compensation:\n      temperature_source: ath_temp\n      humidity_source: ath_hum"
+                if has_src else "")
+    comp_ens = ("\n    compensation:\n      temperature: ath_temp\n      humidity: ath_hum"
+                if has_src else "")
 
     def out(section, item, needs_i2c=False, onewire_pin=None, needs_bsec=False):
         return {"section": section, "item": item, "needs_i2c": needs_i2c,
@@ -154,8 +166,8 @@ def _sensor_block(module: dict):
         model = "AM2302" if t == "dht22" else "DHT11"
         return out("sensor",
                    f"  - platform: dht\n    model: {model}\n    pin: {pin}\n"
-                   f"    temperature:\n      name: \"Température {nm}\"\n"
-                   f"    humidity:\n      name: \"Humidité {nm}\"\n    update_interval: 60s")
+                   f"    temperature:\n      name: \"Température {nm}\"{tid}\n"
+                   f"    humidity:\n      name: \"Humidité {nm}\"{hid}\n    update_interval: 60s")
     if t == "ds18b20":
         return out("sensor",
                    f"  - platform: dallas_temp\n    name: \"Température {nm}\"\n    update_interval: 60s",
@@ -190,21 +202,21 @@ def _sensor_block(module: dict):
     if t == "bme280":
         return out("sensor",
                    f"  - platform: bme280_i2c\n    address: 0x76\n"
-                   f"    temperature:\n      name: \"Température {nm}\"\n"
-                   f"    humidity:\n      name: \"Humidité {nm}\"\n"
+                   f"    temperature:\n      name: \"Température {nm}\"{tid}\n"
+                   f"    humidity:\n      name: \"Humidité {nm}\"{hid}\n"
                    f"    pressure:\n      name: \"Pression {nm}\"\n    update_interval: 60s",
                    needs_i2c=True)
     if t == "sht3xd":
         return out("sensor",
                    f"  - platform: sht3xd\n    address: 0x44\n"
-                   f"    temperature:\n      name: \"Température {nm}\"\n"
-                   f"    humidity:\n      name: \"Humidité {nm}\"\n    update_interval: 60s",
+                   f"    temperature:\n      name: \"Température {nm}\"{tid}\n"
+                   f"    humidity:\n      name: \"Humidité {nm}\"{hid}\n    update_interval: 60s",
                    needs_i2c=True)
     if t == "aht10":
         return out("sensor",
                    f"  - platform: aht10\n"
-                   f"    temperature:\n      name: \"Température {nm}\"\n"
-                   f"    humidity:\n      name: \"Humidité {nm}\"\n    update_interval: 60s",
+                   f"    temperature:\n      name: \"Température {nm}\"{tid}\n"
+                   f"    humidity:\n      name: \"Humidité {nm}\"{hid}\n    update_interval: 60s",
                    needs_i2c=True)
     if t == "scd4x":
         return out("sensor",
@@ -218,17 +230,17 @@ def _sensor_block(module: dict):
                    f"  - platform: ens160_i2c\n    address: 0x53\n"
                    f"    eco2:\n      name: \"eCO2 {nm}\"\n"
                    f"    tvoc:\n      name: \"COV {nm}\"\n"
-                   f"    aqi:\n      name: \"Qualité air {nm}\"\n    update_interval: 60s",
+                   f"    aqi:\n      name: \"Qualité air {nm}\"{comp_ens}\n    update_interval: 60s",
                    needs_i2c=True)
     if t == "sgp30":
         return out("sensor",
                    f"  - platform: sgp30\n"
                    f"    eco2:\n      name: \"eCO2 {nm}\"\n"
-                   f"    tvoc:\n      name: \"COV {nm}\"\n    update_interval: 60s",
+                   f"    tvoc:\n      name: \"COV {nm}\"{comp_src}\n    update_interval: 60s",
                    needs_i2c=True)
     if t == "sgp40":
         return out("sensor",
-                   f"  - platform: sgp40\n    name: \"Indice COV {nm}\"\n    update_interval: 60s",
+                   f"  - platform: sgp40\n    name: \"Indice COV {nm}\"{comp_src}\n    update_interval: 60s",
                    needs_i2c=True)
     if t == "ccs811":
         return out("sensor",
@@ -331,8 +343,13 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     needs_i2c = False
     needs_bsec = False
     onewire_pin = None
+    # Compensation température/humidité des capteurs de gaz (COV/eCO2) : on désigne le 1er
+    # capteur temp+humidité comme SOURCE, et les capteurs de gaz s'y réfèrent (meilleure précision).
+    _SRC_TYPES = {"aht10", "sht3xd", "bme280", "dht22", "dht11"}
+    _src_module = next((m for m in modules if (m.get("type") or "").strip() in _SRC_TYPES), None)
+    _has_src = _src_module is not None
     for m in modules:
-        blk = _sensor_block(m)
+        blk = _sensor_block(m, is_src=(m is _src_module), has_src=_has_src)
         if not blk:
             continue
         sections.setdefault(blk["section"], []).append(blk["item"])
