@@ -29,6 +29,10 @@ class EventConfigRequest(BaseModel):
     dedup_window: Optional[int] = None
     auto_investigate: Optional[bool] = None
     ingest_token: Optional[str] = None
+    proxmox_monitor: Optional[bool] = None
+    proxmox_interval: Optional[int] = None
+    proxmox_ram_pct: Optional[int] = None
+    proxmox_disk_pct: Optional[int] = None
 
 
 class EventIn(BaseModel):

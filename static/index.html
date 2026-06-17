@@ -1528,6 +1528,19 @@
                         <span id="ev-status" style="font-size:0.82rem;"></span>
                     </div>
                     <div id="ev-recent" style="margin-top:12px;font-size:0.8rem;display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;"></div>
+
+                    <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;">
+                        <div style="font-weight:500;margin-bottom:6px;">🖧 Surveillance Proxmox</div>
+                        <p class="section-desc" style="font-size:0.74rem;">Poll léger (sans IA) de ton Proxmox : alerte si une VM/un conteneur tombe, si un nœud passe offline, ou si RAM/disque dépasse un seuil. Nécessite Proxmox configuré (onglet 🖧 Proxmox) et la Vigie activée ci-dessus.</p>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="ev-px-monitor" style="width:auto;"> <span>Surveiller Proxmox</span>
+                        </label>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;">
+                            <label style="font-size:0.78rem;">Intervalle (s)<br><input type="number" id="ev-px-interval" min="60" value="300" style="width:90px;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.2);color:#fff;"></label>
+                            <label style="font-size:0.78rem;">Seuil RAM %<br><input type="number" id="ev-px-ram" min="50" max="100" value="90" style="width:90px;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.2);color:#fff;"></label>
+                            <label style="font-size:0.78rem;">Seuil disque %<br><input type="number" id="ev-px-disk" min="50" max="100" value="90" style="width:90px;padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.2);color:#fff;"></label>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="modal-pane" id="pane-routines" style="display: none;">
@@ -1852,7 +1865,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260617_proxmox"></script>
+    <script src="app.js?v=20260617_vigiepx"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <script>

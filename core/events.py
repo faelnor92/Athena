@@ -40,6 +40,11 @@ _DEFAULTS = {
     "dedup_window": 300,          # s : ignore un événement identique répété
     "auto_investigate": False,    # autoriser le Vigie à investiguer (outils) vs analyser seul
     "ingest_token": "",           # jeton attendu sur POST /api/events
+    # --- Surveillance Proxmox (moniteur interne, sans LLM ; émet des événements) ---
+    "proxmox_monitor": False,     # surveiller Proxmox (VM down, RAM/disque, nœud offline)
+    "proxmox_interval": 300,      # s : période de vérification
+    "proxmox_ram_pct": 90,        # seuil RAM % d'une VM/nœud → alerte
+    "proxmox_disk_pct": 90,       # seuil disque % (réel) d'une VM → alerte
 }
 
 
