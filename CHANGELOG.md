@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## [0.22.1] - 2026-06-17
+### Fix — l'échafaudage interne ne fuit plus dans la conversation
+- L'**auto-continuation** (« tu viens d'ANNONCER une action… »), l'**auto-correction de tool-call** et les **relais système** étaient écrits dans la conversation visible : on voyait le message d'intention de l'agent ET la consigne système affichée comme un message « Vous ». Désormais ces messages sont marqués `_internal` : conservés dans le contexte du modèle le temps du run, mais **jamais affichés ni persistés** (filtrés à la finalisation, retirés de la copie envoyée au LLM).
+- Supprime au passage le **doublon** du message d'intention (« Je vais… ») qui était ré-ajouté inutilement.
+
+
 ## [0.22.0] - 2026-06-17
 ### Robustesse multi-worker (suite à revue de code)
 - **Migration JSON→SQLite rendue ATOMIQUE** (`shared_store.migrate_json_dict`) : réservation via `update`/`BEGIN IMMEDIATE` → plus de double-migration ni de doublons en multi-worker ; en cas d'échec, le verrou est relâché (réessai sûr).
