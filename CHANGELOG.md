@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.21.4] - 2026-06-17
+### Added
+- **Générateur de satellites enrichi** : (1) **schéma de câblage** injecté en tête du YAML généré (micro/ampli/I2C/1-wire/LED, broches réelles) ; (2) **LED de statut en option** (case à cocher), défaut = LED RGB **embarquée GPIO48** de la devkit S3 (aucun composant), avec retour couleur selon la phase vocale (écoute/réponse) ; (3) **RCWL-0516** (radar de présence pas cher) ajouté au catalogue pour le suivi de pièce (en plus du PIR). Tout reste mains-libres (wake word serveur/embarqué) — pas de bouton requis.
+
+
 ## [0.21.3] - 2026-06-17
 ### Changed
 - **Briefing quotidien enrichi (infra)** : `get_daily_briefing` ajoute — si Proxmox est configuré — un point INFRASTRUCTURE (VM en marche/arrêt, stockages élevés) + les **alertes Vigie des dernières 24 h**, en plus de météo/agenda/tâches/courses. Parfait en routine matinale livrée sur Telegram (« briefing tous les jours à 7h30 »).

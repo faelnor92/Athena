@@ -125,7 +125,8 @@ SENSOR_CATALOG = [
     {"id": "dht11", "label": "DHT11 — temp + humidité", "group": "Température (GPIO)", "bus": "gpio", "default_pin": "GPIO4"},
     {"id": "ds18b20", "label": "DS18B20 — température (1-wire)", "group": "Température (GPIO)", "bus": "onewire", "default_pin": "GPIO4"},
     # Détection (GPIO binaire)
-    {"id": "pir", "label": "PIR — détecteur de présence", "group": "Détection (GPIO)", "bus": "gpio", "default_pin": "GPIO5"},
+    {"id": "pir", "label": "PIR — détecteur de présence (mouvement)", "group": "Détection (GPIO)", "bus": "gpio", "default_pin": "GPIO5"},
+    {"id": "rcwl0516", "label": "RCWL-0516 — radar de présence (suivi de pièce, pas cher)", "group": "Détection (GPIO)", "bus": "gpio", "default_pin": "GPIO5"},
     {"id": "contact", "label": "Contact porte/fenêtre", "group": "Détection (GPIO)", "bus": "gpio", "default_pin": "GPIO5"},
     {"id": "button", "label": "Bouton poussoir", "group": "Détection (GPIO)", "bus": "gpio", "default_pin": "GPIO8"},
     # Sorties
@@ -158,7 +159,7 @@ def _sensor_block(module: dict):
         return out("sensor",
                    f"  - platform: dallas_temp\n    name: \"Température {nm}\"\n    update_interval: 60s",
                    onewire_pin=pin)
-    if t == "pir":
+    if t in ("pir", "rcwl0516"):
         return out("binary_sensor",
                    f"  - platform: gpio\n    pin: {pin}\n    name: \"Présence {nm}\"\n    device_class: motion")
     if t == "contact":
@@ -304,7 +305,8 @@ def _audio_block(audio: dict) -> str:
 
 def generate_yaml(name: str, encryption_key: str = "", modules=None,
                   i2c_sda: str = "GPIO8", i2c_scl: str = "GPIO9",
-                  audio: dict = None, activation: dict = None, custom_yaml: str = "") -> str:
+                  audio: dict = None, activation: dict = None, custom_yaml: str = "",
+                  led: dict = None) -> str:
     """Construit un YAML ESPHome prêt à compiler : base + voix (→ Athena) + capteurs
     choisis dans le catalogue (+ YAML perso optionnel). Injecte automatiquement le
     bus I2C / one_wire si des capteurs en ont besoin. Broches à adapter à la carte.
@@ -353,6 +355,24 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     board = a["board"]
     audio_block = _audio_block(a)
 
+    # LED de statut (option) : WS2812B. Défaut = LED RGB EMBARQUÉE GPIO48 des devkit S3
+    # (aucun composant à ajouter). Feedback couleur selon la phase vocale.
+    led = led or {}
+    led_block = ""
+    led_feedback = ""
+    if led.get("enabled"):
+        led_pin = (led.get("pin") or "GPIO48").strip()
+        led_num = int(led.get("num") or 1)
+        led_block = (f"\nlight:\n  - platform: esp32_rmt_led_strip\n    id: status_led\n"
+                     f"    pin: {led_pin}\n    num_leds: {led_num}\n    rgb_order: GRB\n"
+                     f"    chipset: ws2812\n    name: \"LED statut\"\n")
+        led_feedback = (
+            "  on_listening:\n    - light.turn_on:\n        id: status_led\n"
+            "        red: 0%\n        green: 0%\n        blue: 100%\n"
+            "  on_tts_start:\n    - light.turn_on:\n        id: status_led\n"
+            "        red: 0%\n        green: 100%\n        blue: 60%\n"
+            "  on_end:\n    - light.turn_off: status_led\n")
+
     # Bloc d'activation (mains-libres) : wake word embarqué (microWakeWord, sur l'ESP)
     # ou serveur (openWakeWord, dans Athena ; l'ESP streame en continu).
     esphome_extra = ""
@@ -382,9 +402,27 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
             "voice_assistant:\n  microphone: mic\n  speaker: spk\n"
         )
 
+    voice_block += led_feedback   # feedback LED sur les phases vocales (si LED activée)
+
+    # Schéma de câblage (toujours dans l'en-tête du YAML).
+    wiring = (
+        f"#   INMP441 (micro)  : VDD→3V3 · GND→GND · L/R→GND · WS→{a['mic_ws']} · "
+        f"SCK→{a['mic_bclk']} · SD→{a['mic_din']}\n"
+        f"#   MAX98357A (ampli): VIN→5V(ou 3V3) · GND→GND · LRC→{a['spk_ws']} · "
+        f"BCLK→{a['spk_bclk']} · DIN→{a['spk_dout']} · HP sur +/-\n")
+    if needs_i2c:
+        wiring += f"#   Capteur I2C      : VCC→3V3 · GND→GND · SDA→{i2c_sda} · SCL→{i2c_scl}\n"
+    if onewire_pin:
+        wiring += f"#   Capteur 1-wire   : data→{onewire_pin} (+ résistance 4.7kΩ entre data et 3V3)\n"
+    if led.get("enabled"):
+        wiring += (f"#   LED statut       : DIN→{led.get('pin') or 'GPIO48'} "
+                   f"(WS2812B ; GPIO48 = LED RGB EMBARQUÉE sur la devkit, rien à câbler)\n")
+
     return f"""# Satellite ESP32-S3 piloté DIRECTEMENT par Athena (voix), capteurs visibles aussi par HA.
 # Généré par Athena pour « {name} ». Adapte les broches (I2S + capteurs) à ta carte.
 #
+# --- CÂBLAGE ---
+{wiring}#
 # Compiler + flasher (USB la 1re fois, OTA WiFi ensuite) :
 #   pip install esphome
 #   esphome run {node}.yaml
@@ -408,7 +446,7 @@ wifi:
   password: !secret wifi_password
 {buses}
 {audio_block}
-{voice_block}{extra_sections}{custom_part}"""
+{voice_block}{led_block}{extra_sections}{custom_part}"""
 
 
 class Satellite:

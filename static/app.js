@@ -3842,6 +3842,10 @@ if (_btnSatYaml) _btnSatYaml.addEventListener("click", async () => {
                 i2c_scl: (document.getElementById("sat-i2c-scl") || {}).value || "GPIO9",
                 audio: _collectSatAudio(),
                 activation: _collectSatActivation(),
+                led: {
+                    enabled: !!(document.getElementById("sat-led-enabled") || {}).checked,
+                    pin: (document.getElementById("sat-led-pin") || {}).value || "GPIO48",
+                },
                 custom_yaml: (document.getElementById("sat-custom-yaml") || {}).value || ""
             })
         });
