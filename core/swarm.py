@@ -178,6 +178,7 @@ AVAILABLE_TOOLS = {
     "list_recent_events": tools.event_tools.list_recent_events,
     "proxmox_status": tools.proxmox_tools.proxmox_status,            # hyperviseur Proxmox
     "proxmox_vm_action": tools.proxmox_tools.proxmox_vm_action,
+    "proxmox_vm_exec": tools.proxmox_tools.proxmox_vm_exec,          # commande DANS une VM (agent invité)
 }
 
 # ── Filtrage d'outils par pertinence (économie de tokens) ──────────────────────
@@ -211,7 +212,7 @@ _TOOL_GROUPS = {
     "computer": {"computer_use_action"},
     "vision": {"analyze_image", "capture_screen"},
     "routines": {"create_routine", "list_routines"},
-    "proxmox": {"proxmox_status", "proxmox_vm_action"},
+    "proxmox": {"proxmox_status", "proxmox_vm_action", "proxmox_vm_exec"},
 }
 _TOOL_GROUP_KEYWORDS = {
     "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",

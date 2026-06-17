@@ -235,3 +235,92 @@ def proxmox_vm_action(vmid: str, action: str, user_confirmed: bool = False) -> s
 
 
 proxmox_vm_action._requires_approval = True
+
+
+def proxmox_vm_exec(vmid: str, command: str, user_confirmed: bool = False) -> str:
+    """
+    Exécute une commande SHELL À L'INTÉRIEUR d'une VM QEMU via l'agent invité
+    (qemu-guest-agent), sans SSH. ACTION TRÈS SENSIBLE → confirmation utilisateur obligatoire.
+
+    Args:
+        vmid (str): identifiant de la VM (ex. "104").
+        command (str): la commande shell à exécuter dans la VM (ex. "df -h").
+        user_confirmed (bool): True une fois l'utilisateur d'accord.
+    Returns:
+        str: sortie standard / erreur / code de retour de la commande.
+    """
+    if not proxmox.is_configured():
+        return _not_configured()
+    try:
+        from core import projects
+        if not projects.can_write():
+            return "Erreur : accès en lecture seule — exécution refusée."
+    except Exception:
+        pass
+    command = (command or "").strip()
+    if not command:
+        return "Erreur : commande vide."
+
+    vm, err = _find_vm(vmid)
+    if err:
+        return err
+    if vm.get("type") != "qemu":
+        return "Erreur : l'exécution via agent invité ne concerne que les VM QEMU (pour un LXC, utilise SSH)."
+    if vm.get("status") != "running":
+        return f"Erreur : la VM {vmid} n'est pas en marche."
+    node = vm.get("node"); name = vm.get("name", "?")
+
+    if not user_confirmed:
+        return (f"⚠️ Action TRÈS SENSIBLE : exécuter « {command} » DANS la VM [{vmid}] {name} (nœud {node}). "
+                "Demande confirmation à l'utilisateur, puis rappelle l'outil avec user_confirmed=True.")
+
+    base = f"{proxmox.api_base()}/nodes/{node}/qemu/{vmid}/agent"
+    g = _guard(base)
+    if g:
+        return g
+    # 1) Lancer la commande (l'agent exécute program+args ; on passe par bash -c).
+    try:
+        r = requests.post(base + "/exec", headers=proxmox.auth_header(), verify=proxmox.verify_tls(),
+                          json={"command": ["/bin/bash", "-c", command]}, timeout=_TIMEOUT)
+    except Exception as e:
+        return f"Proxmox injoignable : {e}"
+    if r.status_code == 403:
+        return ("Refusé (403) : le jeton n'a pas le droit d'exécuter dans la VM (il faut "
+                "VM.GuestAgent.* / rôle PVEAdmin).")
+    if r.status_code not in (200, 201):
+        low = r.text.lower()
+        if "disabled" in low or "guest-exec" in low:
+            return ("L'exécution est DÉSACTIVÉE dans l'agent invité de cette VM (qemu-guest-agent "
+                    "bloque guest-exec par défaut pour la sécurité). Active-la dans la VM, ou utilise SSH.")
+        return f"Erreur Proxmox ({r.status_code}) : {r.text[:200]}"
+    try:
+        pid = (r.json().get("data") or {}).get("pid")
+    except Exception:
+        pid = None
+    if not pid:
+        return "Erreur : l'agent n'a pas renvoyé d'identifiant de processus."
+
+    # 2) Attendre la fin (poll exec-status), borné.
+    import time as _t
+    deadline = _t.time() + 45
+    while _t.time() < deadline:
+        st, serr = _get(f"/nodes/{node}/qemu/{vmid}/agent/exec-status?pid={pid}")
+        if serr:
+            return serr
+        if isinstance(st, dict) and st.get("exited"):
+            out = (st.get("out-data") or "").strip()
+            errd = (st.get("err-data") or "").strip()
+            code = st.get("exitcode")
+            res = f"Commande exécutée dans [{vmid}] {name} (code {code}).\n"
+            if out:
+                res += f"--- sortie ---\n{out[:4000]}\n"
+            if errd:
+                res += f"--- erreur ---\n{errd[:2000]}\n"
+            if not out and not errd:
+                res += "(aucune sortie)"
+            return res
+        _t.sleep(1)
+    return f"⏳ Commande lancée dans [{vmid}] {name} mais pas terminée à temps (pid {pid})."
+
+
+proxmox_vm_exec._requires_approval = True

@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.21.0] - 2026-06-17
+### Added
+- **Proxmox : exécuter une commande DANS une VM** (`proxmox_vm_exec`) via l'agent invité (qemu-guest-agent), sans SSH. Lance la commande (`/agent/exec`), attend la fin (`/agent/exec-status`) et renvoie sortie/erreur/code. **Action très sensible → validation HITL obligatoire.** Gère les cas « guest-exec désactivé » et droits insuffisants (PVEAdmin requis). Pour un LXC : passer par SSH.
+
+
 ## [0.20.6] - 2026-06-17
 ### Changed
 - **Proxmox : le résumé garde les Go, pas seulement les %** — consigne ajoutée pour que l'assistant restitue les valeurs absolues (Go) ET les pourcentages (RAM/disque), au lieu de condenser en pourcentages seuls.
