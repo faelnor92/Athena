@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.20.4] - 2026-06-17
+### Changed
+- **Proxmox : le résumé de l'assistant n'alarme plus à tort sur le stockage** — une consigne dans le résultat de `proxmox_status` demande à l'IA de ne PAS présenter les % comme « presque plein/critique » sans préciser qu'il s'agit d'espace ALLOUÉ/provisionné au pool (ZFS/LVM-thin), pas de l'écrit réel.
+
+
 ## [0.20.3] - 2026-06-17
 ### Changed
 - **Proxmox : jauge stockage clarifiée (honnêteté)** — les chiffres affichés sont la jauge Proxmox (espace alloué/réservé au niveau pool/FS) ; une note rappelle que sur ZFS/LVM-thin — y compris un stockage « dir » posé sur un pool ZFS — l'espace réellement écrit peut être bien inférieur (`zfs list`/`df` pour le réel). Plus de fausse distinction dir = « réel ».
