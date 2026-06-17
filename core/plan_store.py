@@ -1,58 +1,35 @@
 """Plan d'action PERSISTANT et éditable (par canal/session).
 
-Le plan affiché par l'agent (make_plan) est aussi mémorisé ici pour pouvoir être
-relu par l'agent ET modifié par l'humain à la volée (cocher, ajouter, éditer,
-supprimer, réordonner) via l'API/UI. Écriture atomique + verrou.
+Le plan affiché par l'agent (make_plan) est aussi mémorisé ici pour pouvoir être relu par
+l'agent ET modifié par l'humain à la volée (cocher, ajouter, éditer, supprimer, réordonner)
+via l'API/UI.
+
+Persistance : store SQLite partagé (multi-worker-safe). Chaque plan est une entrée
+(ns « plans », clé = '<utilisateur>::<client_id>'). Les mutations passent par
+shared_store.update() → lecture-modification-écriture ATOMIQUE (BEGIN IMMEDIATE).
+Migration douce de l'ancien plans.json au premier accès.
 """
-import json
 import os
-import tempfile
 import threading
 
-_LOCK = threading.Lock()
-_PLANS = {}  # client_id -> [{"text": str, "status": "pending|in_progress|done|failed"}]
-_LOADED = False
+from core import shared_store
 
+_NS = "plans"
+_LOCK = threading.Lock()
+_migrated = [False]
 _VALID = ("pending", "in_progress", "done", "failed")
 
 
-def _path():
-    base = os.getenv("PLANS_PATH", "").strip()
-    if base:
-        return base
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plans.json")
-
-
-def _load():
-    global _LOADED
-    if _LOADED:
+def _ensure_migrated():
+    if _migrated[0]:
         return
+    base = os.getenv("PLANS_PATH", "").strip() or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plans.json")
     try:
-        with open(_path(), "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                _PLANS.update(data)
+        shared_store.migrate_json_dict(base, _NS)
     except Exception:
         pass
-    _LOADED = True
-
-
-def _save():
-    p = _path()
-    directory = os.path.dirname(os.path.abspath(p)) or "."
-    try:
-        os.makedirs(directory, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=".plans-", suffix=".tmp", dir=directory)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(_PLANS, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, p)
-    except Exception:
-        try:
-            os.remove(tmp)
-        except Exception:
-            pass
+    _migrated[0] = True
 
 
 def _cid(client_id):
@@ -67,9 +44,8 @@ def _cid(client_id):
 
 
 def get_plan(client_id="web"):
-    with _LOCK:
-        _load()
-        return list(_PLANS.get(_cid(client_id), []))
+    _ensure_migrated()
+    return list(shared_store.get(_NS, _cid(client_id)) or [])
 
 
 def set_plan(client_id, items):
@@ -81,10 +57,8 @@ def set_plan(client_id, items):
         elif isinstance(it, dict) and (it.get("text") or "").strip():
             st = (it.get("status") or "pending").strip().lower()
             norm.append({"text": it["text"].strip(), "status": st if st in _VALID else "pending"})
-    with _LOCK:
-        _load()
-        _PLANS[_cid(client_id)] = norm
-        _save()
+    _ensure_migrated()
+    shared_store.set(_NS, _cid(client_id), norm)
     return norm
 
 
@@ -92,63 +66,76 @@ def update_step(client_id, index, status):
     status = (status or "done").strip().lower()
     if status not in _VALID:
         status = "done"
-    with _LOCK:
-        _load()
-        items = _PLANS.get(_cid(client_id), [])
+    _ensure_migrated()
+    out = {"ok": False}
+
+    def _f(items):
+        items = list(items or [])
         if 0 <= index < len(items):
             items[index]["status"] = status
-            _save()
-            return True
-    return False
+            out["ok"] = True
+        return items
+    shared_store.update(_NS, _cid(client_id), _f)
+    return out["ok"]
 
 
 def add_step(client_id, text, status="pending"):
     text = (text or "").strip()
     if not text:
         return False
-    with _LOCK:
-        _load()
-        items = _PLANS.setdefault(_cid(client_id), [])
+    _ensure_migrated()
+
+    def _f(items):
+        items = list(items or [])
         items.append({"text": text, "status": status if status in _VALID else "pending"})
-        _save()
+        return items
+    shared_store.update(_NS, _cid(client_id), _f)
     return True
 
 
 def edit_step(client_id, index, text):
     text = (text or "").strip()
-    with _LOCK:
-        _load()
-        items = _PLANS.get(_cid(client_id), [])
-        if 0 <= index < len(items) and text:
+    if not text:
+        return False
+    _ensure_migrated()
+    out = {"ok": False}
+
+    def _f(items):
+        items = list(items or [])
+        if 0 <= index < len(items):
             items[index]["text"] = text
-            _save()
-            return True
-    return False
+            out["ok"] = True
+        return items
+    shared_store.update(_NS, _cid(client_id), _f)
+    return out["ok"]
 
 
 def remove_step(client_id, index):
-    with _LOCK:
-        _load()
-        items = _PLANS.get(_cid(client_id), [])
+    _ensure_migrated()
+    out = {"ok": False}
+
+    def _f(items):
+        items = list(items or [])
         if 0 <= index < len(items):
             items.pop(index)
-            _save()
-            return True
-    return False
+            out["ok"] = True
+        return items
+    shared_store.update(_NS, _cid(client_id), _f)
+    return out["ok"]
 
 
 def clear_plan(client_id):
-    with _LOCK:
-        _load()
-        _PLANS[_cid(client_id)] = []
-        _save()
+    _ensure_migrated()
+    shared_store.set(_NS, _cid(client_id), [])
 
 
 def purge_user(user: str):
     """Supprime tous les plans d'un utilisateur (clés '<user>::...') — suppression de compte."""
+    _ensure_migrated()
     pref = f"{(user or '').strip()}::"
-    with _LOCK:
-        _load()
-        for k in [k for k in _PLANS if k.startswith(pref)]:
-            _PLANS.pop(k, None)
-        _save()
+    try:
+        for k in list((shared_store.items(_NS) or {}).keys()):
+            if k.startswith(pref):
+                shared_store.delete(_NS, k)
+    except Exception:
+        pass

@@ -166,14 +166,26 @@ def migrate_json_dict(path: str, ns: str) -> bool:
     # Déjà des données, ou migration déjà effectuée pour ce namespace → on ne touche à rien.
     if count(ns) > 0 or get("_migrated", ns):
         return False
+    # RÉSERVATION ATOMIQUE du droit de migrer (anti-double-migration en multi-worker) :
+    # un seul process passe le claim ; les autres voient le marqueur et s'abstiennent.
+    claimed = {"ok": False}
+
+    def _claim(cur):
+        if cur:               # déjà réservé / fait par un autre worker
+            return cur
+        claimed["ok"] = True
+        return "running"
+    update("_migrated", ns, _claim)
+    if not claimed["ok"]:
+        return False
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if isinstance(data, dict) and count(ns) == 0:
+            for k, v in data.items():
+                set(ns, k, v)
+        set("_migrated", ns, True)        # marqueur final (succès)
+        return True
     except Exception:
+        delete("_migrated", ns)           # échec → on RELÂCHE le verrou (réessai au prochain boot)
         return False
-    if not isinstance(data, dict):
-        return False
-    for k, v in data.items():
-        set(ns, k, v)
-    set("_migrated", ns, True)
-    return True
