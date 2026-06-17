@@ -88,7 +88,7 @@ def proxmox_status() -> str:
             if mem and maxmem:
                 parts.append(f"ram {_go(mem)}/{_go(maxmem)} Go ({mem/maxmem*100:.0f}%)")
             if dsk and maxdsk:
-                parts.append(f"disque {_go(dsk)}/{_go(maxdsk)} Go ({dsk/maxdsk*100:.0f}%)")
+                parts.append(f"disque root {_go(dsk)}/{_go(maxdsk)} Go ({dsk/maxdsk*100:.0f}%)")
             lines.append(f"  - {n.get('node')} : " + " · ".join(parts))
 
     if not vms:
@@ -116,18 +116,23 @@ def proxmox_status() -> str:
 
     if stores:
         lines.append("💽 Stockages :")
+        # Types « thin » : le chiffre reflète l'alloué/référencé, pas forcément l'écrit réel.
+        _THIN = {"lvmthin", "zfspool", "zfs", "rbd", "rbdpool"}
         seen = set()
         for s in sorted(stores, key=lambda x: x.get("storage", "")):
             key = s.get("storage")
             if key in seen:   # un stockage partagé apparaît par nœud → une seule ligne
                 continue
             seen.add(key)
+            ptype = s.get("plugintype", "") or s.get("type", "")
             used = s.get("disk"); total = s.get("maxdisk")
+            tag = f" [{ptype}]" if ptype else ""
+            note = " — provisionné/alloué (usage réel possiblement inférieur)" if ptype in _THIN else ""
             if total:
                 pct = f" ({used/total*100:.0f}%)" if used else ""
-                lines.append(f"  - {key} : {_go(used or 0)}/{_go(total)} Go{pct}")
+                lines.append(f"  - {key}{tag} : {_go(used or 0)}/{_go(total)} Go{pct}{note}")
             else:
-                lines.append(f"  - {key} : {s.get('status','?')}")
+                lines.append(f"  - {key}{tag} : {s.get('status','?')}")
     return "\n".join(lines)
 
 
