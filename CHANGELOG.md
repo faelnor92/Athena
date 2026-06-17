@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## [0.21.6] - 2026-06-17
+### Added
+- **Satellites : options bluetooth_proxy, improv BLE et boutons volume** (cases à cocher). bluetooth_proxy (relais BLE → HA, présence/follow-me) et improv (config WiFi par Bluetooth) **n'utilisent aucun GPIO** ; les boutons volume ont des broches sûres par défaut (GPIO47/21) avec **détection de conflit GPIO** (avertissement si une broche est déjà prise par l'audio/I2C/LED/capteur).
+### Changed
+- **BME680 : sortie LISIBLE** — passage au composant `bme680_bsec2` (Bosch) → **indice IAQ (0-500)**, **CO2 équivalent (ppm)** et **COV équivalent**, au lieu de la résistance de gaz brute (chiffre obscur). L'IAQ se calibre sur ~1 h.
+
+
 ## [0.21.5] - 2026-06-17
 ### Changed
 - **Satellites : LED de statut en vraie machine à états** — retour visuel par phase via les événements ESPHome : rouge (Athena déconnectée), bleu (écoute), violet clignotant (réflexion), cyan (réponse), repos éteint, rouge clignotant (erreur). Effets pulse inclus.

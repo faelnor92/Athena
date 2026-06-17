@@ -3846,6 +3846,13 @@ if (_btnSatYaml) _btnSatYaml.addEventListener("click", async () => {
                     enabled: !!(document.getElementById("sat-led-enabled") || {}).checked,
                     pin: (document.getElementById("sat-led-pin") || {}).value || "GPIO48",
                 },
+                bt_proxy: !!(document.getElementById("sat-bt-proxy") || {}).checked,
+                improv: !!(document.getElementById("sat-improv") || {}).checked,
+                volume: {
+                    enabled: !!(document.getElementById("sat-vol-enabled") || {}).checked,
+                    up_pin: (document.getElementById("sat-vol-up") || {}).value || "GPIO47",
+                    down_pin: (document.getElementById("sat-vol-down") || {}).value || "GPIO21",
+                },
                 custom_yaml: (document.getElementById("sat-custom-yaml") || {}).value || ""
             })
         });

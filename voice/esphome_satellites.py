@@ -145,8 +145,9 @@ def _sensor_block(module: dict):
     nm = (module.get("name") or t or "capteur").strip()
     pin = (module.get("pin") or "").strip() or (_CATALOG_BY_ID.get(t, {}).get("default_pin") or "GPIO4")
 
-    def out(section, item, needs_i2c=False, onewire_pin=None):
-        return {"section": section, "item": item, "needs_i2c": needs_i2c, "onewire_pin": onewire_pin}
+    def out(section, item, needs_i2c=False, onewire_pin=None, needs_bsec=False):
+        return {"section": section, "item": item, "needs_i2c": needs_i2c,
+                "onewire_pin": onewire_pin, "needs_bsec": needs_bsec}
 
     # --- GPIO / 1-wire ---
     if t in ("dht22", "dht11"):
@@ -175,13 +176,17 @@ def _sensor_block(module: dict):
 
     # --- I2C ---
     if t == "bme680":
+        # BSEC2 (Bosch) : sort un INDICE IAQ lisible (0-500), un CO2 équivalent (ppm) et un
+        # COV équivalent — au lieu de la résistance de gaz brute (chiffre obscur en ohms).
         return out("sensor",
-                   f"  - platform: bme680\n    address: 0x76\n"
+                   f"  - platform: bme680_bsec2\n"
                    f"    temperature:\n      name: \"Température {nm}\"\n"
                    f"    humidity:\n      name: \"Humidité {nm}\"\n"
                    f"    pressure:\n      name: \"Pression {nm}\"\n"
-                   f"    gas_resistance:\n      name: \"Qualité air {nm}\"\n    update_interval: 60s",
-                   needs_i2c=True)
+                   f"    iaq:\n      name: \"Qualité air {nm} (IAQ)\"\n"
+                   f"    co2_equivalent:\n      name: \"CO2 équivalent {nm}\"\n"
+                   f"    breath_voc_equivalent:\n      name: \"COV équivalent {nm}\"",
+                   needs_i2c=True, needs_bsec=True)
     if t == "bme280":
         return out("sensor",
                    f"  - platform: bme280_i2c\n    address: 0x76\n"
@@ -306,7 +311,8 @@ def _audio_block(audio: dict) -> str:
 def generate_yaml(name: str, encryption_key: str = "", modules=None,
                   i2c_sda: str = "GPIO8", i2c_scl: str = "GPIO9",
                   audio: dict = None, activation: dict = None, custom_yaml: str = "",
-                  led: dict = None) -> str:
+                  led: dict = None, bt_proxy: bool = False, improv: bool = False,
+                  volume: dict = None) -> str:
     """Construit un YAML ESPHome prêt à compiler : base + voix (→ Athena) + capteurs
     choisis dans le catalogue (+ YAML perso optionnel). Injecte automatiquement le
     bus I2C / one_wire si des capteurs en ont besoin. Broches à adapter à la carte.
@@ -323,6 +329,7 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
 
     sections = {"sensor": [], "binary_sensor": [], "switch": []}
     needs_i2c = False
+    needs_bsec = False
     onewire_pin = None
     for m in modules:
         blk = _sensor_block(m)
@@ -330,6 +337,7 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
             continue
         sections.setdefault(blk["section"], []).append(blk["item"])
         needs_i2c = needs_i2c or blk["needs_i2c"]
+        needs_bsec = needs_bsec or blk.get("needs_bsec")
         if blk["onewire_pin"]:
             onewire_pin = blk["onewire_pin"]
 
@@ -338,6 +346,11 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
         buses += f"\ni2c:\n  sda: {i2c_sda or 'GPIO8'}\n  scl: {i2c_scl or 'GPIO9'}\n  scan: true\n"
     if onewire_pin:
         buses += f"\none_wire:\n  - platform: gpio\n    pin: {onewire_pin}\n"
+    if needs_bsec:
+        # Hub BSEC2 (lib Bosch, téléchargée par ESPHome) : indice IAQ calibré.
+        # L'IAQ met ~1 h à se calibrer (précision 0→3) ; l'étalonnage est mémorisé en flash.
+        buses += ("\nbme680_bsec2:\n  address: 0x76   # essaie 0x77 si non détecté\n"
+                  "  state_save_interval: 6h\n")
 
     extra_sections = ""
     for key_name in ("sensor", "binary_sensor", "switch"):
@@ -419,6 +432,55 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
 
     voice_block += led_feedback   # feedback LED sur les phases vocales (si LED activée)
 
+    # --- Options radio (sans GPIO) : bluetooth_proxy + improv BLE ---
+    radio_block = ""
+    if bt_proxy:
+        radio_block += ("\n# --- Bluetooth proxy : relais BLE vers Home Assistant (portée + présence BLE\n"
+                        "#     pour le follow-me type ESPresense/Bermuda). N'utilise AUCUN GPIO. ---\n"
+                        "esp32_ble_tracker:\n  scan_parameters:\n    active: true\n"
+                        "bluetooth_proxy:\n  active: true\n")
+    if improv:
+        radio_block += ("\n# --- Improv BLE : configurer le WiFi par Bluetooth à la 1re install (sans GPIO).\n"
+                        "#     authorizer: none = pas de bouton requis (provisionnement libre). ---\n"
+                        "esp32_improv:\n  authorizer: none\n")
+
+    # --- Boutons volume (GPIO) — défauts SÛRS, avec détection de conflit ---
+    vol = volume or {}
+    globals_block = ""
+    vol_conflict = ""
+    if vol.get("enabled"):
+        up = (vol.get("up_pin") or "GPIO47").strip()
+        down = (vol.get("down_pin") or "GPIO21").strip()
+        # Broches déjà occupées → on prévient (cohérence GPIO).
+        used = {a["mic_ws"], a["mic_bclk"], a["mic_din"], a["spk_ws"], a["spk_bclk"], a["spk_dout"]}
+        if needs_i2c:
+            used |= {i2c_sda, i2c_scl}
+        if led.get("enabled"):
+            used.add(led.get("pin") or "GPIO48")
+        for m in modules:
+            mp = (m.get("pin") or "").strip()
+            if mp:
+                used.add(mp)
+        clash = [p for p in (up, down) if p in used]
+        if clash:
+            vol_conflict = f"#   ⚠️ CONFLIT GPIO volume : {', '.join(clash)} déjà utilisé(s) ailleurs — change la broche !\n"
+        globals_block = ("\nglobals:\n  - id: spk_vol\n    type: float\n    restore_value: yes\n    initial_value: '0.7'\n")
+        vol_bs = (
+            f"  - platform: gpio\n    pin:\n      number: {up}\n      mode: INPUT_PULLUP\n      inverted: true\n"
+            f"    name: \"Volume +\"\n    on_press:\n      - lambda: 'id(spk_vol) = min(1.0f, id(spk_vol) + 0.1f);'\n"
+            f"      - speaker.set_volume:\n          id: spk\n          volume: !lambda 'return id(spk_vol);'\n"
+            f"  - platform: gpio\n    pin:\n      number: {down}\n      mode: INPUT_PULLUP\n      inverted: true\n"
+            f"    name: \"Volume -\"\n    on_press:\n      - lambda: 'id(spk_vol) = max(0.0f, id(spk_vol) - 0.1f);'\n"
+            f"      - speaker.set_volume:\n          id: spk\n          volume: !lambda 'return id(spk_vol);'\n")
+        sections.setdefault("binary_sensor", []).append(vol_bs)
+        # extra_sections est déjà construit plus haut → on le régénère pour inclure le volume.
+        extra_sections_local = ""
+        for key_name in ("sensor", "binary_sensor", "switch"):
+            items = sections.get(key_name) or []
+            if items:
+                extra_sections_local += f"\n{key_name}:\n" + "\n".join(items) + "\n"
+        extra_sections = extra_sections_local
+
     # Schéma de câblage (toujours dans l'en-tête du YAML).
     wiring = (
         f"#   INMP441 (micro)  : VDD→3V3 · GND→GND · L/R→GND · WS→{a['mic_ws']} · "
@@ -432,6 +494,10 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     if led.get("enabled"):
         wiring += (f"#   LED statut       : DIN→{led.get('pin') or 'GPIO48'} "
                    f"(WS2812B ; GPIO48 = LED RGB EMBARQUÉE sur la devkit, rien à câbler)\n")
+    if vol.get("enabled"):
+        wiring += (f"#   Boutons volume   : Vol+ →{(vol.get('up_pin') or 'GPIO47')} · "
+                   f"Vol- →{(vol.get('down_pin') or 'GPIO21')} (vers GND, INPUT_PULLUP)\n")
+    wiring += vol_conflict
 
     return f"""# Satellite ESP32-S3 piloté DIRECTEMENT par Athena (voix), capteurs visibles aussi par HA.
 # Généré par Athena pour « {name} ». Adapte les broches (I2S + capteurs) à ta carte.
@@ -459,7 +525,7 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-{buses}
+{radio_block}{globals_block}{buses}
 {audio_block}
 {voice_block}{led_block}{extra_sections}{custom_part}"""
 

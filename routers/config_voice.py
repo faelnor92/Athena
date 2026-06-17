@@ -137,6 +137,9 @@ class SatelliteYamlRequest(BaseModel):
     activation: Dict[str, Any] = {}
     custom_yaml: str = ""
     led: Dict[str, Any] = {}
+    bt_proxy: bool = False
+    improv: bool = False
+    volume: Dict[str, Any] = {}
 
 @router.post("/api/config/satellites/yaml")
 async def gen_satellite_yaml(req: SatelliteYamlRequest) -> Dict[str, str]:
@@ -154,6 +157,7 @@ async def gen_satellite_yaml(req: SatelliteYamlRequest) -> Dict[str, str]:
             name, key, modules=req.modules,
             i2c_sda=req.i2c_sda, i2c_scl=req.i2c_scl, audio=req.audio,
             activation=req.activation, custom_yaml=req.custom_yaml, led=req.led,
+            bt_proxy=req.bt_proxy, improv=req.improv, volume=req.volume,
         )
         return {"yaml": yaml_text, "filename": f"athena-satellite-{es._slug(name)}.yaml"}
     except Exception as e:
