@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## [0.23.2] - 2026-06-18
+### Refactor — découpage `core/swarm` (phase 3 : essaim + contexte) + correctif chemin
+- **`core/swarm/agents.py`** (`_AgentsMixin`) : `load_agents`, `create_handoff_function`, `create_delegate_function`.
+- **`core/swarm/context.py`** (`_ContextMixin`) : `_maybe_compact` (compaction d'historique) + `_evict_large_results` (éviction des gros résultats d'outils). N'altèrent que la vue LLM.
+- `engine.py` : 2343 → 2108 lignes.
+- **Correctif** : `load_agents` résolvait `agents.default.yaml` au mauvais endroit depuis le passage en package (régression du chemin basé sur `__file__`, visible uniquement au TOUT premier install) → racine projet désormais résolue explicitement.
+- Iso-comportement (tests OK ; `test_agent_tools`/`test_delegation` qui exercent ces méthodes passent).
+
+
 ## [0.23.1] - 2026-06-18
 ### Refactor — découpage `core/swarm` (phase 2 : apprentissage)
 - Les 6 hooks d'auto-amélioration post-tâche sortent d'`engine.py` vers **`core/swarm/learning.py`** (`_LearningMixin`, mélangé à `Swarm`) : `_write_experience_report`, `_extract_graph_facts` (Chronos), `_update_user_profile`, `_improve_skills`, `_auto_critic`, `_induce_skill`.
