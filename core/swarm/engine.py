@@ -196,6 +196,7 @@ AVAILABLE_TOOLS = {
     "set_goal_priority": tools.goal_tools.set_goal_priority,
     "configure_monitoring": tools.event_tools.configure_monitoring,  # Vigie (proactivité)
     "list_recent_events": tools.event_tools.list_recent_events,
+    "list_mcp_tools": tools.mcp_manager.list_mcp_tools,             # découverte des outils MCP/HA non exposés
     "proxmox_status": tools.proxmox_tools.proxmox_status,            # hyperviseur Proxmox
     "proxmox_vm_action": tools.proxmox_tools.proxmox_vm_action,
     "proxmox_vm_exec": tools.proxmox_tools.proxmox_vm_exec,          # commande DANS une VM (agent invité)
@@ -415,10 +416,18 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         effective_tools.append(func)
                         existing.add(skill_name)
                 # Outils MCP (serveurs externes) injectés comme des outils natifs.
-                for tool_name, func in tools.mcp_manager.mcp_manager.tool_functions().items():
+                _mcp_funcs = tools.mcp_manager.mcp_manager.tool_functions()
+                for tool_name, func in _mcp_funcs.items():
                     if tool_name not in existing:
                         effective_tools.append(func)
                         existing.add(tool_name)
+                # Découverte MCP : TOUJOURS exposer list_mcp_tools dès qu'un serveur MCP est
+                # connecté → l'agent peut chercher un outil non affiché (filtre de pertinence)
+                # puis l'appeler par son nom (il reste exécutable via _secured_tools). C'est le
+                # filet : « le noyau + si l'outil voulu n'y est pas, cherche dans tous les outils ».
+                if _mcp_funcs and "list_mcp_tools" not in existing:
+                    effective_tools.append(tools.mcp_manager.list_mcp_tools)
+                    existing.add("list_mcp_tools")
                 # Outils Nextcloud (Fichiers/Tâches/Contacts) : donnés automatiquement à
                 # l'orchestrateur SI Nextcloud est configuré pour l'utilisateur courant (sinon
                 # inutile). Évite d'avoir à les cocher à la main par agent ; le filtre par
@@ -708,13 +717,27 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                                    if str(info.get("server", "")).lower() in ("homeassistant", "home-assistant", "ha")}
                             _ha_funcs = [f for f in _extras if f.__name__ in _ha]
                             if _ha_funcs:
-                                # Plafond HA dédié (plus large) : pertinence D'ABORD, puis on COMPLÈTE
-                                # jusqu'au plafond — sinon une requête FR de découverte ne matche aucun
-                                # nom anglais → liste vide → Athena « ne voit pas » HA (bug observé).
-                                _ha_cap = int(os.getenv("TOOL_HA_TOPN", "25") or 25)
-                                _ranked = [f.__name__ for f in select_relevant_funcs(str(_req), _ha_funcs, _ha_cap)]
-                                _rest = [f.__name__ for f in _ha_funcs if f.__name__ not in _ranked]
-                                _keep_extra |= set((_ranked + _rest)[:_ha_cap])
+                                _avail = {f.__name__ for f in _ha_funcs}
+                                # NOYAU FONDAMENTAL : toujours exposé sur une intention HA, sinon Athena
+                                # voit les pièces (ha_list_floors_areas) mais PAS les entités/états faute
+                                # du bon outil dans le top-N (bug observé). Découverte + contrôle de base.
+                                _HA_CORE = ("ha_entities", "ha_search_entities", "ha_get_state",
+                                            "ha_get_entity", "ha_devices", "ha_get_device",
+                                            "ha_list_floors_areas", "ha_list_services", "ha_call_service",
+                                            "ha_get_overview", "ha_get_system_overview", "ha_deep_search",
+                                            "ha_bulk_control", "ha_domains", "ha_search_tools")
+                                _core = [n for n in _HA_CORE if n in _avail]
+                                # Plafond HA dédié. TOOL_HA_TOPN=0 → expose TOUS les outils HA (zéro
+                                # risque de manquer le bon outil, au prix de ~tokens) : échappatoire.
+                                _ha_cap = int(os.getenv("TOOL_HA_TOPN", "25") or 0)
+                                if _ha_cap <= 0:
+                                    _keep_extra |= _avail
+                                else:
+                                    # Noyau D'ABORD, puis pertinence, puis on COMPLÈTE jusqu'au plafond.
+                                    _ranked = [f.__name__ for f in select_relevant_funcs(str(_req), _ha_funcs, _ha_cap)]
+                                    _rest = [f.__name__ for f in _ha_funcs
+                                             if f.__name__ not in _core and f.__name__ not in _ranked]
+                                    _keep_extra |= set((_core + _ranked + _rest)[:_ha_cap])
                         except Exception:
                             pass
                     _before_n = len(effective_tools)
