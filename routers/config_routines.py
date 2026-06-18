@@ -108,7 +108,7 @@ def _run_routine(routine: dict):
         starting = Agent(
             name="NightlyAgent",
             model="ollama/qwen2.5:0.5b",
-            instructions="Tu es le concierge nocturne de Athena. Ta seule mission est d'exécuter l'outil cleanup_skills.",
+            system_prompt="Tu es le concierge nocturne de Athena. Ta seule mission est d'exécuter l'outil cleanup_skills.",
             tools=[cleanup_skills]
         )
     else:
@@ -274,6 +274,8 @@ async def trigger_hook(rid: str, request: Request, token: str = None) -> Dict[st
 # Lancement du planificateur
 start_routine_scheduler(_run_routine)
 
+# Transcription : moteur STT partagé et caché (core.transcription : faster-whisper → openai-whisper).
+
 @router.post("/api/voice/transcribe")
 async def voice_transcribe(file: UploadFile = File(...)) -> Dict[str, Any]:
     """Transcription SIMPLE (texte brut) pour la dictée du chat — Whisper local, SANS
@@ -281,17 +283,15 @@ async def voice_transcribe(file: UploadFile = File(...)) -> Dict[str, Any]:
     import uuid as _uuid
     try:
         content = await file.read()
-        try:
-            import whisper
-        except ImportError:
-            return {"error": "Transcription indisponible : Whisper n'est pas installé sur le serveur."}
+        from core import transcription as _stt
+        if not _stt.is_available():
+            return {"error": "Transcription indisponible : aucun moteur Whisper installé sur le serveur."}
         os.makedirs("workspace", exist_ok=True)
         tmp = f"workspace/temp_dictee_{_uuid.uuid4().hex}_{(file.filename or 'audio')}"
         with open(tmp, "wb") as f:
             f.write(content)
         try:
-            model = whisper.load_model("base")
-            text = (model.transcribe(tmp).get("text") or "").strip()
+            text = _stt.transcribe_file(tmp)
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
@@ -308,24 +308,17 @@ async def transcribe_meeting(file: UploadFile = File(...)) -> Dict[str, Any]:
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
         openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
         
-        local_whisper_available = False
-        try:
-            import whisper
-            local_whisper_available = True
-        except ImportError:
-            pass
+        from core import transcription as _stt
+        local_whisper_available = _stt.is_available()
 
         if local_whisper_available:
-            print("🎙️ [Meeting API] Utilisation de Whisper local (Modèle 'base')...")
+            print("🎙️ [Meeting API] Transcription locale (modèle partagé, en cache)...")
             os.makedirs("workspace", exist_ok=True)
             temp_filename = f"workspace/temp_{uuid.uuid4().hex}_{file.filename}"
             with open(temp_filename, "wb") as f:
                 f.write(content)
-            
             try:
-                model = whisper.load_model("base")
-                result = model.transcribe(temp_filename)
-                raw_text = result.get("text", "").strip()
+                raw_text = _stt.transcribe_file(temp_filename)
             finally:
                 if os.path.exists(temp_filename):
                     os.remove(temp_filename)

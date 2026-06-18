@@ -50,20 +50,13 @@ def transcribe_and_summarize_meeting(audio_file_path: str) -> str:
         
         result_json = None
         
-        # 1. OPTION DE TRANSCRIPTION LOCALE : OPENAI-WHISPER OFFLINE (GRATUIT)
-        local_whisper_available = False
-        try:
-            import whisper
-            local_whisper_available = True
-        except ImportError:
-            pass
+        # 1. OPTION DE TRANSCRIPTION LOCALE (GRATUITE) : moteur partagé/caché (faster-whisper → openai-whisper).
+        from core import transcription as _stt
+        local_whisper_available = _stt.is_available()
 
         if local_whisper_available:
-            print("🎙️ [Tool Meeting] Utilisation de Whisper local (Modèle 'base')...")
-            # Charger le modèle Whisper (téléchargement et cache automatiques du modèle de 140Mo au premier appel)
-            model = whisper.load_model("base")
-            result = model.transcribe(resolved_path)
-            raw_text = result.get("text", "").strip()
+            print("🎙️ [Tool Meeting] Transcription locale (modèle partagé, en cache)...")
+            raw_text = _stt.transcribe_file(resolved_path)
             print(f"🎙️ [Tool Meeting] Transcription locale réussie. Taille du texte brut : {len(raw_text)} caractères.")
             
             # Structurer et diariser le texte brut à l'aide d'un LLM
