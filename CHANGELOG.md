@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## [0.24.2] - 2026-06-18
+### Perf — hooks d'apprentissage post-run en ARRIÈRE-PLAN (latence)
+- Les hooks passifs de fin de run (Chronos/graphe, retour d'expérience, induction de skill, profil utilisateur, réparation de skill) faisaient **2-4 appels LLM dans le chemin critique** : la réponse était déjà streamée, mais le run restait « occupé » plusieurs secondes (voyant, enchaînement, worker bloqué).
+- Désormais ils s'exécutent dans un **thread d'arrière-plan** (contexte/identité propagé via `copy_context` → Chronos écrit dans le bon compte) ; **`run()` rend la main dès la réponse finale**. Gain net surtout en vocal et en enchaînement rapide.
+- `_auto_critic` reste SYNCHRONE (il modifie la réponse ; OFF par défaut). Désactivable globalement via `ASYNC_POST_HOOKS=false` (revient à l'ancien comportement synchrone).
+
+
 ## [0.24.1] - 2026-06-18
 ### Feat — routeur de DÉLÉGATION sémantique (zéro appel LLM) + auto-continuation affinée
 - **`core/agent_router.py`** remplace l'ancien « juge LLM » de `_route_target` (un appel de complétion EN PLUS à chaque run : lent, facturé, biaisé « aucun », limité au dernier message). Désormais : **similarité d'embeddings** requête (3 derniers messages user) ↔ description des agents, via l'embedder partagé (bge-m3 → all-MiniLM local). **Instantané, multilingue, zéro LLM.**

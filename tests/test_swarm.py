@@ -242,6 +242,9 @@ def test_disjoncteur_repetition_coupe_les_appels_identiques(monkeypatch=None):
 def test_hook_auto_amelioration_archive_un_retour():
     """Après une tâche avec outil, un retour d'expérience doit être archivé."""
     os.environ["SELF_IMPROVE"] = "true"
+    # On valide ici la LOGIQUE du hook (step + archivage) → mode SYNCHRONE pour qu'ils soient
+    # dans les steps retournés (en prod ASYNC_POST_HOOKS=true les exécute en arrière-plan).
+    os.environ["ASYNC_POST_HOOKS"] = "false"
 
     # Séquence de réponses : 1) tool_call, 2) fin (sans tool), 3) compte-rendu.
     state = {"i": 0}
