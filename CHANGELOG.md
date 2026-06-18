@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## [0.23.6] - 2026-06-18
+### Fix — Athena « ne voit pas » les outils Home Assistant (MCP)
+- Les 77 outils du serveur MCP HA portent des noms ANGLAIS (`ha_*`) ; le filtre de pertinence (qui borne les outils « extra ») ne les faisait remonter QUE si un mot-clé domotique FR précis était présent, et seulement « les 12 premiers » (ordre arbitraire). Résultat : « regarde ce qui est dispo sur HA », « liste mes entités », « regarde le mcp » → **0 outil HA exposé** → Athena répondait n'avoir que `get_ha_state`/`call_ha_service`, alors que le serveur MCP HA était **bien connecté** (diagnostic `scripts/diag_mcp.py`).
+- **Détection HA élargie** : domotique OU mention explicite (home assistant, mcp, entité, maison, capteur, interrupteur, scène, `\bha\b`…). Les outils HA sont alors classés **par pertinence puis complétés** jusqu'à `TOOL_HA_TOPN` (défaut 25) — une requête FR de découverte obtient enfin un jeu d'outils utilisable. Aucun bruit HA sur les requêtes agenda/email/heure.
+
+
 ## [0.23.5] - 2026-06-18  — HOTFIX CRITIQUE
 ### Fix — chat & Telegram muets : « 'module' object is not callable »
 - La phase 4 du découpage avait créé le sous-module `core/swarm/completion.py`. Or `core.swarm.completion` était AUSSI l'attribut où `__init__` exposait la fonction `completion` de litellm (point monkeypatchable). L'import du sous-module **écrasait** la fonction → la couche LLM appelait un *module* (`'module' object is not callable`) → **tous** les appels LLM échouaient (chat web ET Telegram muets).

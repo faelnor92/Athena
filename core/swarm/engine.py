@@ -687,19 +687,34 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     _req = next((m.get("content", "") for m in reversed(messages)
                                  if m.get("role") == "user"), "")
                     _keep_extra = {f.__name__ for f in select_relevant_funcs(str(_req), _extras, _topn)}
-                    # Outils MCP Home Assistant : leurs noms sont en ANGLAIS → une requête
-                    # domotique en français (« allume le salon ») ne les fait pas remonter par
-                    # mots-clés. On les RÉ-EXPOSE (bornés à _topn) UNIQUEMENT quand le domaine
-                    # « domotique » est actif → domotique conservée, et plus de bruit HA sur les
-                    # requêtes agenda/email/etc. (cause du « calendrier → HA »).
+                    # Outils MCP Home Assistant : leurs noms sont en ANGLAIS (ha_*) → une requête
+                    # FR (« allume le salon », « regarde ce qui est dispo sur HA ») ne les fait
+                    # pas remonter par recouvrement de tokens. On les RÉ-EXPOSE quand la requête
+                    # vise manifestement HA : domotique OU mention explicite HA/MCP/entité/maison.
                     _req_l = str(_req).lower()
-                    if any(k in _req_l for k in _TOOL_GROUP_KEYWORDS.get("domotique", [])):
+                    import re as _reHA
+                    _ha_intent = (
+                        any(k in _req_l for k in _TOOL_GROUP_KEYWORDS.get("domotique", []))
+                        or any(k in _req_l for k in (
+                            "home assistant", "homeassistant", "home-assistant", "domotique",
+                            "mcp", "entité", "entites", "entités", "entity", "entities", "maison",
+                            "capteur", "interrupteur", "thermostat", "appareil", "dispositif",
+                            "scène", "automatisation", "hass"))
+                        or bool(_reHA.search(r"\bha\b", _req_l)))   # « sur HA », « dans HA »…
+                    if _ha_intent:
                         try:
                             import tools.mcp_manager as _mm
                             _ha = {n for n, info in _mm.mcp_manager._tools.items()
                                    if str(info.get("server", "")).lower() in ("homeassistant", "home-assistant", "ha")}
-                            _ha_extras = [f.__name__ for f in _extras if f.__name__ in _ha]
-                            _keep_extra |= set(_ha_extras[:_topn])
+                            _ha_funcs = [f for f in _extras if f.__name__ in _ha]
+                            if _ha_funcs:
+                                # Plafond HA dédié (plus large) : pertinence D'ABORD, puis on COMPLÈTE
+                                # jusqu'au plafond — sinon une requête FR de découverte ne matche aucun
+                                # nom anglais → liste vide → Athena « ne voit pas » HA (bug observé).
+                                _ha_cap = int(os.getenv("TOOL_HA_TOPN", "25") or 25)
+                                _ranked = [f.__name__ for f in select_relevant_funcs(str(_req), _ha_funcs, _ha_cap)]
+                                _rest = [f.__name__ for f in _ha_funcs if f.__name__ not in _ranked]
+                                _keep_extra |= set((_ranked + _rest)[:_ha_cap])
                         except Exception:
                             pass
                     _before_n = len(effective_tools)
