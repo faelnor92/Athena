@@ -349,3 +349,37 @@ class MCPManager:
 
 # Singleton applicatif
 mcp_manager = MCPManager(_resolve_config_path())
+
+
+def list_mcp_tools(query: str = "") -> str:
+    """Cherche/liste les outils des serveurs MCP connectés (Home Assistant, etc.).
+
+    À utiliser quand l'outil voulu n'est PAS dans ta liste d'outils visibles : trouve son
+    nom exact ici, puis APPELLE-LE directement par ce nom (il s'exécute même s'il n'apparaît
+    pas dans ton schéma). Indispensable pour Home Assistant (77 outils ha_*, seuls les plus
+    pertinents sont affichés à la fois).
+
+    query : filtre (sous-chaîne sur le nom ou la description), ex. « entité », « light »,
+            « imprimante », « camera ». Vide = liste tout.
+    """
+    tools = getattr(mcp_manager, "_tools", {}) or {}
+    if not tools:
+        return ("Aucun serveur MCP connecté. Vérifie le panneau Réglages → MCP "
+                "(ou relance le serveur si un serveur est en erreur).")
+    q = (query or "").strip().lower()
+    rows = []
+    for name, meta in sorted(tools.items()):
+        if not isinstance(meta, dict):
+            continue
+        desc = (meta.get("description") or "").strip().split("\n")[0]
+        srv = meta.get("server", "?")
+        if q and q not in name.lower() and q not in desc.lower():
+            continue
+        rows.append(f"- {name} [{srv}] : {desc}")
+    if not rows:
+        return (f"Aucun outil MCP ne correspond à « {query} » (sur {len(tools)} outils). "
+                "Relance sans filtre, ou essaie un autre mot-clé (ex. le domaine HA : light, "
+                "switch, sensor, camera, climate…).")
+    head = (f"{len(rows)} outil(s) MCP" + (f" pour « {query} »" if q else "")
+            + " — appelle-les DIRECTEMENT par leur nom :\n")
+    return head + "\n".join(rows)
