@@ -31,7 +31,10 @@ from core.swarm.text_tools import (
 from core.swarm.learning import _LearningMixin
 from core.swarm.agents import _AgentsMixin
 from core.swarm.context import _ContextMixin
-from core.swarm.completion import _CompletionMixin
+# Sous-module 'llm' (et NON 'completion') : un module nommé 'completion' occuperait
+# l'attribut core.swarm.completion et écraserait la fonction litellm du même nom → la
+# couche LLM appellerait un module (« 'module' object is not callable »).
+from core.swarm.llm import _CompletionMixin
 
 
 import tools.home_assistant
