@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## [0.23.1] - 2026-06-18
+### Refactor — découpage `core/swarm` (phase 2 : apprentissage)
+- Les 6 hooks d'auto-amélioration post-tâche sortent d'`engine.py` vers **`core/swarm/learning.py`** (`_LearningMixin`, mélangé à `Swarm`) : `_write_experience_report`, `_extract_graph_facts` (Chronos), `_update_user_profile`, `_improve_skills`, `_auto_critic`, `_induce_skill`.
+- `engine.py` : 2652 → 2343 lignes. Iso-comportement (tests cœur + `test_skill_induction` OK).
+
+
 ## [0.23.0] - 2026-06-17
 ### Refactor — `core/swarm.py` découpé en package (phase 1)
 - L'ancien module monolithique (~3050 lignes) devient le **package `core/swarm/`** :
