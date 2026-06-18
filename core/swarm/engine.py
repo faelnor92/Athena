@@ -200,6 +200,7 @@ AVAILABLE_TOOLS = {
     "proxmox_status": tools.proxmox_tools.proxmox_status,            # hyperviseur Proxmox
     "proxmox_vm_action": tools.proxmox_tools.proxmox_vm_action,
     "proxmox_vm_exec": tools.proxmox_tools.proxmox_vm_exec,          # commande DANS une VM (agent invité)
+    "proxmox_vm_logs": tools.proxmox_tools.proxmox_vm_logs,          # tâches Proxmox d'une VM (pourquoi tombée)
 }
 
 # --- Garde-fous qualité : cache de résultats d'outils + validation JSON-schema ---
@@ -408,6 +409,11 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             # 1. Outils effectifs du tour, calculés LOCALEMENT (on ne mute pas
             #    l'objet Agent partagé : indispensable pour la concurrence).
             effective_tools = list(current_agent.tools)
+            # Outils d'intégrations CONFIGURÉES (Proxmox/mail/Nextcloud) : à exposer TOUJOURS,
+            # même sans mot-clé de domaine. Sinon « pourquoi immich est tombée » (aucun mot
+            # « vm/proxmox ») masque les outils Proxmox → Athena se croit incapable, alors qu'ils
+            # sont là et configurés. Une capacité CONFIGURÉE ne doit jamais être invisible.
+            _force_expose: set = set()
             if current_agent.name in (getattr(self, "orchestrator_name", "Athena"), "Codeur"):
                 existing = {f.__name__ for f in effective_tools}
                 # Compétences dynamiques (auto-amélioration) rechargées à chaque tour.
@@ -449,9 +455,11 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     from core import proxmox as _px
                     if _px.is_configured():
                         for _n in _TOOL_GROUPS.get("proxmox", ()):
-                            if _n not in existing and _n in AVAILABLE_TOOLS:
-                                effective_tools.append(AVAILABLE_TOOLS[_n])
-                                existing.add(_n)
+                            if _n in AVAILABLE_TOOLS:
+                                if _n not in existing:
+                                    effective_tools.append(AVAILABLE_TOOLS[_n])
+                                    existing.add(_n)
+                                _force_expose.add(_n)   # configuré → jamais masqué par le filtre
                 except Exception:
                     pass
                 # Mails (LECTURE IMAP + BROUILLONS, jamais d'envoi) : donnés à l'orchestrateur
@@ -461,9 +469,11 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     import tools.email_tools as _em
                     if _em.is_configured():
                         for _n in _TOOL_GROUPS.get("email", ()):
-                            if _n not in existing and _n in AVAILABLE_TOOLS:
-                                effective_tools.append(AVAILABLE_TOOLS[_n])
-                                existing.add(_n)
+                            if _n in AVAILABLE_TOOLS:
+                                if _n not in existing:
+                                    effective_tools.append(AVAILABLE_TOOLS[_n])
+                                    existing.add(_n)
+                                _force_expose.add(_n)   # configuré → jamais masqué par le filtre
                 except Exception:
                     pass
                 # SSH (exécution distante) : donné à l'orchestrateur SI au moins un hôte est
@@ -665,7 +675,8 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                               f"exposés (-{_dropped} non pertinents → ~{_dropped * 110} tokens/tour économisés)")
             if _tool_subset is not None:
                 effective_tools = [f for f in effective_tools
-                                   if f.__name__ in _tool_subset or _TOOL_DOMAIN.get(f.__name__) is None]
+                                   if f.__name__ in _tool_subset or f.__name__ in _force_expose
+                                   or _TOOL_DOMAIN.get(f.__name__) is None]
 
             # Tâche MAIL ou SSH → on RETIRE run_tool_script de l'exposition : le bac à sable ne
             # peut exécuter ni les mutations mail (clean_inbox/archive…) ni le SSH (subprocess

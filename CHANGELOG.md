@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## [0.23.9] - 2026-06-18
+### Fix — une intégration CONFIGURÉE n'est plus rendue invisible par le filtre
+- Les outils Proxmox/mail sont auto-injectés quand l'intégration est configurée, MAIS le filtre par mot-clé les masquait quand la requête n'en contenait pas (« pourquoi *immich* est tombée » → aucun mot « vm/proxmox » → Athena se croyait sans outils Proxmox, alors qu'elle voyait l'état des VM dans d'autres phrases). Désormais : **une capacité configurée est TOUJOURS exposée** (jamais masquée par le filtre de pertinence).
+### Feat — `proxmox_vm_logs(vmid)` : pourquoi une VM est tombée
+- Nouvel outil (lecture seule) listant les dernières **tâches Proxmox** d'une VM/CT (démarrage, arrêt, extinction, sauvegarde, erreurs) avec qui/quand/résultat → distingue un arrêt **manuel** (`qmstop` par un user) d'un **crash/échec** (tâche en erreur) ou d'une extinction interne. Marche même VM **éteinte** (contrairement à `proxmox_vm_exec`/`journalctl` qui exige la VM allumée).
+
+
 ## [0.23.8] - 2026-06-18
 ### Feat — Home Assistant : noyau d'outils garanti + découverte de TOUS les outils
 - **Noyau fondamental toujours exposé** sur une intention HA : `ha_entities`, `ha_search_entities`, `ha_get_state`, `ha_get_entity`, `ha_devices`, `ha_call_service`, `ha_get_overview`, `ha_deep_search`… (avant, Athena voyait les pièces mais pas les entités, faute du bon outil dans le top-N).
