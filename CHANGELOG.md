@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## [0.24.4] - 2026-06-18
+### Fix — traductions UI manquantes (Proxmox, Vigie, Réglages…)
+- 5 libellés ajoutés récemment n'étaient traduits dans AUCUNE langue → s'affichaient en français pour les utilisateurs en/es/it/de/zh/ja : `dock.logs`, `dock.redaction` (Écriture), `dock.settings` (Réglages), `tab.events` (👁️ Vigie), `tab.proxmox` (🖧 Proxmox).
+- Complétés dans les **6 langues** de `static/i18n.js`. Couverture des clés `data-i18n` du HTML : 100 % par langue.
+
+
 ## [0.24.3] - 2026-06-18
 ### Perf/refactor — transcription unifiée sur UN moteur partagé et caché
 - Nouveau `core/transcription.py` : **un seul** modèle STT en mémoire, chargé **une fois** (thread-safe), réutilisé par la dictée du chat (`/api/voice/transcribe`), la transcription de réunion (`/api/meeting/transcribe`) et l'outil `transcribe_and_summarize_meeting`. Fini les deux caches séparés (~140 Mo ×2) et tout `load_model` direct.
