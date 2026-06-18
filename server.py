@@ -221,6 +221,16 @@ from routers import config_proxmox as _config_proxmox_router
 app.include_router(_config_proxmox_router.router)
 
 
+# Serveurs MCP (Home Assistant, GitHub, …) : à démarrer ICI car le service systemd lance
+# server.py (et non main.py). Sans ça, mcp_manager.tool_functions() reste vide → l'essaim
+# n'a AUCUN outil MCP (ex. les 77 outils HA), et le panneau MCP de l'UI affiche tout en rouge.
+# (Régression : le démarrage avait disparu lors du refactoring de server.py.)
+try:
+    from tools.mcp_manager import mcp_manager
+    mcp_manager.start()
+except Exception as e:
+    logger.warning("Démarrage des serveurs MCP ignoré : %s", e, exc_info=True)
+
 # Bot Telegram ENTRANT (long-polling) — démarre seulement si TELEGRAM_BOT_TOKEN est défini.
 try:
     from core import telegram_bot

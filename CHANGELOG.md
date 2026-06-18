@@ -1,5 +1,10 @@
 # Historique des Versions (Changelog)
 
+## [0.23.7] - 2026-06-18  — CAUSE RACINE du « pas d'outils MCP/HA »
+### Fix — server.py ne démarrait JAMAIS les serveurs MCP
+- Le service systemd lance `server.py`, or le `mcp_manager.start()` avait disparu de `server.py` lors de son refactoring (il ne restait que dans `main.py`, non utilisé par le service). Résultat : en prod, **aucun serveur MCP ne démarrait** → `tool_functions()` vide → l'essaim n'avait AUCUN outil MCP (les 77 outils Home Assistant notamment), et le panneau MCP affichait tout en rouge. Un script lancé à la main (`diag_mcp.py`) connectait HA dans SON process, masquant le problème.
+- `server.py` démarre désormais les serveurs MCP au boot (comme Telegram et le moniteur Proxmox). Combiné à v0.23.6 (exposition des outils HA à l'essaim), Home Assistant est pleinement fonctionnel.
+
 ## [0.23.6] - 2026-06-18
 ### Fix — Athena « ne voit pas » les outils Home Assistant (MCP)
 - Les 77 outils du serveur MCP HA portent des noms ANGLAIS (`ha_*`) ; le filtre de pertinence (qui borne les outils « extra ») ne les faisait remonter QUE si un mot-clé domotique FR précis était présent, et seulement « les 12 premiers » (ordre arbitraire). Résultat : « regarde ce qui est dispo sur HA », « liste mes entités », « regarde le mcp » → **0 outil HA exposé** → Athena répondait n'avoir que `get_ha_state`/`call_ha_service`, alors que le serveur MCP HA était **bien connecté** (diagnostic `scripts/diag_mcp.py`).
