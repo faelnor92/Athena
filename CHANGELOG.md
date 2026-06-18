@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## [0.23.4] - 2026-06-18
+### Fix — Home Assistant : doublon d'entrée MCP qui cassait le token
+- Au fil des presets, le serveur HA a porté DEUX noms (`home-assistant` historique puis `homeassistant`). Quand les deux coexistent dans `mcp_servers.json`, ils exposent les mêmes outils : le second chargé **écrase** le premier → si son token est vide/périmé, tous les appels HA partent sur la mauvaise entrée et échouent (« le mot de passe HA ne fonctionne plus »).
+- **Auto-réparation** : `mcp_manager` fusionne désormais les doublons en UNE seule entrée canonique `homeassistant`, en conservant le token le plus exploitable (non vide, puis le plus long). Idempotent (no-op s'il n'y a pas de doublon).
+- `update.sh` applique la même fusion **sur le fichier** (en plus de forcer le STDIO), pour nettoyer durablement la config.
+
+
 ## [0.23.3] - 2026-06-18
 ### Refactor — découpage `core/swarm` (phase 4 : complétion + routage)
 - **`core/swarm/completion.py`** (`_CompletionMixin`) : `_complete`, `_complete_streaming`, `_maybe_continue` (auto-continuation des réponses tronquées), `_apply_prompt_cache`, `_route_target` (aiguillage vers un spécialiste), `_route_model` (modèle rapide/fort), `_utility_model`. Le helper `_completion` (indirection monkeypatchable `core.swarm.completion`) y est rapatrié.
