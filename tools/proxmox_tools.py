@@ -324,3 +324,58 @@ def proxmox_vm_exec(vmid: str, command: str, user_confirmed: bool = False) -> st
 
 
 proxmox_vm_exec._requires_approval = True
+
+
+def proxmox_vm_logs(vmid: str, lines: int = 20) -> str:
+    """Pourquoi une VM/conteneur s'est arrêté(e) ou a un souci : liste les dernières TÂCHES
+    Proxmox la concernant (démarrage, arrêt, extinction, redémarrage, sauvegarde, erreurs) avec
+    QUI les a lancées, QUAND et le RÉSULTAT. À utiliser quand une VM est tombée : ça distingue
+    un arrêt MANUEL (qmstop par un utilisateur), un CRASH/échec de démarrage (tâche en erreur),
+    ou une extinction propre. Lecture seule. Si la VM tourne et que tu veux ses logs INTERNES,
+    utilise plutôt proxmox_vm_exec avec « journalctl -n 50 ».
+
+    Args:
+        vmid (str): identifiant numérique de la VM/conteneur (ex. "100").
+        lines (int): nombre de tâches récentes à afficher (défaut 20).
+    """
+    if not proxmox.is_configured():
+        return _not_configured()
+    vm, err = _find_vm(vmid)
+    if err:
+        return err
+    node = vm.get("node")
+    name = vm.get("name", "")
+    out = [f"VM/CT {vmid} « {name} » sur le nœud {node} — statut actuel : {vm.get('status', '?')}"]
+    try:
+        n = max(1, min(int(lines), 100))
+    except Exception:
+        n = 20
+    data, err = _get(f"/nodes/{node}/tasks?vmid={vmid}&limit={n}&source=all")
+    if err:  # certaines versions n'acceptent pas source=all
+        data, err = _get(f"/nodes/{node}/tasks?vmid={vmid}&limit={n}")
+    if err:
+        return out[0] + "\n⚠️ " + err
+    tasks = data or []
+    if not tasks:
+        out.append("Aucune tâche récente enregistrée pour cette VM (Proxmox a peut-être "
+                   "purgé son journal de tâches, ou l'arrêt vient de l'hôte/OS lui-même).")
+        return "\n".join(out)
+    import datetime as _dt
+    out.append(f"\n🗒️ {len(tasks)} dernières tâches Proxmox :")
+    for t in tasks:
+        ttype = t.get("type", "?")
+        end = t.get("endtime")
+        status = t.get("status") or ("en cours" if not end else "?")
+        who = t.get("user", "") or ""
+        ts = t.get("starttime")
+        try:
+            when = _dt.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M") if ts else "?"
+        except Exception:
+            when = str(ts)
+        ok = (str(status).upper() == "OK")
+        flag = "✅" if ok else ("⏳" if status == "en cours" else "❌")
+        line = f"  {flag} {when} — {ttype}" + (f" par {who}" if who else "") + f" → {status}"
+        out.append(line)
+    out.append("\nIndice : un `qmstop`/`vzstop` ✅ par un utilisateur = arrêt volontaire ; une tâche "
+               "❌ (souvent `qmstart`) = échec/crash ; aucun arrêt listé = extinction interne à la VM.")
+    return "\n".join(out)

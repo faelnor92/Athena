@@ -41,7 +41,7 @@ _TOOL_GROUPS = {
     "computer": {"computer_use_action"},
     "vision": {"analyze_image", "capture_screen"},
     "routines": {"create_routine", "list_routines"},
-    "proxmox": {"proxmox_status", "proxmox_vm_action", "proxmox_vm_exec"},
+    "proxmox": {"proxmox_status", "proxmox_vm_action", "proxmox_vm_exec", "proxmox_vm_logs"},
 }
 _TOOL_GROUP_KEYWORDS = {
     "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",
