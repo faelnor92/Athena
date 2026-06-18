@@ -1,5 +1,11 @@
 # Historique des Versions (Changelog)
 
+## [0.23.5] - 2026-06-18  — HOTFIX CRITIQUE
+### Fix — chat & Telegram muets : « 'module' object is not callable »
+- La phase 4 du découpage avait créé le sous-module `core/swarm/completion.py`. Or `core.swarm.completion` était AUSSI l'attribut où `__init__` exposait la fonction `completion` de litellm (point monkeypatchable). L'import du sous-module **écrasait** la fonction → la couche LLM appelait un *module* (`'module' object is not callable`) → **tous** les appels LLM échouaient (chat web ET Telegram muets).
+- Sous-module renommé **`core/swarm/llm.py`** : plus de collision, `core.swarm.completion` redevient la fonction litellm. Régression introduite en v0.23.3, présente en v0.23.3/0.23.4.
+
+
 ## [0.23.4] - 2026-06-18
 ### Fix — Home Assistant : doublon d'entrée MCP qui cassait le token
 - Au fil des presets, le serveur HA a porté DEUX noms (`home-assistant` historique puis `homeassistant`). Quand les deux coexistent dans `mcp_servers.json`, ils exposent les mêmes outils : le second chargé **écrase** le premier → si son token est vide/périmé, tous les appels HA partent sur la mauvaise entrée et échouent (« le mot de passe HA ne fonctionne plus »).
