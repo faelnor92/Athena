@@ -101,6 +101,14 @@ _ASK_USER_MARKERS = (
     "veux-tu", "veux tu", "souhaites-tu", "souhaites tu", "dois-je", "dois je",
     "préfères-tu", "preferes-tu", "tu veux que", "tu préfères", "je te propose",
     "puis-je", "puis je", "est-ce que tu veux")
+# Marqueurs de COMPTE-RENDU : l'action est DÉJÀ faite (le résultat est dans le message).
+# Si présents, ce n'est pas une intention à relancer → pas d'auto-continuation (anti-relance
+# d'un « voici ce que j'ai trouvé… » que le modèle prend pour une annonce future).
+_DONE_MARKERS = (
+    "voici", "voilà", "voila", "j'ai trouvé", "j'ai trouve", "j'ai terminé", "j'ai termine",
+    "j'ai fait", "c'est fait", "terminé", "fait :", "résultat :", "resultat :", "en résumé",
+    "en resume", "voici ce que", "voici les", "voici le", "j'ai récupéré", "j'ai recupere",
+    "j'ai consulté", "j'ai consulte", "j'ai vérifié", "j'ai verifie")
 
 
 def looks_like_announced_intent(content: str) -> bool:
@@ -112,6 +120,10 @@ def looks_like_announced_intent(content: str) -> bool:
         return False
     low = msg.lower()
     if "?" in msg or any(p in low for p in _ASK_USER_MARKERS):
+        return False
+    # Compte-rendu d'une action DÉJÀ faite (« voici ce que j'ai trouvé… ») → pas une intention
+    # future à relancer : on s'abstient (sinon on relance une action déjà exécutée).
+    if any(p in low for p in _DONE_MARKERS):
         return False
     return any(p in low for p in _INTENT_MARKERS)
 

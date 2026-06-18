@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## [0.24.1] - 2026-06-18
+### Feat — routeur de DÉLÉGATION sémantique (zéro appel LLM) + auto-continuation affinée
+- **`core/agent_router.py`** remplace l'ancien « juge LLM » de `_route_target` (un appel de complétion EN PLUS à chaque run : lent, facturé, biaisé « aucun », limité au dernier message). Désormais : **similarité d'embeddings** requête (3 derniers messages user) ↔ description des agents, via l'embedder partagé (bge-m3 → all-MiniLM local). **Instantané, multilingue, zéro LLM.**
+- **Décision à 3 niveaux** (évite de pénaliser l'ambigu) : match franc (plancher + écart net) → délègue ; rien de pertinent (chit-chat) → l'orchestrateur répond ; pertinent mais ambigu (ex. deux agents techniques) → **ne restreint pas**, l'orchestrateur garde `delegate_to_` et tranche lui-même. Réglables : `DELEGATION_ROUTER_MIN` (0.50), `_GAP` (0.04), `_GENERAL` (0.45).
+- **Auto-continuation** : ne se déclenche plus sur un COMPTE-RENDU (« voici ce que j'ai trouvé… », « c'est fait », « résultat : ») — uniquement sur une vraie intention future. Évite de relancer une action déjà exécutée.
+
+
 ## [0.24.0] - 2026-06-18
 ### Feat — routage d'outils SÉMANTIQUE & MULTILINGUE (fini les mots-clés rigides)
 - Nouveau `core/tool_router.py` : sélectionne les outils à exposer par **similarité d'embeddings** (requête ↔ nom+docstring), donc **indépendant de la langue** — « enciende la luz » (ES), « accendi la luce » (IT) activent la domotique, là où les mots-clés FR/EN codés en dur étaient à la ramasse.
