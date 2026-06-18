@@ -1,5 +1,14 @@
 # Historique des Versions (Changelog)
 
+## [0.24.0] - 2026-06-18
+### Feat — routage d'outils SÉMANTIQUE & MULTILINGUE (fini les mots-clés rigides)
+- Nouveau `core/tool_router.py` : sélectionne les outils à exposer par **similarité d'embeddings** (requête ↔ nom+docstring), donc **indépendant de la langue** — « enciende la luz » (ES), « accendi la luce » (IT) activent la domotique, là où les mots-clés FR/EN codés en dur étaient à la ramasse.
+- **Réutilise l'embedding déjà en place** (`core.memory`) : **bge-m3** via endpoint si configuré (multilingue, idéal), sinon **all-MiniLM** local de ChromaDB. **Zéro nouvelle dépendance** (numpy + chromadb déjà présents).
+- **Stratégie robuste** : sélection par **écart-au-meilleur** (pas de seuil absolu fragile) + **UNION avec le routage mots-clés** → le keyword garde la précision FR/EN (« git commit »), le sémantique ajoute le multilingue ; on ne manque jamais un outil (sur-exposer ne coûte que des tokens).
+- **Replis en cascade** : bge-m3 → all-MiniLM local → mots-clés. **Disjoncteur** : si l'endpoint embed tombe, bascule keyword instantanément (pas de timeout à chaque tour). Réglables : `TOOL_ROUTER=semantic|keyword`, `TOOL_ROUTER_GAP` (0.06), `TOOL_ROUTER_COOLDOWN` (300 s).
+- Sûreté inchangée : outils cœur toujours exposés ; le filtre ne touche que le SCHÉMA, jamais l'exécution.
+
+
 ## [0.23.9] - 2026-06-18
 ### Fix — une intégration CONFIGURÉE n'est plus rendue invisible par le filtre
 - Les outils Proxmox/mail sont auto-injectés quand l'intégration est configurée, MAIS le filtre par mot-clé les masquait quand la requête n'en contenait pas (« pourquoi *immich* est tombée » → aucun mot « vm/proxmox » → Athena se croyait sans outils Proxmox, alors qu'elle voyait l'état des VM dans d'autres phrases). Désormais : **une capacité configurée est TOUJOURS exposée** (jamais masquée par le filtre de pertinence).

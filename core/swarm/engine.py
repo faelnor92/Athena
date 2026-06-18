@@ -18,6 +18,7 @@ from core import run_context
 from core import channels
 from core import tool_policy
 from core import platform_info
+from core import tool_router
 # Fonctions pures extraites dans des sous-modules du package (cf. core/swarm/).
 from core.swarm.schema import (
     function_to_schema, coerce_arguments, validate_args_schema,
@@ -668,7 +669,8 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     _recent_users = [str(m.get("content", "")) for m in messages
                                      if m.get("role") == "user"][-3:]
                     _last_user = "\n".join(_recent_users)
-                    _tool_subset = select_tool_subset(str(_last_user), _avail)
+                    # Routage SÉMANTIQUE multilingue (embeddings) avec repli mots-clés interne.
+                    _tool_subset = tool_router.select_tools(str(_last_user), _secured_tools)
                     _dropped = len(_avail) - len(_tool_subset)
                     if _dropped > 0:
                         print(f"[\033[96mSWARM\033[0m] filtrage d'outils : {len(_tool_subset)}/{len(_avail)} "
