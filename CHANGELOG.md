@@ -1,5 +1,13 @@
 # Historique des Versions (Changelog)
 
+## [0.23.3] - 2026-06-18
+### Refactor — découpage `core/swarm` (phase 4 : complétion + routage)
+- **`core/swarm/completion.py`** (`_CompletionMixin`) : `_complete`, `_complete_streaming`, `_maybe_continue` (auto-continuation des réponses tronquées), `_apply_prompt_cache`, `_route_target` (aiguillage vers un spécialiste), `_route_model` (modèle rapide/fort), `_utility_model`. Le helper `_completion` (indirection monkeypatchable `core.swarm.completion`) y est rapatrié.
+- `engine.py` : 2108 → **1729 lignes** (contre ~3050 au départ). Il ne reste que `__init__`, la boucle `run`, le cache d'outils, `_push_approval_notice`, `SwarmStepsList` et `AVAILABLE_TOOLS`.
+- Bilan du package : `engine` 1729 · `completion` 399 · `learning` 340 · `text_tools` 294 · `agents` 185 · `schema` 165 · `context` 90 · `__init__` 50.
+- Iso-comportement (suite complète OK ; seuls `test_memory`/`test_claude_code` échouent, à l'identique de `main` — préexistants).
+
+
 ## [0.23.2] - 2026-06-18
 ### Refactor — découpage `core/swarm` (phase 3 : essaim + contexte) + correctif chemin
 - **`core/swarm/agents.py`** (`_AgentsMixin`) : `load_agents`, `create_handoff_function`, `create_delegate_function`.
