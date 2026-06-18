@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## [0.24.3] - 2026-06-18
+### Perf/refactor — transcription unifiée sur UN moteur partagé et caché
+- Nouveau `core/transcription.py` : **un seul** modèle STT en mémoire, chargé **une fois** (thread-safe), réutilisé par la dictée du chat (`/api/voice/transcribe`), la transcription de réunion (`/api/meeting/transcribe`) et l'outil `transcribe_and_summarize_meeting`. Fini les deux caches séparés (~140 Mo ×2) et tout `load_model` direct.
+- **Moteur préféré : faster-whisper** (CTranslate2, INT8 — le même que les satellites : plus rapide, plus léger), **repli openai-whisper** s'il est absent → aucune install existante cassée. Langue auto, réglages partagés (`VOICE_STT_MODEL/DEVICE/COMPUTE/LANGUAGE`).
+- Cohérence docs/deps : `requirements.txt` et `requirements-voice.txt` mis à jour (faster-whisper = moteur de transcription par défaut, openai-whisper = repli optionnel). `install.sh`/`update.sh` inchangés (voix optionnelle, hors install de base — volontaire).
+
+
 ## [0.24.2] - 2026-06-18
 ### Perf — hooks d'apprentissage post-run en ARRIÈRE-PLAN (latence)
 - Les hooks passifs de fin de run (Chronos/graphe, retour d'expérience, induction de skill, profil utilisateur, réparation de skill) faisaient **2-4 appels LLM dans le chemin critique** : la réponse était déjà streamée, mais le run restait « occupé » plusieurs secondes (voyant, enchaînement, worker bloqué).

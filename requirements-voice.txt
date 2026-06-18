@@ -6,12 +6,14 @@
 #      sudo apt-get install -y portaudio19-dev libportaudio2 espeak-ng ffmpeg
 #    (PortAudio → sounddevice ; espeak-ng → pyttsx3 ; ffmpeg → traitement audio / whisper)
 #
-# NB : la TRANSCRIPTION DE RÉUNION et la DICTÉE VOCALE DU CHAT utilisent un AUTRE moteur,
-# `openai-whisper` (import whisper), PAS le faster-whisper ci-dessous. Pour l'activer en LOCAL :
-#   pip install openai-whisper        # ⚠️ tire PyTorch (lourd)
-# (sans ça, la transcription bascule sur un LLM cloud si GEMINI_API_KEY / OPENAI_API_KEY est défini.)
+# NB : depuis v0.24.x, TOUTE la transcription locale (assistant vocal, DICTÉE du chat,
+# TRANSCRIPTION DE RÉUNION) passe par le moteur PARTAGÉ `core/transcription.py`, qui PRÉFÈRE
+# `faster-whisper` (ci-dessous) — un seul modèle en cache, plus rapide et plus léger.
+# `openai-whisper` n'est qu'un REPLI optionnel si faster-whisper est absent :
+#   pip install openai-whisper        # ⚠️ tire PyTorch (lourd) — non nécessaire si faster-whisper installé
+# (sans aucun moteur local, la transcription bascule sur un LLM cloud si GEMINI_API_KEY / OPENAI_API_KEY est défini.)
 
-faster-whisper>=1.0.0      # STT local (CTranslate2) — pour l'assistant vocal « Jarvis »
+faster-whisper>=1.0.0      # STT local (CTranslate2, INT8) — moteur de transcription par défaut (voix + dictée + réunions)
 sounddevice>=0.4.6         # capture/lecture audio (PortAudio)
 numpy>=1.24                # traitement audio
 pyttsx3>=2.90              # TTS de repli (si Piper indisponible)

@@ -42,8 +42,10 @@ httpx>=0.27          # appels LLM du générateur AthenaDesign (importé au dém
 # installées automatiquement dans l'image Docker du sandbox AthenaDesign. Installez-les en
 # plus (requirements-design.txt) UNIQUEMENT si vous exécutez AthenaDesign sans Docker.
 
-# --- Optionnel : transcription de réunions (lourd, tire PyTorch) ------------
-# Décommentez si vous utilisez transcribe_and_summarize_meeting :
+# --- Optionnel : transcription locale (dictée chat + réunions) --------------
+# Moteur PARTAGÉ core/transcription.py → préfère faster-whisper (léger, INT8).
+# Recommandé : `pip install -r requirements-voice.txt` (contient faster-whisper).
+# Repli lourd (PyTorch), uniquement si vous ne voulez PAS faster-whisper :
 # openai-whisper==20250625
 
 # --- Automatisation Web (Computer Use RPA) ----------------------------------
