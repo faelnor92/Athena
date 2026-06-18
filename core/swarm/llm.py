@@ -182,64 +182,14 @@ class _CompletionMixin:
         return out
 
     def _route_target(self, agent: Agent, messages: list):
-        """Mini-routeur : à QUEL spécialiste confier la demande ? L'orchestrateur connaît
-        ainsi la spécialité de chaque agent (extraite de leur prompt) et route tout seul,
-        sans que l'utilisateur ait à nommer l'agent. Indépendant de la langue et des agents.
-        Renvoie : le NOM d'un agent (déléguer à lui) ; "" (aucun → l'orchestrateur répond
-        lui-même) ; None (routeur désactivé/indisponible → ne rien restreindre)."""
-        if os.getenv("DELEGATION_ROUTER", "true").lower() not in ("true", "1", "yes"):
-            return None
-        orch = getattr(self, "orchestrator_name", "Athena")
-        specialists = []
-        for name, a in self.agents.items():
-            if name == orch:
-                continue
-            # Spécialité : le champ `description` explicite (fiable, renseigné à la création)
-            # prime ; sinon repli sur la 1ʳᵉ phrase du system_prompt (rétro-compat).
-            desc = getattr(a, "description", "") or ""
-            if not desc and a.system_prompt:
-                sents = [s.strip() for s in a.system_prompt.replace("\n", " ").split(".") if s.strip()]
-                desc = ". ".join(sents[:1])
-            specialists.append(f"- {name} : {desc}")
-        if not specialists:
-            return ""
-        last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
-        if not str(last_user).strip():
-            return ""
-        names = [n for n in self.agents if n != orch]
+        """À QUEL spécialiste confier la demande ? Routage SÉMANTIQUE par embeddings
+        (core.agent_router) — ZÉRO appel LLM (avant : un juge LLM par run, lent/facturé/biaisé
+        « aucun »/limité au dernier message). Multilingue, prend les 3 derniers messages user.
+        Renvoie : NOM d'agent (déléguer) ; "" (aucun → l'orchestrateur répond) ; None (routeur
+        indisponible → ne rien restreindre)."""
         try:
-            model = os.getenv("FAST_MODEL", "").strip() or agent.model
-            sys_p = (
-                "Tu es un AIGUILLEUR. Voici les agents spécialisés disponibles :\n" + "\n".join(specialists) +
-                "\n\nQuestion : L'utilisateur demande-t-il explicitement la RÉALISATION D'UNE TÂCHE "
-                "qui nécessite l'expertise de l'un de ces spécialistes ? Réponds par le NOM EXACT de l'agent, ou « AUCUN ».\n\n"
-                "RÈGLES STRICTES POUR RÉPONDRE « AUCUN » :\n"
-                "- L'utilisateur donne des informations sur LUI-MÊME (ex: « je suis développeur », « je suis auteur », « mon métier est... »).\n"
-                "- L'utilisateur pose une question générale, dit bonjour, ou discute.\n"
-                "- La demande est ambiguë ou pourrait être gérée par un assistant généraliste.\n\n"
-                "Exemples :\n"
-                "« je m'appelle Bob et je suis correcteur » → AUCUN\n"
-                "« je suis développeur » → AUCUN\n"
-                "« écris-moi un chapitre de roman » → Auteur\n"
-                "« corrige les fautes dans ce texte » → Correcteur\n"
-                "« qui es-tu ? » → AUCUN\n\n"
-                "Ne réponds QUE par un nom de la liste ci-dessus ou AUCUN, sans aucune autre explication."
-            )
-            resp = self._complete(model, [
-                {"role": "system", "content": sys_p},
-                {"role": "user", "content": str(last_user)[:1500]},
-            ], tools_schema=None, allow_continuation=False, allow_fallback=False)
-            ans = (resp.choices[0].message.content or "").strip()
-            # Parsing STRICT, biaisé vers « ne pas déléguer » : on délègue uniquement si la
-            # réponse correspond exactement (token) à un nom d'agent. Toute ambiguïté → False.
-            import re as _re
-            token = _re.sub(r"[^a-z0-9_]", "", (ans.split() or [""])[0].lower())
-            if token == "aucun" or not token:
-                return ""
-            for n in names:
-                if token == n.lower():
-                    return n
-            return ""  # réponse non reconnue → biais « ne pas déléguer »
+            from core import agent_router
+            return agent_router.route(self.agents, getattr(self, "orchestrator_name", "Athena"), messages)
         except Exception as e:
             print(f"[Routeur délégation] indisponible ({e}) — délégation laissée au modèle.")
             return None

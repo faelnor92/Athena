@@ -101,6 +101,12 @@ def _encode(texts):
     return arr / norms
 
 
+def embed_texts(texts):
+    """Embeddings L2-normalisés d'une liste de textes (np.ndarray 2D), ou None si indisponible.
+    Public et réutilisable — p.ex. par le routeur de délégation (core.agent_router)."""
+    return _encode(texts)
+
+
 def _tool_text(func) -> str:
     name = getattr(func, "__name__", "")
     doc = (getattr(func, "__doc__", "") or "").strip().split("\n")[0]
