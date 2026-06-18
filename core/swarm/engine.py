@@ -1772,12 +1772,39 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     "output": result_value
                 })
 
-        # Hook post-tâche d'auto-amélioration (best-effort, ne bloque jamais le retour).
-        self._improve_skills(current_agent, skill_failures, steps)
+        # Auto-critique : SYNCHRONE car elle MODIFIE la réponse (corrige le dernier message).
+        # Désactivée par défaut (AUTO_CRITIC=false). Reste dans le chemin critique à dessein.
         self._auto_critic(current_agent, messages, steps)
-        self._write_experience_report(starting_agent, messages, steps)
-        self._induce_skill(starting_agent, messages, steps)
-        self._update_user_profile(current_agent, messages, steps)
-        self._extract_graph_facts(starting_agent, messages, steps)  # Chronos : mémoire relationnelle
+
+        # Hooks d'apprentissage PASSIFS (mémoire/graphe/skills, invisibles pour l'utilisateur) :
+        # 2-4 appels LLM qui n'affectent PAS la réponse. On les sort du chemin critique → le run
+        # rend la main TOUT DE SUITE (latence, surtout vocal/enchaînements), les écritures se font
+        # en arrière-plan. On fige une COPIE des messages (lecture stable) et un steps JETABLE
+        # (évite de muter la liste déjà rendue à l'appelant ; les badges UI de ces hooks sont
+        # accessoires). Contexte propagé via copy_context → bonne identité utilisateur (Chronos).
+        if os.getenv("ASYNC_POST_HOOKS", "true").lower() in ("true", "1", "yes"):
+            _msgs = list(messages)
+            _orch, _cur, _fails = starting_agent, current_agent, list(skill_failures)
+
+            def _bg_hooks():
+                _trash = []   # steps jetable (hors du run rendu)
+                for _fn, _ag in ((self._improve_skills, _cur), (self._write_experience_report, _orch),
+                                 (self._induce_skill, _orch), (self._update_user_profile, _cur),
+                                 (self._extract_graph_facts, _orch)):
+                    try:
+                        _fn(_ag, _fails if _fn is self._improve_skills else _msgs, _trash)
+                    except Exception as _e:
+                        print(f"[Hook arrière-plan] {getattr(_fn, '__name__', '?')} : {_e}")
+
+            _ctx = contextvars.copy_context()
+            threading.Thread(target=lambda: _ctx.run(_bg_hooks),
+                             name="athena-post-hooks", daemon=True).start()
+        else:
+            # Mode SYNCHRONE (ancien comportement) si ASYNC_POST_HOOKS=false.
+            self._improve_skills(current_agent, skill_failures, steps)
+            self._write_experience_report(starting_agent, messages, steps)
+            self._induce_skill(starting_agent, messages, steps)
+            self._update_user_profile(current_agent, messages, steps)
+            self._extract_graph_facts(starting_agent, messages, steps)
 
         return current_agent, messages, steps
