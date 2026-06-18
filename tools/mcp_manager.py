@@ -41,6 +41,41 @@ def _resolve_config_path() -> str:
     return (os.getenv("MCP_CONFIG_PATH") or "").strip() or "mcp_servers.json"
 
 
+def _consolidate_ha(servers: Dict[str, dict]) -> Dict[str, dict]:
+    """Fusionne les entrées Home Assistant en DOUBLON sous un seul nom canonique.
+
+    Au fil des presets, le serveur HA a porté deux noms (`home-assistant` historique puis
+    `homeassistant`). Deux entrées coexistant exposent les MÊMES outils HA : la seconde
+    chargée ÉCRASE la première → si l'une a un token vide/périmé, les appels HA partent
+    sur la mauvaise et échouent (« le mot de passe HA ne fonctionne plus »).
+
+    On garde l'entrée dont le `HOMEASSISTANT_TOKEN` est le plus exploitable (non vide, puis
+    le plus long), sous le nom canonique `homeassistant`, et on retire le doublon.
+    N'altère QUE la vue en mémoire (le fichier n'est pas réécrit ici)."""
+    if not isinstance(servers, dict):
+        return servers
+    canon, legacy = "homeassistant", "home-assistant"
+    a, b = servers.get(canon), servers.get(legacy)
+    if not (isinstance(a, dict) or isinstance(b, dict)):
+        return servers
+    if isinstance(a, dict) and isinstance(b, dict):
+        def _tok(conf):
+            return str(((conf or {}).get("env") or {}).get("HOMEASSISTANT_TOKEN", "") or "").strip()
+        ta, tb = _tok(a), _tok(b)
+        # On privilégie un token non vide ; à défaut on garde le canonique. Le doublon part.
+        keep = a if (ta and (not tb or len(ta) >= len(tb))) else b
+        out = {k: v for k, v in servers.items() if k not in (canon, legacy)}
+        out[canon] = keep
+        return out
+    if isinstance(b, dict) and not isinstance(a, dict):
+        # Seul l'ancien nom existe → on le renomme en canonique (place préservée).
+        out = {}
+        for k, v in servers.items():
+            out[canon if k == legacy else k] = v
+        return out
+    return servers
+
+
 class MCPManager:
     def __init__(self, config_path: str = "mcp_servers.json"):
         self.config_path = (config_path or "").strip() or "mcp_servers.json"
@@ -65,7 +100,8 @@ class MCPManager:
             return {}
         # Format Claude Desktop : {"mcpServers": {...}} ou directement {...}
         servers = data.get("mcpServers", data) if isinstance(data, dict) else {}
-        return servers or {}
+        # Auto-réparation : un seul serveur HA (fusion des doublons homeassistant/home-assistant).
+        return _consolidate_ha(servers or {})
 
     @staticmethod
     def _is_sensitive(name: str, conf: dict) -> bool:

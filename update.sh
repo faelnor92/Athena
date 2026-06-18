@@ -46,15 +46,28 @@ if [ -x ".venv/bin/python" ] && [ -x "$HA_MCP_BIN" ] && [ -f "$MCP_FILE" ]; then
     .venv/bin/python - "$HA_MCP_BIN" "$MCP_FILE" <<'PYHA'
 import json, sys
 bin_path, path = sys.argv[1], sys.argv[2]
+def _tok(c):
+    return str(((c or {}).get("env") or {}).get("HOMEASSISTANT_TOKEN", "") or "").strip()
 try:
     d = json.load(open(path, encoding="utf-8"))
     srv = d.get("mcpServers", d)
     changed = False
-    for key in ("home-assistant", "homeassistant"):
-        ha = srv.get(key)
-        if isinstance(ha, dict):
-            ha["command"] = bin_path; ha.setdefault("args", [])
-            ha.pop("url", None); ha.pop("transport", None); changed = True
+    # 1) FUSION des doublons : un seul serveur HA sous le nom canonique 'homeassistant'.
+    #    Deux entrées (ancien 'home-assistant' + nouveau 'homeassistant') exposent les mêmes
+    #    outils → la seconde écrase la première ; si son token est vide/périmé, HA casse.
+    a, b = srv.get("homeassistant"), srv.get("home-assistant")
+    if isinstance(a, dict) and isinstance(b, dict):
+        ta, tb = _tok(a), _tok(b)
+        keep = a if (ta and (not tb or len(ta) >= len(tb))) else b
+        srv.pop("home-assistant", None); srv["homeassistant"] = keep; changed = True
+        print("\033[0;32m✔ Doublon Home Assistant fusionné (token le plus exploitable conservé).\033[0m")
+    elif isinstance(b, dict) and not isinstance(a, dict):
+        srv["homeassistant"] = srv.pop("home-assistant"); changed = True
+    # 2) FORCE le STDIO (chemin du binaire ha-mcp) et retire l'URL périmée qui primait.
+    ha = srv.get("homeassistant")
+    if isinstance(ha, dict):
+        ha["command"] = bin_path; ha.setdefault("args", [])
+        ha.pop("url", None); ha.pop("transport", None); changed = True
     if changed:
         json.dump(d, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
         print("\033[0;32m✔ Entrée Home Assistant réparée en STDIO.\033[0m")
