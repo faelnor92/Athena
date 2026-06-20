@@ -21,7 +21,7 @@ def test_react_detection_et_scaffold():
     assert r2["type"] == "react"
     sc = react_scaffold(r["code"])
     assert all(x in sc for x in ["react@18", "babel", 'id="root"', "createRoot"]), "scaffold incomplet"
-    assert "import " not in sc.split("text/babel")[1], "import non retiré du composant"
+    assert "import " not in sc.split("text/plain")[1], "import non retiré du composant"
     # un vrai HTML ne doit PAS être pris pour du react
     assert parse_artifact_response("```html\n<!DOCTYPE html><html><body>x</body></html>\n```")["type"] == "html"
     print("OK test_react_detection_et_scaffold")

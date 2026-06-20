@@ -56,9 +56,14 @@ class _AgentsMixin:
                 description=agent_data.get("description", "")
             )
             # Ajouter les outils standards
-            for tool_name in agent_data.get("tools", []):
-                if tool_name in AVAILABLE_TOOLS:
-                    agent.tools.append(AVAILABLE_TOOLS[tool_name])
+            agent_tools = agent_data.get("tools", [])
+            if agent_tools == "*":
+                for tool in AVAILABLE_TOOLS.values():
+                    agent.tools.append(tool)
+            elif isinstance(agent_tools, list):
+                for tool_name in agent_tools:
+                    if tool_name in AVAILABLE_TOOLS:
+                        agent.tools.append(AVAILABLE_TOOLS[tool_name])
 
             self.agents[agent.name] = agent
 

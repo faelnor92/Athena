@@ -12,6 +12,7 @@
     <meta name="apple-mobile-web-app-title" content="__APP_NAME__">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <link rel="stylesheet" href="style.css?v=20260616_setD2">
+
     <!-- Open Space 2.0 : bureau isométrique (doit venir après style.css) -->
     <link rel="stylesheet" href="office.css?v=20260609_os6">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
@@ -20,6 +21,11 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Fira+Code:wght@400;500&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
+    <!-- xterm.js pour le terminal interactif -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 </head>
 <body>
     <!-- Bandeau affiché quand le serveur backend est injoignable (évite une UI vide silencieuse). -->
@@ -290,6 +296,11 @@
                                     <span>Glissez ou cliquez pour téléverser un fichier</span>
                                     <input type="file" id="file-upload-input" style="display: none;">
                                 </div>
+                                <div style="display: flex; gap: 6px; margin: 6px 0;">
+                                    <input type="text" id="global-search-input" placeholder="🔍 Rechercher dans le code..." style="flex: 1; padding: 6px 10px; font-size: 0.78rem; background: rgba(5,7,16,0.5); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #fff; outline: none; transition: border-color 0.2s;">
+                                    <button id="btn-clear-search" class="btn btn-secondary" style="margin:0; padding:2px 8px; font-size:0.75rem; height: auto; display:none;" title="Effacer la recherche">❌</button>
+                                </div>
+                                <div id="global-search-results" class="glass" style="display: none; max-height: 200px; overflow-y: auto; margin-bottom: 8px; padding: 8px; font-size: 0.75rem; border-color: rgba(0, 240, 255, 0.15); border-radius: 8px;"></div>
                                 <div id="files-list-container" class="glass files-list-scroller">
                                     <!-- Généré en JS -->
                                 </div>
@@ -304,6 +315,8 @@
                                     <span id="file-viewer-title">Sélectionnez un fichier…</span>
                                     <span id="file-viewer-reloaded" style="font-size: 0.72rem; color: var(--accent-cyan); margin-left: 8px;"></span>
                                     <span style="flex:1;"></span>
+                                    <button id="btn-lint-file" class="btn btn-secondary" style="display: none; padding: 2px 10px; font-size: 0.75rem; border-radius: 4px; margin-right: 6px;" title="Analyser le code (Linter)">🔍 Analyser</button>
+                                    <button id="btn-autofix-file" class="btn btn-primary" style="display: none; padding: 2px 10px; font-size: 0.75rem; border-radius: 4px; margin-right: 6px; background: linear-gradient(135deg, #00ff66 0%, #00b344 100%); border: none; color: #000; font-weight: bold;" title="Corriger automatiquement avec l'IA">🔧 Auto-Fix IA</button>
                                     <button id="btn-save-file" class="btn btn-primary" style="display: none; padding: 2px 10px; font-size: 0.75rem; border-radius: 4px;" title="Enregistrer (Ctrl+S)">💾 Enregistrer</button>
                                     <button id="btn-download-file" class="btn btn-primary" style="display: none; padding: 2px 8px; font-size: 0.75rem; border-radius: 4px;">📥</button>
                                 </div>
@@ -313,6 +326,15 @@
                                 <div id="editor-host" style="display:none;"></div>
                                 <div id="editor-preview" style="display:none; overflow:auto; height:60vh; padding:6px;"></div>
                                 <pre id="file-viewer-pre" class="file-pre-container"></pre>
+                                
+                                <!-- Panneau de Diagnostics / Linter -->
+                                <div id="file-linter-panel" style="display: none; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(255,255,255,0.1); padding: 10px; font-family: monospace; font-size: 0.8rem; max-height: 200px; overflow-y: auto; z-index: 10;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px;">
+                                        <span style="font-weight: bold; color: var(--accent-cyan); display: flex; align-items: center; gap: 6px;">🩺 Diagnostics & Linter</span>
+                                        <button id="btn-close-linter-panel" style="background: none; border: none; color: #fff; cursor: pointer; opacity: 0.7; font-size: 1rem; padding: 0 4px;">✖</button>
+                                    </div>
+                                    <div id="file-linter-results" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -335,9 +357,9 @@
                         </div>
                         <div style="flex: 1; min-height: 0; position: relative; border-radius: 0 0 10px 10px; overflow: hidden;">
                             <iframe id="athenadesign-frame"
-                                    src="/athenadesign/?v=20260610_del"
+                                    src="/athenadesign/?v=20260618_warn"
                                     style="width: 100%; height: 100%; border: none; background: #0a0f1e;"
-                                    allow="clipboard-read; clipboard-write"
+                                    
                                     loading="lazy">
                             </iframe>
                             <div id="athenadesign-offline-overlay" style="display: none; position: absolute; inset: 0; background: rgba(10,15,30,0.95); flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: #fff; backdrop-filter: blur(6px);">
@@ -1861,6 +1883,25 @@
 
     <!-- Bouton flottant de Chat pour mobiles & tablettes -->
     <button id="btn-mobile-chat-toggle" class="mobile-chat-toggle-btn" title="Afficher/Masquer le Chat">💬</button>
+
+    <!-- MODALE : PREVISUALISATION DU DIFF DE CODE -->
+    <div class="modal-overlay" id="diff-preview-modal" style="display: none; z-index: 6020;">
+        <div class="modal-card glass animate-zoom-in" style="max-width: 800px; width: 90%; max-height: 85vh; display: flex; flex-direction: column; gap: 16px;">
+            <header class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                <h3 style="margin: 0; color: var(--color-Athena); font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">📊 Aperçu des Modifications</h3>
+                <span id="diff-file-path" style="font-size: 0.8rem; font-family: monospace; opacity: 0.8; word-break: break-all;"></span>
+            </header>
+            
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: hidden; padding: 0;">
+                <div id="diff-container" style="flex: 1; overflow-y: auto; background: #0b0f19; border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; font-family: 'Fira Code', monospace; font-size: 0.8rem; white-space: pre-wrap; line-height: 1.5;"></div>
+                
+                <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 8px;">
+                    <button id="btn-diff-reject" class="btn btn-secondary" style="font-size: 0.8rem; padding: 6px 12px; border-radius: 6px;">❌ Rejeter</button>
+                    <button id="btn-diff-accept" class="btn btn-primary" style="font-size: 0.8rem; padding: 6px 16px; border-radius: 6px; font-weight: bold;">✅ Appliquer</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- PrismJS pour la coloration syntaxique dans l'explorateur -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>

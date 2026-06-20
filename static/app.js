@@ -523,6 +523,10 @@ function selectActiveTab(tab, view, extraAction = null) {
     // que si l'ancienne vue console est réellement affichée (donc plus jamais en pratique).
     if (typeof setConsoleTreeAutoRefresh === "function") setConsoleTreeAutoRefresh(view === viewConsole);
 
+    if (view === viewConsole || view === viewFiles) {
+        if (typeof fitTerminal === "function") setTimeout(fitTerminal, 150);
+    }
+
     if (extraAction) extraAction();
 }
 
@@ -1614,6 +1618,31 @@ function rebuildOfficeFloor() {
 // LOGIQUE DE COMMUNICATON CHAT & ESSAIM
 // =========================================================================
 function logToTerminal(text, type = "system", isHtml = false) {
+    if (termInstance) {
+        let prefix = "";
+        let suffix = "";
+        if (type === "system") {
+            prefix = "\x1b[1;34m[Système] ";
+            suffix = "\x1b[0m";
+        } else if (type === "error") {
+            prefix = "\x1b[1;31m[Erreur] ";
+            suffix = "\x1b[0m";
+        } else if (type === "info") {
+            prefix = "\x1b[1;32m[Info] ";
+            suffix = "\x1b[0m";
+        } else if (type === "transition") {
+            prefix = "\x1b[1;35m";
+            suffix = "\x1b[0m";
+        }
+        let cleanText = text;
+        if (isHtml) {
+            const div = document.createElement("div");
+            div.innerHTML = text;
+            cleanText = div.textContent || div.innerText || text;
+        }
+        termInstance.writeln(prefix + cleanText + suffix);
+        return;
+    }
     const line = document.createElement("div");
     line.className = `log-line ${type}`;
     
@@ -1937,6 +1966,16 @@ function _renderTermPlanRows(el) {
     });
 }
 function renderPlanTerminal(items) {
+    if (termInstance) {
+        _termPlanItems = (items || []).map(it => ({ text: it.text, status: it.status || "pending" }));
+        termInstance.writeln("\r\n\x1b[1;36m┌── PLAN D'EXÉCUTION ─────────────────────────────────┐\x1b[0m");
+        _termPlanItems.forEach((it, idx) => {
+            const statusIcon = it.status === "done" ? "🟢" : (it.status === "running" ? "🔵" : "⚪");
+            termInstance.writeln(`│ [${idx}] ${statusIcon} ${it.text}`);
+        });
+        termInstance.writeln("\x1b[1;36m└─────────────────────────────────────────────────────┘\x1b[0m");
+        return;
+    }
     if (!logsTerminal) return;
     _termPlanItems = (items || []).map(it => ({ text: it.text, status: it.status || "pending" }));
     const el = document.createElement("div");
@@ -1948,6 +1987,13 @@ function renderPlanTerminal(items) {
     _termPlanEl = el;
 }
 function updatePlanStepTerminal(index, status) {
+    if (termInstance) {
+        if (!_termPlanItems || !_termPlanItems[index]) return;
+        _termPlanItems[index].status = status;
+        const statusIcon = status === "done" ? "🟢" : (status === "running" ? "🔵" : "⚪");
+        termInstance.writeln(`\x1b[1;34m[Plan] Étape [${index}] ${statusIcon} : ${_termPlanItems[index].text}\x1b[0m`);
+        return;
+    }
     if (!_termPlanEl || !_termPlanItems[index]) return;
     _termPlanItems[index].status = status;
     _renderTermPlanRows(_termPlanEl);
@@ -2119,7 +2165,9 @@ async function playAgentSteps(steps, immediate = false) {
                 }
 
                 else if (step.type === "thought") {
-                    // Narration interne avant un outil : log discret, pas de bulle de chat.
+                    // Les thoughts ne créent plus de bulle de chat séparée.
+                    // Ils sont intégrés dans la bulle de l'agent via appendAgentMessage.
+                    // On les log uniquement dans le panneau orchestrateur.
                     logToOrchestrator(`💭 ${step.agent} : ${(step.content || "").slice(0, 120)}`, "system");
                 }
 
@@ -2313,17 +2361,47 @@ function appendAgentMessage(agentName, content, id = null) {
     msg.className = `message agent-msg agent-${agentName} animate-fade-in`;
     if (id) msg.setAttribute("data-msg-id", id);
     
+    // Extraction des pensées (thoughts) pour les afficher dans un cadre unique pliable.
+    let thoughts = [];
+    let cleanContent = String(content);
+    
+    // 1. Closed tags
+    const closedRegex = /<(?:thought|thinking)>([\s\S]*?)<\/(?:thought|thinking)>/gi;
+    cleanContent = cleanContent.replace(closedRegex, (match, thoughtText) => {
+        if (thoughtText.trim()) {
+            thoughts.push(thoughtText.trim());
+        }
+        return "";
+    });
+    
+    // 2. Unclosed tags
+    const openTags = ["<thought>", "<thinking>"];
+    openTags.forEach(tag => {
+        if (cleanContent.includes(tag)) {
+            const parts = cleanContent.split(tag, 2);
+            cleanContent = parts[0];
+            if (parts[1] && parts[1].trim()) {
+                thoughts.push(parts[1].trim());
+            }
+        }
+    });
+    
+    cleanContent = cleanContent.trim();
+    if (!cleanContent && thoughts.length > 0) {
+        cleanContent = "(A terminé sa réflexion)";
+    }
+    
     // Rendu SÛR : on extrait du contenu BRUT les blocs de code et les images (en
     // construisant un HTML sûr), on échappe TOUT le reste, puis on réinsère.
-    let raw = _stripEmotionTags(String(content));
+    let raw = _stripEmotionTags(cleanContent);
     const codeBlocks = [];
     raw = raw.replace(/```(?:[a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (m, code) => {
         codeBlocks.push(`<pre><code>${escapeHtml(code)}</code></pre>`);
-        return ` CODE${codeBlocks.length - 1} `;
+        return ` CODE${codeBlocks.length - 1} `;
     });
     // Détection d'artifacts prévisualisables (HTML/JS/React) — bouton « Aperçu ».
     const artifactIdx = [];
-    String(content).replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (mm, lang, code) => {
+    cleanContent.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (mm, lang, code) => {
         const kind = _artifactKind(lang, code);
         if (kind) artifactIdx.push(ARTIFACTS.push({ code, kind }) - 1);
         return mm;
@@ -2331,24 +2409,24 @@ function appendAgentMessage(agentName, content, id = null) {
     const blocks = [];
     raw = raw.replace(/!\[(.*?)\]\((.*?)\)/g, (m, alt, url) => {
         blocks.push(_imageCardHtml(url, alt));
-        return ` BLK${blocks.length - 1} `;
+        return ` BLK${blocks.length - 1} `;
     });
 
     let formattedContent = escapeHtml(raw);
     formattedContent = _mdInline(formattedContent);
     formattedContent = formattedContent.replace(/\n/g, "<br>");
     formattedContent = formattedContent
-        .replace(/ CODE(\d+) /g, (m, i) => codeBlocks[+i])
-        .replace(/ BLK(\d+) /g, (m, i) => blocks[+i]);
+        .replace(/ CODE(\d+) /g, (m, i) => codeBlocks[+i])
+        .replace(/ BLK(\d+) /g, (m, i) => blocks[+i]);
 
     // Détection automatique des fichiers d'images générées bruts (image_generee_xxxx.png)
     const imgRegex = /image_generee_\d+\.png/gi;
-    const foundImages = [...new Set(content.match(imgRegex) || [])];
+    const foundImages = [...new Set(cleanContent.match(imgRegex) || [])];
 
     let imagesHtml = "";
     if (foundImages.length > 0) {
         foundImages.forEach(filename => {
-            // Éviter le doublon si déjà rendu par le parser markdown
+            // Évitier le doublon si déjà rendu par le parser markdown
             if (!formattedContent.includes("chat-generated-image-card") || !formattedContent.includes(filename)) {
                 imagesHtml += _imageCardHtml(`/api/workspace/download?path=${encodeURIComponent(filename)}`, filename);
             }
@@ -2366,13 +2444,49 @@ function appendAgentMessage(agentName, content, id = null) {
         </div>`;
     }
 
+    let thoughtsHtml = "";
+    if (thoughts.length > 0) {
+        const fullThoughts = thoughts.join("\n\n");
+        thoughtsHtml = `
+            <details class="thought-details">
+                <summary class="thought-summary">💭 <span>Réflexion de ${escapeHtml(agentName)}</span></summary>
+                <div class="thought-body">${escapeHtml(fullThoughts).replace(/\n/g, "<br>")}</div>
+            </details>
+        `;
+    }
+
     msg.innerHTML = `
         <div class="message-meta">
             <span class="agent-tag" style="color: ${getAgentColor(agentName)}">${escapeHtml(agentName)}</span>
         </div>
+        ${thoughtsHtml}
         <div class="message-content">${formattedContent}${imagesHtml}</div>
         ${actionsHtml}
     `;
+    chatMessages.appendChild(msg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function appendThoughtMessage(agentName, content) {
+    if (!content) return;
+    const msg = document.createElement("div");
+    msg.className = `message thought-msg agent-${agentName} animate-fade-in`;
+    
+    const details = document.createElement("details");
+    details.className = "thought-details";
+    
+    const summary = document.createElement("summary");
+    summary.className = "thought-summary";
+    summary.innerHTML = `💭 <span>Réflexion de ${escapeHtml(agentName)}</span>`;
+    
+    const body = document.createElement("div");
+    body.className = "thought-body";
+    body.innerHTML = escapeHtml(content).replace(/\n/g, "<br>");
+    
+    details.appendChild(summary);
+    details.appendChild(body);
+    msg.appendChild(details);
+    
     chatMessages.appendChild(msg);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -5407,7 +5521,8 @@ function initSpeech() {
             
             // Soumission automatique après transcription
             setTimeout(() => {
-                chatForm.dispatchEvent(new Event("submit"));
+                if (typeof chatForm.requestSubmit === "function") chatForm.requestSubmit();
+                else chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
             }, 500);
         };
         
@@ -6521,6 +6636,130 @@ document.addEventListener("click", (e) => {
 // GESTION DU TERMINAL INTERACTIF CODER (Claude Code / OpenCode style)
 const terminalCoderInput = document.getElementById("terminal-coder-input");
 const btnSendTerminal = document.getElementById("btn-send-terminal");
+
+let termInstance = null;
+let termFitAddon = null;
+let terminalWs = null;
+
+function initXterm() {
+    if (typeof Terminal === "undefined") {
+        console.warn("xterm.js is not loaded yet.");
+        return;
+    }
+    const container = document.getElementById("logs-terminal");
+    if (!container) return;
+    container.innerHTML = "";
+    container.style.padding = "0";
+
+    termInstance = new Terminal({
+        cursorBlink: true,
+        theme: {
+            background: "#05070c",
+            foreground: "#f1f5f9",
+            cursor: "#00f0ff",
+            selectionBackground: "rgba(0, 240, 255, 0.3)",
+            black: "#000000",
+            red: "#ef4444",
+            green: "#22c55e",
+            yellow: "#eab308",
+            blue: "#3b82f6",
+            magenta: "#a855f7",
+            cyan: "#06b6d4",
+            white: "#cbd5e1"
+        },
+        fontFamily: "'Fira Code', monospace",
+        fontSize: 13,
+        convertEol: true
+    });
+
+    termFitAddon = new FitAddon.FitAddon();
+    termInstance.loadAddon(termFitAddon);
+    termInstance.open(container);
+    termFitAddon.fit();
+
+    window.addEventListener("resize", () => {
+        if (termFitAddon) {
+            try { termFitAddon.fit(); } catch(e){}
+        }
+    });
+
+    termInstance.writeln("\x1b[1;36m[Système] Console interactive Codeur démarrée.\x1b[0m");
+
+    termInstance.onData(data => {
+        if (terminalWs && terminalWs.readyState === WebSocket.OPEN) {
+            terminalWs.send(data);
+        }
+    });
+
+    connectTerminalWs();
+}
+
+function connectTerminalWs() {
+    if (terminalWs) {
+        try { terminalWs.close(); } catch(e){}
+    }
+    const token = (typeof sessionToken !== "undefined" ? sessionToken : (localStorage.getItem("token") || ""));
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const projectId = _consoleProjectId() || "";
+    terminalWs = new WebSocket(`${protocol}//${location.host}/api/terminal/ws?token=${encodeURIComponent(token)}&project_id=${encodeURIComponent(projectId)}`);
+    
+    terminalWs.onopen = () => {
+        sendTerminalResize();
+    };
+
+    terminalWs.onmessage = (event) => {
+        if (termInstance) {
+            if (event.data instanceof Blob) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    termInstance.write(new Uint8Array(reader.result));
+                };
+                reader.readAsArrayBuffer(event.data);
+            } else {
+                termInstance.write(event.data);
+            }
+        }
+    };
+
+    terminalWs.onclose = () => {
+        if (termInstance) {
+            termInstance.writeln("\r\n\x1b[1;31m[WebSocket] Déconnecté. Reconnexion dans 5 secondes...\x1b[0m");
+        }
+        setTimeout(connectTerminalWs, 5000);
+    };
+
+    terminalWs.onerror = () => {
+        if (termInstance) {
+            termInstance.writeln("\r\n\x1b[1;31m[WebSocket] Erreur de connexion.\x1b[0m");
+        }
+    };
+}
+
+function sendTerminalResize() {
+    if (terminalWs && terminalWs.readyState === WebSocket.OPEN && termInstance) {
+        terminalWs.send(JSON.stringify({
+            type: "resize",
+            cols: termInstance.cols,
+            rows: termInstance.rows
+        }));
+    }
+}
+
+function fitTerminal() {
+    if (termFitAddon) {
+        try {
+            termFitAddon.fit();
+            sendTerminalResize();
+        } catch(e){}
+    }
+}
+
+// Initialise xterm dès que possible
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initXterm);
+} else {
+    setTimeout(initXterm, 50);
+}
 
 async function loadTerminalProjects() {
     const sel = document.getElementById("terminal-project-select");
@@ -8537,6 +8776,7 @@ async function _selectProject(id) {
             body: JSON.stringify({ id: id || "" }),
         });
         await loadProjects();  // met à jour le bouton Partager selon le nouveau projet
+        if (typeof connectTerminalWs === "function") connectTerminalWs();
         // Le projet actif change le workspace → recharger l'explorateur.
         if (typeof loadWorkspaceFiles === "function") loadWorkspaceFiles();
     } catch (e) { /* silencieux */ }
@@ -9019,13 +9259,31 @@ function _ideActivate(path) {
         t._loading = true; _cm.swapDoc(t.doc); t._loading = false;
         _collabMtime = t.mtime || 0;
         if (saveBtn) saveBtn.style.display = "inline-block";
+        
+        // Afficher boutons Linter / Auto-Fix pour les extensions supportées
+        const ext = path.split('.').pop().toLowerCase();
+        const supportable = ["py", "json", "js", "html", "css", "ts"].includes(ext);
+        const btnLint = document.getElementById("btn-lint-file");
+        const btnAutofix = document.getElementById("btn-autofix-file");
+        if (btnLint) btnLint.style.display = supportable ? "inline-block" : "none";
+        if (btnAutofix) btnAutofix.style.display = supportable ? "inline-block" : "none";
+        
         setTimeout(() => _cm.refresh(), 0);
     } else {
         host.style.display = "none";
         if (saveBtn) saveBtn.style.display = "none";
+        const btnLint = document.getElementById("btn-lint-file");
+        const btnAutofix = document.getElementById("btn-autofix-file");
+        if (btnLint) btnLint.style.display = "none";
+        if (btnAutofix) btnAutofix.style.display = "none";
         if (prev) prev.style.display = "block";
         _idePreview(path, t);
     }
+    
+    // Fermer ou masquer le panneau linter lors du changement de fichier
+    const lintPanel = document.getElementById("file-linter-panel");
+    if (lintPanel) lintPanel.style.display = "none";
+    
     _ideRenderTabs();
 }
 
@@ -9174,6 +9432,7 @@ async function _ideReloadFromDisk(path) {
         h = Math.max(80, Math.min(h, rect.height - 160));      // terminal ≥80px, haut ≥160px
         zone.style.flex = "0 0 " + Math.round(h) + "px";
         refreshCM();
+        if (typeof fitTerminal === "function") fitTerminal();
     });
     window.addEventListener("mouseup", () => {
         if (!dragging) return;
@@ -9401,3 +9660,304 @@ function detachCodeEditor() {
         }
     }, 1000);
 }
+
+// ============================================================================
+// RICH IDE ADDONS: GLOBAL SEARCH, VISUAL DIFF PREVIEW, LINTER & AUTOFIX
+// ============================================================================
+(function() {
+    // Inject custom IDE and linter style rules
+    const style = document.createElement('style');
+    style.innerHTML = `
+        .highlight-line { background: rgba(0, 240, 255, 0.22) !important; }
+        .search-result-item:hover { background: rgba(255, 255, 255, 0.05); }
+    `;
+    document.head.appendChild(style);
+
+    // 1. GLOBAL SEARCH
+    const searchInput = document.getElementById("global-search-input");
+    const clearSearchBtn = document.getElementById("btn-clear-search");
+    const searchResults = document.getElementById("global-search-results");
+    let searchDebounce = null;
+
+    if (searchInput) {
+        searchInput.addEventListener("input", () => {
+            if (searchDebounce) clearTimeout(searchDebounce);
+            const q = searchInput.value.trim();
+            if (!q) {
+                if (clearSearchBtn) clearSearchBtn.style.display = "none";
+                if (searchResults) { searchResults.style.display = "none"; searchResults.innerHTML = ""; }
+                return;
+            }
+            if (clearSearchBtn) clearSearchBtn.style.display = "block";
+            
+            searchDebounce = setTimeout(async () => {
+                const projectId = (typeof _consoleProjectId === "function") ? _consoleProjectId() : null;
+                const projQ = projectId ? `&project_id=${encodeURIComponent(projectId)}` : "";
+                try {
+                    const res = await apiFetch(`/api/workspace/search?q=${encodeURIComponent(q)}${projQ}`);
+                    if (!res.ok) throw new Error("Search failed");
+                    const data = await res.json();
+                    
+                    if (searchResults) {
+                        searchResults.style.display = "block";
+                        if (data.length === 0) {
+                            searchResults.innerHTML = `<div style="opacity: 0.6; padding: 4px; text-align: center;">Aucun résultat</div>`;
+                            return;
+                        }
+                        searchResults.innerHTML = data.map(r => `
+                            <div class="search-result-item" style="cursor: pointer; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.03); border-radius: 4px;" data-path="${r.path}" data-line="${r.line}">
+                                <div style="font-weight: bold; color: var(--accent-cyan); font-family: monospace; font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${r.path}:${r.line}</div>
+                                <div style="opacity: 0.8; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.7rem;">${escapeHtml(r.content)}</div>
+                            </div>
+                        `).join('');
+                    }
+                } catch (e) {
+                    console.error("Search API error:", e);
+                }
+            }, 300);
+        });
+    }
+
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener("click", () => {
+            if (searchInput) searchInput.value = "";
+            clearSearchBtn.style.display = "none";
+            if (searchResults) { searchResults.style.display = "none"; searchResults.innerHTML = ""; }
+        });
+    }
+
+    if (searchResults) {
+        searchResults.addEventListener("click", async (e) => {
+            const item = e.target.closest(".search-result-item");
+            if (!item) return;
+            const path = item.getAttribute("data-path");
+            const line = parseInt(item.getAttribute("data-line"));
+            if (path && line) {
+                await openInEditor(path);
+                if (typeof _cm !== "undefined" && _cm) {
+                    _cm.setCursor({line: line - 1, ch: 0});
+                    _cm.scrollIntoView({line: line - 1, ch: 0}, 200);
+                    _cm.focus();
+                    const lineHandle = _cm.addLineClass(line - 1, "background", "highlight-line");
+                    setTimeout(() => {
+                        _cm.removeLineClass(lineHandle, "background", "highlight-line");
+                    }, 2500);
+                }
+            }
+        });
+    }
+
+    function escapeHtml(str) {
+        return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    // 2. VISUAL DIFF PREVIEW (AI EDITS)
+    let activeApprovalId = null;
+
+    function renderDiff(oldContent, newContent) {
+        if (typeof Diff === "undefined") {
+            return `<div style="color: #ff453a; padding: 10px;">Erreur : Librairie diff.js indisponible</div>`;
+        }
+        const diff = Diff.diffLines(oldContent, newContent);
+        let html = "";
+        diff.forEach(part => {
+            const lines = part.value.split("\n");
+            if (lines.length > 1 && lines[lines.length - 1] === "") {
+                lines.pop();
+            }
+            lines.forEach(line => {
+                if (part.added) {
+                    html += `<div style="background-color: rgba(46, 160, 67, 0.15); color: #44db5c; border-left: 3px solid #2ea043; padding: 2px 8px; font-family: monospace; white-space: pre-wrap;">+ ${line}</div>`;
+                } else if (part.removed) {
+                    html += `<div style="background-color: rgba(248, 81, 73, 0.15); color: #ff453a; border-left: 3px solid #f85149; padding: 2px 8px; font-family: monospace; white-space: pre-wrap;">- ${line}</div>`;
+                } else {
+                    html += `<div style="color: #abb2bf; padding: 2px 8px; font-family: monospace; white-space: pre-wrap;">  ${line}</div>`;
+                }
+            });
+        });
+        return html;
+    }
+
+    async function checkPendingApprovals() {
+        try {
+            const res = await apiFetch("/api/approvals");
+            if (!res.ok) return;
+            const data = await res.json();
+            const pending = data.pending || [];
+            
+            const codeApproval = pending.find(a => 
+                (a.channel === "web" || a.channel === "local" || !a.channel) &&
+                ["write_file", "edit_file", "apply_patch"].includes(a.tool)
+            );
+            
+            const modal = document.getElementById("diff-preview-modal");
+            if (codeApproval) {
+                if (activeApprovalId === codeApproval.id) return;
+                
+                activeApprovalId = codeApproval.id;
+                const path = codeApproval.args.path || codeApproval.args.TargetFile || "Fichier";
+                const oldContent = codeApproval.args._old_content || "";
+                const newContent = codeApproval.args._new_content || "";
+                
+                const pathEl = document.getElementById("diff-file-path");
+                if (pathEl) pathEl.textContent = path;
+                
+                const container = document.getElementById("diff-container");
+                if (container) container.innerHTML = renderDiff(oldContent, newContent);
+                
+                if (modal) modal.style.display = "flex";
+            } else {
+                if (modal && modal.style.display === "flex") {
+                    modal.style.display = "none";
+                    activeApprovalId = null;
+                }
+            }
+        } catch (err) {
+            console.error("Error polling approvals:", err);
+        }
+    }
+
+    async function sendApprovalDecision(approve) {
+        if (!activeApprovalId) return;
+        try {
+            const res = await apiFetch(`/api/approvals/${activeApprovalId}/decision`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ approve })
+            });
+            if (res.ok) {
+                const modal = document.getElementById("diff-preview-modal");
+                if (modal) modal.style.display = "none";
+                activeApprovalId = null;
+                pushNotification("Athena", approve ? "✅ Modification acceptée et appliquée !" : "❌ Modification rejetée.", "success");
+            } else {
+                pushNotification("Athena", "⚠️ Échec de la transmission de la décision.", "warning");
+            }
+        } catch (e) {
+            console.error("Error sending decision:", e);
+        }
+    }
+
+    const btnDiffAccept = document.getElementById("btn-diff-accept");
+    const btnDiffReject = document.getElementById("btn-diff-reject");
+    if (btnDiffAccept) btnDiffAccept.addEventListener("click", () => sendApprovalDecision(true));
+    if (btnDiffReject) btnDiffReject.addEventListener("click", () => sendApprovalDecision(false));
+
+    setInterval(checkPendingApprovals, 1500);
+
+    // 3. LINTER & AUTOFIX
+    const btnLint = document.getElementById("btn-lint-file");
+    const btnAutofix = document.getElementById("btn-autofix-file");
+    const lintPanel = document.getElementById("file-linter-panel");
+    const lintResults = document.getElementById("file-linter-results");
+    const btnCloseLintPanel = document.getElementById("btn-close-linter-panel");
+
+    if (btnLint) {
+        btnLint.addEventListener("click", async () => {
+            if (typeof ideActive === "undefined" || !ideActive) {
+                pushNotification("Athena", "Aucun fichier actif à analyser.", "warning");
+                return;
+            }
+            if (lintPanel) lintPanel.style.display = "block";
+            if (lintResults) lintResults.innerHTML = `<div style="opacity: 0.6;">Analyse en cours... ⏳</div>`;
+            
+            try {
+                const projectId = (typeof _consoleProjectId === "function") ? _consoleProjectId() : null;
+                const projQ = projectId ? `&project_id=${encodeURIComponent(projectId)}` : "";
+                const res = await apiFetch(`/api/workspace/lint?path=${encodeURIComponent(ideActive)}${projQ}`);
+                if (!res.ok) throw new Error("Lint failed");
+                const data = await res.json();
+                
+                if (lintResults) {
+                    if (data.success && data.errors.length === 0) {
+                        lintResults.innerHTML = `<div style="color: #44db5c; font-weight: bold;">✅ Aucun problème détecté dans ce fichier !</div>`;
+                    } else {
+                        lintResults.innerHTML = data.errors.map(err => `
+                            <div class="lint-error-item" style="padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; gap: 8px; align-items: flex-start; cursor: pointer;" data-line="${err.line}">
+                                <span style="color: ${err.severity === 'error' ? '#ff453a' : '#ff9f0a'}; font-weight: bold;">[${err.severity.toUpperCase()}]</span>
+                                <span>Ligne ${err.line}, col ${err.column}: ${escapeHtml(err.message)}</span>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch (err) {
+                console.error("Lint error:", err);
+                if (lintResults) lintResults.innerHTML = `<div style="color: #ff453a;">⚠️ Erreur lors de l'analyse.</div>`;
+            }
+        });
+    }
+
+    if (lintResults) {
+        lintResults.addEventListener("click", (e) => {
+            const item = e.target.closest(".lint-error-item");
+            if (!item) return;
+            const line = parseInt(item.getAttribute("data-line"));
+            if (line && typeof _cm !== "undefined" && _cm) {
+                _cm.setCursor({line: line - 1, ch: 0});
+                _cm.scrollIntoView({line: line - 1, ch: 0}, 200);
+                _cm.focus();
+            }
+        });
+    }
+
+    if (btnCloseLintPanel) {
+        btnCloseLintPanel.addEventListener("click", () => {
+            if (lintPanel) lintPanel.style.display = "none";
+        });
+    }
+
+    async function sendCoderCommand(command, agentName = "Codeur") {
+        const projectId = (typeof _consoleProjectId === "function") ? _consoleProjectId() : null;
+        if (typeof logToTerminal === "function") {
+            logToTerminal(`$ athena-${agentName.toLowerCase()} [local] > ${command}`, "transition");
+        }
+        
+        const tabCode = document.getElementById("tab-code");
+        if (tabCode) tabCode.click();
+        
+        try {
+            const response = await apiFetch("/api/terminal/coder", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ command: command, agent: agentName, project_id: projectId })
+            });
+            
+            const data = await response.json();
+            if (response.ok) {
+                window._coderConsoleActive = true;
+                if (typeof playAgentSteps === "function") {
+                    await playAgentSteps(data.steps);
+                }
+                if (typeof reloadChatHistory === "function") {
+                    await reloadChatHistory(true);
+                }
+                if (typeof refreshMemory === "function") {
+                    await refreshMemory();
+                }
+            } else {
+                let msg = data && data.detail;
+                if (msg && typeof msg === "object") msg = msg.message || msg.detail || JSON.stringify(msg);
+                if (typeof logToTerminal === "function") {
+                    logToTerminal("Erreur terminal : " + (msg || `HTTP ${response.status}`), "error");
+                }
+            }
+        } catch (err) {
+            if (typeof logToTerminal === "function") {
+                logToTerminal("Erreur de connexion terminal : " + (err && err.message ? err.message : err), "error");
+            }
+        } finally {
+            window._coderConsoleActive = false;
+        }
+    }
+
+    if (btnAutofix) {
+        btnAutofix.addEventListener("click", () => {
+            if (typeof ideActive === "undefined" || !ideActive) {
+                pushNotification("Athena", "Aucun fichier actif à corriger.", "warning");
+                return;
+            }
+            sendCoderCommand("Fix all syntax, linter and logic errors in the active file: " + ideActive);
+        });
+    }
+})();
+

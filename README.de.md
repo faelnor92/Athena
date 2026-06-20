@@ -4,7 +4,10 @@
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
-**Sprachen:** [Français](README.md) · [English](README.en.md) · [Español](README.es.md) · [Italiano](README.it.md) · Deutsch (diese Datei) · [中文](README.zh.md) · [日本語](README.ja.md)
+**Sprachen:** [Français](README.fr.md) · [English](README.md) · [Español](README.es.md) · [Italiano](README.it.md) · Deutsch (diese Datei) · [中文](README.zh.md) · [日本語](README.ja.md)
+
+> [!WARNING]
+> **Aktive Entwicklung**: Dieses Framework befindet sich in aktiver Entwicklung. Es kann zu Fehlern (Bugs), experimentellen Funktionen und bahnbrechenden Änderungen kommen. Beiträge, Feedback und Fehlerberichte sind herzlich willkommen!
 
 Ein „ressourcenschonender", hochmodularer KI-Orchestrator, ausgelegt für den Betrieb auf leichten Servern oder bescheidenen GPUs. Zugänglich über **Web-UI**, **CLI**, **Telegram** und **lokale Sprache**.
 
@@ -122,6 +125,9 @@ dann in `.env`: `OPENINFERENCE_ENABLED=true` und `OTEL_EXPORTER_OTLP_ENDPOINT=ht
 
 ## 🛡️ Vergleich: Athena vs. der Markt
 
+<details>
+<summary><b>Klicken Sie hier, um die Vergleichstabelle anzuzeigen (Athena vs. CrewAI, AutoGen, OpenClaw, Hermes)</b></summary>
+
 > [!NOTE]
 > **Methodik.** Vergleichbares vergleichen: **Athena**, **Hermes** und **OpenClaw** sind *gehostete Apps/Assistenten*; **CrewAI** und **AutoGen** sind *Orchestrierungs-Bibliotheken*, die man in eigenen Code integriert (daher „N/V"). Athenas Differenzierung ist nicht „eine UI haben", sondern **Multi-Tenancy + Sicherheit auf Enterprise-Niveau + agentisches Coding + Observability** in einem einzigen selbst-gehosteten Produkt.
 
@@ -145,6 +151,8 @@ dann in `.env`: `OPENINFERENCE_ENABLED=true` und `OTEL_EXPORTER_OTLP_ENDPOINT=ht
 | | **Verschlüsselung im Ruhezustand** | **Ja (Fernet/AES-128)** | Nein | Vom Speicher abhängig | N/V | N/V |
 | | **Multi-Tenant-Isolation** | **Ja (Speicher/Kalender/Budget pro Nutzer)** | Nein | Pro Workspace | N/V | N/V |
 | | **Menschliche Freigabe (HITL)** | **Ja (sensible Aktionen in der UI abgefangen)** | Ja (via Chat) | Basic | Selbst bauen | Selbst bauen |
+
+</details>
 
 ## 📄 Lizenz
 

@@ -19,7 +19,7 @@ current_channel: "contextvars.ContextVar" = contextvars.ContextVar("current_chan
 # le web exige confirmation (admin) ; Telegram (distant) interdit shell/ssh.
 _DEFAULTS = {
     "web":      {"auto_approve": False, "allow": "*", "deny": []},
-    "cli":      {"auto_approve": True,  "allow": "*", "deny": []},
+    "cli":      {"auto_approve": False, "allow": "*", "deny": []},
     "voice":    {"auto_approve": True,  "allow": "*", "deny": []},
     "telegram": {"auto_approve": False, "allow": "*", "deny": ["execute_bash_command", "run_ssh_command"]},
     "default":  {"auto_approve": False, "allow": "*", "deny": []},

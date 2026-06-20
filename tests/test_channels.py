@@ -9,7 +9,7 @@ from core import channels
 
 def test_politiques_par_defaut():
     assert channels.auto_approve_for("voice") is True
-    assert channels.auto_approve_for("cli") is True
+    assert channels.auto_approve_for("cli") is False
     assert channels.auto_approve_for("web") is False
     # Telegram interdit le shell/ssh même via un sous-canal "telegram:123".
     assert channels.tool_allowed("telegram:12345", "execute_bash_command") is False
@@ -52,6 +52,7 @@ def test_swarm_filtre_les_outils_par_canal():
         """outil permis."""
         return "y"
 
+    original_complete = swarm_mod.Swarm._complete
     swarm_mod.Swarm._complete = fake_complete
     s = Swarm.__new__(Swarm)
     agent = Agent(name="Athena", system_prompt="t", model="gpt-4o")
@@ -67,6 +68,7 @@ def test_swarm_filtre_les_outils_par_canal():
     finally:
         channels.current_channel.reset(token)
         channels._cache = None
+        swarm_mod.Swarm._complete = original_complete
 
     assert "permis" in captured["tools"], captured["tools"]
     assert "interdit" not in captured["tools"], f"outil interdit exposé: {captured['tools']}"

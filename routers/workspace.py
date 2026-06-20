@@ -346,3 +346,111 @@ async def upload_workspace_file(file: UploadFile = File(...)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/workspace/search")
+async def search_workspace_endpoint(q: str, path: str = "", project_id: str = None):
+    if not q or not q.strip():
+        return []
+    with _project_scope(project_id):
+        from tools import code_nav
+        root, err = code_nav._resolve(path or ".", must_exist=True)
+        if err:
+            raise HTTPException(status_code=400, detail=err)
+        
+        ws = code_nav._ws()
+        results = []
+        
+        if code_nav._rg_available():
+            lines, e = code_nav._rg([q], root)
+            if e:
+                raise HTTPException(status_code=500, detail=f"Ripgrep error: {e}")
+        else:
+            try:
+                lines = code_nav._py_search([q], root)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Regex error: {str(e)}")
+        
+        if lines:
+            for l in lines[:100]:
+                if l.startswith(ws + os.sep):
+                    l = l[len(ws) + 1:]
+                
+                parts = l.split(":", 2)
+                if len(parts) >= 3:
+                    rel_path, line_num, content = parts[0], parts[1], parts[2]
+                    results.append({
+                        "path": rel_path,
+                        "line": int(line_num),
+                        "content": content
+                    })
+        return results
+
+
+@router.get("/api/workspace/lint")
+async def lint_workspace_file(path: str, project_id: str = None):
+    with _project_scope(project_id):
+        clean_path = _safe_workspace_path(path)
+        if not os.path.exists(clean_path) or os.path.isdir(clean_path):
+            raise HTTPException(status_code=404, detail="Fichier introuvable.")
+            
+        with open(clean_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+            
+        ext = os.path.splitext(clean_path)[1].lower()
+        errors = []
+        
+        if ext == ".py":
+            try:
+                compile(content, path, 'exec')
+            except SyntaxError as e:
+                errors.append({
+                    "line": e.lineno or 1,
+                    "column": e.offset or 1,
+                    "message": f"SyntaxError: {e.msg}",
+                    "severity": "error"
+                })
+            except Exception as e:
+                errors.append({
+                    "line": 1,
+                    "column": 1,
+                    "message": f"Compilation Error: {str(e)}",
+                    "severity": "error"
+                })
+                
+            # If no critical compile errors, run ruff or flake8 if available for style/lint warnings
+            if not errors:
+                import subprocess
+                try:
+                    res = subprocess.run(["ruff", "check", "--format", "json", clean_path], capture_output=True, text=True)
+                    # Ruff output is json on stdout even if exit code is not 0
+                    if res.stdout:
+                        import json
+                        ruff_errs = json.loads(res.stdout)
+                        for r_err in ruff_errs:
+                            errors.append({
+                                "line": r_err.get("location", {}).get("row", 1),
+                                "column": r_err.get("location", {}).get("column", 1),
+                                "message": f"{r_err.get('code', '')}: {r_err.get('message', '')}",
+                                "severity": "warning"
+                            })
+                except Exception:
+                    pass
+        elif ext == ".json":
+            try:
+                import json
+                json.loads(content)
+            except json.JSONDecodeError as e:
+                errors.append({
+                    "line": e.lineno,
+                    "column": e.colno,
+                    "message": f"JSONDecodeError: {e.msg}",
+                    "severity": "error"
+                })
+        
+        return {
+            "success": len(errors) == 0,
+            "errors": errors
+        }
+
+

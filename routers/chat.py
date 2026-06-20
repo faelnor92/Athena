@@ -9,7 +9,7 @@ import traceback
 import uuid
 import contextvars
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
@@ -1195,4 +1195,188 @@ async def terminal_coder(req: TerminalRequest):
 async def reset_chat():
     session.reset()
     return {"status": "success", "message": "La conversation a été réinitialisée."}
+
+
+@router.websocket("/api/terminal/ws")
+async def terminal_ws(websocket: WebSocket, token: Optional[str] = None, project_id: Optional[str] = None):
+    # 1. Verification of authentication
+    from routers.auth import _auth_active
+    from core.state import ACTIVE_SESSIONS, get_coder_cwd
+    import time
+    
+    await websocket.accept()
+    
+    if _auth_active():
+        if not token:
+            await websocket.close(code=1008)
+            return
+        sess = ACTIVE_SESSIONS.get(token)
+        if not sess:
+            await websocket.close(code=1008)
+            return
+        if sess.get("exp", 0) < time.time():
+            ACTIVE_SESSIONS.pop(token, None)
+            await websocket.close(code=1008)
+            return
+
+    # 2. Select the correct directory based on project_id override
+    from core import projects as _projects
+    _proj = (project_id or "").strip() or None
+    if _proj:
+        # Override project directory context temporarily
+        _projects.set_override(_proj)
+
+    cwd = get_coder_cwd()
+    
+    # Clean override if set
+    if _proj:
+        _projects.set_override(None)
+
+    # 3. Spawn interactive bash with a PTY
+    import pty
+    import os
+    import subprocess
+    import threading
+    import asyncio
+    import fcntl
+    import struct
+    import termios
+    
+    master_fd, slave_fd = pty.openpty()
+    
+    env = os.environ.copy()
+    env["TERM"] = "xterm-256color"
+    env["PAGER"] = "cat"
+    
+    container_name = None
+    from tools import dev_container
+    if dev_container.enabled():
+        username = "local"
+        if _auth_active():
+            if token:
+                sess = ACTIVE_SESSIONS.get(token)
+                if sess:
+                    username = sess.get("username", "local")
+        dc_key = dev_container.sanitize_key(username, _proj)
+        try:
+            name, err = dev_container.ensure(dc_key)
+            if not err:
+                container_name = name
+        except Exception:
+            pass
+
+    p = None
+    if container_name:
+        try:
+            from core.state import get_workspace_dir
+            rel = os.path.relpath(cwd, get_workspace_dir())
+            if rel.startswith("..") or os.path.isabs(rel):
+                rel = "."
+            
+            uid_args = []
+            if hasattr(os, "getuid"):
+                uid_args = ["-u", f"{os.getuid()}:{os.getgid()}"]
+                
+            cmd = ["docker", "exec", "-it"] + uid_args + [
+                "-e", "HOME=/work/.athena-home",
+                "-e", "PATH=/work/.athena-home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "-w", f"/work/{rel}",
+                container_name,
+                "bash", "-il"
+            ]
+            
+            p = subprocess.Popen(
+                cmd,
+                preexec_fn=os.setsid,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                env=env
+            )
+        except Exception:
+            p = None
+
+    if p is None:
+        p = subprocess.Popen(
+            ["/bin/bash", "-i"],
+            preexec_fn=os.setsid,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            cwd=cwd,
+            env=env
+        )
+    
+    os.close(slave_fd)
+    
+    output_queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+    
+    def read_thread_target():
+        while True:
+            try:
+                data = os.read(master_fd, 4096)
+                if not data:
+                    asyncio.run_coroutine_threadsafe(output_queue.put(b""), loop)
+                    break
+                asyncio.run_coroutine_threadsafe(output_queue.put(data), loop)
+            except Exception:
+                asyncio.run_coroutine_threadsafe(output_queue.put(b""), loop)
+                break
+                
+    t = threading.Thread(target=read_thread_target, daemon=True)
+    t.start()
+    
+    async def writer_loop():
+        try:
+            while True:
+                data = await output_queue.get()
+                if not data:
+                    break
+                await websocket.send_bytes(data)
+        except Exception:
+            pass
+            
+    writer_task = asyncio.create_task(writer_loop())
+    
+    try:
+        while True:
+            msg = await websocket.receive()
+            if msg.get("type") == "websocket.disconnect":
+                break
+                
+            if "bytes" in msg:
+                os.write(master_fd, msg["bytes"])
+            elif "text" in msg:
+                text_data = msg["text"]
+                if text_data.startswith("{") and "resize" in text_data:
+                    try:
+                        payload = json.loads(text_data)
+                        if payload.get("type") == "resize":
+                            cols = payload.get("cols", 80)
+                            rows = payload.get("rows", 24)
+                            s = struct.pack("HHHH", rows, cols, 0, 0)
+                            fcntl.ioctl(master_fd, termios.TIOCSWINSZ, s)
+                            continue
+                    except Exception:
+                        pass
+                os.write(master_fd, text_data.encode("utf-8"))
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        writer_task.cancel()
+        try:
+            p.terminate()
+            p.wait(timeout=1.0)
+        except Exception:
+            try:
+                p.kill()
+            except Exception:
+                pass
+        try:
+            os.close(master_fd)
+        except Exception:
+            pass
 

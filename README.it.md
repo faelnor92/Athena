@@ -4,11 +4,14 @@
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
-**Lingue:** [Français](README.md) · [English](README.en.md) · [Español](README.es.md) · Italiano (questo file) · [Deutsch](README.de.md) · [中文](README.zh.md) · [日本語](README.ja.md)
+**Lingue:** [Français](README.fr.md) · [English](README.md) · [Español](README.es.md) · Italiano (questo file) · [Deutsch](README.de.md) · [中文](README.zh.md) · [日本語](README.ja.md)
+
+> [!WARNING]
+> **Sviluppo Attivo**: Questo framework è in fase di sviluppo attivo. Prevedete bug, funzionalità sperimentali e possibili modifiche sostanziali (breaking changes). Contributi, feedback e segnalazioni di bug sono benvenuti!
 
 Orchestratore IA "low-resource", ultra-modulare, progettato per girare su server leggeri o GPU modeste. Accessibile via **interfaccia web**, **CLI**, **Telegram** e **voce locale**.
 
-📖 **[Leggi la Guida Utente completa](docs/USER_GUIDE.md)** per imparare a installare, configurare e usare Athena passo dopo passo.
+📖 **[Leggi la Guia Utente completa](docs/USER_GUIDE.md)** per imparare a installare, configurare e usare Athena passo dopo passo.
 
 ## ✨ Funzionalità principali
 
@@ -95,6 +98,10 @@ iwr -useb https://raw.githubusercontent.com/faelnor92/Athena/main/install.ps1 | 
 **Avvio**: `athena start` o `python3 server.py`. Disponibile su 👉 **http://localhost:8000/**.
 
 ### ⚙️ Deployment multi-worker (scalabilità)
+
+<details>
+<summary><b>Clicca per espandere i dettagli sulla scalabilità</b></summary>
+
 Lo stato mutabile condiviso (account e quote, sessioni auth, routine, inviti, progetti condivisi, config per utente) è salvato in un database SQLite comune in modalità WAL (`athena_state.sqlite3`) con aggiornamenti atomici — quindi **coerente tra più worker**:
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
@@ -102,7 +109,13 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 > [!NOTE]
 > **RAG in multi-worker.** In single-process il vector store è incorporato (ChromaDB locale). Per il multi-worker, imposta **`CHROMA_SERVER_HOST`** (+ `CHROMA_SERVER_PORT`): tutti i worker parlano con lo stesso server ChromaDB. Il `docker-compose.yml` incluso contiene già il servizio `chroma`. Il resto dello stato è multi-worker-safe in modo nativo.
 
+</details>
+
 ### 🔒 Sicurezza in produzione
+
+<details>
+<summary><b>Clicca per espandere i dettagli di sicurezza e salvaguardie</b></summary>
+
 - **TLS obbligatorio**: metti Athena dietro un reverse proxy HTTPS (Caddy, Nginx, Traefik). Il server emette **HSTS** automaticamente quando rileva HTTPS (`X-Forwarded-Proto: https`).
 - **Chiave di cifratura fuori da `.env`**: per resistere al furto di disco/backup, inietta `DB_ENCRYPTION_KEY` tramite variabile d'ambiente / secret manager.
 - **Header di sicurezza** (CSP, X-Frame-Options, nosniff, Referrer/Permissions-Policy) attivi di default — `SECURITY_HEADERS=false` per disattivare, `CONTENT_SECURITY_POLICY` per personalizzare.
@@ -110,7 +123,13 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 - **RBAC per strumento**: `ADMIN_ONLY_TOOLS="execute_bash_command,run_ssh_command,..."` riserva l'esecuzione di codice/comandi agli admin.
 - **Container**: l'immagine gira come utente **non-root** con `HEALTHCHECK`. Audit dell'installazione: `bash scripts/security_scan.sh`.
 
+</details>
+
 ### 📡 Osservabilità LLM (opzionale — OpenInference / Phoenix)
+
+<details>
+<summary><b>Clicca per espandere i dettagli dell'osservabilità</b></summary>
+
 Oltre al cockpit integrato, Athena può esportare **tracce LLM standardizzate** (OpenInference / OpenTelemetry) verso **Phoenix** (Arize). Attivazione:
 ```bash
 pip install -r requirements-observability.txt
@@ -118,9 +137,14 @@ docker compose --profile observability up -d         # Phoenix (UI: http://local
 ```
 poi in `.env`: `OPENINFERENCE_ENABLED=true` e `OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006/v1/traces`. Disattivato di default.
 
+</details>
+
 ---
 
 ## 🛡️ Confronto: Athena vs il mercato
+
+<details>
+<summary><b>Clicca per espandere la tabella comparativa completa (Athena vs CrewAI, AutoGen, OpenClaw, Hermes)</b></summary>
 
 > [!NOTE]
 > **Metodologia.** Confrontare il confrontabile: **Athena**, **Hermes** e **OpenClaw** sono *app/assistenti ospitati*; **CrewAI** e **AutoGen** sono *librerie di orchestrazione* da integrare nel proprio codice (da cui i "N/D"). Il differenziatore di Athena non è "avere una UI", ma **multi-tenancy + sicurezza enterprise + coding agentico + osservabilità** in un unico prodotto self-hosted.
@@ -145,6 +169,8 @@ poi in `.env`: `OPENINFERENCE_ENABLED=true` e `OTEL_EXPORTER_OTLP_ENDPOINT=http:
 | | **Cifratura a riposo** | **Sì (Fernet/AES-128)** | No | Dipende dallo storage | N/D | N/D |
 | | **Isolamento multi-tenant** | **Sì (memoria/agenda/budget per utente)** | No | Per workspace | N/D | N/D |
 | | **Approvazione umana (HITL)** | **Sì (azioni sensibili intercettate nella UI)** | Sì (via chat) | Base | Da implementare | Da implementare |
+
+</details>
 
 ## 📄 Licenza
 

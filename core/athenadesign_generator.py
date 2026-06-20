@@ -6,18 +6,34 @@ import httpx
 # System instructions to guide the LLM to think like Claude Design / Open Design
 SYSTEM_PROMPT = """You are AthenaDesign, an elite AI design companion. Your goal is to generate beautiful, interactive, premium visual interfaces or Python scripts based on user requests.
 
-OUTPUT FORMAT (follow EXACTLY, nothing else):
-1. First, a SHORT explanation in French (2 to 4 sentences) of your design choices and how to interact with it.
+⚠️ ABSOLUTE PRIORITY — THE CODE MUST RUN (this overrides every styling instruction below):
+- Output SYNTACTICALLY VALID code. CLOSE EVERY tag correctly (`</span>`, `</div>` — NEVER `</}` or a stray `}`), balance every brace/parenthesis/bracket, and close every string.
+- NEVER truncate. Output the COMPLETE code from first to last line. If it would be too long, build something smaller but COMPLETE.
+- For ```jsx: EXACTLY ONE component named `App`. NO `import`, NO `export` (React, ReactDOM, hooks and Tailwind are already global). Do NOT call ReactDOM yourself.
+- A beautiful design that does not compile is a FAILURE. Correctness first, then beauty.
+
+OUTPUT FORMAT (follow EXACTLY):
+1. First, a SHORT explanation in French (2 to 4 sentences) of your design choices.
 2. Then the COMPLETE code inside ONE single fenced block tagged with the language:
    ```html      for web designs (static HTML/CSS/JS)
    ```python    for scripts / PowerPoint / charts
    ```jsx       for React components / interactive apps
    ```mermaid   for diagrams (flowchart, sequence, class, ER, gantt, state, mindmap…)
-Put ALL the code in that single block. Write NOTHING after the closing ```. Never truncate.
-Do NOT mix explanation text inside the code. Do NOT output two code blocks.
-Choose REACT (```jsx) for stateful / interactive UIs (forms with logic, tabs, todo, calculators,
-dashboards with interactivity). Choose ```html for static/visual pages. Choose ```python for
-data, charts or .pptx.
+   Put ALL the code in that single block. Never truncate. Do NOT mix explanation text inside the code. Do NOT output two code blocks.
+3. Finally, under the code block, you MUST append:
+   - A `<suggestions>` block containing 3 proposed next steps (one per line, prefixed by a dash `-`).
+   - For web layouts (html/jsx), a `<tweaks>` block containing 2 to 4 visual controls mapping to CSS variables used in your layout.
+     Format of each tweak line: `type | Label | variableName | rangeOrValues | defaultValue`
+     Where:
+       - `type` is one of: `color` (color picker), `slider` (range), `toggle` (true/false switch), or `select` (dropdown)
+       - `rangeOrValues` is `min,max` for sliders (ex: `10px,50px`), `val1,val2,val3` for select (ex: `flat,neumorph,glass`), or empty for color/toggle
+     Examples:
+       - `color | Boutons CTA | --btn-color | | #e11d48`
+       - `slider | Espacement | --section-gap | 20px,120px | 60px`
+       - `toggle | Mode Sombre | --dark-theme | | false`
+       - `select | Style Cartes | --card-style | flat,glass,neobrutal | glass`
+     Ensure your generated code's CSS actually uses these variables (ex: `var(--btn-color)`) so modifying the tweak changes the layout!
+Choose REACT (```jsx) for stateful / interactive UIs (forms with logic, tabs, todo, calculators, dashboards with interactivity). Choose ```html for static/visual pages. Choose ```python for data, charts or .pptx.
 
 REACT RULES (when you output ```jsx):
 - Define a single component named `App`. Do NOT write `import` or `export` statements — React,
@@ -31,9 +47,14 @@ markdown), starting with the diagram type, e.g. `flowchart TD`, `sequenceDiagram
 `classDiagram`, `erDiagram`, `stateDiagram-v2`, `gantt`, `mindmap`. The page renders it.
 
 DESIGN RULES:
-1. VISUAL EXCELLENCE: Never use plain basic colors (red, blue, green). Use a curated palette (HSL, Tailwind-like hues: Slate, Zinc, Indigo, Violet, Rose, Emerald).
-2. MODERN STYLING: Clean layout, rounded borders, beautiful typography (Google Fonts Outfit or Inter), smooth gradients, glassmorphic panels (backdrop-filter: blur).
-3. MICRO-ANIMATIONS: Subtle hover states (scale, shadow, glow), smooth transitions, keyframes.
+1. VISUAL DIVERSITY & THEME ADAPTATION: Do NOT always produce the same dark-mode glassmorphic style. Be highly creative and tailor the visual design entirely to the topic, industry, and tone of the request:
+   - Corporate/Professional: clean, light-mode layouts, generous whitespace, structured grid systems, trustworthy colors (indigo, slate, sky, emerald).
+   - Creative/Portfolio: bold typography, unique asymmetric layouts, high-contrast, neobrutalism, or artistic flat styles.
+   - Minimalist/Editorial: gorgeous large serif or clean sans-serif headings, subtle borders, black-and-white accents with one primary brand color (e.g. amber, teal).
+   - Tech/Futuristic: modern dark mode, neon glow accents, cyber-gradients.
+   Select matching Google Fonts (e.g., Playfair Display, Montserrat, Outfit, Inter, Space Grotesk, Syne) to match the selected aesthetic.
+2. VISUAL EXCELLENCE: Never use plain basic colors (red, blue, green). Use curated palettes with harmonious hues.
+3. INTERACTIVITY & MICRO-ANIMATIONS: Implement responsive state changes (hover scales, shadow shifts, active press states, smooth list transition keyframes) so the interface feels alive and reactive.
 4. SELF-CONTAINED HTML: a web artifact is ONE standalone .html file. If you use a library, you MUST load it from a CDN in the file. In particular, if you use Lucide icons (<i data-lucide="...">), you MUST add `<script src="https://unpkg.com/lucide@latest"></script>` AND call `lucide.createIcons()` after the DOM is ready — otherwise icons stay invisible. Same for Chart.js / FontAwesome. If unsure, prefer inline SVG or emoji. Never reference a library you did not load.
 5. PYTHON CODE: generate useful data, charts (Matplotlib/Plotly, clean modern styling, no grey background) or PowerPoint via python-pptx saved to the current directory. End charts with plt.show()/fig.show() to render a preview.
 6. POWERPOINT — NO OVERFLOW (critical): content MUST fit inside each slide. Slide size is 13.333 in × 7.5 in (16:9). Rules: keep ≤ 5-6 short bullet lines per slide and SPLIT long content across MULTIPLE slides; size every text box explicitly with Inches() so left+width ≤ 13.0 and top+height ≤ 7.0 (leave margins); enable wrapping and shrink-to-fit on body text frames (`tf.word_wrap = True` and `from pptx.enum.text import MSO_AUTO_SIZE; tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE`); use reasonable font sizes (title 32-40pt, body 16-20pt). Never let text run past the slide edges.
@@ -817,15 +838,67 @@ def parse_artifact_response(text: str) -> dict:
     # L'explication ne doit jamais embarquer tout le code (garde-fou d'affichage).
     if len(explanation) > 1200:
         explanation = explanation[:1200].rstrip() + "…"
-    return {"type": atype, "explanation": explanation, "code": code}
+
+    # Extraction des suggestions d'étapes suivantes depuis les balises XML
+    suggestions = []
+    sug_match = re.search(r"<suggestions>(.*?)</suggestions>", text, re.DOTALL | re.IGNORECASE)
+    if sug_match:
+        suggestions_raw = sug_match.group(1).strip().split("\n")
+        for sug in suggestions_raw:
+            sug = sug.strip().lstrip("-").lstrip("*").lstrip(" ").strip()
+            if sug:
+                suggestions.append(sug)
+
+    # Extraction des tweaks (styles personnalisés dynamiques) depuis les balises XML
+    tweaks = []
+    tweaks_match = re.search(r"<tweaks>(.*?)</tweaks>", text, re.DOTALL | re.IGNORECASE)
+    if tweaks_match:
+        tweaks_raw = tweaks_match.group(1).strip().split("\n")
+        for line in tweaks_raw:
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) >= 5:
+                tweaks.append({
+                    "type": parts[0],
+                    "label": parts[1],
+                    "name": parts[2],
+                    "values": parts[3],
+                    "default": parts[4]
+                })
+
+    return {
+        "type": atype,
+        "explanation": explanation,
+        "code": code,
+        "tweaks": tweaks,
+        "suggestions": suggestions
+    }
 
 def react_scaffold(code: str) -> str:
     """Encapsule un composant React (JSX) dans une page autonome : React + ReactDOM + Babel
     standalone + Tailwind (CDN), puis rend <App/>. On retire import/export (React est global).
     Utilisé côté serveur (export PDF / partage / raw) ; le front a un équivalent pour l'aperçu live."""
-    body = re.sub(r"(?m)^\s*import[^\n]*\n", "", code or "")
+    body = code or ""
+    # Retrait des imports ES (y compris multi-lignes)
+    body = re.sub(r"import\b[\s\S]*?from\s*['\"][^'\"]+['\"];?", "", body)
+    body = re.sub(r"import\s*['\"][^'\"]+['\"];?", "", body)
     body = re.sub(r"(?m)^\s*export\s+default\s+", "", body)
     body = re.sub(r"(?m)^\s*export\s+", "", body)
+    # Retrait de tout échafaudage/montage existant pour éviter les doubles déclarations
+    body = re.sub(r"(?m)^\s*const\s+_C\s*=.*$", "", body)
+    body = re.sub(r"(?m)^.*ReactDOM\s*\.\s*createRoot[^\n]*$", "", body)
+    body = re.sub(r"(?m)^\s*ReactDOM\s*\.\s*render[^\n]*$", "", body)
+    body = re.sub(r"(?m)^\s*\w+\s*\.\s*render\s*\(\s*<\s*App[^\n]*$", "", body)
+
+    user_script = (
+        "const {useState,useEffect,useRef,useMemo,useCallback,useReducer,useContext,Fragment}=React;\n"
+        + body
+        + "\nconst _C=(typeof App!==\"undefined\"?App:(typeof Component!==\"undefined\"?Component:"
+        + "function(){return React.createElement(\"div\",{style:{padding:24}},\"Aucun composant App trouvé.\");}));\n"
+        + "ReactDOM.createRoot(document.getElementById(\"root\")).render(React.createElement(_C));\n"
+    )
+    # Neutraliser un </script> littéral
+    safe_user = user_script.replace("</script", "<\\/script").replace("</SCRIPT", "<\\/script")
+    
     return (
         "<!DOCTYPE html><html lang=\"fr\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
@@ -833,16 +906,26 @@ def react_scaffold(code: str) -> str:
         "<script crossorigin src=\"https://unpkg.com/react-dom@18/umd/react-dom.production.min.js\"></script>"
         "<script src=\"https://unpkg.com/@babel/standalone/babel.min.js\"></script>"
         "<script src=\"https://cdn.tailwindcss.com\"></script>"
-        "<style>body{margin:0;font-family:Inter,system-ui,sans-serif}</style></head>"
-        "<body><div id=\"root\"></div>"
-        "<script type=\"text/babel\" data-presets=\"react\">\n"
-        "const {useState,useEffect,useRef,useMemo,useCallback,useReducer,useContext,Fragment}=React;\n"
-        + body +
-        "\nconst _C = (typeof App!=='undefined'?App:(typeof Component!=='undefined'?Component:"
-        "function(){return React.createElement('div',{style:{padding:24}},'Aucun composant App trouvé.');}));\n"
-        "ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(_C));\n"
-        "</script></body></html>"
+        "<style>body{margin:0;font-family:Inter,system-ui,sans-serif}"
+        "#__err{display:none;padding:24px;color:#e11d48;background:#161616;white-space:pre-wrap;"
+        "font:13px/1.6 ui-monospace,Menlo,Consolas,monospace}</style></head>"
+        "<body><div id=\"root\"></div><pre id=\"__err\"></pre>"
+        "<script type=\"text/plain\" id=\"__src\">" + safe_user + "</script>"
+        "<script>(function(){"
+        "function showErr(msg){var e=document.getElementById(\"__err\");if(e){e.style.display=\"block\";"
+        "e.textContent=\"\\u26a0\\ufe0f Aperçu React — \"+msg;}"
+        "try{window.parent.postMessage({type:\"iframe-log\",level:\"stderr\",message:msg},\"*\");}catch(_){}}"
+        "window.addEventListener(\"DOMContentLoaded\",function(){"
+        "if(typeof Babel===\"undefined\"){showErr(\"Babel non chargé (réseau ?).\");return;}"
+        "var src=document.getElementById(\"__src\").textContent;"
+        "var compiled;"
+        "try{compiled=Babel.transform(src,{presets:[[\"react\",{runtime:\"classic\"}]]}).code;}"
+        "catch(err){showErr(\"Erreur de compilation : \"+((err&&err.message)||err));return;}"
+        "try{var s=document.createElement(\"script\");s.textContent=compiled;document.body.appendChild(s);}"
+        "catch(err){showErr(\"Erreur d'exécution : \"+((err&&err.message)||err));}"
+        "});})();</script></body></html>"
     )
+
 
 
 def mermaid_scaffold(code: str) -> str:
@@ -970,9 +1053,24 @@ def _generate_via_athena(prompt: str, history: list, model_name: str = "",
         if role in ("user", "assistant") and m.get("content"):
             messages.append({"role": role, "content": m["content"]})
     messages.append({"role": "user", "content": user_content})
-    resp = _sw._complete(model, messages, tools_schema=None, allow_continuation=True, allow_fallback=True)
+    # Budget de sortie ÉLEVÉ : un design (HTML/React complet) dépasse vite 4000 tokens → sinon
+    # le code est TRONQUÉ (balise/JSX coupés → aperçu cassé). + auto-continuation en filet.
+    _mt = int(os.getenv("ATHENADESIGN_MAX_TOKENS", "8192") or 8192)
+    resp = _sw._complete(model, messages, tools_schema=None, allow_continuation=True,
+                         allow_fallback=True, max_tokens=_mt)
     text = (resp.choices[0].message.content or "")
-    return parse_artifact_response(text)
+    _u = getattr(resp, "usage", None)
+    return _attach_usage(parse_artifact_response(text),
+                         getattr(_u, "prompt_tokens", 0), getattr(_u, "completion_tokens", 0))
+
+
+def _attach_usage(result: dict, prompt_tokens, completion_tokens) -> dict:
+    """Ajoute la consommation de tokens au résultat (clé `usage`) — affiché côté studio
+    et remonté à la télémétrie globale. Tolère les valeurs manquantes (0)."""
+    pt = int(prompt_tokens or 0)
+    ct = int(completion_tokens or 0)
+    result["usage"] = {"prompt_tokens": pt, "completion_tokens": ct, "total_tokens": pt + ct}
+    return result
 
 
 async def generate_design(prompt: str, history: list, provider: str = "athena",
@@ -1016,9 +1114,12 @@ async def generate_design(prompt: str, history: list, provider: str = "athena",
     payload = {}
     url = ""
     
+    # Budget de sortie élevé (design long) + timeout généreux (génération longue) : sinon
+    # le code est TRONQUÉ (limite tokens) ou coupé par timeout → aperçu cassé/blanc.
+    _mt = int(os.getenv("ATHENADESIGN_MAX_TOKENS", "8192") or 8192)
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            
+        async with httpx.AsyncClient(timeout=180.0) as client:
+
             if provider == "gemini":
                 # Using Gemini API (Google AI Studio model, e.g. gemini-2.5-flash)
                 # Google standard endpoint: /v1beta/models/{model}:generateContent
@@ -1048,7 +1149,8 @@ async def generate_design(prompt: str, history: list, provider: str = "athena",
                         "parts": [{"text": SYSTEM_PROMPT}]
                     },
                     "generationConfig": {
-                        "temperature": 0.2
+                        "temperature": 0.2,
+                        "maxOutputTokens": _mt
                     }
                 }
                 
@@ -1057,7 +1159,9 @@ async def generate_design(prompt: str, history: list, provider: str = "athena",
                 data = resp.json()
                 
                 text_out = data["candidates"][0]["content"]["parts"][0]["text"]
-                return parse_artifact_response(text_out)
+                _um = data.get("usageMetadata", {}) or {}
+                return _attach_usage(parse_artifact_response(text_out),
+                                     _um.get("promptTokenCount", 0), _um.get("candidatesTokenCount", 0))
                 
             elif provider == "anthropic":
                 # Using Anthropic API
@@ -1084,7 +1188,7 @@ async def generate_design(prompt: str, history: list, provider: str = "athena",
                 
                 payload = {
                     "model": model,
-                    "max_tokens": 4000,
+                    "max_tokens": _mt,
                     "system": SYSTEM_PROMPT,
                     "messages": messages,
                     "temperature": 0.2
@@ -1095,7 +1199,9 @@ async def generate_design(prompt: str, history: list, provider: str = "athena",
                 data = resp.json()
                 
                 text_out = data["content"][0]["text"]
-                return parse_artifact_response(text_out)
+                _u = data.get("usage", {}) or {}
+                return _attach_usage(parse_artifact_response(text_out),
+                                     _u.get("input_tokens", 0), _u.get("output_tokens", 0))
                 
             elif provider == "openai":
                 # Using OpenAI API
@@ -1120,15 +1226,18 @@ async def generate_design(prompt: str, history: list, provider: str = "athena",
                 payload = {
                     "model": model,
                     "messages": messages,
-                    "temperature": 0.2
+                    "temperature": 0.2,
+                    "max_tokens": _mt
                 }
-                
+
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
-                
+
                 text_out = data["choices"][0]["message"]["content"]
-                return parse_artifact_response(text_out)
+                _u = data.get("usage", {}) or {}
+                return _attach_usage(parse_artifact_response(text_out),
+                                     _u.get("prompt_tokens", 0), _u.get("completion_tokens", 0))
                 
             else:
                 raise ValueError(f"Provider inconnu : {provider}")

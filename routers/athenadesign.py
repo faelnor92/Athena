@@ -28,10 +28,22 @@ os.makedirs(SANDBOX_DIR, exist_ok=True)
 # code) → un projet Athena porte à la fois le code (dossier) ET le design. Les données de
 # design (versions/history/charte) restent indexées par le MÊME id de projet.
 def _accessible_ids() -> set:
+    ids = set()
+    # IDs from unified code projects
     try:
-        return {p.get("id") for p in code_projects.list_projects()}
+        ids.update({p.get("id") for p in code_projects.list_projects()})
     except Exception:
-        return set()
+        pass
+    # IDs from legacy athenadesign JSON store (if present)
+    try:
+        if os.path.exists(_LEGACY_FILE):
+            with open(_LEGACY_FILE, "r", encoding="utf-8") as f:
+                legacy_data = json.load(f)
+            if isinstance(legacy_data, dict):
+                ids.update(legacy_data.keys())
+    except Exception:
+        pass
+    return ids
 
 
 def _can_access(project_id: str) -> bool:
@@ -624,18 +636,35 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
     )
 
     project["history"].append({"role": "user", "content": prompt})
-    project["history"].append({"role": "assistant", "content": result["explanation"]})
+    project["history"].append({"role": "assistant", "content": result.get("explanation") or ""})
 
     version_num = len(project["versions"]) + 1
+    _usage = result.get("usage") or {}
     new_version = {
         "version": version_num,
         "type": result["type"],
-        "explanation": result["explanation"],
+        "explanation": result.get("explanation") or "",
         "code": result["code"],
         "prompt": prompt,
-        "comments": []
+        "comments": [],
+        "tweaks": result.get("tweaks", []),
+        "suggestions": result.get("suggestions", []),
+        "usage": _usage,   # tokens consommés par cette génération (affiché côté studio)
     }
     project["versions"].append(new_version)
+
+    # Remontée à la TÉLÉMÉTRIE GLOBALE : les générations de design comptent désormais dans le
+    # compteur de tokens/coût du tableau de bord (avant : invisibles → « gros manque »).
+    try:
+        _pt = int(_usage.get("prompt_tokens", 0) or 0)
+        _ct = int(_usage.get("completion_tokens", 0) or 0)
+        if _pt or _ct:
+            from core.state import TELEMETRY, get_model_cost
+            TELEMETRY["total_tokens"] += _pt + _ct
+            TELEMETRY["total_cost"] += get_model_cost(model_name or "default", _pt, _ct)
+            TELEMETRY["total_queries"] += 1
+    except Exception:
+        pass
 
     write_db(user, db)
 
@@ -676,6 +705,8 @@ async def save_comment(request: Request, project_id: str, version_num: int, comm
         "tool": comment.get("tool", "point"),
         "color": comment.get("color", "#ef4444"),
         "drawing_data": comment.get("drawing_data", ""),
+        "tag_name": comment.get("tag_name", ""),
+        "tag_text": comment.get("tag_text", ""),
         "resolved": False
     }
 
@@ -715,41 +746,97 @@ async def autofix_endpoint(request: Request, payload: dict = Body(...)):
     db = read_db(user)
     project = db.get(project_id) or _new_design(project_id)
     db[project_id] = project
-    v = next((x for x in reversed(project.get("versions", [])) if x.get("type") == "python"), None)
-    if not v:
-        raise HTTPException(status_code=400, detail="Aucun script Python à corriger")
+    provider = payload.get("provider") or "athena"
+    api_key = payload.get("api_key", "")
+    model_name = payload.get("model_name", "")
+    error_message = payload.get("error_message")
 
-    max_tries = int(os.getenv("ATHENADESIGN_AUTOFIX_MAX", "2") or 2)
-    code = v.get("code", "")
-    result = runner.execute_code(code, project_id)
-    attempts, fixed = 0, False
-    while not result.get("success") and attempts < max_tries:
-        attempts += 1
-        err = (result.get("stderr") or "")[-2000:]
-        fix_prompt = ("Le script Python ci-dessous a ÉCHOUÉ à l'exécution. Corrige-le pour qu'il "
-                      "fonctionne, en gardant l'intention initiale. Renvoie le script complet.\n\n"
-                      f"ERREUR:\n{err}\n\nCODE ACTUEL:\n{code}")
+    v = project.get("versions", [])[-1] if project.get("versions") else None
+    if not v:
+        raise HTTPException(status_code=400, detail="Aucune version disponible pour correction")
+
+    fixed = False
+    attempts = 0
+
+    if error_message or v.get("type") in ("html", "react"):
+        # Web auto-fix (HTML/React browser console runtime errors)
+        attempts = 1
+        code = v.get("code", "")
+        err = str(error_message or "Erreur d'exécution inconnue")[:2000]
+        fix_prompt = (
+            "L'aperçu Web (HTML/React) ci-dessous a généré une erreur JavaScript à l'exécution. "
+            "Corrige le code pour qu'il fonctionne correctement sans cette erreur, en conservant "
+            "toute l'intention initiale, le style, les fonctionnalités et les bibliothèques CDN. "
+            "Renvoie le code complet de la page.\n\n"
+            f"ERREUR:\n{err}\n\nCODE ACTUEL:\n{code}"
+        )
         gen = await generator.generate_design(
             prompt=fix_prompt, history=project.get("history", []),
-            provider="athena", design_system=project.get("design_system", ""))
+            provider=provider, api_key=api_key, model_name=model_name,
+            design_system=project.get("design_system", "")
+        )
         new_code = (gen.get("code") or "").strip()
-        if not new_code:
-            break
-        code = new_code
-        vn = len(project["versions"]) + 1
-        project["versions"].append({
-            "version": vn, "type": gen.get("type", "python"),
-            "explanation": f"🔧 Auto-correction {attempts} — {gen.get('explanation', '')}",
-            "code": code, "prompt": "[auto-correction]", "comments": []})
-        project.setdefault("history", []).append({"role": "user", "content": "[auto-correction] " + err[:200]})
-        project["history"].append({"role": "assistant", "content": gen.get("explanation", "")})
+        if new_code:
+            code = new_code
+            vn = len(project["versions"]) + 1
+            project["versions"].append({
+                "version": vn,
+                "type": gen.get("type", v.get("type", "html")),
+                "explanation": f"🔧 Auto-correction Web — {gen.get('explanation', '')}",
+                "code": code,
+                "prompt": "[auto-correction web]",
+                "comments": [],
+                "tweaks": gen.get("tweaks", []),
+                "suggestions": gen.get("suggestions", [])
+            })
+            project.setdefault("history", []).append({"role": "user", "content": "[auto-correction web] " + err[:200]})
+            project["history"].append({"role": "assistant", "content": gen.get("explanation", "")})
+            fixed = True
+        
+        write_db(user, db)
+        _mirror_version_to_workspace(project_id, project["versions"][-1])
+        return {
+            "success": True,
+            "fixed": fixed,
+            "attempts": attempts,
+            "versions_count": len(project["versions"]),
+            "latest_version": project["versions"][-1]
+        }
+    else:
+        # Python script auto-fix
+        max_tries = int(os.getenv("ATHENADESIGN_AUTOFIX_MAX", "2") or 2)
+        code = v.get("code", "")
         result = runner.execute_code(code, project_id)
-        fixed = bool(result.get("success"))
+        while not result.get("success") and attempts < max_tries:
+            attempts += 1
+            err = (result.get("stderr") or "")[-2000:]
+            fix_prompt = ("Le script Python ci-dessous a ÉCHOUÉ à l'exécution. Corrige-le pour qu'il "
+                          "fonctionne, en gardant l'intention initiale. Renvoie le script complet.\n\n"
+                          f"ERREUR:\n{err}\n\nCODE ACTUEL:\n{code}")
+            gen = await generator.generate_design(
+                prompt=fix_prompt, history=project.get("history", []),
+                provider=provider, api_key=api_key, model_name=model_name,
+                design_system=project.get("design_system", ""))
+            new_code = (gen.get("code") or "").strip()
+            if not new_code:
+                break
+            code = new_code
+            vn = len(project["versions"]) + 1
+            project["versions"].append({
+                "version": vn, "type": gen.get("type", "python"),
+                "explanation": f"🔧 Auto-correction {attempts} — {gen.get('explanation', '')}",
+                "code": code, "prompt": "[auto-correction]", "comments": [],
+                "tweaks": gen.get("tweaks", []),
+                "suggestions": gen.get("suggestions", [])})
+            project.setdefault("history", []).append({"role": "user", "content": "[auto-correction] " + err[:200]})
+            project["history"].append({"role": "assistant", "content": gen.get("explanation", "")})
+            result = runner.execute_code(code, project_id)
+            fixed = bool(result.get("success"))
 
-    write_db(user, db)
-    return {"success": result.get("success"), "fixed": fixed, "attempts": attempts,
-            "result": result, "versions_count": len(project["versions"]),
-            "latest_version": project["versions"][-1] if project["versions"] else None}
+        write_db(user, db)
+        return {"success": result.get("success"), "fixed": fixed, "attempts": attempts,
+                "result": result, "versions_count": len(project["versions"]),
+                "latest_version": project["versions"][-1] if project["versions"] else None}
 
 @router.get("/projects/{project_id}/versions/{version_num}/raw", response_class=HTMLResponse)
 async def get_raw_html(request: Request, project_id: str, version_num: int):
@@ -765,6 +852,103 @@ async def get_raw_html(request: Request, project_id: str, version_num: int):
     if version.get("type") not in _WEB_TYPES:
         raise HTTPException(status_code=400, detail="Seuls les artefacts web (HTML/React/Mermaid) peuvent être affichés en brut")
     return HTMLResponse(content=_web_render(version), status_code=200)
+@router.get("/projects/{project_id}/versions/{version_num}/handoff")
+async def export_handoff_bundle(request: Request, project_id: str, version_num: int):
+    import zipfile
+    import io
+    from fastapi.responses import StreamingResponse
+    
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    
+    user = _current_user(request)
+    project = read_db(user).get(project_id) or _new_design(project_id)
+
+    idx = version_num - 1
+    if idx < 0 or idx >= len(project["versions"]):
+        raise HTTPException(status_code=404, detail="Version introuvable")
+
+    version = project["versions"][idx]
+    v_type = version.get("type", "html")
+    code = version.get("code", "")
+    
+    if v_type == "react":
+        code_filename = "App.jsx"
+        integration_instructions = (
+            "Pour intégrer ce composant React dans votre application :\n"
+            "1. Copiez 'App.jsx' dans le répertoire de vos composants React.\n"
+            "2. Assurez-vous d'avoir les dépendances Lucide React si des icônes sont utilisées (`npm install lucide-react`).\n"
+            "3. Importez-le dans votre fichier principal : `import App from './components/App';`"
+        )
+    elif v_type == "python":
+        code_filename = "script.py"
+        integration_instructions = (
+            "Pour exécuter ce script Python :\n"
+            "1. Assurez-vous d'installer les dépendances nécessaires :\n"
+            "   `pip install matplotlib pandas openpyxl python-pptx` (selon les packages requis).\n"
+            "2. Lancez le script via votre terminal : `python script.py`."
+        )
+    elif v_type == "mermaid":
+        code_filename = "diagram.mmd"
+        integration_instructions = (
+            "Pour visualiser ce diagramme :\n"
+            "1. Utilisez un lecteur Mermaid (ex. https://mermaid.live).\n"
+            "2. Ou installez l'extension Markdown Preview Mermaid dans votre éditeur."
+        )
+    else:
+        code_filename = "index.html"
+        integration_instructions = (
+            "Pour intégrer cette page HTML :\n"
+            "1. Double-cliquez sur 'index.html' pour l'ouvrir directement dans votre navigateur.\n"
+            "2. Copiez les styles et la structure dans votre template de site ou votre CMS."
+        )
+
+    tweaks_lines = []
+    for tweak in version.get("tweaks", []):
+        t_label = tweak.get("label", "")
+        t_var = tweak.get("name", "")
+        t_type = tweak.get("type", "")
+        t_default = tweak.get("default", "")
+        tweaks_lines.append(f"- **{t_label}** (`{t_var}`) : type `{t_type}`, valeur par défaut : `{t_default}`")
+    
+    tweaks_desc = "\n".join(tweaks_lines) if tweaks_lines else "*Aucun tweak dynamique configuré pour cette version.*"
+
+    handoff_md = f"""# Guide de Transition Athena Design
+
+Ce dossier d'export contient les fichiers générés par Athena Design pour le projet **{project.get('name', 'Sans titre')}** (Version {version_num}).
+
+## Fichiers Inclus
+- `{code_filename}` : Le code source généré.
+- `claude-handoff.md` : Ce guide d'intégration.
+
+## Variables de Personnalisation (Tweaks)
+Le design utilise les variables CSS/de personnalisation suivantes pour configurer son aspect dynamique :
+{tweaks_desc}
+
+## Instructions d'Intégration
+{integration_instructions}
+
+---
+Généré avec ❤️ par Athena Design.
+"""
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        zip_file.writestr(code_filename, code)
+        zip_file.writestr("claude-handoff.md", handoff_md)
+
+    zip_buffer.seek(0)
+    
+    safe_project_name = "".join(c for c in project.get("name", "athena-design") if c.isalnum() or c in ("-", "_")).strip()
+    filename = f"handoff_{safe_project_name}_v{version_num}.zip"
+    
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
 
 
 @router.get("/file/{project_id}/{filename}")

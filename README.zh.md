@@ -4,7 +4,10 @@
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
-**语言：** [Français](README.md) · [English](README.en.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Deutsch](README.de.md) · 中文（本文件） · [日本語](README.ja.md)
+**语言：** [Français](README.fr.md) · [English](README.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Deutsch](README.de.md) · 中文（本文件） · [日本語](README.ja.md)
+
+> [!WARNING]
+> **活跃开发中**：此框架处于活跃开发阶段。可能会出现错误（bugs）、实验性功能以及重大变更。非常欢迎您的贡献、反馈和漏洞报告！
 
 一个「低资源」、高度模块化的 AI 编排器，可在轻量服务器或普通 GPU 上运行。支持通过 **Web 界面**、**CLI**、**Telegram** 和**本地语音**访问。
 
@@ -95,6 +98,10 @@ iwr -useb https://raw.githubusercontent.com/faelnor92/Athena/main/install.ps1 | 
 **启动**：`athena start` 或 `python3 server.py`。访问 👉 **http://localhost:8000/**。
 
 ### ⚙️ 多 worker 部署（扩展）
+
+<details>
+<summary><b>点击展开多 worker 部署扩展细节</b></summary>
+
 共享的可变状态（账户与配额、认证会话、例程、邀请、共享项目、每用户配置）存储在 WAL 模式的公共 SQLite 数据库（`athena_state.sqlite3`）中，采用原子更新——因此**在多个 worker 间保持一致**：
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
@@ -102,7 +109,13 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 > [!NOTE]
 > **多 worker 下的 RAG。** 单进程下向量库为内嵌（本地 ChromaDB）。多 worker 时请设置 **`CHROMA_SERVER_HOST`**（+ `CHROMA_SERVER_PORT`）：所有 worker 连接同一 ChromaDB 服务器（并发写入安全）。随附的 `docker-compose.yml` 已包含 `chroma` 服务。其余状态原生支持多 worker。
 
+</details>
+
 ### 🔒 生产环境安全
+
+<details>
+<summary><b>点击展开安全防护与生产环境配置细节</b></summary>
+
 - **强制 TLS**：将 Athena 置于 HTTPS 反向代理之后（Caddy、Nginx、Traefik）。检测到 HTTPS（`X-Forwarded-Proto: https`）时服务器自动发送 **HSTS**。
 - **加密密钥置于 `.env` 之外**：为抵御磁盘/备份被盗，通过环境变量/密钥管理器注入 `DB_ENCRYPTION_KEY`。
 - **安全响应头**（CSP、X-Frame-Options、nosniff、Referrer/Permissions-Policy）默认启用——`SECURITY_HEADERS=false` 关闭，`CONTENT_SECURITY_POLICY` 自定义。
@@ -110,7 +123,13 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 - **按工具 RBAC**：`ADMIN_ONLY_TOOLS="execute_bash_command,run_ssh_command,..."` 将代码/命令执行限定给管理员。
 - **容器**：镜像以**非 root**用户运行并带 `HEALTHCHECK`。安装审计：`bash scripts/security_scan.sh`。
 
+</details>
+
 ### 📡 LLM 可观测性（可选 — OpenInference / Phoenix）
+
+<details>
+<summary><b>点击展开 Phoenix 可观测性配置细节</b></summary>
+
 除内置驾驶舱外，Athena 还可将**标准化 LLM 轨迹**（OpenInference / OpenTelemetry）导出到 **Phoenix**（Arize）。启用：
 ```bash
 pip install -r requirements-observability.txt
@@ -118,9 +137,14 @@ docker compose --profile observability up -d         # Phoenix (UI: http://local
 ```
 然后在 `.env` 中：`OPENINFERENCE_ENABLED=true` 与 `OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006/v1/traces`。默认关闭。
 
+</details>
+
 ---
 
 ## 🛡️ 对比：Athena vs 市场
+
+<details>
+<summary><b>点击展开详细对比表（Athena vs CrewAI, AutoGen, OpenClaw, Hermes）</b></summary>
 
 > [!NOTE]
 > **方法论。** 对比可比之物：**Athena**、**Hermes** 和 **OpenClaw** 是*托管应用/助手*；**CrewAI** 和 **AutoGen** 是集成进自有代码的*编排库*（因此为「N/A」）。Athena 的差异化不在于「有 UI」，而是在单一自托管产品中融合了**多租户 + 企业级安全 + 智能体编码 + 可观测性**。
@@ -145,6 +169,8 @@ docker compose --profile observability up -d         # Phoenix (UI: http://local
 | | **静态加密** | **是（Fernet/AES-128）** | 无 | 取决于存储 | N/A | N/A |
 | | **多租户隔离** | **是（按用户隔离记忆/日历/预算）** | 无 | 按工作区 | N/A | N/A |
 | | **人工审批 (HITL)** | **是（UI 中拦截敏感操作）** | 是（经聊天） | 基础 | 需自行实现 | 需自行实现 |
+
+</details>
 
 ## 📄 许可证
 
