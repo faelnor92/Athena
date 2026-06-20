@@ -4,7 +4,10 @@
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
-**Idiomas:** [Français](README.md) · [English](README.en.md) · Español (este archivo) · [Italiano](README.it.md) · [Deutsch](README.de.md) · [中文](README.zh.md) · [日本語](README.ja.md)
+**Idiomas:** [Français](README.fr.md) · [English](README.md) · Español (este archivo) · [Italiano](README.it.md) · [Deutsch](README.de.md) · [中文](README.zh.md) · [日本語](README.ja.md)
+
+> [!WARNING]
+> **Desarrollo Activo**: Este framework está bajo desarrollo activo. Se pueden esperar fallos (bugs), características experimentales y cambios importantes de compatibilidad. ¡Las contribuciones, comentarios e informes de fallos son bienvenidos!
 
 Orquestador de IA "de bajos recursos", ultra-modular, diseñado para funcionar en servidores ligeros o con GPU modestas. Accesible mediante **interfaz web**, **CLI**, **Telegram** y **voz local**.
 
@@ -89,12 +92,11 @@ curl -sSL https://raw.githubusercontent.com/faelnor92/Athena/main/install.sh | b
 ```powershell
 iwr -useb https://raw.githubusercontent.com/faelnor92/Athena/main/install.ps1 | iex
 ```
-
-* **Alternativa Docker Compose**: `docker compose up -d --build`
-
-**Inicio**: `athena start` o `python3 server.py`. Disponible en 👉 **http://localhost:8000/**.
-
 ### ⚙️ Despliegue multi-worker (escalado)
+
+<details>
+<summary><b>Haz clic para expandir los detalles de escalado</b></summary>
+
 El estado mutable compartido (cuentas y cuotas, sesiones de auth, rutinas, invitaciones, proyectos compartidos, configuración por usuario) se almacena en una base SQLite común en modo WAL (`athena_state.sqlite3`) con actualizaciones atómicas — por lo que es **coherente entre varios workers**:
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
@@ -102,7 +104,13 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 > [!NOTE]
 > **RAG en multi-worker.** En modo monoproceso, la base vectorial es embebida (ChromaDB local). Para multi-worker, define **`CHROMA_SERVER_HOST`** (+ `CHROMA_SERVER_PORT`): todos los workers hablan con el mismo servidor ChromaDB (escrituras concurrentes seguras). El `docker-compose.yml` incluido ya trae este servicio `chroma`. El resto del estado es multi-worker-safe de forma nativa.
 
+</details>
+
 ### 🔒 Seguridad en producción
+
+<details>
+<summary><b>Haz clic para expandir las salvaguardas y detalles de seguridad</b></summary>
+
 - **TLS obligatorio**: coloca Athena tras un proxy inverso HTTPS (Caddy, Nginx, Traefik). El servidor emite **HSTS** automáticamente al detectar HTTPS (`X-Forwarded-Proto: https`).
 - **Clave de cifrado fuera de `.env`**: para resistir el robo de disco/backup, inyecta `DB_ENCRYPTION_KEY` mediante variable de entorno / gestor de secretos.
 - **Cabeceras de seguridad** (CSP, X-Frame-Options, nosniff, Referrer/Permissions-Policy) activas por defecto — `SECURITY_HEADERS=false` para desactivar, `CONTENT_SECURITY_POLICY` para personalizar.
@@ -110,7 +118,13 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 - **RBAC por herramienta**: `ADMIN_ONLY_TOOLS="execute_bash_command,run_ssh_command,..."` reserva la ejecución de código/comandos a los admins.
 - **Contenedor**: la imagen se ejecuta como usuario **no-root** con `HEALTHCHECK`. Auditoría de la instalación: `bash scripts/security_scan.sh`.
 
+</details>
+
 ### 📡 Observabilidad LLM (opcional — OpenInference / Phoenix)
+
+<details>
+<summary><b>Haz clic para expandir los detalles de configuración de Phoenix</b></summary>
+
 Además del cockpit integrado, Athena puede exportar **trazas LLM estandarizadas** (OpenInference / OpenTelemetry) a **Phoenix** (Arize). Activación:
 ```bash
 pip install -r requirements-observability.txt
@@ -118,9 +132,14 @@ docker compose --profile observability up -d         # Phoenix (UI: http://local
 ```
 luego en `.env`: `OPENINFERENCE_ENABLED=true` y `OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006/v1/traces`. Desactivado por defecto.
 
+</details>
+
 ---
 
 ## 🛡️ Comparativa: Athena vs el mercado
+
+<details>
+<summary><b>Haz clic para expandir la tabla comparativa detallada (Athena vs CrewAI, AutoGen, OpenClaw, Hermes)</b></summary>
 
 > [!NOTE]
 > **Metodología.** Comparar lo comparable: **Athena**, **Hermes** y **OpenClaw** son *apps/asistentes alojados*; **CrewAI** y **AutoGen** son *librerías de orquestación* que integras en tu propio código (de ahí los "N/D"). El diferenciador de Athena no es "tener una UI", sino **multi-tenancy + seguridad de nivel empresarial + coding agéntico + observabilidad** en un único producto autoalojado.
@@ -139,12 +158,14 @@ luego en `.env`: `OPENINFERENCE_ENABLED=true` y `OTEL_EXPORTER_OTLP_ENDPOINT=htt
 | **Seguridad global** | **Autenticación** | **Contraseña, tokens, SSO (OIDC)** | No (local) | Básica (local) | N/D | N/D |
 | | **Control de acceso (RBAC)** | **Sí (roles Lector/Editor)** | No | No | N/D | N/D |
 | | **Cuotas / costes por usuario** | **Sí (cuota de tokens/día + alertas)** | No | No | N/D | N/D |
-| **Ejecución y red** | **Sandbox de ejecución** | **Contenedor Docker efímero (recursos limitados)** | Varía | Host | Vía code interpreter | **Sí (Docker)** |
+| **Ejecución y red** | **Sandbox de ejecución** | **Contenedor Docker efímero (recursos limitados)** | Varie | Host | Vía code interpreter | **Sí (Docker)** |
 | | **Escudo anti-SSRF** | **Sí (DNS rebinding, bloqueo red interna/metadatos)** | No | No | N/D | N/D |
 | **Protección de datos** | **Enmascarado de secretos (logs)** | **Sí** | No | Parcial | N/D | N/D |
 | | **Cifrado en reposo** | **Sí (Fernet/AES-128)** | No | Depende del almacenamiento | N/D | N/D |
 | | **Aislamiento multi-tenant** | **Sí (memoria/agenda/presupuesto por usuario)** | No | Por workspace | N/D | N/D |
 | | **Aprobación humana (HITL)** | **Sí (acciones sensibles interceptadas en la UI)** | Sí (vía chat) | Básica | Hazlo tú mismo | Hazlo tú mismo |
+
+</details>
 
 ## 📄 Licencia
 

@@ -77,6 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnExportPdf = document.getElementById("btn-export-pdf");
     const btnCopy = document.getElementById("btn-copy");
     const btnDownload = document.getElementById("btn-download");
+    const btnHandoff = document.getElementById("btn-handoff");
     const btnRefreshPreview = document.getElementById("btn-refresh-preview");
     const btnOpenExternal = document.getElementById("btn-open-external");
     const responsiveToolbar = document.getElementById("responsive-toolbar");
@@ -115,6 +116,30 @@ document.addEventListener("DOMContentLoaded", () => {
     const pythonAnnotationOverlay = document.getElementById("python-annotation-overlay");
     const pythonDrawingCanvas = document.getElementById("python-drawing-canvas");
     const pythonCommentPinsContainer = document.getElementById("python-comment-pins-container");
+
+    // Preview JS Error Auto-fix UI Elements
+    const previewErrorOverlay = document.getElementById("preview-error-overlay");
+    const previewErrorMessage = document.getElementById("preview-error-message");
+    const btnAutofixError = document.getElementById("btn-autofix-error");
+    const btnCloseError = document.getElementById("btn-close-error");
+
+    // Point-and-Modify Element Selection Context Menu
+    const contextMenuBubble = document.getElementById("context-menu-bubble");
+    const bubbleTargetElement = document.getElementById("bubble-target-element");
+    const btnCloseBubble = document.getElementById("btn-close-bubble");
+    const bubbleSuggestionsList = document.getElementById("bubble-suggestions-list");
+    const bubbleCustomInput = document.getElementById("bubble-custom-input");
+    const btnSubmitBubble = document.getElementById("btn-submit-bubble");
+
+    // Dynamic Tweaks Sidebar
+    const tweaksSidebar = document.getElementById("tweaks-sidebar");
+    const btnCloseTweaks = document.getElementById("btn-close-tweaks");
+    const btnOpenTweaks = document.getElementById("btn-open-tweaks");
+    const tweaksControlsList = document.getElementById("tweaks-controls-list");
+
+    // Agentic Loop Suggestions
+    const suggestionsChips = document.getElementById("suggestions-chips");
+    const starterChips = document.getElementById("starter-chips");
 
     // Renommer un projet : clic sur son titre → invite + POST rename (cohérent avec les autres fetch).
     if (currentProjectTitle) {
@@ -203,8 +228,170 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // -- Visual Design System Editor Logic --
+    const btnDsModeVisual = document.getElementById("btn-ds-mode-visual");
+    const btnDsModeRaw = document.getElementById("btn-ds-mode-raw");
+    const dsVisualEditor = document.getElementById("ds-visual-editor");
+    const dsRawEditor = document.getElementById("ds-raw-editor");
+
+    const dsColorPrimary = document.getElementById("ds-color-primary");
+    const dsColorPrimaryText = document.getElementById("ds-color-primary-text");
+    const dsColorSecondary = document.getElementById("ds-color-secondary");
+    const dsColorSecondaryText = document.getElementById("ds-color-secondary-text");
+    const dsFont = document.getElementById("ds-font");
+    const dsTheme = document.getElementById("ds-theme");
+    const dsRadius = document.getElementById("ds-radius");
+    const dsSpacing = document.getElementById("ds-spacing");
+
+    if (btnDsModeVisual && btnDsModeRaw) {
+        btnDsModeVisual.addEventListener("click", () => {
+            btnDsModeVisual.classList.add("active");
+            btnDsModeVisual.style.color = "var(--text-primary)";
+            btnDsModeVisual.style.borderBottom = "2px solid var(--accent-primary)";
+            btnDsModeRaw.classList.remove("active");
+            btnDsModeRaw.style.color = "var(--text-secondary)";
+            btnDsModeRaw.style.borderBottom = "none";
+            if (dsVisualEditor) dsVisualEditor.style.display = "flex";
+            if (dsRawEditor) dsRawEditor.style.display = "none";
+        });
+        btnDsModeRaw.addEventListener("click", () => {
+            btnDsModeRaw.classList.add("active");
+            btnDsModeRaw.style.color = "var(--text-primary)";
+            btnDsModeRaw.style.borderBottom = "2px solid var(--accent-primary)";
+            btnDsModeVisual.classList.remove("active");
+            btnDsModeVisual.style.color = "var(--text-secondary)";
+            btnDsModeVisual.style.borderBottom = "none";
+            if (dsVisualEditor) dsVisualEditor.style.display = "none";
+            if (dsRawEditor) dsRawEditor.style.display = "block";
+        });
+    }
+
+    function compileDsToText() {
+        if (!designSystemInput) return;
+        const prim = (dsColorPrimaryText && dsColorPrimaryText.value) || "#4f46e5";
+        const sec = (dsColorSecondaryText && dsColorSecondaryText.value) || "#ec4899";
+        const font = (dsFont && dsFont.value) || "Inter, sans-serif";
+        const theme = (dsTheme && dsTheme.value) || "Neutre / Moderne (Clair/Sombre dynamique)";
+        const rad = (dsRadius && dsRadius.value) || "8px (Standard fluide)";
+        const space = (dsSpacing && dsSpacing.value) || "Confortable (Standard)";
+
+        const lines = [
+            `Couleurs de marque : Primaire: ${prim}, Secondaire/Accent: ${sec}`,
+            `Typographie : ${font}`,
+            `Style global / Thème : ${theme}`,
+            `Bordures & Arrondis : ${rad}`,
+            `Espacements & Marges : ${space}`
+        ];
+        designSystemInput.value = lines.join("\n");
+        if (currentProjectData) currentProjectData.design_system = designSystemInput.value;
+    }
+
+    function parseTextToDs(text) {
+        if (!text) return;
+        
+        // Match Primary Color
+        const primMatch = text.match(/Couleurs de marque\s*:\s*Primaire:\s*(#[0-9a-fA-F]{3,6})/i);
+        if (primMatch && dsColorPrimaryText && dsColorPrimary) {
+            dsColorPrimaryText.value = primMatch[1];
+            dsColorPrimary.value = primMatch[1];
+        }
+        
+        // Match Secondary Color
+        const secMatch = text.match(/Secondaire\/Accent:\s*(#[0-9a-fA-F]{3,6})/i);
+        if (secMatch && dsColorSecondaryText && dsColorSecondary) {
+            dsColorSecondaryText.value = secMatch[1];
+            dsColorSecondary.value = secMatch[1];
+        }
+        
+        // Match Font Family
+        const fontMatch = text.match(/Typographie\s*:\s*([^\n]+)/i);
+        if (fontMatch && dsFont) {
+            const val = fontMatch[1].trim();
+            for (let opt of dsFont.options) {
+                if (opt.value === val || val.includes(opt.value.split(',')[0])) {
+                    dsFont.value = opt.value;
+                    break;
+                }
+            }
+        }
+        
+        // Match Theme
+        const themeMatch = text.match(/Style global \/ Thème\s*:\s*([^\n]+)/i);
+        if (themeMatch && dsTheme) {
+            const val = themeMatch[1].trim();
+            for (let opt of dsTheme.options) {
+                if (opt.value === val || val.includes(opt.value.split(' ')[0])) {
+                    dsTheme.value = opt.value;
+                    break;
+                }
+            }
+        }
+        
+        // Match Radius
+        const radMatch = text.match(/Bordures & Arrondis\s*:\s*([^\n]+)/i);
+        if (radMatch && dsRadius) {
+            const val = radMatch[1].trim();
+            for (let opt of dsRadius.options) {
+                if (opt.value === val || val.includes(opt.value.split(' ')[0])) {
+                    dsRadius.value = opt.value;
+                    break;
+                }
+            }
+        }
+        
+        // Match Spacing
+        const spaceMatch = text.match(/Espacements & Marges\s*:\s*([^\n]+)/i);
+        if (spaceMatch && dsSpacing) {
+            const val = spaceMatch[1].trim();
+            for (let opt of dsSpacing.options) {
+                if (opt.value === val || val.includes(opt.value.split(' ')[0])) {
+                    dsSpacing.value = opt.value;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Hook change events on visual controls
+    if (dsColorPrimary) {
+        dsColorPrimary.addEventListener("input", () => {
+            if (dsColorPrimaryText) dsColorPrimaryText.value = dsColorPrimary.value;
+            compileDsToText();
+        });
+    }
+    if (dsColorPrimaryText) {
+        dsColorPrimaryText.addEventListener("input", () => {
+            const val = dsColorPrimaryText.value.trim();
+            if (/^#[0-9a-fA-F]{3,6}$/.test(val) && dsColorPrimary) {
+                dsColorPrimary.value = val;
+            }
+            compileDsToText();
+        });
+    }
+    if (dsColorSecondary) {
+        dsColorSecondary.addEventListener("input", () => {
+            if (dsColorSecondaryText) dsColorSecondaryText.value = dsColorSecondary.value;
+            compileDsToText();
+        });
+    }
+    if (dsColorSecondaryText) {
+        dsColorSecondaryText.addEventListener("input", () => {
+            const val = dsColorSecondaryText.value.trim();
+            if (/^#[0-9a-fA-F]{3,6}$/.test(val) && dsColorSecondary) {
+                dsColorSecondary.value = val;
+            }
+            compileDsToText();
+        });
+    }
+    [dsFont, dsTheme, dsRadius, dsSpacing].forEach(el => {
+        if (el) el.addEventListener("change", compileDsToText);
+    });
+
     async function saveDesignSystem(useSource) {
         if (!currentProjectId) { appendSystemMessage && appendSystemMessage("Crée/ouvre un projet d'abord."); return; }
+        if (dsVisualEditor && dsVisualEditor.style.display !== "none") {
+            compileDsToText();
+        }
         const val = designSystemInput ? designSystemInput.value : "";
         const body = useSource ? { source: val } : { design_system: val };
         try {
@@ -212,7 +399,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
             });
             const d = await r.json();
-            if (designSystemInput) designSystemInput.value = d.design_system || "";
+            if (designSystemInput) {
+                designSystemInput.value = d.design_system || "";
+                parseTextToDs(d.design_system);
+            }
             if (currentProjectData) currentProjectData.design_system = d.design_system || "";
         } catch (e) { /* silencieux */ }
     }
@@ -233,7 +423,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     body: JSON.stringify({ url: url.trim() })
                 });
                 const d = await r.json();
-                if (designSystemInput) designSystemInput.value = d.design_system || "";
+                if (designSystemInput) {
+                    designSystemInput.value = d.design_system || "";
+                    parseTextToDs(d.design_system);
+                }
                 if (currentProjectData) currentProjectData.design_system = d.design_system || "";
                 if (!(d.design_system || "").trim())
                     appendSystemMessage && appendSystemMessage("Aucune couleur/police détectée sur cette page.");
@@ -261,6 +454,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const adjRadius = document.getElementById("adj-radius");
     const adjFont = document.getElementById("adj-font");
     const adjReset = document.getElementById("adj-reset");
+    const adjSave = document.getElementById("adj-save");
     function applyAdjustments() {
         try {
             const doc = htmlPreviewFrame && htmlPreviewFrame.contentDocument;
@@ -285,7 +479,126 @@ document.addEventListener("DOMContentLoaded", () => {
         if (adjFont) adjFont.value = 100;
         applyAdjustments();
     });
-    if (htmlPreviewFrame) htmlPreviewFrame.addEventListener("load", applyAdjustments);
+    if (adjSave) {
+        adjSave.addEventListener("click", async () => {
+            if (!currentProjectId) return;
+            const accent = adjAccent.value;
+            const radius = adjRadius.value;
+            const font = adjFont.value;
+            const newDesignSystem = `Couleur d'accent principale : ${accent}\nArrondi des bordures (border-radius) : ${radius}px\nTaille de police (font-size multiplier) : ${font}%`;
+            try {
+                const resp = await fetch(`/api/athenadesign/projects/${currentProjectId}/design_system`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ design_system: newDesignSystem })
+                });
+                if (resp.ok) {
+                    if (designSystemInput) {
+                        designSystemInput.value = newDesignSystem;
+                        parseTextToDs(newDesignSystem);
+                    }
+                    if (currentProjectData) currentProjectData.design_system = newDesignSystem;
+                    showToast("💾 Charte graphique enregistrée avec succès !");
+                } else {
+                    showToast("⚠️ Échec de l'enregistrement de la charte.");
+                }
+            } catch (err) {
+                console.error("Error saving design system:", err);
+                showToast("⚠️ Erreur réseau lors de la sauvegarde.");
+            }
+        });
+    }
+    // Route Selector navigation logic
+    const routeSelector = document.getElementById("design-route-selector");
+    if (routeSelector && htmlPreviewFrame) {
+        routeSelector.addEventListener("change", (e) => {
+            const val = e.target.value;
+            if (!val) return;
+            
+            const doc = htmlPreviewFrame.contentDocument || htmlPreviewFrame.contentWindow.document;
+            if (val.startsWith("#")) {
+                if (doc) {
+                    const el = doc.getElementById(val.substring(1));
+                    if (el) {
+                        el.scrollIntoView({ behavior: "smooth" });
+                    }
+                }
+            } else if (val === "/") {
+                if (htmlPreviewFrame.srcdoc) {
+                    htmlPreviewFrame.srcdoc = htmlPreviewFrame.srcdoc;
+                } else if (htmlPreviewFrame.src) {
+                    htmlPreviewFrame.src = htmlPreviewFrame.src;
+                }
+            } else {
+                try {
+                    if (htmlPreviewFrame.contentWindow) {
+                        htmlPreviewFrame.contentWindow.location.href = val;
+                    }
+                } catch (err) {
+                    htmlPreviewFrame.src = val;
+                }
+            }
+        });
+    }
+
+    if (htmlPreviewFrame) {
+        htmlPreviewFrame.addEventListener("load", () => {
+            applyAdjustments();
+            applyAllCurrentTweaks();
+            setupIframeInspector();
+            
+            // Dynamic route detection inside iframe DOM
+            try {
+                const doc = htmlPreviewFrame.contentDocument || htmlPreviewFrame.contentWindow.document;
+                if (doc && routeSelector) {
+                    const currentVal = routeSelector.value;
+                    routeSelector.innerHTML = '<option value="/">Page d\'accueil</option>';
+                    
+                    // 1. Anchors / Sections
+                    const headings = doc.querySelectorAll("h1[id], h2[id], h3[id], section[id], div[id]");
+                    if (headings.length > 0) {
+                        const optGroup = document.createElement("optgroup");
+                        optGroup.label = "Ancres & Sections";
+                        headings.forEach(el => {
+                            const id = el.id;
+                            const text = el.textContent.trim().substring(0, 30) || (el.tagName.toLowerCase() + "#" + id);
+                            const opt = document.createElement("option");
+                            opt.value = "#" + id;
+                            opt.textContent = `#${id} (${text})`;
+                            optGroup.appendChild(opt);
+                        });
+                        routeSelector.appendChild(optGroup);
+                    }
+                    
+                    // 2. Links
+                    const links = doc.querySelectorAll("a[href]");
+                    const localLinks = new Set();
+                    links.forEach(a => {
+                        const href = a.getAttribute("href");
+                        if (href && !href.startsWith("http") && !href.startsWith("javascript") && href !== "#" && href !== "") {
+                            localLinks.add(href);
+                        }
+                    });
+                    
+                    if (localLinks.size > 0) {
+                        const optGroup = document.createElement("optgroup");
+                        optGroup.label = "Liens internes";
+                        localLinks.forEach(href => {
+                            const opt = document.createElement("option");
+                            opt.value = href;
+                            opt.textContent = href;
+                            optGroup.appendChild(opt);
+                        });
+                        routeSelector.appendChild(optGroup);
+                    }
+                    
+                    routeSelector.value = currentVal;
+                }
+            } catch (e) {
+                console.warn("Cross-origin or empty iframe when detecting routes:", e);
+            }
+        });
+    }
 
     const btnShare = document.getElementById("btn-share");
     if (btnShare) {
@@ -635,6 +948,280 @@ document.addEventListener("DOMContentLoaded", () => {
         commentTextInput.focus();
     }
 
+    let hoveredElement = null;
+
+    function setupIframeInspector() {
+        if (!htmlPreviewFrame) return;
+        try {
+            const doc = htmlPreviewFrame.contentDocument;
+            if (!doc || !doc.body) return;
+
+            let s = doc.getElementById("athena-inspector-style");
+            if (!s) {
+                s = doc.createElement("style");
+                s.id = "athena-inspector-style";
+                s.textContent = `
+                    #athena-inspector-highlight {
+                        position: absolute !important;
+                        pointer-events: none !important;
+                        outline: 2px dashed #00f0ff !important;
+                        outline-offset: -2px !important;
+                        background: rgba(0, 240, 255, 0.08) !important;
+                        z-index: 999999 !important;
+                        transition: all 0.05s ease !important;
+                        display: none;
+                    }
+                    #athena-inspector-label {
+                        position: absolute !important;
+                        top: -20px !important;
+                        left: 0 !important;
+                        background: #00f0ff !important;
+                        color: #000000 !important;
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+                        font-size: 10px !important;
+                        font-weight: bold !important;
+                        padding: 2px 6px !important;
+                        border-radius: 3px !important;
+                        white-space: nowrap !important;
+                        pointer-events: none !important;
+                        z-index: 1000000 !important;
+                        line-height: 1.2 !important;
+                        box-shadow: 0 2px 6px rgba(0,0,0,0.3) !important;
+                    }
+                `;
+                doc.head.appendChild(s);
+            }
+
+            let highlightDiv = doc.getElementById("athena-inspector-highlight");
+            if (!highlightDiv) {
+                highlightDiv = doc.createElement("div");
+                highlightDiv.id = "athena-inspector-highlight";
+                
+                const labelSpan = doc.createElement("span");
+                labelSpan.id = "athena-inspector-label";
+                highlightDiv.appendChild(labelSpan);
+                
+                doc.body.appendChild(highlightDiv);
+            }
+
+            doc.removeEventListener("mouseover", onIframeMouseOver);
+            doc.removeEventListener("mouseout", onIframeMouseOut);
+            doc.removeEventListener("click", onIframeClick, true);
+            doc.removeEventListener("click", onIframeLinkClick);
+
+            doc.addEventListener("mouseover", onIframeMouseOver);
+            doc.addEventListener("mouseout", onIframeMouseOut);
+            doc.addEventListener("click", onIframeClick, true);
+            doc.addEventListener("click", onIframeLinkClick);
+        } catch (e) {
+            console.warn("Inspector bind skipped:", e);
+        }
+    }
+
+    function onIframeMouseOver(e) {
+        if (!isCommentMode || activeTool !== "inspect") return;
+        
+        if (e.target.id === "athena-inspector-highlight" || e.target.id === "athena-inspector-label") {
+            return;
+        }
+        
+        e.stopPropagation();
+        hoveredElement = e.target;
+        
+        // Save and change cursor for visual feedback
+        hoveredElement._originalCursor = hoveredElement.style.cursor;
+        hoveredElement.style.cursor = "pointer";
+        
+        const doc = htmlPreviewFrame.contentDocument;
+        if (!doc) return;
+        
+        const highlightDiv = doc.getElementById("athena-inspector-highlight");
+        const labelSpan = doc.getElementById("athena-inspector-label");
+        if (!highlightDiv || !labelSpan) return;
+
+        const rect = hoveredElement.getBoundingClientRect();
+        const scrollTop = doc.documentElement.scrollTop || doc.body.scrollTop;
+        const scrollLeft = doc.documentElement.scrollLeft || doc.body.scrollLeft;
+
+        highlightDiv.style.width = `${rect.width}px`;
+        highlightDiv.style.height = `${rect.height}px`;
+        highlightDiv.style.top = `${rect.top + scrollTop}px`;
+        highlightDiv.style.left = `${rect.left + scrollLeft}px`;
+        highlightDiv.style.display = "block";
+
+        const tag = hoveredElement.tagName.toLowerCase();
+        const id = hoveredElement.id ? `#${hoveredElement.id}` : "";
+        const classes = hoveredElement.className && typeof hoveredElement.className === "string" 
+            ? `.${hoveredElement.className.trim().split(/\s+/)[0]}` 
+            : "";
+        labelSpan.textContent = `${tag}${id}${classes}`;
+    }
+
+    function onIframeMouseOut(e) {
+        if (!isCommentMode || activeTool !== "inspect") return;
+        
+        if (hoveredElement) {
+            hoveredElement.style.cursor = hoveredElement._originalCursor || "";
+        }
+        
+        const doc = htmlPreviewFrame.contentDocument;
+        if (!doc) return;
+        
+        const highlightDiv = doc.getElementById("athena-inspector-highlight");
+        if (highlightDiv) {
+            highlightDiv.style.display = "none";
+        }
+        hoveredElement = null;
+    }
+
+    function onIframeClick(e) {
+        if (!isCommentMode || activeTool !== "inspect") return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!hoveredElement) return;
+
+        const tag = hoveredElement.tagName.toLowerCase();
+        const textContent = hoveredElement.textContent.trim().substring(0, 40).replace(/[\n\r]+/g, " ");
+
+        const doc = htmlPreviewFrame.contentDocument;
+        if (doc) {
+            const highlightDiv = doc.getElementById("athena-inspector-highlight");
+            if (highlightDiv) highlightDiv.style.display = "none";
+        }
+
+        const iframeRect = htmlPreviewFrame.getBoundingClientRect();
+        const elemRect = hoveredElement.getBoundingClientRect();
+
+        const xPercent = ((elemRect.left + elemRect.width / 2) / iframeRect.width) * 100;
+        const yPercent = ((elemRect.top + elemRect.height / 2) / iframeRect.height) * 100;
+
+        temporaryCommentData = {
+            x: xPercent,
+            y: yPercent,
+            width: (elemRect.width / iframeRect.width) * 100,
+            height: (elemRect.height / iframeRect.height) * 100,
+            drawing_data: "",
+            tool: "inspect",
+            color: "#00f0ff",
+            tagName: tag,
+            tagText: textContent
+        };
+
+        // Générer des suggestions contextuelles intelligentes
+        let suggestions = [];
+        if (["button", "a"].includes(tag) || (tag === "input" && ["submit", "button"].includes(hoveredElement.type))) {
+            suggestions = [
+                "Changer la couleur du bouton",
+                "Ajouter un effet de survol (lueur/zoom)",
+                "Agrandir ce bouton",
+                "Modifier le texte de ce bouton"
+            ];
+        } else if (["img", "svg", "video"].includes(tag)) {
+            suggestions = [
+                "Remplacer cette image",
+                "Ajouter des coins arrondis",
+                "Passer l'image en noir et blanc",
+                "Ajuster la taille / dimensions"
+            ];
+        } else if (["h1", "h2", "h3", "h4", "h5", "h6", "p", "span", "strong", "em", "li"].includes(tag)) {
+            suggestions = [
+                "Modifier ce texte",
+                "Changer la police / couleur du texte",
+                "Centrer ce bloc de texte",
+                "Augmenter la taille du texte"
+            ];
+        } else {
+            suggestions = [
+                "Ajouter une ombre portée (card shadow)",
+                "Changer la couleur de fond de cette zone",
+                "Rendre cette zone entièrement responsive",
+                "Ajouter une animation d'entrée"
+            ];
+        }
+
+        bubbleSuggestionsList.innerHTML = "";
+        suggestions.forEach(sug => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "bubble-chip";
+            btn.textContent = sug;
+            btn.addEventListener("click", () => {
+                submitVisualCommentWithText(sug);
+            });
+            bubbleSuggestionsList.appendChild(btn);
+        });
+
+        bubbleTargetElement.textContent = `<${tag}>`;
+        bubbleCustomInput.value = "";
+        
+        contextMenuBubble.style.display = "flex";
+        commentPopup.style.display = "none";
+        
+        const container = contextMenuBubble.parentElement;
+        const maxLeft = container.clientWidth - contextMenuBubble.clientWidth - 20;
+        const maxTop = container.clientHeight - contextMenuBubble.clientHeight - 20;
+        
+        const left = elemRect.left + elemRect.width / 2;
+        const top = elemRect.top + elemRect.height / 2;
+        
+        let popupLeft = Math.min(left + 15, maxLeft);
+        let popupTop = Math.min(top + 15, maxTop);
+        
+        contextMenuBubble.style.left = `${Math.max(15, popupLeft)}px`;
+        contextMenuBubble.style.top = `${Math.max(15, popupTop)}px`;
+        contextMenuBubble.style.right = "auto";
+        bubbleCustomInput.focus();
+    }
+
+    function onIframeLinkClick(e) {
+        const a = e.target.closest("a");
+        if (a) {
+            const href = a.getAttribute("href");
+            if (href && href.startsWith("#") && href !== "#") {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            showToast("ℹ️ Navigation désactivée dans l'aperçu.");
+        }
+    }
+
+    function showToast(message) {
+        let toast = document.getElementById("athena-global-toast");
+        if (!toast) {
+            toast = document.createElement("div");
+            toast.id = "athena-global-toast";
+            toast.className = "athena-toast";
+            document.body.appendChild(toast);
+        }
+        toast.textContent = message;
+        toast.classList.add("show");
+        
+        clearTimeout(toast._timeout);
+        toast._timeout = setTimeout(() => {
+            toast.classList.remove("show");
+        }, 3000);
+    }
+
+    function updateOverlayPointerEvents() {
+        if (!annotationOverlay) return;
+        if (isCommentMode && activeTool === "inspect") {
+            annotationOverlay.style.pointerEvents = "none";
+            setupIframeInspector();
+        } else {
+            annotationOverlay.style.pointerEvents = "auto";
+            try {
+                const doc = htmlPreviewFrame?.contentDocument;
+                if (doc) {
+                    const highlightDiv = doc.getElementById("athena-inspector-highlight");
+                    if (highlightDiv) highlightDiv.style.display = "none";
+                }
+            } catch (e) {}
+        }
+    }
+
     function clearDrawing() {
         [drawingCanvas, pythonDrawingCanvas].forEach(canvas => {
             if (canvas) {
@@ -663,11 +1250,22 @@ document.addEventListener("DOMContentLoaded", () => {
             
             setTimeout(resizeCanvases, 100);
             updateCursorClass();
+            updateOverlayPointerEvents();
         } else {
             annotationToolbar.style.display = "none";
             annotationOverlay.style.display = "none";
             pythonAnnotationOverlay.style.display = "none";
             commentPopup.style.display = "none";
+            if (contextMenuBubble) contextMenuBubble.style.display = "none";
+            
+            // Clear iframe highlight
+            try {
+                const doc = htmlPreviewFrame?.contentDocument;
+                if (doc) {
+                    const highlightDiv = doc.getElementById("athena-inspector-highlight");
+                    if (highlightDiv) highlightDiv.style.display = "none";
+                }
+            } catch (e) {}
             
             const ver = currentProjectData?.versions[currentVersionIndex];
             if (ver && ver.comments && ver.comments.length > 0) {
@@ -676,6 +1274,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 commentsSidebar.style.display = "none";
             }
             clearDrawing();
+            updateOverlayPointerEvents();
         }
     }
 
@@ -704,7 +1303,21 @@ document.addEventListener("DOMContentLoaded", () => {
         commentPopup.style.display = "none";
         clearDrawing();
     });
+    btnCloseBubble?.addEventListener("click", () => {
+        contextMenuBubble.style.display = "none";
+        clearDrawing();
+    });
     btnSubmitComment.addEventListener("click", submitVisualComment);
+    btnSubmitBubble?.addEventListener("click", () => {
+        const text = bubbleCustomInput.value.trim();
+        if (text) submitVisualCommentWithText(text);
+    });
+    bubbleCustomInput?.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+            const text = bubbleCustomInput.value.trim();
+            if (text) submitVisualCommentWithText(text);
+        }
+    });
     btnClearDrawing.addEventListener("click", clearDrawing);
 
     // Toolbar Tool Selection
@@ -715,6 +1328,7 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.classList.add("active");
             activeTool = btn.getAttribute("data-tool");
             updateCursorClass();
+            updateOverlayPointerEvents();
         });
     });
 
@@ -732,11 +1346,17 @@ document.addEventListener("DOMContentLoaded", () => {
     async function submitVisualComment() {
         const text = commentTextInput.value.trim();
         if (!text || !temporaryCommentData) return;
+        submitVisualCommentWithText(text);
+    }
+
+    async function submitVisualCommentWithText(text) {
+        if (!text || !temporaryCommentData) return;
         
         const currentVersion = currentProjectData.versions[currentVersionIndex];
         const versionNum = currentVersion.version;
         
         commentPopup.style.display = "none";
+        if (contextMenuBubble) contextMenuBubble.style.display = "none";
         
         try {
             const resp = await fetch(`/api/athenadesign/projects/${currentProjectId}/versions/${versionNum}/comments`, {
@@ -750,7 +1370,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     height: temporaryCommentData.height,
                     tool: temporaryCommentData.tool,
                     color: temporaryCommentData.color,
-                    drawing_data: temporaryCommentData.drawing_data
+                    drawing_data: temporaryCommentData.drawing_data,
+                    tag_name: temporaryCommentData.tagName || "",
+                    tag_text: temporaryCommentData.tagText || ""
                 })
             });
             
@@ -766,7 +1388,9 @@ document.addEventListener("DOMContentLoaded", () => {
             
             // AI Visual Context injection
             let regionDesc = `[Modification ciblée`;
-            if (comment.tool === "point") {
+            if (comment.tool === "inspect") {
+                regionDesc += ` sur l'élément <${comment.tag_name || 'html'}> contenant "${comment.tag_text || ''}"]`;
+            } else if (comment.tool === "point") {
                 regionDesc += ` à l'emplacement x=${Math.round(comment.x)}%, y=${Math.round(comment.y)}%]`;
             } else {
                 regionDesc += ` sur la zone x=${Math.round(comment.x)}%, y=${Math.round(comment.y)}%, largeur=${Math.round(comment.width)}%, hauteur=${Math.round(comment.height)}%]`;
@@ -798,11 +1422,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await chatResp.json();
             currentProjectData.history = data.history;
             currentProjectData.versions.push(data.version);
-            
+
             appendMessage("assistant", data.version.explanation);
             loadVersion(currentProjectData.versions.length - 1);
-            
-            appStatus.textContent = "Prêt";
+            showGenerationUsage(data.version);
             appStatus.className = "status-badge success";
             
             await loadProjects();
@@ -860,9 +1483,14 @@ document.addEventListener("DOMContentLoaded", () => {
             card.id = `comment-card-${c.id}`;
             card.className = "comment-card";
             card.style.setProperty("--accent-danger", c.color);
+            
+            let toolBadge = c.tool.toUpperCase();
+            if (c.tool === "inspect") {
+                toolBadge = c.tag_name ? `&lt;${c.tag_name.toLowerCase()}&gt;` : "INSPECT";
+            }
             card.innerHTML = `
                 <div class="comment-card-header">
-                    <span class="comment-card-index" style="color: ${c.color}">Épingle #${num} (${c.tool.toUpperCase()})</span>
+                    <span class="comment-card-index" style="color: ${c.color}">Épingle #${num} (${toolBadge})</span>
                 </div>
                 <div class="comment-card-text">${c.text}</div>
             `;
@@ -997,7 +1625,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const resp = await fetch(`/api/athenadesign/projects/${projectId}`);
             const project = await resp.json();
             currentProjectData = project;
-            if (designSystemInput) designSystemInput.value = project.design_system || "";
+            if (designSystemInput) {
+                 designSystemInput.value = project.design_system || "";
+                 parseTextToDs(project.design_system);
+             }
             const _dsDetails = document.getElementById("design-system-group");
             if (_dsDetails) _dsDetails.open = !!(project.design_system || "").trim();
             clearAttachments();
@@ -1060,32 +1691,106 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.classList.toggle("active", vp === viewport);
         });
         
+        // Scale preview to fit container if needed
+        scalePreviewViewport();
+        
         // Resize canvases to fit new size
-        setTimeout(resizeCanvases, 250);
+        setTimeout(() => {
+            resizeCanvases();
+            scalePreviewViewport();
+        }, 250);
     }
+
+    function scalePreviewViewport() {
+        const wrapper = document.querySelector(".preview-viewport-wrapper");
+        if (!wrapper || !previewFrameContainer) return;
+        
+        const wrapperWidth = wrapper.clientWidth - 48; // padding
+        const wrapperHeight = wrapper.clientHeight - 48;
+        
+        let targetWidth = 0;
+        let targetHeight = 0;
+        
+        if (activeViewport === "tablet") {
+            targetWidth = 768;
+            targetHeight = wrapperHeight * 0.95;
+        } else if (activeViewport === "mobile") {
+            targetWidth = 375;
+            targetHeight = wrapperHeight * 0.95;
+        } else {
+            // Desktop: no scaling
+            previewFrameContainer.style.transform = "none";
+            return;
+        }
+        
+        const scaleX = wrapperWidth / targetWidth;
+        const scaleY = wrapperHeight / targetHeight;
+        const scale = Math.min(1, scaleX, scaleY);
+        
+        if (scale < 1) {
+            previewFrameContainer.style.transform = `scale(${scale})`;
+            previewFrameContainer.style.transformOrigin = "center center";
+        } else {
+            previewFrameContainer.style.transform = "none";
+        }
+    }
+
+    window.addEventListener("resize", scalePreviewViewport);
 
     // Enveloppe un composant React (JSX) dans une page autonome (React+ReactDOM+Babel+Tailwind
     // via CDN) pour l'aperçu live. Équivalent de generator.react_scaffold côté serveur.
     function buildReactPreview(code) {
         const body = (code || "")
-            .replace(/^\s*import[^\n]*\n/gm, "")
+            // Imports ES retirés (React/hooks/Tailwind sont déjà globaux) — gère le MULTI-LIGNE
+            // (`import {\n a,\n b\n} from 'react'`) que l'ancien strip ligne-à-ligne ratait,
+            // laissant un `import` survivant → « import declarations may only appear at top level ».
+            .replace(/import\b[\s\S]*?from\s*['"][^'"]+['"];?/g, "")
+            .replace(/import\s*['"][^'"]+['"];?/g, "")
             .replace(/^\s*export\s+default\s+/gm, "")
-            .replace(/^\s*export\s+/gm, "");
+            .replace(/^\s*export\s+/gm, "")
+            // Le modèle ajoute PARFOIS lui-même le montage (malgré la consigne) ou le reprend du
+            // code de base → on retire tout échafaudage/montage existant AVANT d'ajouter le nôtre,
+            // sinon double déclaration `_C` / double render → erreur de compilation.
+            .replace(/^\s*const\s+_C\s*=.*$/gm, "")
+            .replace(/^.*ReactDOM\s*\.\s*createRoot[^\n]*$/gm, "")
+            .replace(/^\s*ReactDOM\s*\.\s*render[^\n]*$/gm, "")
+            .replace(/^\s*\w+\s*\.\s*render\s*\(\s*<\s*App[^\n]*$/gm, "");
+        // Code utilisateur complet (prélude hooks + composant + montage). On NE l'exécute PAS
+        // via <script type="text/babel"> (qui, en cas d'erreur de syntaxe, laisse un écran BLANC
+        // muet) : on le compile via Babel.transform dans un TRY/CATCH explicite → toute erreur
+        // (compilation OU exécution) s'affiche dans l'iframe ET remonte au parent (overlay auto-fix).
+        const userScript =
+            'const {useState,useEffect,useRef,useMemo,useCallback,useReducer,useContext,Fragment}=React;\n'
+            + body
+            + '\nconst _C=(typeof App!=="undefined"?App:(typeof Component!=="undefined"?Component:'
+            + 'function(){return React.createElement("div",{style:{padding:24}},"Aucun composant App trouvé.");}));\n'
+            + 'ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(_C));\n';
+        // Stocké dans un <script type="text/plain"> (non exécuté) ; on neutralise un </script> littéral.
+        const safeUser = userScript.replace(/<\/script/gi, '<\\/script');
         return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">'
             + '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
             + '<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>'
             + '<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>'
             + '<script src="https://unpkg.com/@babel/standalone/babel.min.js"><\/script>'
             + '<script src="https://cdn.tailwindcss.com"><\/script>'
-            + '<style>body{margin:0;font-family:Inter,system-ui,sans-serif}<\/style></head>'
-            + '<body><div id="root"></div>'
-            + '<script type="text/babel" data-presets="react">\n'
-            + 'const {useState,useEffect,useRef,useMemo,useCallback,useReducer,useContext,Fragment}=React;\n'
-            + body
-            + '\nconst _C=(typeof App!=="undefined"?App:(typeof Component!=="undefined"?Component:'
-            + 'function(){return React.createElement("div",{style:{padding:24}},"Aucun composant App trouvé.");}));\n'
-            + 'ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(_C));\n'
-            + '<\/script></body></html>';
+            + '<style>body{margin:0;font-family:Inter,system-ui,sans-serif}'
+            + '#__err{display:none;padding:24px;color:#e11d48;background:#161616;white-space:pre-wrap;'
+            + 'font:13px/1.6 ui-monospace,Menlo,Consolas,monospace}<\/style></head>'
+            + '<body><div id="root"></div><pre id="__err"></pre>'
+            + '<script type="text/plain" id="__src">' + safeUser + '<\/script>'
+            + '<script>(function(){'
+            + 'function showErr(msg){var e=document.getElementById("__err");if(e){e.style.display="block";'
+            + 'e.textContent="\\u26a0\\ufe0f Aperçu React — "+msg;}'
+            + 'try{window.parent.postMessage({type:"iframe-log",level:"stderr",message:msg},"*");}catch(_){}}'
+            + 'window.addEventListener("DOMContentLoaded",function(){'
+            + 'if(typeof Babel==="undefined"){showErr("Babel non chargé (réseau ?).");return;}'
+            + 'var src=document.getElementById("__src").textContent;var compiled;'
+            + 'try{compiled=Babel.transform(src,{presets:[["react",{runtime:"classic"}]]}).code;}'
+            + 'catch(err){showErr("Erreur de compilation : "+((err&&err.message)||err));return;}'
+            + 'try{var s=document.createElement("script");s.textContent=compiled;document.body.appendChild(s);}'
+            + 'catch(err){showErr("Erreur d\'exécution : "+((err&&err.message)||err));}'
+            + '});})();<\/script>'
+            + '</body></html>';
     }
 
     // Enveloppe un diagramme Mermaid dans une page autonome (mermaid.js via CDN). Code échappé
@@ -1114,7 +1819,11 @@ document.addEventListener("DOMContentLoaded", () => {
         let injection = `
 <script>
 (function() {
+    // Bruits CDN bénins (pas des erreurs) : on les ignore pour ne pas polluer ni déclencher
+    // l'overlay d'erreur (ex. l'avertissement "production" de Tailwind CDN dans un aperçu).
+    const NOISE = ['cdn.tailwindcss.com should not be used in production'];
     const sendLog = (type, msg) => {
+        if (NOISE.some(n => (msg || '').indexOf(n) !== -1)) return;
         window.parent.postMessage({ type: 'iframe-log', level: type, message: msg }, '*');
     };
     const wrap = (level, orig) => function(...args) {
@@ -1124,7 +1833,9 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             return String(x);
         }).join(' ');
-        sendLog(level === 'error' || level === 'warn' ? 'stderr' : 'stdout', msg);
+        // SEULE une vraie erreur (console.error / window.onerror) → 'stderr' (déclenche l'overlay
+        // « corriger »). Les warnings restent informatifs ('stdout') et ne bloquent pas l'aperçu.
+        sendLog(level === 'error' ? 'stderr' : 'stdout', msg);
         if (orig) orig.apply(console, args);
     };
     console.log = wrap('log', console.log);
@@ -1145,6 +1856,15 @@ document.addEventListener("DOMContentLoaded", () => {
             injection += `
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>window.addEventListener('DOMContentLoaded',function(){try{lucide.createIcons();}catch(e){}});</script>
+`;
+        }
+
+        // Filet de sécurité Tailwind CSS
+        const usesTailwind = /class\s*=\s*['"][^'"]*(?:bg-|text-|flex|grid|p-|m-|w-|h-|hover:)[^'"]*['"]/i.test(htmlCode);
+        const loadsTailwind = /tailwindcss|cdn\.tailwindcss/i.test(htmlCode);
+        if (usesTailwind && !loadsTailwind) {
+            injection += `
+<script src="https://cdn.tailwindcss.com"></script>
 `;
         }
         if (htmlCode.includes('<head>')) {
@@ -1219,6 +1939,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.data && e.data.type === "iframe-log") {
             const level = e.data.level; // "stdout" or "stderr"
             appendConsoleLine(level, `[Aperçu] ${e.data.message}`);
+            if (level === "stderr" && previewErrorOverlay && previewErrorMessage) {
+                previewErrorMessage.textContent = e.data.message;
+                previewErrorOverlay.style.display = "flex";
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
         } else if (e.data && e.data.type === "athena:refresh-projects") {
             // La liste des projets est partagée avec la partie Code : l'app hôte demande
             // un rafraîchissement à l'ouverture de l'onglet Design (projets créés ailleurs).
@@ -1226,10 +1951,52 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    btnCloseError?.addEventListener("click", () => {
+        if (previewErrorOverlay) previewErrorOverlay.style.display = "none";
+    });
+
+    btnAutofixError?.addEventListener("click", async () => {
+        if (!currentProjectId) return;
+        const errorMessage = previewErrorMessage.textContent;
+        if (previewErrorOverlay) previewErrorOverlay.style.display = "none";
+        
+        appStatus.textContent = "Auto-correction...";
+        appStatus.className = "status-badge generating";
+        
+        try {
+            const resp = await fetch("/api/athenadesign/autofix", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    project_id: currentProjectId,
+                    error_message: errorMessage,
+                    provider: aiProviderSelect.value,
+                    api_key: apiKeyInput.value,
+                    model_name: modelNameInput.value
+                })
+            });
+            const data = await resp.json();
+            if (data.fixed && data.latest_version) {
+                currentProjectData.versions.push(data.latest_version);
+                loadVersion(currentProjectData.versions.length - 1);
+                showToast("✨ Code corrigé avec succès !");
+            } else {
+                showToast("⚠️ Échec de l'auto-correction.");
+            }
+        } catch (err) {
+            console.error("Autofix failed:", err);
+            showToast("⚠️ Erreur réseau de l'auto-correction.");
+        } finally {
+            appStatus.textContent = "Prêt";
+            appStatus.className = "status-badge ready";
+        }
+    });
+
     // #5 — Aperçu d'un projet via les FICHIERS de son workspace (partagé avec le Code),
     // quand il n'a pas de « version » Design. L'iframe charge la page par URL (src) pour
     // que les assets relatifs (CSS/JS/images) se résolvent dans le dossier du projet.
     function showWorkspacePreview(projectId, entry) {
+        if (previewErrorOverlay) previewErrorOverlay.style.display = "none";
         currentWorkspacePreview = { projectId, entry };
         currentVersionIndex = null;
         const url = `/api/athenadesign/projects/${projectId}/workspace/${entry}`;
@@ -1319,8 +2086,21 @@ document.addEventListener("DOMContentLoaded", () => {
     function appendSystemMessage(text) {
         appendMessage("system", text);
     }
+
+    // Affiche la consommation de tokens d'une génération (statut + message discret).
+    function showGenerationUsage(version) {
+        const u = version && version.usage;
+        if (u && (u.total_tokens || u.prompt_tokens || u.completion_tokens)) {
+            const tot = u.total_tokens || ((u.prompt_tokens || 0) + (u.completion_tokens || 0));
+            if (appStatus) appStatus.textContent = `Prêt · ${tot} tokens`;
+            appendSystemMessage(`🔢 ${tot} tokens (↑${u.prompt_tokens || 0} entrée · ↓${u.completion_tokens || 0} sortie)`);
+        } else if (appStatus) {
+            appStatus.textContent = "Prêt";
+        }
+    }
     
     function formatMessageMarkdown(text) {
+        text = text || "";
         let html = text
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
@@ -1356,6 +2136,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function loadVersion(index) {
         if (!currentProjectData || !currentProjectData.versions || index >= currentProjectData.versions.length) return;
+        
+        if (previewErrorOverlay) previewErrorOverlay.style.display = "none";
         
         currentVersionIndex = index;
         currentWorkspacePreview = null;
@@ -1410,6 +2192,8 @@ document.addEventListener("DOMContentLoaded", () => {
         
         // Render comments
         renderVersionCommentsAndPins();
+        renderVersionTweaks(ver);
+        renderSuggestions(ver);
         
         if (ver.comments && ver.comments.length > 0) {
             commentsSidebar.style.display = "flex";
@@ -1454,12 +2238,13 @@ document.addEventListener("DOMContentLoaded", () => {
             
             const card = document.createElement("div");
             card.className = `timeline-card ${i === currentVersionIndex ? 'active' : ''}`;
+            const explanation = v.explanation || "";
             card.innerHTML = `
                 <div class="timeline-card-header">
                     <span class="timeline-version-tag">Version ${v.version} (${v.type.toUpperCase()})</span>
                 </div>
                 <div class="timeline-prompt">"${v.prompt}"</div>
-                <div class="timeline-desc">${v.explanation.substring(0, 80)}${v.explanation.length > 80 ? '...' : ''}</div>
+                <div class="timeline-desc">${explanation.substring(0, 80)}${explanation.length > 80 ? '...' : ''}</div>
             `;
             
             card.addEventListener("click", () => loadVersion(i));
@@ -1531,10 +2316,9 @@ document.addEventListener("DOMContentLoaded", () => {
             
             appendMessage("assistant", data.version.explanation);
             loadVersion(currentProjectData.versions.length - 1);
-            
-            appStatus.textContent = "Prêt";
+            showGenerationUsage(data.version);
             appStatus.className = "status-badge success";
-            
+
             await loadProjects();
         } catch (err) {
             console.error(err);
@@ -1753,6 +2537,240 @@ document.addEventListener("DOMContentLoaded", () => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     });
+
+    btnHandoff.addEventListener("click", () => {
+        if (!currentProjectId || currentVersionIndex === null) {
+            showToast("⚠️ Aucun projet ou version sélectionnée.");
+            return;
+        }
+        const versionNum = currentVersionIndex + 1;
+        const url = `/api/athenadesign/projects/${currentProjectId}/versions/${versionNum}/handoff`;
+        
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    });
+
+    // Tweaks Panel interactions
+    btnCloseTweaks?.addEventListener("click", () => {
+        tweaksSidebar?.classList.add("collapsed");
+        if (btnOpenTweaks) btnOpenTweaks.style.display = "flex";
+    });
+
+    btnOpenTweaks?.addEventListener("click", () => {
+        tweaksSidebar?.classList.remove("collapsed");
+        if (btnOpenTweaks) btnOpenTweaks.style.display = "none";
+    });
+
+    function applyAllCurrentTweaks() {
+        if (!currentProjectData) return;
+        const ver = currentProjectData.versions[currentVersionIndex];
+        if (!ver || !ver.tweaks || ver.tweaks.length === 0) return;
+        
+        const doc = htmlPreviewFrame.contentDocument;
+        if (!doc) return;
+        
+        ver.tweaks.forEach(tweak => {
+            const input = document.getElementById(`tweak-input-${tweak.name}`);
+            if (input) {
+                let value = input.value;
+                if (tweak.type === 'slider') {
+                    const unitMatch = tweak.values.match(/([a-zA-Z%]+)$/);
+                    const unit = unitMatch ? unitMatch[1] : '';
+                    value = value + unit;
+                } else if (tweak.type === 'toggle') {
+                    const valuesList = tweak.values ? tweak.values.split(',') : [];
+                    if (valuesList.length >= 2) {
+                        value = input.checked ? valuesList[0] : valuesList[1];
+                    } else {
+                        value = input.checked ? '1' : '0';
+                    }
+                }
+                doc.documentElement.style.setProperty(tweak.name, value);
+            }
+        });
+    }
+
+    function renderVersionTweaks(version) {
+        if (!tweaksControlsList) return;
+        tweaksControlsList.innerHTML = "";
+        
+        if (!version.tweaks || version.tweaks.length === 0) {
+            tweaksControlsList.innerHTML = '<div class="no-tweaks-msg">Aucun réglage dynamique pour cette version.</div>';
+            if (tweaksSidebar) tweaksSidebar.style.display = "none";
+            if (btnOpenTweaks) btnOpenTweaks.style.display = "none";
+            return;
+        }
+        
+        // Show Sidebar
+        if (tweaksSidebar) {
+            tweaksSidebar.style.display = "flex";
+            tweaksSidebar.classList.remove("collapsed");
+        }
+        if (btnOpenTweaks) btnOpenTweaks.style.display = "none";
+        
+        version.tweaks.forEach(tweak => {
+            const group = document.createElement("div");
+            group.className = "tweak-control-group";
+            
+            const label = document.createElement("label");
+            label.className = "tweak-label";
+            label.textContent = tweak.label;
+            group.appendChild(label);
+            
+            const wrapper = document.createElement("div");
+            wrapper.className = "tweak-input-wrapper";
+            
+            if (tweak.type === "color") {
+                const input = document.createElement("input");
+                input.type = "color";
+                input.className = "tweak-color-input";
+                input.id = `tweak-input-${tweak.name}`;
+                input.value = tweak.default || "#6366f1";
+                input.addEventListener("input", () => {
+                    const doc = htmlPreviewFrame.contentDocument;
+                    if (doc) {
+                        doc.documentElement.style.setProperty(tweak.name, input.value);
+                    }
+                });
+                wrapper.appendChild(input);
+                
+            } else if (tweak.type === "slider") {
+                const values = tweak.values.split(",");
+                const minRaw = values[0] || "0";
+                const maxRaw = values[1] || "100";
+                
+                const minNum = parseFloat(minRaw) || 0;
+                const maxNum = parseFloat(maxRaw) || 100;
+                const unitMatch = minRaw.match(/([a-zA-Z%]+)$/) || maxRaw.match(/([a-zA-Z%]+)$/);
+                const unit = unitMatch ? unitMatch[1] : "";
+                
+                const valNum = parseFloat(tweak.default) || minNum;
+                
+                const input = document.createElement("input");
+                input.type = "range";
+                input.className = "tweak-slider-input";
+                input.id = `tweak-input-${tweak.name}`;
+                input.min = minNum;
+                input.max = maxNum;
+                input.value = valNum;
+                
+                const valSpan = document.createElement("span");
+                valSpan.className = "tweak-slider-val";
+                valSpan.textContent = `${valNum}${unit}`;
+                
+                input.addEventListener("input", () => {
+                    const doc = htmlPreviewFrame.contentDocument;
+                    if (doc) {
+                        doc.documentElement.style.setProperty(tweak.name, `${input.value}${unit}`);
+                    }
+                    valSpan.textContent = `${input.value}${unit}`;
+                });
+                
+                wrapper.appendChild(input);
+                wrapper.appendChild(valSpan);
+                
+            } else if (tweak.type === "toggle") {
+                const switchLabel = document.createElement("label");
+                switchLabel.className = "tweak-toggle-switch";
+                
+                const input = document.createElement("input");
+                input.type = "checkbox";
+                input.id = `tweak-input-${tweak.name}`;
+                input.checked = tweak.default === "true" || tweak.default === "1" || tweak.default === true;
+                
+                const slider = document.createElement("span");
+                slider.className = "tweak-toggle-slider";
+                
+                switchLabel.appendChild(input);
+                switchLabel.appendChild(slider);
+                
+                input.addEventListener("change", () => {
+                    const doc = htmlPreviewFrame.contentDocument;
+                    if (doc) {
+                        const valuesList = tweak.values ? tweak.values.split(",") : [];
+                        let value = input.checked ? "1" : "0";
+                        if (valuesList.length >= 2) {
+                            value = input.checked ? valuesList[0] : valuesList[1];
+                        }
+                        doc.documentElement.style.setProperty(tweak.name, value);
+                    }
+                });
+                
+                wrapper.appendChild(switchLabel);
+                
+            } else if (tweak.type === "select") {
+                const select = document.createElement("select");
+                select.className = "tweak-select";
+                select.id = `tweak-input-${tweak.name}`;
+                
+                const options = tweak.values.split(",");
+                options.forEach(opt => {
+                    const optTrim = opt.trim();
+                    const optionEl = document.createElement("option");
+                    optionEl.value = optTrim;
+                    optionEl.textContent = optTrim;
+                    if (optTrim === tweak.default) {
+                        optionEl.selected = true;
+                    }
+                    select.appendChild(optionEl);
+                });
+                
+                select.addEventListener("change", () => {
+                    const doc = htmlPreviewFrame.contentDocument;
+                    if (doc) {
+                        doc.documentElement.style.setProperty(tweak.name, select.value);
+                    }
+                });
+                
+                wrapper.appendChild(select);
+            }
+            
+            group.appendChild(wrapper);
+            tweaksControlsList.appendChild(group);
+        });
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function renderSuggestions(version) {
+        if (!suggestionsChips) return;
+        suggestionsChips.innerHTML = "";
+        
+        if (!version.suggestions || version.suggestions.length === 0) {
+            suggestionsChips.style.display = "none";
+            if (starterChips) starterChips.style.display = "flex";
+            return;
+        }
+        
+        if (starterChips) starterChips.style.display = "none";
+        suggestionsChips.style.display = "flex";
+        
+        version.suggestions.forEach(sug => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "starter-chip";
+            btn.style.background = "linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(79, 70, 229, 0.15) 100%)";
+            btn.style.border = "1px solid rgba(99, 102, 241, 0.3)";
+            btn.style.color = "#a5b4fc";
+            
+            btn.innerHTML = `<i data-lucide="sparkles" style="width:13px;height:13px;display:inline-block;margin-right:4px;vertical-align:middle;"></i><span>${sug}</span>`;
+            
+            btn.addEventListener("click", () => {
+                if (promptInput) {
+                    promptInput.value = sug;
+                    if (typeof chatForm.requestSubmit === "function") chatForm.requestSubmit();
+                    else chatForm.dispatchEvent(new Event("submit", { cancelable: true }));
+                }
+            });
+            suggestionsChips.appendChild(btn);
+        });
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
 
     // Startup Init
     loadProjects().then(() => {

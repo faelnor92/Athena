@@ -45,6 +45,11 @@ Si vous préférez le terminal à l'interface graphique, vous pouvez lancer une 
 Allez dans le dossier d'Athena et tapez :
 `python3 athena_cli.py`
 
+#### ⚙️ Fonctionnalités du CLI (Console Interactive)
+- **Approbations interactives** : Pour assurer la sécurité, toute action sensible (comme l'exécution de commandes bash ou d'actions système) requiert une confirmation manuelle directe dans le terminal (`[y/N]`).
+- **Commandes Slash** : Dans la console de l'Agent Codeur (`coder_cli.py`), vous pouvez utiliser des raccourcis comme `/clear` (effacer l'historique), `/exit` (quitter) ou `/help` (lister les commandes).
+- **Règles locales** : Athena charge et applique automatiquement les instructions ou règles définies dans un fichier `.athena-rules.md` ou `.claudecode.md` situé à la racine de votre workspace, vous permettant de personnaliser son comportement par projet.
+
 > [!TIP]
 > **Forcer un agent spécifique (Console uniquement)** : Contrairement à l'interface web où l'Orchestrateur gère tout, la console vous permet de contourner le chef et de parler directement à un agent spécialiste. Pour cela, utilisez : 
 > `python3 athena_cli.py --agent Codeur`

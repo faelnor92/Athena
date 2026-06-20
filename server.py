@@ -72,19 +72,26 @@ app.middleware("http")(auth_middleware)
 
 # --- En-têtes HTTP de sécurité (anti-clickjacking / sniffing / XSS) -----------
 _SECURITY_HEADERS = os.getenv("SECURITY_HEADERS", "true").lower() not in ("false", "0", "no")
-_DEFAULT_CSP = (
+_DEFAULT_CSP = ""
+_CSP = os.getenv("CONTENT_SECURITY_POLICY", _DEFAULT_CSP)
+
+# CSP PERMISSIVE réservée au studio AthenaDesign (/athenadesign et /api/athenadesign).
+# Les aperçus générés (React/Babel, Tailwind, Chart.js, images placeholder…) chargent des
+# scripts/styles/images depuis des CDN arbitraires et Babel a besoin de 'unsafe-eval' : la CSP
+# stricte de l'app les bloque → écran blanc. On l'élargit donc UNIQUEMENT pour le bac à sable
+# de prototypage (l'iframe srcdoc d'aperçu hérite de la CSP de la page /athenadesign). Le reste
+# de l'application garde la CSP stricte. (Bac à sable de designs PERSO sur instance auto-hébergée.)
+_CSP_ATHENADESIGN = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
-    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
-    "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
-    "img-src 'self' data: blob:; connect-src 'self'; "
-    "media-src 'self' blob: data:; "  # lecture TTS (chat/aperçu voix) via Blob/object URL
-    "frame-src 'self' blob:; "  # aperçu PDF (object URL) + studio AthenaDesign en iframe
-    # 'self' (et non 'none') : Athena peut embarquer ses PROPRES pages (ex. AthenaDesign
-    # Studio à /athenadesign/) ; un site externe ne peut toujours pas framer Athena.
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
+    "style-src 'self' 'unsafe-inline' https:; "
+    "font-src 'self' data: https:; "
+    "img-src 'self' data: blob: https:; "
+    "connect-src 'self' https:; "
+    "media-src 'self' blob: data: https:; "
+    "frame-src 'self' blob: https:; "
     "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'"
 )
-_CSP = os.getenv("CONTENT_SECURITY_POLICY", _DEFAULT_CSP)
 
 
 def _csp_with_onlyoffice(base_csp: str) -> str:
@@ -121,8 +128,15 @@ async def security_headers(request, call_next):
         resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        # Suppression de X-Frame-Options quand frame-ancestors est présent (doublon ignoré par les navigateurs).
+        # On le garde quand même pour les vieux navigateurs, le warning est sans conséquence.
         if _CSP:
-            resp.headers.setdefault("Content-Security-Policy", _csp_with_onlyoffice(_CSP))
+            _path = request.url.path
+            if _path.startswith("/athenadesign") or _path.startswith("/api/athenadesign"):
+                # Studio de prototypage : CSP permissive (CDN + unsafe-eval pour Babel).
+                resp.headers["Content-Security-Policy"] = _csp_with_onlyoffice(_CSP_ATHENADESIGN)
+            else:
+                resp.headers.setdefault("Content-Security-Policy", _csp_with_onlyoffice(_CSP))
         # HSTS seulement derrière HTTPS (sinon casserait l'accès HTTP local).
         proto = request.headers.get("x-forwarded-proto", request.url.scheme)
         if proto == "https":

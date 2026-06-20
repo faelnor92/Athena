@@ -219,7 +219,7 @@ class _CompletionMixin:
                 or os.getenv("FAST_MODEL", "").strip()
                 or default_model)
 
-    def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None, allow_fallback: bool = True):
+    def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None, allow_fallback: bool = True, max_tokens=None):
         """Appel LLM via litellm avec routage clé officielle / endpoint custom.
         Si on_delta est fourni et STREAM_TOKENS actif, diffuse les tokens au fil
         de l'eau (latence minimale) et reconstruit une réponse compatible.
@@ -241,8 +241,8 @@ class _CompletionMixin:
         if _ucfg.get("LLM_MODEL"):
             model = str(_ucfg["LLM_MODEL"]).strip()
 
-        # Plafond de tokens pour forcer des réponses concises (optimisation des coûts)
-        max_t = int(os.getenv("LLM_MAX_TOKENS", "4000"))
+        # Plafond de tokens : override ponctuel (ex. génération de design longue) sinon défaut env.
+        max_t = int(max_tokens) if max_tokens else int(os.getenv("LLM_MAX_TOKENS", "4000"))
         # `_internal` est un marqueur INTERNE (échafaudage auto-continuation/relais) : utile
         # pour la persistance/affichage, mais non-standard côté API → on l'enlève de la copie
         # envoyée au LLM (sans muter la liste d'origine qui sert encore au scope visible).

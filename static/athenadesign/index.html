@@ -61,13 +61,86 @@
                 <details class="config-section" id="design-system-group">
                     <summary><i data-lucide="palette"></i> Design System (charte)</summary>
                     <div class="config-section-body">
-                        <textarea id="design-system-input" rows="3"
-                                  placeholder="Couleurs, typographie, ton… ou colle du CSS / une URL et clique Extraire."
-                                  style="width:100%;resize:vertical;"></textarea>
-                        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
-                            <button type="button" id="btn-ds-save" class="accent-btn" style="flex:1;">Enregistrer</button>
-                            <button type="button" id="btn-ds-extract" class="draw-btn" title="Extraire couleurs+typo d'un CSS/HTML collé ci-dessus">Extraire</button>
-                            <button type="button" id="btn-ds-url" class="draw-btn" title="Extraire la charte (couleurs/typo) depuis l'URL d'un site">🌐 D'une URL</button>
+                        <!-- Navigation des Modes -->
+                        <div class="ds-modes" style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px;">
+                            <button type="button" id="btn-ds-mode-visual" class="tab-btn active" style="padding: 4px 8px; font-size: 0.75rem; border: none; background: transparent; cursor: pointer; color: var(--text-primary); border-bottom: 2px solid var(--accent-primary);"><i data-lucide="sliders" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i> Visuel</button>
+                            <button type="button" id="btn-ds-mode-raw" class="tab-btn" style="padding: 4px 8px; font-size: 0.75rem; border: none; background: transparent; cursor: pointer; color: var(--text-secondary);"><i data-lucide="edit" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i> Brut / Source</button>
+                        </div>
+
+                        <!-- Mode Visuel -->
+                        <div id="ds-visual-editor" style="display: flex; flex-direction: column; gap: 10px;">
+                            <div style="display: flex; gap: 8px;">
+                                <div style="flex: 1;">
+                                    <label style="display: block; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 4px;">Couleur Primaire</label>
+                                    <div style="display: flex; gap: 4px; align-items: center;">
+                                        <input type="color" id="ds-color-primary" style="border: none; width: 28px; height: 28px; padding: 0; background: transparent; cursor: pointer;">
+                                        <input type="text" id="ds-color-primary-text" placeholder="#4f46e5" style="width: 100%; font-size: 0.75rem; padding: 4px 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 4px; color: #fff;">
+                                    </div>
+                                </div>
+                                <div style="flex: 1;">
+                                    <label style="display: block; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 4px;">Couleur Accent</label>
+                                    <div style="display: flex; gap: 4px; align-items: center;">
+                                        <input type="color" id="ds-color-secondary" style="border: none; width: 28px; height: 28px; padding: 0; background: transparent; cursor: pointer;">
+                                        <input type="text" id="ds-color-secondary-text" placeholder="#ec4899" style="width: 100%; font-size: 0.75rem; padding: 4px 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 4px; color: #fff;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style="display: block; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 4px;">Police Principale</label>
+                                <select id="ds-font" style="width: 100%; font-size: 0.75rem; padding: 4px 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 4px; color: #fff;">
+                                    <option value="Inter, sans-serif">Inter / System Sans</option>
+                                    <option value="Roboto, sans-serif">Roboto</option>
+                                    <option value="Outfit, sans-serif">Outfit</option>
+                                    <option value="Playfair Display, serif">Playfair Display (Serif)</option>
+                                    <option value="Fira Code, monospace">Fira Code (Monospace)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label style="display: block; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 4px;">Thème / Style global</label>
+                                <select id="ds-theme" style="width: 100%; font-size: 0.75rem; padding: 4px 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 4px; color: #fff;">
+                                    <option value="Neutre / Moderne (Clair/Sombre dynamique)">Neutre / Moderne</option>
+                                    <option value="Sleek Dark Mode (Sombre élégant)">Sleek Dark Mode</option>
+                                    <option value="Glassmorphism (Transparences et flous)">Glassmorphism</option>
+                                    <option value="Cyberpunk Néon (Contrastes élevés)">Cyberpunk Néon</option>
+                                </select>
+                            </div>
+
+                            <div style="display: flex; gap: 8px;">
+                                <div style="flex: 1;">
+                                    <label style="display: block; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 4px;">Arrondis (Bordures)</label>
+                                    <select id="ds-radius" style="width: 100%; font-size: 0.75rem; padding: 4px 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 4px; color: #fff;">
+                                        <option value="0px (Anguleux)">Aucun (0px)</option>
+                                        <option value="4px (Arrondi léger)">Léger (4px)</option>
+                                        <option value="8px (Standard fluide)">Moyen (8px)</option>
+                                        <option value="16px (Très arrondi)">Généreux (16px)</option>
+                                        <option value="9999px (Pill/Bulle)">Pilule (9999px)</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 1;">
+                                    <label style="display: block; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 4px;">Espacement (Padding)</label>
+                                    <select id="ds-spacing" style="width: 100%; font-size: 0.75rem; padding: 4px 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 4px; color: #fff;">
+                                        <option value="Compact (Densité élevée)">Compact</option>
+                                        <option value="Confortable (Standard)">Confortable</option>
+                                        <option value="Spacieux (Aéré)">Aéré</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mode Brut -->
+                        <div id="ds-raw-editor" style="display: none;">
+                            <textarea id="design-system-input" rows="3"
+                                      placeholder="Couleurs, typographie, ton… ou colle du CSS / une URL et clique Extraire."
+                                      style="width:100%;resize:vertical;font-size:0.75rem;background:rgba(0,0,0,0.3);border:1px solid var(--panel-border);color:#fff;border-radius:4px;padding:6px;"></textarea>
+                        </div>
+
+                        <!-- Actions communes -->
+                        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                            <button type="button" id="btn-ds-save" class="accent-btn" style="flex:1;padding:6px 12px;font-size:0.75rem;">Enregistrer</button>
+                            <button type="button" id="btn-ds-extract" class="draw-btn" style="padding:6px 12px;font-size:0.75rem;" title="Extraire couleurs+typo d'un CSS/HTML collé">Extraire</button>
+                            <button type="button" id="btn-ds-url" class="draw-btn" style="padding:6px 12px;font-size:0.75rem;" title="Extraire la charte depuis l'URL d'un site">🌐 D'une URL</button>
                         </div>
                     </div>
                 </details>
@@ -138,6 +211,7 @@
                     <button type="button" class="starter-chip" data-tpl="mermaid">🔀 Diagramme</button>
                     <button type="button" class="starter-chip" data-tpl="chart">🐍 Graphique Python</button>
                 </div>
+                <div id="suggestions-chips" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:6px;"></div>
                 <div id="attachments-bar" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:6px;"></div>
                 <form id="chat-form">
                     <div class="input-box-wrapper">
@@ -208,6 +282,9 @@
                     <button id="btn-download" class="secondary-btn" title="Télécharger le fichier">
                         <i data-lucide="download"></i>
                     </button>
+                    <button id="btn-handoff" class="secondary-btn" title="Exporter le Handoff Bundle (ZIP)" style="background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%); color: white; border: none; display: inline-flex; align-items: center; gap: 4px;">
+                        <i data-lucide="package"></i> <span>Handoff</span>
+                    </button>
                 </div>
             </div>
 
@@ -229,6 +306,9 @@
                                 <button class="tool-btn" data-tool="rect" title="Cibler une zone (Rectangle)">
                                     <i data-lucide="square"></i>
                                 </button>
+                                <button class="tool-btn" data-tool="inspect" title="Inspecter un élément (Clic pour modifier)">
+                                    <i data-lucide="mouse-pointer"></i>
+                                </button>
                             </div>
                             <div class="divider"></div>
                             <div class="tool-section">
@@ -246,7 +326,7 @@
                         </div>
 
                         <!-- Responsive Toolbar (Multi-écrans) -->
-                        <div class="responsive-toolbar" id="responsive-toolbar" style="display: none;">
+                        <div class="responsive-toolbar" id="responsive-toolbar" style="display: none; align-items: center; justify-content: space-between; width: 100%; box-sizing: border-box;">
                             <div class="resp-group">
                                 <button class="resp-btn active" data-viewport="desktop" title="Ordinateur de bureau (100%)">
                                     <i data-lucide="monitor"></i> <span>Bureau</span>
@@ -257,6 +337,12 @@
                                 <button class="resp-btn" data-viewport="mobile" title="Téléphone (375px)">
                                     <i data-lucide="smartphone"></i> <span>Mobile</span>
                                 </button>
+                            </div>
+                            <div class="route-selector-group" style="display: flex; align-items: center; gap: 6px; padding-right: 8px;">
+                                <span style="font-size: 0.72rem; opacity: 0.8; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; color: #fff;"><i data-lucide="compass" style="width: 14px; height: 14px;"></i> Route :</span>
+                                <select id="design-route-selector" style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 0.72rem; padding: 4px 8px; outline: none; cursor: pointer; max-width: 220px; font-family: inherit;">
+                                    <option value="/">Page d'accueil</option>
+                                </select>
                             </div>
                         </div>
 
@@ -272,31 +358,89 @@
                                 <input type="range" id="adj-font" min="80" max="130" value="100" style="width:90px;">
                             </label>
                             <button type="button" id="adj-reset" class="starter-chip" title="Réinitialiser">↺ Reset</button>
+                            <button type="button" id="adj-save" class="starter-chip" style="background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);color:white;border:none;font-weight:600;display:inline-flex;align-items:center;gap:4px;" title="Sauvegarder ces ajustements dans la charte du projet pour la prochaine génération">💾 Sauvegarder dans la charte</button>
                         </div>
 
-                        <!-- HTML Frame Previews with overlay inside viewport wrapper -->
-                        <div class="preview-viewport-wrapper" id="preview-viewport-wrapper">
-                            <div class="preview-frame-container" id="preview-frame-container" style="display: none;">
-                                <iframe id="html-preview-frame" class="preview-frame"></iframe>
-                                
-                                <!-- Drawing / Annotation Overlay -->
-                                <div id="annotation-overlay" class="annotation-overlay" style="display: none;">
-                                    <canvas id="drawing-canvas"></canvas>
-                                    <div id="comment-pins-container"></div>
-                                    
-                                    <!-- Floating Comment Saisie Popup -->
-                                    <div id="comment-popup" class="comment-popup" style="display: none;">
-                                        <div class="popup-header">
-                                            <span class="popup-title">Nouveau commentaire</span>
-                                            <button type="button" id="btn-close-popup" class="close-btn">&times;</button>
+                        <!-- split container to allow tweaks sidebar side-by-side with iframe preview -->
+                        <div class="preview-split-container">
+                            <!-- HTML Frame Previews with overlay inside viewport wrapper -->
+                            <div class="preview-viewport-wrapper" id="preview-viewport-wrapper">
+                                <div class="preview-frame-container" id="preview-frame-container" style="display: none;">
+                                    <iframe id="html-preview-frame" class="preview-frame"></iframe>
+
+                                    <!-- Visual Error Overlay -->
+                                    <div id="preview-error-overlay" class="preview-error-overlay" style="display: none;">
+                                        <div class="error-overlay-header">
+                                            <i data-lucide="triangle-alert" class="error-icon"></i>
+                                            <span>Erreur d'exécution JavaScript détectée</span>
                                         </div>
-                                        <textarea id="comment-text-input" placeholder="Décrivez la modification à apporter sur cette zone..."></textarea>
-                                        <div class="popup-actions">
-                                            <button type="button" id="btn-submit-comment" class="popup-submit-btn">Appliquer</button>
+                                        <div class="error-overlay-body" id="preview-error-message"></div>
+                                        <div class="error-overlay-footer">
+                                            <button type="button" id="btn-autofix-error" class="error-autofix-btn">
+                                                <i data-lucide="sparkles"></i> Auto-corriger avec l'IA
+                                            </button>
+                                            <button type="button" id="btn-close-error" class="error-close-btn">Masquer</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Drawing / Annotation Overlay -->
+                                    <div id="annotation-overlay" class="annotation-overlay" style="display: none;">
+                                        <canvas id="drawing-canvas"></canvas>
+                                        <div id="comment-pins-container"></div>
+                                        
+                                        <!-- Floating Comment Saisie Popup -->
+                                        <div id="comment-popup" class="comment-popup" style="display: none;">
+                                            <div class="popup-header">
+                                                <span class="popup-title">Nouveau commentaire</span>
+                                                <button type="button" id="btn-close-popup" class="close-btn">&times;</button>
+                                            </div>
+                                            <textarea id="comment-text-input" placeholder="Décrivez la modification à apporter sur cette zone..."></textarea>
+                                            <div class="popup-actions">
+                                                <button type="button" id="btn-submit-comment" class="popup-submit-btn">Appliquer</button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Bulle flottante d'édition contextuelle (Point-and-Modify) -->
+                                        <div id="context-menu-bubble" class="context-menu-bubble" style="display: none;">
+                                            <div class="bubble-header">
+                                                <span id="bubble-target-element" class="bubble-target-tag">&lt;button&gt;</span>
+                                                <button type="button" id="btn-close-bubble" class="close-btn">&times;</button>
+                                            </div>
+                                            <div class="bubble-suggestions" id="bubble-suggestions-list">
+                                                <!-- Suggestions dynamically populated -->
+                                            </div>
+                                            <div class="bubble-input-area">
+                                                <input type="text" id="bubble-custom-input" placeholder="Autre modification pour cet élément...">
+                                                <button type="button" id="btn-submit-bubble" class="bubble-submit-btn">
+                                                    <i data-lucide="send"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Dynamic Tweaks Panel -->
+                            <div class="tweaks-sidebar" id="tweaks-sidebar" style="display: none;">
+                                <div class="tweaks-header">
+                                    <div class="tweaks-title-row">
+                                        <i data-lucide="sliders-horizontal"></i>
+                                        <span>Personnaliser</span>
+                                    </div>
+                                    <button type="button" id="btn-close-tweaks" class="tweaks-close-btn" title="Masquer le panneau">
+                                        <i data-lucide="chevron-right"></i>
+                                    </button>
+                                </div>
+                                <div class="tweaks-content" id="tweaks-controls-list">
+                                    <!-- Controls dynamically generated -->
+                                    <div class="no-tweaks-msg">Aucun réglage dynamique pour cette version.</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Toggle Button to show tweaks sidebar again -->
+                            <button type="button" id="btn-open-tweaks" class="open-tweaks-btn" style="display: none;" title="Ouvrir le panneau de personnalisation">
+                                <i data-lucide="sliders-horizontal"></i>
+                            </button>
                         </div>
                         
                         <!-- Python Output Visualizer (Matplotlib / Plotly plots) -->
@@ -380,6 +524,6 @@
     </div>
 
     <!-- Custom Script -->
-    <script src="static/js/app.js?v=20260617_uxC"></script>
+    <script src="static/js/app.js?v=20260618_warn"></script>
 </body>
 </html>

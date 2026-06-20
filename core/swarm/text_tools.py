@@ -287,9 +287,11 @@ def parse_text_tool_calls(content: str, valid_names) -> list:
         if out:
             break  # un bloc valide suffit
 
-    # Repli : appel « style Python » écrit en texte — outil({...}) ou outil().
+    # Repli : appel « style Python » écrit en texte — outil({...}) ou outil()
+    # ou outil(key="value", key2=123).
     # On n'accepte qu'un nom d'outil RÉELLEMENT disponible (anti faux-positif).
     if not out:
+        # 1) outil({json}) ou outil()
         for m in _re.finditer(r"\b([a-zA-Z_]\w*)\s*\(\s*(\{.*?\})?\s*\)", content, _re.DOTALL):
             name = m.group(1)
             if name not in valid:
@@ -303,4 +305,45 @@ def parse_text_tool_calls(content: str, valid_names) -> list:
                 args_str = "{}"
             out.append(_TextToolCall(name, args_str, len(out) + 1))
             break
+    if not out:
+        # 2) outil(key="value", key2=123) — kwargs Python
+        for m in _re.finditer(r"\b([a-zA-Z_]\w*)\s*\(([^)]+)\)", content, _re.DOTALL):
+            name = m.group(1)
+            if name not in valid:
+                continue
+            raw_args = m.group(2).strip()
+            # Parser les kwargs Python : key="val", key2='val2', key3=123, key4=True
+            kwargs = {}
+            for kv in _re.finditer(
+                    r"""([a-zA-Z_]\w*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([\w.+-]+))""",
+                    raw_args):
+                k = kv.group(1)
+                v = kv.group(2) if kv.group(2) is not None else (
+                    kv.group(3) if kv.group(3) is not None else kv.group(4))
+                # Conversion des types basiques
+                if v is not None:
+                    vl = v.lower()
+                    if vl == "true":
+                        v = True
+                    elif vl == "false":
+                        v = False
+                    elif vl == "none" or vl == "null":
+                        v = None
+                    else:
+                        try:
+                            v = int(v)
+                        except (ValueError, TypeError):
+                            try:
+                                v = float(v)
+                            except (ValueError, TypeError):
+                                pass
+                kwargs[k] = v
+            if kwargs:
+                try:
+                    args_str = json.dumps(kwargs, ensure_ascii=False)
+                except Exception:
+                    args_str = "{}"
+                out.append(_TextToolCall(name, args_str, len(out) + 1))
+                break
     return out
+

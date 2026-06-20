@@ -1,5 +1,12 @@
 # Historique des Versions (Changelog)
 
+## [0.25.0] - 2026-06-20
+### Feat — approbation interactive CLI, terminal avec conteneur de dev et commandes slash
+- **Sécurisation du canal CLI** : Configuration par défaut du canal `cli` avec `auto_approve: False` et implémentation d'une confirmation interactive (`y/n`) en console pour toute exécution d'outil sensible (comme `execute_bash_command` ou `run_ssh_command`).
+- **Terminal Web et Coder CLI intégrés au Dev Container** : Démarrage et routage automatique vers le conteneur Docker de développement s'il est activé, afin d'unifier l'espace de travail.
+- **Règles locales et Commandes Slash** : Prise en charge des fichiers `.athena-rules.md` / `.claudecode.md` pour adapter le comportement de l'agent, et ajout des commandes `/clear`, `/exit` et `/help` dans `coder_cli.py`.
+
+
 ## [0.24.4] - 2026-06-18
 ### Fix — traductions UI manquantes (Proxmox, Vigie, Réglages…)
 - 5 libellés ajoutés récemment n'étaient traduits dans AUCUNE langue → s'affichaient en français pour les utilisateurs en/es/it/de/zh/ja : `dock.logs`, `dock.redaction` (Écriture), `dock.settings` (Réglages), `tab.events` (👁️ Vigie), `tab.proxmox` (🖧 Proxmox).

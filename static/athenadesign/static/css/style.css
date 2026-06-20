@@ -1426,7 +1426,7 @@ body.framed .canvas-header {
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: auto;
+    overflow: hidden;
     width: 100%;
     height: 100%;
     padding: 24px;
@@ -1635,3 +1635,490 @@ body.framed .canvas-header {
 .config-section > summary:hover { background: rgba(255,255,255,0.05); }
 .config-section-body { padding: 4px 12px 12px; }
 .config-section .form-group { margin-bottom: 8px; }
+
+/* Global Toast Notification style */
+.athena-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: rgba(13, 20, 38, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    color: #f1f5f9;
+    padding: 12px 24px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 240, 255, 0.1), 0 5px 15px rgba(0,0,0,0.5);
+    z-index: 999999;
+    font-family: 'Outfit', 'Inter', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.athena-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Visual Preview Error Overlay */
+.preview-error-overlay {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 500px;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 16px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 30px rgba(239, 68, 68, 0.15);
+    z-index: 10000;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: slideDownIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideDownIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -20px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+.error-overlay-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #ef4444;
+    font-size: 0.95rem;
+    font-weight: 700;
+    font-family: 'Outfit', sans-serif;
+}
+
+.error-overlay-body {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    border-radius: 8px;
+    padding: 12px;
+    color: #fca5a5;
+    font-family: 'Fira Code', 'Courier New', Courier, monospace;
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.error-overlay-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.error-autofix-btn {
+    background: linear-gradient(135deg, #ef4444 0%, #f43f5e 100%);
+    border: none;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.error-autofix-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+.error-autofix-btn:active {
+    transform: translateY(0);
+}
+
+.error-close-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #94a3b8;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.error-close-btn:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #f1f5f9;
+}
+
+/* Context Menu Bubble (Point-and-Modify) */
+.context-menu-bubble {
+    position: absolute;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 0 20px rgba(99, 102, 241, 0.15);
+    width: 280px;
+    padding: 12px 14px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    animation: scaleUpIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes scaleUpIn {
+    from {
+        opacity: 0;
+        transform: scale(0.92);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.bubble-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 6px;
+}
+
+.bubble-target-tag {
+    font-family: 'Fira Code', 'Courier New', monospace;
+    font-size: 0.74rem;
+    color: #6366f1;
+    background: rgba(99, 102, 241, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.bubble-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 140px;
+    overflow-y: auto;
+}
+
+.bubble-chip {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #cbd5e1;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-weight: 500;
+}
+
+.bubble-chip:hover {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.3);
+    color: #f1f5f9;
+}
+
+.bubble-input-area {
+    display: flex;
+    gap: 6px;
+}
+
+#bubble-custom-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #f1f5f9;
+    padding: 6px 10px;
+    font-size: 0.76rem;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+#bubble-custom-input:focus {
+    border-color: #6366f1;
+}
+
+.bubble-submit-btn {
+    background: #6366f1;
+    border: none;
+    color: white;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.bubble-submit-btn:hover {
+    background: #4f46e5;
+    transform: scale(1.05);
+}
+
+.bubble-submit-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Tweaks Sidebar & Split Container */
+.preview-split-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+.tweaks-sidebar {
+    width: 300px;
+    min-width: 300px;
+    height: 100%;
+    background: #0b0d19;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tweaks-sidebar.collapsed {
+    width: 0px;
+    min-width: 0px;
+    border-left: none;
+    overflow: hidden;
+}
+
+.tweaks-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tweaks-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #f1f5f9;
+}
+
+.tweaks-title-row i {
+    width: 18px;
+    height: 18px;
+    color: #6366f1;
+}
+
+.tweaks-close-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.tweaks-close-btn:hover {
+    color: #f1f5f9;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.tweaks-close-btn i {
+    width: 18px;
+    height: 18px;
+}
+
+.tweaks-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.no-tweaks-msg {
+    color: #64748b;
+    font-size: 0.85rem;
+    text-align: center;
+    margin-top: 40px;
+    font-style: italic;
+}
+
+/* Tweaks Control Items */
+.tweak-control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tweak-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.tweak-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tweak-color-input {
+    width: 100%;
+    height: 38px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+    cursor: pointer;
+    padding: 2px 4px;
+}
+
+.tweak-slider-input {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    outline: none;
+    -webkit-appearance: none;
+    accent-color: #6366f1;
+}
+
+.tweak-slider-val {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    min-width: 45px;
+    text-align: right;
+}
+
+/* Beautiful Switch Toggle */
+.tweak-toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 22px;
+}
+
+.tweak-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.tweak-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.12);
+    transition: .3s;
+    border-radius: 22px;
+}
+
+.tweak-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: #cbd5e1;
+    transition: .3s;
+    border-radius: 50%;
+}
+
+.tweak-toggle-switch input:checked + .tweak-toggle-slider {
+    background-color: #6366f1;
+}
+
+.tweak-toggle-switch input:checked + .tweak-toggle-slider:before {
+    transform: translateX(22px);
+    background-color: white;
+}
+
+/* Beautiful Select Control */
+.tweak-select {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: #cbd5e1;
+    font-size: 0.85rem;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.tweak-select:focus {
+    border-color: #6366f1;
+}
+
+.tweak-select option {
+    background: #0f172a;
+    color: #f1f5f9;
+}
+
+/* Open Tweaks Floating Button */
+.open-tweaks-btn {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    z-index: 90;
+    background: #6366f1;
+    border: none;
+    color: white;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.open-tweaks-btn:hover {
+    background: #4f46e5;
+    transform: translateY(-2px);
+}
+
+.open-tweaks-btn i {
+    width: 20px;
+    height: 20px;
+}

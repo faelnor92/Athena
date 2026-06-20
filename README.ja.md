@@ -4,7 +4,10 @@
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
-**言語：** [Français](README.md) · [English](README.en.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Deutsch](README.de.md) · [中文](README.zh.md) · 日本語（このファイル）
+**言語：** [Français](README.fr.md) · [English](README.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Deutsch](README.de.md) · [中文](README.zh.md) · 日本語（このファイル）
+
+> [!WARNING]
+> **アクティブな開発中**：このフレームワークはアクティブな開発段階にあります。バグ、実験的な機能、および重要な変更（非互換な変更）が発生する可能性があります。貢献、フィードバック、バグ報告を心より歓迎します！
 
 軽量サーバーや控えめな GPU でも動作するよう設計された「低リソース」で高度にモジュール化された AI オーケストレーター。**Web UI**、**CLI**、**Telegram**、**ローカル音声**でアクセスできます。
 
@@ -95,12 +98,18 @@ iwr -useb https://raw.githubusercontent.com/faelnor92/Athena/main/install.ps1 | 
 **起動**：`athena start` または `python3 server.py`。アクセス先 👉 **http://localhost:8000/**。
 
 ### ⚙️ マルチワーカー展開（スケーリング）
-共有される可変状態（アカウントとクォータ、認証セッション、ルーティン、招待、共有プロジェクト、ユーザーごとの設定）は WAL モードの共通 SQLite DB（`athena_state.sqlite3`）にアトミック更新で保存され、**複数ワーカー間で一貫**します：
+
+<details>
+<summary><b>クリックしてスケーリングの詳細を展開</b></summary>
+
+共有される可変状態（アカウントとクォータ、認証セッション、ルーティン、招待、共有プロジェクト、ユーザーごとの設定）は WAL モード of 共通 SQLite DB（`athena_state.sqlite3`）にアトミック更新で保存され、**複数ワーカー間で一貫**します：
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 > [!NOTE]
-> **マルチワーカーでの RAG。** 単一プロセスではベクトルストアは組み込み（ローカル ChromaDB）。マルチワーカーでは **`CHROMA_SERVER_HOST`**（+ `CHROMA_SERVER_PORT`）を設定すると、全ワーカーが同じ ChromaDB サーバーに接続します（同時書き込み安全）。同梱の `docker-compose.yml` には `chroma` サービスが含まれています。他の状態はネイティブにマルチワーカー安全です。
+> **マルチワーカーでの RAG。** 単一プロセスではベクトルストアは組み込み（ローカル ChromaDB）。マルチワーカーでは **`CHROMA_SERVER_HOST`**（+ `CHROMA_SERVER_PORT`）を設定すると、全ワーカーが同じ ChromaDB サーバーに接続します（同時書き込み安全）。同梱 of `docker-compose.yml` には `chroma` サービスが含まれています。他の状態はネイティブにマルチワーカー安全です。
+
+</details>
 
 ### 🔒 本番環境のセキュリティ
 - **TLS 必須**：Athena を HTTPS リバースプロキシ（Caddy、Nginx、Traefik）の背後に配置。HTTPS を検出（`X-Forwarded-Proto: https`）すると **HSTS** を自動送出。
@@ -111,6 +120,10 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 - **コンテナ**：イメージは **非 root** ユーザーで `HEALTHCHECK` 付きで動作。インストール監査：`bash scripts/security_scan.sh`。
 
 ### 📡 LLM 可観測性（任意 — OpenInference / Phoenix）
+
+<details>
+<summary><b>クリックして可観測性（Observability）設定の詳細を展開</b></summary>
+
 内蔵コックピットに加え、Athena は**標準化された LLM トレース**（OpenInference / OpenTelemetry）を **Phoenix**（Arize）へエクスポートできます。有効化：
 ```bash
 pip install -r requirements-observability.txt
@@ -118,9 +131,14 @@ docker compose --profile observability up -d         # Phoenix (UI: http://local
 ```
 その後 `.env` に：`OPENINFERENCE_ENABLED=true` と `OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006/v1/traces`。既定では無効。
 
+</details>
+
 ---
 
 ## 🛡️ 比較：Athena vs 市場
+
+<details>
+<summary><b>クリックして詳細な比較表を展開（Athena vs CrewAI, AutoGen, OpenClaw, Hermes）</b></summary>
 
 > [!NOTE]
 > **方法論。** 比較可能なものを比較します：**Athena**、**Hermes**、**OpenClaw** は*ホスト型アプリ/アシスタント*。**CrewAI** と **AutoGen** は自分のコードに組み込む*オーケストレーション・ライブラリ*（ゆえに「N/A」）。Athena の差別化は「UI があること」ではなく、**マルチテナント + エンタープライズ級セキュリティ + エージェント的コーディング + 可観測性**を 1 つのセルフホスト製品に統合した点です。
@@ -145,6 +163,8 @@ docker compose --profile observability up -d         # Phoenix (UI: http://local
 | | **保存時暗号化** | **あり（Fernet/AES-128）** | なし | ストレージ依存 | N/A | N/A |
 | | **マルチテナント分離** | **あり（ユーザー別にメモリ/予定/予算を分離）** | なし | ワークスペース単位 | N/A | N/A |
 | | **人手承認 (HITL)** | **あり（UI で機微な操作を捕捉）** | あり（チャット経由） | 基本 | 自前で実装 | 自前で実装 |
+
+</details>
 
 ## 📄 ライセンス
 

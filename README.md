@@ -1,163 +1,179 @@
-# 🎛️ Athena — Framework Multi-Agent Auto-Hébergé
+# 🎛️ Athena — Self-Hosted Multi-Agent Framework
 
 ![Version](https://img.shields.io/badge/version-0.24.4-blue.svg)
 ![Architecture](https://img.shields.io/badge/architecture-Multi--Tenant-success.svg)
 ![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)
 
-**Langues :** Français (ce fichier) · [English](README.en.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Deutsch](README.de.md) · [中文](README.zh.md) · [日本語](README.ja.md)
+**Languages:** [Français](README.fr.md) · English (this file) · [Español](README.es.md) · [Italiano](README.it.md) · [Deutsch](README.de.md) · [中文](README.zh.md) · [日本語](README.ja.md)
 
-Orchestrateur IA "Low-Resource" ultra-modulaire, pensé pour fonctionner sur des serveurs légers ou avec des GPU modestes. Accessible via **Interface Web**, **CLI**, **Telegram** et **Vocal Local**.
+**Keywords:** `multi-agent`, `ai-orchestrator`, `self-hosted`, `low-resource-llm`, `home-assistant`, `computer-use`, `mcp-server`, `kokoro-tts`, `swarm-intelligence`, `docker-sandbox`
 
-📖 **[Lisez le Guide Utilisateur Complet](docs/USER_GUIDE.md)** pour apprendre comment installer, configurer et utiliser Athena pas à pas.
+> [!WARNING]
+> **Active Development**: This framework is under active development. Expect bugs, experimental features, and potential breaking changes. Contributions, feedback, and bug reports are highly welcome!
 
-## ✨ Fonctionnalités Clés
+Athena is an enterprise-grade, "low-resource", ultra-modular self-hosted AI agent framework and multi-agent orchestrator. It is built to run on lightweight local servers or modest GPUs. Athena features a responsive Web UI with a 3D isometric dashboard, agentic self-healing code loops, a local voice assistant (TTS/STT), Docker sandboxing, and direct Home Assistant and Model Context Protocol (MCP) integrations.
 
-### 🔐 Multi-Tenant Pro & Collaboration
-* **Sécurité & SSO** : Support de l'authentification OIDC / OAuth2 pour l'entreprise. Système d'inscription par invitation géré par l'administrateur.
-* **Chiffrement au Repos** : Les conversations et les traces d'exécution stockées en base (SQLite) sont chiffrées au repos via Fernet (AES-128-CBC + HMAC-SHA256). La clé reste sous votre contrôle (`.env` ou secret-manager externe).
-* **Contrôle des Coûts (Quotas)** : Bridage automatique des dépenses API via un système de quotas de tokens journaliers configurable par utilisateur.
-* **Sécurité Avancée** : Protection intégrée anti-SSRF (DNS rebinding) pour la navigation web et masquage automatique des secrets (Redaction) dans les logs.
-* **Isolation Absolue** : Chaque utilisateur dispose de sa propre mémoire (RAG, Core Memory), de son propre agenda, de ses listes et de son budget API.
-* **Self-Service LLM** : Chaque utilisateur peut surcharger les modèles IA globaux avec ses propres clés API (OpenAI, Anthropic, Gemini, Groq, etc.).
-* **Projets Partagés** : Création d'espaces de travail (Workspaces) collaboratifs avec gestion fine des rôles (Lecteur / Éditeur) et verrouillage anti-collision des fichiers.
+📖 **[Read the full User Guide](docs/USER_GUIDE.md)** to learn how to install, configure and use Athena step by step.
 
-### 🧠 Moteur d'Orchestration & LLM
-* **Multi-Modèles** : OpenAI, Anthropic, Gemini, Ollama, Groq, Mistral, Qwen, APIs locales compatibles.
-* **Swarm (Essaim)** : Routage automatique entre agents spécialisés (handoffs), exécution concurrente, débats inter-agents.
-* **Context Stacker (« fil d'Ariane »)** : mettez une tâche de côté (PUSH) pour traiter une urgence, puis reprenez **exactement où vous en étiez** (POP) — sans pollution de contexte. La sandbox Docker associée est **gelée puis relancée** (`docker pause`/`unpause`). Pile LIFO par session, imbrication supportée.
-* **Objectifs persistants (Goal Manager)** : Athena suit vos buts à long terme (décomposés en étapes, prioritisés) et **ne perd jamais le fil** — les objectifs actifs lui sont rappelés à chaque échange.
-* **Fiabilité du tool-calling** : auto-réparation des appels d'outils mal formés (JSON cassé, style Python, appel écrit en texte) + relance automatique — fini les outils « oubliés » par les modèles légers.
-* **Pipelines Rigides (Optionnel)** : Possibilité de forcer une chaîne de montage stricte où les agents s'enchaînent séquentiellement sans autonomie de déviation.
-* **Architecture Modulaire** : Backend FastAPI découpé par routeurs fonctionnels, soutenu par une base de données **SQLite** robuste et thread-safe.
-* **Isolation des Tâches** : État isolé par exécution (ContextVars). Plusieurs requêtes parallèles n'interfèrent jamais.
+## ✨ Key Features
 
-### 🌐 Interface Web Avancée
-* **Bureau Virtuel (3D Isométrique)** : Visualisation de l'essaim, agents actifs surlignés, animations de délégation.
-* **Cockpit & Télémétrie** : Suivi en direct de la consommation (tokens, coûts financiers par utilisateur), exécutions et erreurs.
-* **Observabilité** : Historique complet et panneau de Logs en temps réel dans l'UI pour auditer les appels d'outils et le système.
-* **Éditeur intégré (mini-IDE)** : Explorateur de fichiers **éditable** — édition multi-onglets (CodeMirror), coloration, autocomplétion, sauvegarde Ctrl+S (lecture seule pour les Lecteurs), panneau redimensionnable, et **live-reload** quand l'agent modifie un fichier ouvert.
-* **Outils Intégrés** : Agenda, listes, terminal, galerie de médias, et onglet **👁️ Vigie** (surveillance proactive).
-* **Réglages No-Code** : Gestion complète du comportement (routines, mémoire, rôles, modèles, Vigie) via des interfaces claires — réglages **repensés** (cartes + descriptions + recherche), sélecteurs de modèles **dynamiques**.
-* **Responsive** : interface utilisable sur **mobile et tablette**. Saisie multiligne (Entrée envoie, Ctrl/Maj+Entrée = saut de ligne).
+### 🔐 Pro Multi-Tenant & Collaboration
+* **Security & SSO**: OIDC / OAuth2 authentication for the enterprise. Admin-managed invite-only registration.
+* **Encryption at Rest**: Conversations and execution traces stored in the database (SQLite) are encrypted at rest via Fernet (AES-128-CBC + HMAC-SHA256). The key stays under your control (`.env` or external secret manager).
+* **Cost Control (Quotas)**: Automatic spending caps on API usage via per-user daily token quotas.
+* **Advanced Security**: Built-in anti-SSRF (DNS rebinding) protection for web browsing and automatic secret redaction in logs.
+* **Absolute Isolation**: Each user has their own memory (RAG, Core Memory), calendar, lists and API budget.
+* **Self-Service LLM**: Each user can override the global AI models with their own API keys (OpenAI, Anthropic, Gemini, Groq, etc.).
+* **Shared Projects**: Collaborative workspaces with fine-grained roles (Reader / Editor) and anti-collision file locking.
 
-### 🧰 Outils & Extensibilité (Skills)
-* **Serveurs MCP (Model Context Protocol)** : Branchez des serveurs externes sans coder. Le connecteur Home Assistant MCP est vendorisé localement pour une sécurité absolue.
-* **Computer Use (RPA 2.0)** : Pilotage d'un navigateur interactif headless optimisé pour les LLMs.
-* **Navigation Git & Code** : Compréhension de vos dépôts de code (logs, branches, édition), exécution bash/python via Sandbox Docker.
-* **Création de Skills à la Volée** : L'IA peut littéralement *coder ses propres outils* et les sauvegarder de façon permanente pour étendre ses capacités !
-* **Administration SSH** : Gestion de vos serveurs distants via des commandes SSH.
-* **Créativité & Web** : Recherche web approfondie, génération d'images/vidéos (Fal, Replicate), scraping.
-* **Traitement Média & Réunions** : Capacité à résumer et transcrire des fichiers audios ou des réunions entières.
+### 🧠 Orchestration & LLM Engine
+* **Multi-Model**: OpenAI, Anthropic, Gemini, Ollama, Groq, Mistral, Qwen, compatible local APIs.
+* **Swarm**: Automatic routing between specialized agents (handoffs), concurrent execution, inter-agent debates.
+* **Rigid Pipelines (Optional)**: Force a strict assembly line where agents run sequentially without deviation.
+* **Modular Architecture**: FastAPI backend split by functional routers, backed by a robust, thread-safe **SQLite** database.
+* **Task Isolation**: Per-run isolated state (ContextVars). Parallel requests never interfere.
+
+### 🌐 Advanced Web UI
+* **Virtual Office (3D Isometric)**: Visualize the swarm, highlighted active agents, delegation animations.
+* **Cockpit & Telemetry**: Live tracking of consumption (tokens, financial cost per user), runs and errors.
+* **Observability**: Full history and a real-time Logs panel in the UI to audit tool calls and the system.
+* **Built-in mini-IDE**: Editable file explorer — multi-tab editing (CodeMirror), highlighting, autocomplete, Ctrl+S save (read-only for Readers), resizable panel, and **live-reload** when the agent edits an open file.
+* **Integrated Tools**: Calendar, lists, terminal, and a gallery of generated media.
+* **No-Code Settings**: Full behavior management (routines, memory, roles) via clear interfaces.
+
+### 🧰 Tools & Extensibility (Skills)
+* **MCP Servers (Model Context Protocol)**: Plug external servers in without coding. The Home Assistant MCP connector is vendored locally for maximum security.
+* **Computer Use (RPA 2.0)**: Drive an interactive headless browser optimized for LLMs.
+* **Git & Code Navigation**: Understand your code repositories (logs, branches, editing), run bash/python via a Docker sandbox.
+* **On-the-fly Skill Creation**: The AI can literally *code its own tools* and save them permanently to extend its capabilities!
+* **SSH Administration**: Manage your remote servers via SSH commands.
+* **Creativity & Web**: Deep web search, image/video generation (Fal, Replicate), scraping.
+* **Media & Meetings**: Summarize and transcribe audio files or entire meetings.
 
 ### 🎨 AthenaDesign Studio
-* **Studio de design IA** : décrivez ce que vous voulez, Athena génère et **prévisualise en direct** des interfaces **HTML/CSS/JS**, des **composants React/JSX**, des **diagrammes Mermaid**, et exécute du **Python** (présentations **PowerPoint**, graphiques Matplotlib/Plotly) dans une **sandbox Docker** isolée.
-* **Design System** : appliquez votre charte (couleurs, typographie) — saisie manuelle, extraction depuis un CSS, ou **import depuis l'URL d'un site**.
-* **Imports & vision** : joignez images/documents (PDF) ou capturez une page web comme référence ; routage vision automatique (modèle multimodal si disponible, sinon dégradation propre).
-* **Itération** : annotations sur l'aperçu, **sliders WYSIWYG** (couleur/arrondi/police), versions, **auto-correction** des scripts en erreur, export **PDF/PPTX/HTML** et **partage par lien** (lecture seule, sandboxé).
-* **Projets unifiés** : un projet Athena porte à la fois le **code** et le **design**.
+* **AI design studio**: describe what you want and Athena generates and **previews live** **HTML/CSS/JS** interfaces, **React/JSX** components, **Mermaid** diagrams, and runs **Python** (PowerPoint presentations, Matplotlib/Plotly charts) in an isolated **Docker sandbox**.
+* **Design System**: apply your brand (colors, typography) — by hand, by extracting from CSS, or by **importing from a site's URL**.
+* **Imports & vision**: attach images/documents (PDF) or capture a web page as a reference; automatic vision routing (multimodal model if available, otherwise graceful degradation).
+* **Iteration**: annotate the preview, **WYSIWYG sliders** (color/radius/font), versions, **auto-correction** of failing scripts, export to **PDF/PPTX/HTML** and **share by link** (read-only, sandboxed).
+* **Unified projects**: an Athena project holds both **code** and **design**.
 
 ### 🔌 Plugins & Auto-correction
-* **Onglet Plugins** : active des extensions first-class en plus des serveurs MCP et des skills.
-* **Plugin Claude Code** : délègue le code lourd à l'agent **Claude Code** (CLI), scopé au projet actif ; donné automatiquement au Codeur quand il est activé.
-* **Auto-correction (self-healing)** : le design (Python) et le **Codeur** (Code-Test-Fix : `pytest`/`npm test`) corrigent automatiquement leurs erreurs en boucle bornée.
+* **Plugins tab**: enable first-class extensions on top of MCP servers and skills.
+* **Claude Code plugin**: delegate heavy coding to the **Claude Code** agent (CLI), scoped to the active project; automatically granted to the Coder when enabled.
+* **Auto-correction (self-healing)**: both design (Python) and the **Coder** (Code-Test-Fix: `pytest`/`npm test`) automatically fix their errors in a bounded loop.
 
-### 🏠 Domotique, Proactivité & Automatisations
-* **Domotique Native (Home Assistant)** : Lecture d'état et exécution d'actions domotiques (lumières, volets, capteurs) de façon instantanée.
-* **Conscience Spatiale** : Sait dans quelle pièce vous êtes pour diriger ses actions sur votre environnement physique.
-* **Proactivité événementielle (agent « Vigie »)** : Athena réagit à des événements **poussés** par votre supervision (Zabbix, Grafana, LibreNMS, Home Assistant, traps SNMP via forwarder…) sur `POST /api/events`. **Rien ne tourne en boucle** : le Vigie ne se réveille que sur événement, analyse, alerte, et propose un correctif (action sensible → validée). Filtrage par sévérité, dé-duplication anti-tempête, configurable dans l'UI **et par Athena**.
-* **Validation à distance (HITL multi-canal)** : une action sensible déclenchée depuis Telegram **fige l'exécution** et vous envoie une notification avec boutons **✅ Autoriser / ⛔ Refuser** — vous validez depuis votre téléphone, l'exécution reprend (ou non).
-* **Routines Proactives & Workflows** : Planification de tâches (CRON) isolées par utilisateur, déclenchements webhooks, intégrations poussées avec **n8n**.
-* **Agenda & Listes** : Synchronisation bidirectionnelle Google Calendar, iCal et CalDAV. Listes (courses, tâches) **synchronisables avec Nextcloud Notes** (2 sens, optionnel).
-* **Notifications Actives** : Alertes autonomes de la part d'Athena vers Telegram, Discord, Slack, Email et Webhooks.
+### 🏠 Home Automation & Automations
+* **Native Home Automation (Home Assistant)**: Read state and run actions (lights, blinds, sensors) instantly.
+* **Spatial Awareness**: Knows which room you're in to target actions on your physical environment.
+* **Proactive Routines & Workflows**: Per-user CRON scheduling, webhook triggers, deep **n8n** integrations.
+* **Calendar & Lists**: Two-way sync with Google Calendar, iCal and CalDAV. Manage todos and shopping lists.
+* **Active Notifications**: Autonomous alerts from Athena to Telegram, Discord, Slack, Email and Webhooks.
 
-### 💾 Mémoire & Apprentissage
-* **Base Vectorielle RAG** : Indexation sémantique automatique de documents via ChromaDB (embeddings locaux ou HTTP au choix).
-* **Knowledge Graph & Core Memory** : Archivage de faits durables et modélisation de relations en réseau (Graphes).
-* **Chronos (mémoire relationnelle automatique)** : en fin d'échange, Athena **extrait les faits durables** (vos préférences, vos proches, vos machines et leurs relations) vers le graphe ; au début d'un échange, le **contexte pertinent est réinjecté** — elle résout « le serveur de dev », « ma femme »… toute seule.
-* **Conscience situationnelle** : l'« ici et maintenant » (objectifs actifs, parenthèses en cours, pièce courante) est rappelé à chaque échange.
-* **Auto-Amélioration** : Retour d'expérience persistant après une tâche complexe pour affiner le comportement futur.
-* **Sauvegarde & Restauration** : Système complet de backup/restore de l'état (conversations, RAG, routines, configurations).
+### 💾 Memory & Learning
+* **RAG Vector Database**: Automatic semantic indexing of documents via ChromaDB.
+* **Knowledge Graph & Core Memory**: Store durable facts and model relationships as graphs.
+* **Self-Improvement**: Persistent experience feedback after complex tasks to refine future behavior.
+* **Backup & Restore**: Full state backup/restore (conversations, RAG, routines, configurations).
 
-### 🎙️ Assistant Vocal (STT/TTS)
-* **100% Local & Fluide** : Synthèse vocale très haute vitesse via **Kokoro TTS** (API Docker locale avec redémarrage UI) et transcription via **Whisper STT** optimisé.
-* **Détection de Mot-Clé (Wake Word)** : openWakeWord avec support du "barge-in" (interruption de la parole IA).
-* **Reconnaissance du locuteur** : identification par empreinte vocale (resemblyzer) → **chaque membre du foyer est routé vers SON compte** (agenda, listes, mémoire personnels). Enrôlement simple en une commande.
-* **Satellites ESP32-S3** : Connexion directe de satellites vocaux ESPHome au framework (S2S), sans passer par Home Assistant.
+### 🎙️ Voice Assistant (STT/TTS)
+* **100% Local & Smooth**: Very fast text-to-speech via **Kokoro TTS** (local Docker API) and transcription via optimized **Whisper STT**.
+* **Wake Word Detection**: openWakeWord with "barge-in" support (interrupting the AI's speech).
+* **ESP32-S3 Satellites**: Connect ESPHome voice satellites directly to the framework (S2S), bypassing Home Assistant.
 
-## 🚀 Installation Rapide (1-Liner)
+## 🚀 Quick Install (1-Liner)
 
 > [!NOTE]
-> *Si ce dépôt est privé, vous devez disposer des droits d'accès (token ou clé SSH) pour que ces commandes fonctionnent, ou vous pouvez cloner manuellement le dépôt.*
+> *If this repository is private, you need access rights (token or SSH key) for these commands to work, or you can clone the repo manually.*
 
-**Linux / macOS** : Copiez et collez cette commande dans votre terminal :
+**Linux / macOS**: Copy and paste this command into your terminal:
 ```bash
 curl -sSL https://raw.githubusercontent.com/faelnor92/Athena/main/install.sh | bash
 ```
 
-**Windows** : Exécutez cette commande dans PowerShell :
+**Windows**: Run this command in PowerShell:
 ```powershell
 iwr -useb https://raw.githubusercontent.com/faelnor92/Athena/main/install.ps1 | iex
 ```
 
-* **Alternative Docker Compose** : `docker compose up -d --build`
+* **Docker Compose alternative**: `docker compose up -d --build`
 
-**Démarrage** : `athena start` ou `python3 server.py`. Accessible sur 👉 **http://localhost:8000/**.
+**Start**: `athena start` or `python3 server.py`. Available at 👉 **http://localhost:8000/**.
 
-### ⚙️ Déploiement multi-worker (montée en charge)
-L'état mutable partagé (comptes & quotas, sessions d'auth, routines, invitations, projets partagés, config par-utilisateur) est stocké dans une base SQLite commune en mode WAL (`athena_state.sqlite3`), avec des mises à jour atomiques — donc **cohérent entre plusieurs workers** :
+### ⚙️ Multi-worker deployment (scaling)
+
+<details>
+<summary><b>Click to expand scaling details</b></summary>
+
+Shared mutable state (accounts & quotas, auth sessions, routines, invites, shared projects, per-user config) is stored in a common SQLite database in WAL mode (`athena_state.sqlite3`) with atomic updates — so it is **consistent across multiple workers**:
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 > [!NOTE]
-> **RAG en multi-worker.** En mono-process, la base vectorielle est embarquée (ChromaDB local). Pour le multi-worker, définissez **`CHROMA_SERVER_HOST`** (+ `CHROMA_SERVER_PORT`) : tous les workers parlent alors au même serveur ChromaDB (écritures concurrentes sûres). Le `docker-compose.yml` fourni inclut déjà ce service `chroma` et le câblage. Tout le reste de l'état est multi-worker-safe nativement.
->
-> **Rate-limiting en multi-worker.** Le rate-limiting applicatif (`RATE_LIMIT_PER_MIN`) est **par worker** (compteur mémoire) : avec N workers, la limite effective par IP ≈ N × la valeur. Pour une limite **globale** stricte en prod exposée, applique le rate-limiting au **reverse-proxy** (Nginx `limit_req`, Traefik, Caddy) en amont.
+> **RAG in multi-worker mode.** In single-process mode the vector store is embedded (local ChromaDB). For multi-worker, set **`CHROMA_SERVER_HOST`** (+ `CHROMA_SERVER_PORT`): all workers then talk to the same ChromaDB server (safe concurrent writes). The provided `docker-compose.yml` already includes this `chroma` service and wiring. All other state is multi-worker-safe natively.
 
-### 🔒 Sécurité en production
-- **TLS obligatoire** : placez Athena derrière un reverse-proxy HTTPS (Caddy, Nginx, Traefik). Le serveur émet automatiquement **HSTS** quand il détecte HTTPS (`X-Forwarded-Proto: https`).
-- **Clé de chiffrement hors `.env`** : pour résister au vol de disque/backup, injectez `DB_ENCRYPTION_KEY` via une variable d'environnement / un secret-manager plutôt que de la laisser dans le fichier `.env` à côté des bases.
-- **En-têtes de sécurité** (CSP, X-Frame-Options, nosniff, Referrer/Permissions-Policy) actifs par défaut — `SECURITY_HEADERS=false` pour désactiver, `CONTENT_SECURITY_POLICY` pour personnaliser.
-- **Garde-fous** : throttle anti-brute-force (`LOGIN_MAX_FAILS`/`LOGIN_WINDOW_SECONDS`), rate-limiting (`RATE_LIMIT_PER_MIN`, défaut 300/IP/min), politique de mot de passe (`MIN_PASSWORD_LENGTH`, défaut 8), **journal d'audit** (`GET /api/audit`, admin), et **validation admin** des automatisations créées par des comptes « user ».
-- **RBAC par outil** : `ADMIN_ONLY_TOOLS="execute_bash_command,run_ssh_command,..."` réserve l'exécution de code/commandes aux admins.
-- **Conteneur** : l'image tourne en utilisateur **non-root** avec un `HEALTHCHECK`. Audit de l'installation : `bash scripts/security_scan.sh` (pip-audit + bandit + secrets).
+</details>
 
-### 📡 Observabilité LLM (optionnelle — OpenInference / Phoenix)
-En plus du cockpit intégré (runs tracés, usage, audit), Athena peut exporter des **traces LLM standardisées** (OpenInference / OpenTelemetry) vers **Phoenix** (Arize), un visualiseur de traces auto-hébergeable avec évaluations. Activation :
+### 🔒 Production security
+
+<details>
+<summary><b>Click to expand production security details & guardrails</b></summary>
+
+- **TLS required**: put Athena behind an HTTPS reverse proxy (Caddy, Nginx, Traefik). The server automatically emits **HSTS** when it detects HTTPS (`X-Forwarded-Proto: https`).
+- **Encryption key outside `.env`**: to resist disk/backup theft, inject `DB_ENCRYPTION_KEY` via an environment variable / secret manager rather than leaving it in the `.env` file next to the databases.
+- **Security headers** (CSP, X-Frame-Options, nosniff, Referrer/Permissions-Policy) active by default — `SECURITY_HEADERS=false` to disable, `CONTENT_SECURITY_POLICY` to customize.
+- **Guardrails**: anti-brute-force throttle (`LOGIN_MAX_FAILS`/`LOGIN_WINDOW_SECONDS`), rate limiting (`RATE_LIMIT_PER_MIN`, default 300/IP/min), password policy (`MIN_PASSWORD_LENGTH`, default 8), **audit log** (`GET /api/audit`, admin), and **admin approval** of automations created by "user" accounts.
+- **Per-tool RBAC**: `ADMIN_ONLY_TOOLS="execute_bash_command,run_ssh_command,..."` restricts code/command execution to admins.
+- **Container**: the image runs as a **non-root** user with a `HEALTHCHECK`. Install audit: `bash scripts/security_scan.sh` (pip-audit + bandit + secrets).
+
+</details>
+
+### 📡 LLM Observability (optional — OpenInference / Phoenix)
+
+<details>
+<summary><b>Click to expand observability setup details</b></summary>
+
+On top of the built-in cockpit (traced runs, usage, audit), Athena can export **standardized LLM traces** (OpenInference / OpenTelemetry) to **Phoenix** (Arize), a self-hostable trace viewer with evaluations. Enable:
 ```bash
-pip install -r requirements-observability.txt        # paquets optionnels
-docker compose --profile observability up -d         # lance Phoenix (UI: http://localhost:6006)
+pip install -r requirements-observability.txt        # optional packages
+docker compose --profile observability up -d         # starts Phoenix (UI: http://localhost:6006)
 ```
-puis dans `.env` : `OPENINFERENCE_ENABLED=true` et `OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006/v1/traces`. Désactivé par défaut, sans aucun impact.
+then in `.env`: `OPENINFERENCE_ENABLED=true` and `OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:6006/v1/traces`. Disabled by default, with zero impact.
+
+</details>
 
 ---
 
-## 🛡️ Tableau Comparatif : Athena vs Marché
+## 🛡️ Comparison: Athena vs the Market
+
+<details>
+<summary><b>Click to expand the detailed comparison table (Athena vs CrewAI, AutoGen, OpenClaw, Hermes)</b></summary>
 
 > [!NOTE]
-> **Méthodologie.** Comparer ce qui est comparable : **Athena**, **Hermes** et **OpenClaw** sont des *applications/assistants hébergés* ; **CrewAI** et **AutoGen** sont des *librairies d'orchestration* que l'on intègre dans son propre code (la sécurité, l'auth ou le multi-tenant y relèvent de l'application qu'on bâtit autour — d'où les « N/A »). Le différenciateur d'Athena n'est pas « avoir une UI » (OpenClaw a aussi des apps), mais le **multi-tenant + sécurité de niveau entreprise + coding agentique + observabilité** réunis dans un seul produit auto-hébergé.
+> **Methodology.** Compare like with like: **Athena**, **Hermes** and **OpenClaw** are *hosted apps/assistants*; **CrewAI** and **AutoGen** are *orchestration libraries* you integrate into your own code (security, auth or multi-tenancy are the responsibility of the app you build around them — hence the "N/A"). Athena's differentiator isn't "having a UI" (OpenClaw also has apps), but **multi-tenancy + enterprise-grade security + agentic coding + observability** combined in a single self-hosted product.
 
-| Catégorie | Critère | 🦉 Athena | Hermes Agent | OpenClaw | CrewAI | AutoGen |
+| Category | Criterion | 🦉 Athena | Hermes Agent | OpenClaw | CrewAI | AutoGen |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Interface & UX** | **Interface Graphique (UI)** | **Dashboard web complet (3D isométrique, graphe nodal, terminal intégré)** | Non | Apps companion (macOS/iOS/Android) + Live Canvas | Non (CrewAI Studio séparé) | Basique (AutoGen Studio) |
-| | **Canaux d'interaction** | Web, Terminal UI, Telegram, Discord, Slack, Voix | CLI, Telegram, Slack, Discord | **15+ canaux (WhatsApp, Telegram, Signal, iMessage, Slack, Discord…)** | Code Python | CLI / code |
-| | **Intégration IDE / dev local** | Console de code web + Sandbox | Non | Oui (assistant local) | S'intègre dans votre code | S'intègre dans votre code |
-| **Orchestration** | **Modèle Multi-Agents** | **Essaim (Swarm) à routage sémantique automatique** | Sous-agents isolés parallèles | Routage multi-agents (isolation par workspace) | Séquentiel / Hiérarchique | Débats / Chat de groupe |
-| | **Topologies de groupe** | Débats et transferts organiques | Handoffs isolés | Routage par canal/agent | Process séquentiel/hiérarchique | **Group chat avancé (Round Robin, etc.)** |
-| | **Pipelines rigides** | Oui (chaîne de montage optionnelle) | Organique | — | **Natif (assembly line stricte)** | Linéaire ou organique |
-| | **Persistance (Mémoire)** | **Vector DB + historique chiffré inter-sessions** | Oui (SQLite + FTS5) | Oui (sessions persistantes) | Oui (court/long terme + entités) | Limité (extensions/teachability) |
-| | **Apprentissage (closed-loop)**| **Skills auto-générés + RAG d'expérience** | Oui (génération de skills) | Outils extensibles | Non | Non (hors teachability) |
-| | **Outils & MCP** | **Outils natifs + MCP + Home Assistant** | Oui (MCP) | Oui (browser, canvas, cron, MCP) | Oui (crewai-tools + MCP) | Oui (function calling, extensions) |
-| **Sécurité Globale** | **Authentification** | **Mot de passe, tokens, SSO (OIDC)** | Non (local) | Basique (local) | N/A (librairie) | N/A (librairie) |
-| | **Contrôle d'accès (RBAC)** | **Oui (rôles Lecteur/Éditeur, permissions par user)** | Non | Non | N/A | N/A |
-| | **Quotas / coûts par user** | **Oui (quota tokens/jour par compte + alertes budget)** | Non | Non | N/A | N/A |
-| **Exécution & Réseau**| **Sandbox d'exécution** | **Conteneur Docker éphémère (ressources limitées)** | Varie | Hôte | Via code interpreter | **Oui (Docker supporté)** |
-| | **Bouclier anti-SSRF** | **Oui (DNS rebinding, blocage réseau interne/métadonnées)** | Non | Non | N/A | N/A |
-| **Protection Données** | **Masquage des secrets (logs)** | **Oui (clés API / mots de passe redacted)** | Non | Partiel | N/A | N/A |
-| | **Chiffrement au repos** | **Oui (Fernet/AES-128 sur conversations + traces)** | Non | Dépend du stockage | N/A | N/A |
-| | **Isolation multi-locataires** | **Oui (mémoire/agenda/budget isolés par user)** | Non | Par workspace | N/A | N/A |
-| | **Approbation humaine (HITL)** | **Oui — interception dans l'UI + validation asynchrone multi-canal (boutons ✅/⛔ Telegram, le run gèle et reprend)** | Oui (via chat) | Basique | À coder soi-même | À coder soi-même |
-| **Proactivité** | **Réaction autonome aux événements** | **Oui (agent Vigie : ingress d'événements supervision → analyse/alerte/correctif validé)** | Non | Cron/canaux | Non | Non |
+| **Interface & UX** | **Graphical UI** | **Full web dashboard (3D isometric, node graph, integrated terminal)** | No | Companion apps (macOS/iOS/Android) + Live Canvas | No (separate CrewAI Studio) | Basic (AutoGen Studio) |
+| | **Interaction channels** | Web, Terminal UI, Telegram, Discord, Slack, Voice | CLI, Telegram, Slack, Discord | **15+ channels (WhatsApp, Telegram, Signal, iMessage, Slack, Discord…)** | Python code | CLI / code |
+| | **IDE / local dev integration** | Web code console + Sandbox | No | Yes (local assistant) | Integrates into your code | Integrates into your code |
+| **Orchestration** | **Multi-Agent Model** | **Swarm with automatic semantic routing** | Parallel isolated sub-agents | Multi-agent routing (per-workspace isolation) | Sequential / Hierarchical | Debates / Group chat |
+| | **Group topologies** | Organic debates and handoffs | Isolated handoffs | Per-channel/agent routing | Sequential/hierarchical process | **Advanced group chat (Round Robin, etc.)** |
+| | **Rigid pipelines** | Yes (optional assembly line) | Organic | — | **Native (strict assembly line)** | Linear or organic |
+| | **Persistence (Memory)** | **Vector DB + encrypted cross-session history** | Yes (SQLite + FTS5) | Yes (persistent sessions) | Yes (short/long term + entities) | Limited (extensions/teachability) |
+| | **Closed-loop learning** | **Auto-generated skills + experience RAG** | Yes (skill generation) | Extensible tools | No | No (beyond teachability) |
+| | **Tools & MCP** | **Native tools + MCP + Home Assistant** | Yes (MCP) | Yes (browser, canvas, cron, MCP) | Yes (crewai-tools + MCP) | Yes (function calling, extensions) |
+| **Global Security** | **Authentication** | **Password, tokens, SSO (OIDC)** | No (local) | Basic (local) | N/A (library) | N/A (library) |
+| | **Access control (RBAC)** | **Yes (Reader/Editor roles, per-user permissions)** | No | No | N/A | N/A |
+| | **Per-user quotas / costs** | **Yes (per-account daily token quota + budget alerts)** | No | No | N/A | N/A |
+| **Execution & Network** | **Execution sandbox** | **Ephemeral Docker container (limited resources)** | Varies | Host | Via code interpreter | **Yes (Docker supported)** |
+| | **Anti-SSRF shield** | **Yes (DNS rebinding, internal network/metadata blocking)** | No | No | N/A | N/A |
+| **Data Protection** | **Secret redaction (logs)** | **Yes (API keys / passwords redacted)** | No | Partial | N/A | N/A |
+| | **Encryption at rest** | **Yes (Fernet/AES-128 on conversations + traces)** | No | Depends on storage | N/A | N/A |
+| | **Multi-tenant isolation** | **Yes (memory/calendar/budget isolated per user)** | No | Per workspace | N/A | N/A |
+| | **Human approval (HITL)** | **Yes (sensitive actions intercepted in the UI)** | Yes (via chat) | Basic | Build it yourself | Build it yourself |
 
-## 📄 Licence
+</details>
 
-Distribué sous licence **Apache 2.0** — voir [LICENSE](LICENSE). Libre d'utilisation, modification et redistribution.
+## 📄 License
+
+Distributed under the **Apache 2.0** license — see [LICENSE](LICENSE). Free to use, modify and redistribute.

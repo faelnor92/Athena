@@ -29,54 +29,24 @@ def test_handoff_docstring_uses_description():
     assert "Développe et débogue du code Python/JS" in dg.__doc__
 
 
-def test_router_prompt_prefers_description(monkeypatch=None):
-    os.environ["DELEGATION_ROUTER"] = "true"
+def test_router_prompt_prefers_description():
+    from core.agent_router import _agent_desc
     codeur = Agent(name="Codeur", system_prompt="Je suis Robert. Bla bla.",
                    model="gpt-4o", description="Spécialité CODE distinctive")
-    s = _swarm([Agent(name="Athena", system_prompt="orch", model="gpt-4o"), codeur])
-
-    captured = {}
-
-    class _Msg:
-        content = "AUCUN"
-
-    class _Resp:
-        choices = [type("C", (), {"message": _Msg()})()]
-
-    def fake_complete(model, messages, **kw):
-        captured["sys"] = messages[0]["content"]
-        return _Resp()
-
-    s._complete = fake_complete
-    res = s._route_target(s.agents["Athena"], [{"role": "user", "content": "code-moi un truc"}])
-    assert res == ""  # "AUCUN" → pas de délégation
-    # La description explicite doit apparaître dans la liste des spécialités du routeur,
-    # PAS la phrase scrappée du system_prompt.
-    assert "Spécialité CODE distinctive" in captured["sys"]
-    assert "Je suis Robert" not in captured["sys"]
+    desc = _agent_desc(codeur)
+    # La description explicite doit être préférée.
+    assert desc == "Spécialité CODE distinctive"
 
 
 def test_router_falls_back_to_prompt_when_no_description():
-    os.environ["DELEGATION_ROUTER"] = "true"
+    from core.agent_router import _agent_desc
     auteur = Agent(name="Auteur", system_prompt="Rédige des romans captivants. Etc.",
                    model="gpt-4o")  # pas de description
-    s = _swarm([Agent(name="Athena", system_prompt="orch", model="gpt-4o"), auteur])
+    desc = _agent_desc(auteur)
+    # Repli sur le system_prompt (les 2 premières phrases).
+    assert "Rédige des romans captivants" in desc
+    assert "Etc" in desc
 
-    captured = {}
-
-    class _Msg:
-        content = "AUCUN"
-
-    class _Resp:
-        choices = [type("C", (), {"message": _Msg()})()]
-
-    def fake_complete(model, messages, **kw):
-        captured["sys"] = messages[0]["content"]
-        return _Resp()
-
-    s._complete = fake_complete
-    s._route_target(s.agents["Athena"], [{"role": "user", "content": "écris"}])
-    assert "Rédige des romans captivants" in captured["sys"]  # repli sur la 1ʳᵉ phrase
 
 
 if __name__ == "__main__":

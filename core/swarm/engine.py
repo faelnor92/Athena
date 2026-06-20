@@ -241,6 +241,22 @@ def _push_approval_notice(aid: str, tool: str, notice: str, channel: str) -> Non
         pass
 
 
+def strip_thoughts(text: str) -> str:
+    if not text:
+        return text
+    import re
+    # 1. Closed tags
+    for pattern in (r"<thought>(.*?)</thought>", r"<thinking>(.*?)</thinking>"):
+        text = re.sub(pattern, "", text, flags=re.DOTALL).strip()
+    # 2. Unclosed tags
+    for tag in ("thought", "thinking"):
+        start_tag = f"<{tag}>"
+        if start_tag in text:
+            parts = text.split(start_tag, 1)
+            text = parts[0].strip()
+    return text
+
+
 class SwarmStepsList(list):
     """Liste personnalisée qui intercepte les ajouts d'étapes pour les diffuser
     en temps réel dans le run courant (isolé par ContextVar, sûr en concurrence)."""
@@ -382,6 +398,8 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         if not _content:
                             continue
                         if _role in ("user", "assistant"):
+                            if _role == "assistant":
+                                _content = strip_thoughts(_content)
                             _hist.append({"role": _role, "content": _content})
                         elif _role == "tool":
                             _nm = m.get("name", "outil")
@@ -877,11 +895,11 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             # Auto-amélioration : encourage la création PROACTIVE d'un outil quand il en manque un.
             if "save_new_skill" in _tool_names:
                 system_prompt += (
-                    "- AUTO-OUTILS : s'il te MANQUE un outil pour une opération réutilisable et "
-                    "DÉTERMINISTE (un calcul, une conversion, un formatage…), tu peux en CRÉER un avec "
-                    "`save_new_skill(nom, code, description)` — une fonction Python PURE (pas de réseau, "
-                    "fichier, ni système ; ça sera refusé). Il devient ensuite appelable. L'utilisateur "
-                    "CONFIRME avant création. Ne crée un outil que si c'est vraiment réutilisable.\n")
+                    "- AUTO-OUTILS : s'il te MANQUE un outil pour une opération réutilisable, "
+                    "tu peux en CRÉER un avec `save_new_skill(nom, code, description)`. Le RÉSEAU (requests, "
+                    "urllib…) et la gestion de FICHIERS (open, pathlib…) y sont AUTORISÉS ; seul le SYSTÈME "
+                    "(subprocess, socket, os.system…) y est interdit. L'outil créé devient ensuite appelable. "
+                    "L'utilisateur CONFIRME avant sa création. Ne crée un outil que si c'est vraiment réutilisable.\n")
             if "create_routine" in _tool_names:
                 system_prompt += (
                     "- ROUTINES : pour une tâche RÉCURRENTE (briefing du matin, rappel périodique), tu "
@@ -1077,33 +1095,89 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
 
             # Chargement en cascade des fichiers de prompt locaux (custom Athena Swarm)
             local_instructions = ""
-            current_dir = os.getcwd()
+            try:
+                from core.state import get_workspace_dir
+                current_dir = get_workspace_dir() or os.getcwd()
+            except Exception:
+                current_dir = os.getcwd()
             while True:
                 system_md = os.path.join(current_dir, "SYSTEM.md")
                 append_system_md = os.path.join(current_dir, "APPEND_SYSTEM.md")
                 athena_md = os.path.join(current_dir, "ATHENA.md")
+                athena_md_lower = os.path.join(current_dir, "athena.md")
+                claude_md = os.path.join(current_dir, "CLAUDE.md")
+                claude_md_lower = os.path.join(current_dir, "claude.md")
+                athena_rules = os.path.join(current_dir, ".athena-rules.md")
+                athena_rules_rc = os.path.join(current_dir, ".athenarules")
+                claude_rules = os.path.join(current_dir, ".claudecode.md")
+                claude_rules_rc = os.path.join(current_dir, ".claudecoderc")
                 
                 if os.path.exists(system_md):
                     try:
-                        with open(system_md, "r", encoding="utf-8") as f:
-                            system_prompt = f.read()
-                        break
+                         with open(system_md, "r", encoding="utf-8") as f:
+                             system_prompt = f.read()
+                         break
                     except Exception as e:
-                        print(f"[\033[91mErreur SYSTEM.md\033[0m] Impossible de lire {system_md}: {e}")
-                        
+                         print(f"[\033[91mErreur SYSTEM.md\033[0m] Impossible de lire {system_md}: {e}")
+                         
                 if os.path.exists(append_system_md):
                     try:
-                        with open(append_system_md, "r", encoding="utf-8") as f:
-                            local_instructions = f.read() + "\n" + local_instructions
+                         with open(append_system_md, "r", encoding="utf-8") as f:
+                             local_instructions = f.read() + "\n" + local_instructions
                     except Exception as e:
-                        print(f"[\033[91mErreur APPEND_SYSTEM.md\033[0m] {e}")
-                        
+                         print(f"[\033[91mErreur APPEND_SYSTEM.md\033[0m] {e}")
+                         
                 if os.path.exists(athena_md):
                     try:
-                        with open(athena_md, "r", encoding="utf-8") as f:
+                         with open(athena_md, "r", encoding="utf-8") as f:
+                             local_instructions = f.read() + "\n" + local_instructions
+                    except Exception as e:
+                         print(f"[\033[91mErreur ATHENA.md\033[0m] {e}")
+                elif os.path.exists(athena_md_lower):
+                    try:
+                         with open(athena_md_lower, "r", encoding="utf-8") as f:
+                             local_instructions = f.read() + "\n" + local_instructions
+                    except Exception as e:
+                         print(f"[\033[91mErreur athena.md\033[0m] {e}")
+
+                if os.path.exists(claude_md):
+                    try:
+                        with open(claude_md, "r", encoding="utf-8") as f:
                             local_instructions = f.read() + "\n" + local_instructions
                     except Exception as e:
-                        print(f"[\033[91mErreur ATHENA.md\033[0m] {e}")
+                        print(f"[\033[91mErreur CLAUDE.md\033[0m] {e}")
+
+                elif os.path.exists(claude_md_lower):
+                    try:
+                        with open(claude_md_lower, "r", encoding="utf-8") as f:
+                            local_instructions = f.read() + "\n" + local_instructions
+                    except Exception as e:
+                        print(f"[\033[91mErreur claude.md\033[0m] {e}")
+
+                if os.path.exists(athena_rules):
+                    try:
+                        with open(athena_rules, "r", encoding="utf-8") as f:
+                            local_instructions = f.read() + "\n" + local_instructions
+                    except Exception as e:
+                        print(f"[\033[91mErreur .athena-rules.md\033[0m] {e}")
+                if os.path.exists(athena_rules_rc):
+                    try:
+                        with open(athena_rules_rc, "r", encoding="utf-8") as f:
+                            local_instructions = f.read() + "\n" + local_instructions
+                    except Exception as e:
+                        print(f"[\033[91mErreur .athenarules\033[0m] {e}")
+                if os.path.exists(claude_rules):
+                    try:
+                        with open(claude_rules, "r", encoding="utf-8") as f:
+                            local_instructions = f.read() + "\n" + local_instructions
+                    except Exception as e:
+                        print(f"[\033[91mErreur .claudecode.md\033[0m] {e}")
+                if os.path.exists(claude_rules_rc):
+                    try:
+                        with open(claude_rules_rc, "r", encoding="utf-8") as f:
+                            local_instructions = f.read() + "\n" + local_instructions
+                    except Exception as e:
+                        print(f"[\033[91mErreur .claudecoderc\033[0m] {e}")
                         
                 parent_dir = os.path.dirname(current_dir)
                 if parent_dir == current_dir:
@@ -1112,6 +1186,26 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 
             if local_instructions.strip():
                 system_prompt += "\n\n=== INSTRUCTIONS DE PROJET LOCALES ===\n" + local_instructions
+
+            # Force the LLM to think before performing actions or outputting responses
+            system_prompt += (
+                "\n\n=== PROTOCOLE DE PENSÉE ET RAISONNEMENT OBLIGATOIRE ===\n"
+                "Tu as l'obligation absolue de structurer ta réflexion avant chaque action, appel d'outil ou réponse.\n"
+                "Cette étape de réflexion préalable doit TOUJOURS être rédigée au tout début de ta réponse et entourée des balises `<thought>` et `</thought>`.\n"
+                "Pour optimiser les performances et économiser les tokens, sois extrêmement concis et direct dans tes pensées (maximum 2 à 3 lignes ou 50 mots par bloc de réflexion), sauf en cas de planification technique complexe requise.\n"
+                "Dans ce bloc de pensée, tu dois :\n"
+                "1. Analyser précisément la demande de l'utilisateur (besoin, contraintes, contexte).\n"
+                "2. Identifier les fichiers concernés et les outils requis.\n"
+                "3. Planifier tes actions étape par étape (ex: lire un fichier, modifier une partie, valider).\n"
+                "4. Anticiper les erreurs potentielles, les cas limites et l'impact sur le reste du codebase.\n"
+                "Exemple de format attendu :\n"
+                "<thought>\n"
+                "- Objectif principal : ...\n"
+                "- Analyse du contexte : ...\n"
+                "- Plan détaillé : ...\n"
+                "</thought>\n"
+                "Ne commence JAMAIS directement à appeler un outil ou à formuler une réponse finale sans avoir écrit ton bloc `<thought>` au préalable."
+            )
 
             # Détection automatique de l'OS / environnement d'exécution.
             system_prompt += platform_info.execution_env_hint()
@@ -1287,10 +1381,44 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             def _emit_delta(chunk, _agent=current_agent.name):
                 run_context.publish_step({"type": "message_delta", "agent": _agent, "content": chunk})
 
+            # Assainir les thoughts dans current_messages pour le LLM, sans modifier messages persistant
+            sanitized_messages = []
+            for m in current_messages:
+                if m.get("role") == "assistant" and m.get("content"):
+                    m_copy = dict(m)
+                    m_copy["content"] = strip_thoughts(m_copy["content"])
+                    sanitized_messages.append(m_copy)
+                else:
+                    sanitized_messages.append(m)
+            current_messages = sanitized_messages
+
             effective_model = self._route_model(current_agent.model, current_messages)
             response = self._complete(effective_model, current_messages, tools_schema, on_delta=_emit_delta)
 
             message = response.choices[0].message
+            # Extraction des blocs <thought> et <thinking> (fermés et non-fermés)
+            import re
+            cleaned_message_content = getattr(message, "content", "") or ""
+            thoughts = []
+            
+            # 1. Closed tags
+            for pattern in (r"<thought>(.*?)</thought>", r"<thinking>(.*?)</thinking>"):
+                found = re.findall(pattern, cleaned_message_content, re.DOTALL)
+                if found:
+                    thoughts.extend([t.strip() for t in found if t.strip()])
+                    cleaned_message_content = re.sub(pattern, "", cleaned_message_content, flags=re.DOTALL).strip()
+            
+            # 2. Unclosed tags
+            for tag in ("thought", "thinking"):
+                start_tag = f"<{tag}>"
+                if start_tag in cleaned_message_content:
+                    parts = cleaned_message_content.split(start_tag, 1)
+                    pre_content = parts[0].strip()
+                    post_content = parts[1].strip()
+                    if post_content:
+                        thoughts.append(post_content)
+                    cleaned_message_content = pre_content
+
             # RESCUE : le modèle a-t-il écrit un tool-call en TEXTE plutôt qu'en format
             # structuré ? (qwen3 le fait par intermittence.) Si oui, on le récupère.
             _rescued_tcs = []
@@ -1301,6 +1429,8 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     message.content, {f.__name__ for f in _secured_tools})
             msg_dict = message.model_dump(exclude_none=True)
             msg_dict["name"] = current_agent.name
+            # Ne pas écraser content avec cleaned_message_content pour le persister dans la DB
+            # Le frontend se chargera d'extraire les thoughts pour un affichage propre.
             if _rescued_tcs:
                 # Persiste l'appel récupéré en format structuré et retire le JSON brut du
                 # contenu (il ne doit pas s'afficher comme une réponse à l'utilisateur).
@@ -1361,17 +1491,29 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             if message.content and not _rescued_tcs:
                 print(f"\033[92m{current_agent.name}:\033[0m {message.content}")
                 _has_tools = bool(getattr(message, "tool_calls", None))
-                # Narration COURTE qui précède un appel d'outil (« je vais utiliser… »), ou
-                # intention qu'on va auto-continuer → step discret 'thought' (pas une bulle de
-                # chat), pour éviter le spam de messages intermédiaires.
-                if (_has_tools and len(message.content.strip()) < 200) or _will_autocontinue:
-                    steps.append({"type": "thought", "agent": current_agent.name, "content": message.content})
-                else:
-                    steps.append({
-                        "type": "message",
-                        "agent": current_agent.name,
-                        "content": message.content
-                    })
+                
+                # Le contenu BRUT du message (avec les tags <thought>) : le frontend
+                # les extraira et les affichera dans un cadre pliable à l'intérieur
+                # de la bulle de l'agent. On ne crée PLUS de steps "thought" séparés.
+                raw_content = getattr(message, "content", "") or ""
+                
+                # Éviter d'avoir un message vide si le modèle a uniquement produit des pensées
+                if not cleaned_message_content.strip() and not _has_tools:
+                    raw_content = "(A terminé sa réflexion)"
+                
+                if cleaned_message_content.strip() or _has_tools:
+                    # Narration COURTE qui précède un appel d'outil (« je vais utiliser… »), ou
+                    # intention qu'on va auto-continuer → PAS de bulle de chat, juste un log
+                    # orchestrateur discret pour éviter le spam de messages intermédiaires.
+                    if (_has_tools and len(cleaned_message_content.strip()) < 200) or _will_autocontinue:
+                        # Log discret seulement, pas de bulle de chat
+                        pass
+                    else:
+                        steps.append({
+                            "type": "message",
+                            "agent": current_agent.name,
+                            "content": raw_content
+                        })
 
             if not getattr(message, "tool_calls", None) and not _rescued_tcs:
                 # Fallback sémantique si le modèle n'a pas déclenché de tool_call standard
@@ -1693,9 +1835,17 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 if blocked:
                     from core import approval_queue
                     _chan = channels.current_channel.get() or "web"
-                    # HITL ASYNC (Telegram/Matrix) : on FIGE le run, on pousse une notif
-                    # actionnable, et on attend la décision (approuver/refuser depuis le tel).
-                    if approval_queue.async_enabled(_chan):
+                    is_code_tool = func_name in ("write_file", "edit_file", "apply_patch")
+                    if is_code_tool:
+                        try:
+                            from core.approvals import get_proposed_diff_contents
+                            old_c, new_c = get_proposed_diff_contents(func_name, args)
+                            args["_old_content"] = old_c
+                            args["_new_content"] = new_c
+                        except Exception as e:
+                            logger.warning("Erreur calcul diff pour approval: %s", e)
+                    # HITL ASYNC (Telegram/Matrix) ou Codeur en direct sur le web : on FIGE le run et on attend la décision.
+                    if approval_queue.async_enabled(_chan) or (is_code_tool and _chan == "web"):
                         notice = approvals.confirmation_message(func_name, args)
                         aid = approval_queue.request(func_name, args, current_agent.name, _chan)
                         steps.append({"type": "approval_pending", "agent": current_agent.name,
@@ -1716,6 +1866,57 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                                      f"⌛ Action « {func_name} » non confirmée (délai dépassé) — NON exécutée.")
                             steps.append({"type": "approval_resolved", "agent": current_agent.name,
                                           "tool": func_name, "decision": decision})
+                            messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": refus})
+                            steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": refus})
+                            continue
+                    elif _chan == "cli":
+                        # Interactive CLI prompt
+                        print(f"\n\033[91m⛔ ACTION SENSIBLE DÉTECTÉE\033[0m")
+                        print(f"L'agent souhaite exécuter l'outil : \033[1m{func_name}\033[0m")
+                        from core.redaction import redact_secrets
+                        clean_args = {k: v for k, v in args.items() if not k.startswith("_")}
+                        print(f"Arguments : {redact_secrets(str(clean_args))}")
+                        
+                        if is_code_tool:
+                            old_c = args.get("_old_content", "")
+                            new_c = args.get("_new_content", "")
+                            if old_c or new_c:
+                                print("Modifications proposées :")
+                                import difflib
+                                diff = difflib.unified_diff(
+                                    old_c.splitlines(),
+                                    new_c.splitlines(),
+                                    fromfile=args.get("path", "ancien"),
+                                    tofile=args.get("path", "nouveau"),
+                                    lineterm=""
+                                )
+                                diff_lines = list(diff)
+                                if len(diff_lines) > 40:
+                                    for line in diff_lines[:30]:
+                                        print(f"  {line}")
+                                    print(f"  ... (+ {len(diff_lines) - 30} lignes de diff)")
+                                else:
+                                    for line in diff_lines:
+                                        print(f"  {line}")
+                        
+                        try:
+                            ans = input(f"\033[93mAutoriser cette action ? [y/N] : \033[0m").strip().lower()
+                            approved = ans in ("y", "yes", "o", "oui")
+                        except Exception:
+                            approved = False
+                            
+                        if approved:
+                            print(f"\033[92m✓ Action approuvée.\033[0m\n")
+                            if approvals.accepts_kw(func, "user_confirmed"):
+                                call_args["user_confirmed"] = True
+                            steps.append({"type": "approval_resolved", "agent": current_agent.name,
+                                          "tool": func_name, "decision": "approved"})
+                            results[i] = _run_tool(func, call_args)
+                        else:
+                            print(f"\033[91m✗ Action refusée.\033[0m\n")
+                            refus = f"⛔ Action « {func_name} » REFUSÉE par l'utilisateur."
+                            steps.append({"type": "approval_resolved", "agent": current_agent.name,
+                                          "tool": func_name, "decision": "denied"})
                             messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": refus})
                             steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": refus})
                             continue

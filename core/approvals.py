@@ -17,7 +17,8 @@ import os
 # NB: execute_python_code est exclu (déjà isolé en sandbox Docker).
 _DEFAULT_SENSITIVE = (
     "execute_bash_command,run_ssh_command,save_new_skill,trigger_workflow,computer_use_action,"
-    "call_ha_service,delete_skill,delete_calendar_event,delete_list_item"
+    "call_ha_service,delete_skill,delete_calendar_event,delete_list_item,"
+    "write_file,edit_file,apply_patch"
 )
 
 # Posée par le serveur pour la durée d'un run (selon le canal). None = défaut env.
@@ -84,3 +85,59 @@ def confirmation_message(tool_name: str, args: dict) -> str:
         "qui va être réalisée, et attendre son accord explicite. Une fois qu'il a accepté, "
         "ré-appelle le même outil en ajoutant le paramètre user_confirmed=True."
     )
+
+
+def get_proposed_diff_contents(func_name: str, args: dict) -> tuple:
+    """Simule l'exécution de l'outil d'édition de code pour renvoyer (old_content, new_content)."""
+    import os
+    try:
+        from tools.code_edit import _resolve, _flexible_replace, _apply_unified_diff
+    except ImportError:
+        return "", ""
+        
+    path = args.get("path")
+    if not path:
+        return "", ""
+    real, err = _resolve(path, must_exist=False)
+    if err:
+        return "", ""
+    
+    old_content = ""
+    if os.path.isfile(real):
+        try:
+            with open(real, "r", encoding="utf-8", errors="replace") as f:
+                old_content = f.read()
+        except Exception:
+            pass
+            
+    new_content = ""
+    if func_name == "write_file":
+        new_content = args.get("content", "")
+    elif func_name == "edit_file":
+        old_str = args.get("old_string", "")
+        new_str = args.get("new_string", "")
+        replace_all = args.get("replace_all", False)
+        
+        if old_str == new_str:
+            new_content = old_content
+        else:
+            count = old_content.count(old_str)
+            if count >= 1:
+                new_content = old_content.replace(old_str, new_str) if replace_all \
+                    else old_content.replace(old_str, new_str, 1)
+            else:
+                flexible, fcount = _flexible_replace(old_content, old_str, new_str, replace_all)
+                if flexible is not None:
+                    new_content = flexible
+                else:
+                    new_content = old_content
+    elif func_name == "apply_patch":
+        patch = args.get("patch", "")
+        new_content, reason = _apply_unified_diff(old_content, patch)
+        if reason:
+            new_content = old_content
+    else:
+        new_content = old_content
+        
+    return old_content, new_content
+

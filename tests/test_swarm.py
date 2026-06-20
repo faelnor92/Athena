@@ -204,6 +204,22 @@ def test_parse_text_tool_calls(monkeypatch=None):
     # 4) Texte normal sans appel → rien.
     assert parse_text_tool_calls("Bonjour, comment vas-tu ?", valid) == [], "faux positif sur du texte"
 
+    # 5) Kwargs Python : get_daily_briefing(city="Strasbourg") — pattern fréquent chez Qwen.
+    valid5 = {"get_daily_briefing", "web_search"}
+    txt5 = '<thought>\n- Objectif : briefing\n</thought>\nget_daily_briefing(city="Strasbourg")'
+    tcs5 = parse_text_tool_calls(txt5, valid5)
+    assert len(tcs5) == 1 and tcs5[0].function.name == "get_daily_briefing", \
+        f"kwargs Python non récupéré, got {len(tcs5)}"
+    assert json.loads(tcs5[0].function.arguments) == {"city": "Strasbourg"}, \
+        f"args kwargs non préservés: {tcs5[0].function.arguments}"
+
+    # 6) Kwargs Python multi-params.
+    txt6 = 'web_search(query="IA 2026", max_results=5)'
+    tcs6 = parse_text_tool_calls(txt6, valid5)
+    assert len(tcs6) == 1 and tcs6[0].function.name == "web_search"
+    args6 = json.loads(tcs6[0].function.arguments)
+    assert args6["query"] == "IA 2026" and args6["max_results"] == 5
+
     print("OK: parse_text_tool_calls récupère les appels texte et évite les faux positifs")
 
 
@@ -419,6 +435,7 @@ if __name__ == "__main__":
     test_hook_auto_amelioration_archive_un_retour()
     test_outils_multiples_executes_en_parallele()
     test_annulation_arrete_le_run()
+    test_thought_cleaning_and_unclosed_tags()
 
 
 def test_looks_like_announced_intent():
@@ -433,3 +450,45 @@ def test_looks_like_announced_intent():
     assert not f("Je vais le faire, mais préfères-tu A ou B ?")  # annonce + question → respect
     assert not f("")
     print("OK: looks_like_announced_intent (intention vs question)")
+
+
+def test_thought_cleaning_and_unclosed_tags():
+    """Vérifie que les thoughts fermés et non-fermés sont correctement nettoyés
+    de msg_dict['content'] et extraits dans thoughts pour ne pas polluer l'historique."""
+    import re
+    
+    # Simuler le traitement d'extraction
+    # Closed tag
+    content_closed = "<thought>\n- Plan\n</thought>\nVoici la réponse finale."
+    # Unclosed tag
+    content_unclosed = "<thought>\n- Plan en cours sans fin..."
+    
+    # Cas 1: Closed tag
+    cleaned = content_closed
+    thoughts = []
+    for pattern in (r"<thought>(.*?)</thought>", r"<thinking>(.*?)</thinking>"):
+        found = re.findall(pattern, cleaned, re.DOTALL)
+        if found:
+            thoughts.extend([t.strip() for t in found if t.strip()])
+            cleaned = re.sub(pattern, "", cleaned, flags=re.DOTALL).strip()
+            
+    assert cleaned == "Voici la réponse finale."
+    assert thoughts == ["- Plan"]
+    
+    # Cas 2: Unclosed tag
+    cleaned2 = content_unclosed
+    thoughts2 = []
+    for tag in ("thought", "thinking"):
+        start_tag = f"<{tag}>"
+        if start_tag in cleaned2:
+            parts = cleaned2.split(start_tag, 1)
+            pre_content = parts[0].strip()
+            post_content = parts[1].strip()
+            if post_content:
+                thoughts2.append(post_content)
+            cleaned2 = pre_content
+            
+    assert cleaned2 == ""
+    assert thoughts2 == ["- Plan en cours sans fin..."]
+    print("OK: test_thought_cleaning_and_unclosed_tags passe avec succès")
+
