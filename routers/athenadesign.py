@@ -629,17 +629,11 @@ async def workspace_file(request: Request, project_id: str, file_path: str):
     return FileResponse(dest)
 
 
-@router.post("/chat")
-async def chat_endpoint(request: Request, payload: dict = Body(...)):
-    user = _current_user(request)
+def _prepare_design_chat(user: str, payload: dict) -> dict:
+    """Contexte de génération commun à /chat et /chat/stream : projet (créé si besoin), charte,
+    références (imports), code de base. Par défaut provider 'athena' (infra LLM d'Athena)."""
     project_id = payload.get("project_id")
     prompt = payload.get("prompt")
-    # Par défaut, AthenaDesign utilise l'infra LLM d'Athena (provider 'athena') — pas un
-    # chemin LLM séparé. 'mock' (hors-ligne) ou un provider externe + clé restent possibles.
-    provider = payload.get("provider") or "athena"
-    api_key = payload.get("api_key", "")
-    model_name = payload.get("model_name", "")
-
     db = read_db(user)
     # Projet inexistant/non accessible → on crée un VRAI projet Athena (code+design).
     if not project_id or not _can_access(project_id):
@@ -647,68 +641,125 @@ async def chat_endpoint(request: Request, payload: dict = Body(...)):
         project_id = proj["id"] if proj else str(uuid.uuid4().hex[:8])
     project = db.get(project_id) or _new_design(project_id)
     db[project_id] = project
-
-    # Imports (références) + charte du projet → contexte de génération.
     context_text, images = _resolve_attachments(payload.get("attachments"))
-    design_system = project.get("design_system", "")
+    return {
+        "db": db, "project_id": project_id, "project": project, "prompt": prompt,
+        "provider": payload.get("provider") or "athena",
+        "api_key": payload.get("api_key", ""),
+        "model_name": payload.get("model_name", ""),
+        "design_system": project.get("design_system", ""),
+        "context_text": context_text, "images": images,
+        # CODE DE BASE du projet → on PART de l'existant au lieu d'inventer une page générique.
+        "base_code": _read_base_code(project_id),
+    }
 
-    # CODE DE BASE du projet (page racine + CSS/JS) → le générateur PART de l'existant
-    # au lieu d'inventer une page générique (variante/refonte réelle du projet ouvert).
-    base_code = _read_base_code(project_id)
 
-    result = await generator.generate_design(
-        prompt=prompt,
-        history=project["history"],
-        provider=provider,
-        api_key=api_key,
-        model_name=model_name,
-        design_system=design_system,
-        context_text=context_text,
-        images=images,
-        base_code=base_code,
-    )
-
-    project["history"].append({"role": "user", "content": prompt})
+def _persist_design_version(user: str, ctx: dict, result: dict) -> dict:
+    """Ajoute l'échange à l'historique + une nouvelle version, télémétrie globale, miroir
+    workspace (fichier sous design/). Renvoie la version créée. Commun à /chat et /chat/stream."""
+    project = ctx["project"]
+    project["history"].append({"role": "user", "content": ctx["prompt"]})
     project["history"].append({"role": "assistant", "content": result.get("explanation") or ""})
-
-    version_num = len(project["versions"]) + 1
     _usage = result.get("usage") or {}
     new_version = {
-        "version": version_num,
+        "version": len(project["versions"]) + 1,
         "type": result["type"],
         "explanation": result.get("explanation") or "",
         "code": result["code"],
-        "prompt": prompt,
-        "comments": [],
-        "tweaks": result.get("tweaks", []),
-        "suggestions": result.get("suggestions", []),
-        "usage": _usage,   # tokens consommés par cette génération (affiché côté studio)
+        "prompt": ctx["prompt"],
+        "comments": [], "tweaks": result.get("tweaks", []),
+        "suggestions": result.get("suggestions", []), "usage": _usage,
     }
     project["versions"].append(new_version)
-
-    # Remontée à la TÉLÉMÉTRIE GLOBALE : les générations de design comptent désormais dans le
-    # compteur de tokens/coût du tableau de bord (avant : invisibles → « gros manque »).
     try:
         _pt = int(_usage.get("prompt_tokens", 0) or 0)
         _ct = int(_usage.get("completion_tokens", 0) or 0)
         if _pt or _ct:
             from core.state import TELEMETRY, get_model_cost
             TELEMETRY["total_tokens"] += _pt + _ct
-            TELEMETRY["total_cost"] += get_model_cost(model_name or "default", _pt, _ct)
+            TELEMETRY["total_cost"] += get_model_cost(ctx["model_name"] or "default", _pt, _ct)
             TELEMETRY["total_queries"] += 1
     except Exception:
         pass
+    write_db(user, ctx["db"])
+    _mirror_version_to_workspace(ctx["project_id"], new_version)
+    return new_version
 
-    write_db(user, db)
 
-    # Miroir : l'artefact devient un vrai fichier sous `design/` du projet (visible côté Code).
-    _mirror_version_to_workspace(project_id, new_version)
+@router.post("/chat")
+async def chat_endpoint(request: Request, payload: dict = Body(...)):
+    user = _current_user(request)
+    ctx = _prepare_design_chat(user, payload)
+    result = await generator.generate_design(
+        prompt=ctx["prompt"], history=ctx["project"]["history"], provider=ctx["provider"],
+        api_key=ctx["api_key"], model_name=ctx["model_name"], design_system=ctx["design_system"],
+        context_text=ctx["context_text"], images=ctx["images"], base_code=ctx["base_code"])
+    version = _persist_design_version(user, ctx, result)
+    return {"project_id": ctx["project_id"], "version": version, "history": ctx["project"]["history"]}
 
-    return {
-        "project_id": project_id,
-        "version": new_version,
-        "history": project["history"]
-    }
+
+@router.post("/chat/stream")
+async def chat_stream(request: Request, payload: dict = Body(...)):
+    """Comme /chat mais en STREAMING (Server-Sent Events) : diffuse le code généré
+    token-par-token (ressenti « live » façon Claude Design), puis émet la version finale
+    (`event: done`). Chemin Athena uniquement ; un provider externe retombe sur une génération
+    non-streamée (un seul `event: done`)."""
+    import asyncio
+    import json as _json
+    import queue as _queue
+    import threading
+    from fastapi.responses import StreamingResponse
+
+    user = _current_user(request)
+    ctx = _prepare_design_chat(user, payload)
+
+    def _sse(event: str, data: dict) -> str:
+        prefix = f"event: {event}\n" if event else ""
+        return prefix + "data: " + _json.dumps(data, ensure_ascii=False) + "\n\n"
+
+    # Provider EXTERNE : pas de streaming token → on génère puis on émet la version finale.
+    if ctx["provider"] not in ("athena", "", None):
+        result = await generator.generate_design(
+            prompt=ctx["prompt"], history=ctx["project"]["history"], provider=ctx["provider"],
+            api_key=ctx["api_key"], model_name=ctx["model_name"], design_system=ctx["design_system"],
+            context_text=ctx["context_text"], images=ctx["images"], base_code=ctx["base_code"])
+        version = _persist_design_version(user, ctx, result)
+
+        async def _one():
+            yield _sse("done", {"project_id": ctx["project_id"], "version": version})
+        return StreamingResponse(_one(), media_type="text/event-stream")
+
+    async def event_gen():
+        q: "_queue.Queue" = _queue.Queue()
+        out = {}
+
+        def worker():
+            try:
+                out["res"] = generator._generate_via_athena(
+                    ctx["prompt"], ctx["project"]["history"], model_name=ctx["model_name"],
+                    design_system=ctx["design_system"], context_text=ctx["context_text"],
+                    images=ctx["images"], base_code=ctx["base_code"],
+                    on_delta=lambda t: q.put(("token", t)))
+            except Exception as e:  # noqa: BLE001
+                out["err"] = str(e)
+            finally:
+                q.put(("end", None))
+
+        threading.Thread(target=worker, name="athenadesign-stream", daemon=True).start()
+        loop = asyncio.get_event_loop()
+        while True:
+            kind, data = await loop.run_in_executor(None, q.get)
+            if kind == "token":
+                yield _sse("", {"token": data})
+            else:
+                break
+        if "res" in out:
+            version = _persist_design_version(user, ctx, out["res"])
+            yield _sse("done", {"project_id": ctx["project_id"], "version": version})
+        else:
+            yield _sse("error", {"error": out.get("err", "échec de génération")})
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 @router.post("/projects/{project_id}/versions/{version_num}/comments")
 async def save_comment(request: Request, project_id: str, version_num: int, comment: dict = Body(...)):

@@ -2131,8 +2131,9 @@ document.addEventListener("DOMContentLoaded", () => {
         msgDiv.appendChild(content);
         chatMessages.appendChild(msgDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
+
         safeCreateIcons();
+        return msgDiv;   // permet la mise à jour incrémentale (streaming)
     }
     
     function appendSystemMessage(text) {
@@ -2344,37 +2345,65 @@ document.addEventListener("DOMContentLoaded", () => {
             attachments: pendingAttachments.slice()
         };
 
+        // Bulle assistant « live » qui se remplit au fil du STREAM (SSE), façon Claude Design.
+        const liveBubble = appendMessage("assistant", "▌");
+        const liveContent = liveBubble ? liveBubble.querySelector(".msg-content") : null;
+        let acc = "";
+        const setLive = (txt) => { if (liveContent) { liveContent.innerHTML = formatMessageMarkdown(txt); chatMessages.scrollTop = chatMessages.scrollHeight; } };
+
         try {
-            const resp = await fetch("/api/athenadesign/chat", {
+            const resp = await fetch("/api/athenadesign/chat/stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
             clearAttachments();
-            
-            if (!resp.ok) throw new Error("Server error");
-            const data = await resp.json();
-            
-            if (!currentProjectId) {
-                currentProjectId = data.project_id;
+            if (!resp.ok || !resp.body) throw new Error("Server error");
+
+            // Lecture SSE : blocs séparés par \n\n ; lignes `event:` / `data:`.
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = "", finalData = null, errData = null;
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                let idx;
+                while ((idx = buf.indexOf("\n\n")) >= 0) {
+                    const block = buf.slice(0, idx); buf = buf.slice(idx + 2);
+                    let ev = "", dataStr = "";
+                    block.split("\n").forEach(line => {
+                        if (line.startsWith("event:")) ev = line.slice(6).trim();
+                        else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+                    });
+                    if (!dataStr) continue;
+                    let d; try { d = JSON.parse(dataStr); } catch (_) { continue; }
+                    if (ev === "done") finalData = d;
+                    else if (ev === "error") errData = d;
+                    else if (d.token != null) { acc += d.token; setLive(acc + "▌"); }
+                }
             }
-            
+            if (errData) throw new Error(errData.error || "génération");
+            const data = finalData;
+            if (!data || !data.version) throw new Error("réponse incomplète");
+
+            if (!currentProjectId) currentProjectId = data.project_id;
             currentProjectData = {
                 id: currentProjectId,
                 name: currentProjectData ? currentProjectData.name : `Projet ${currentProjectId.substring(0, 4)}`,
-                history: data.history,
+                history: (currentProjectData ? currentProjectData.history : []).concat(
+                    [{ role: "user", content: promptText }, { role: "assistant", content: data.version.explanation || "" }]),
                 versions: currentProjectData ? [...currentProjectData.versions, data.version] : [data.version]
             };
-            
-            appendMessage("assistant", data.version.explanation);
+            setLive(data.version.explanation || acc);   // remplace le flux brut par l'explication finale
             loadVersion(currentProjectData.versions.length - 1);
             showGenerationUsage(data.version);
             appStatus.className = "status-badge success";
-
             await loadProjects();
         } catch (err) {
             console.error(err);
-            appendSystemMessage("⚠️ Une erreur est survenue lors de la communication.");
+            if (liveContent) liveContent.innerHTML = formatMessageMarkdown("⚠️ Une erreur est survenue lors de la communication.");
+            else appendSystemMessage("⚠️ Une erreur est survenue lors de la communication.");
             appStatus.textContent = "Erreur";
             appStatus.className = "status-badge";
         } finally {

@@ -1022,7 +1022,7 @@ def _build_system(design_system: str = "", context_text: str = "", note: str = "
 
 def _generate_via_athena(prompt: str, history: list, model_name: str = "",
                          design_system: str = "", context_text: str = "", images: list = None,
-                         base_code: str = "") -> dict:
+                         base_code: str = "", on_delta=None) -> dict:
     """Génère via l'INFRA LLM d'Athena (swarm._complete) : endpoint/clés/fallback d'Athena.
     Gère la charte (design_system), le contexte importé (docs/web) et les IMAGES :
     modèle vision direct → sinon pré-description via VISION_MODEL → sinon note (marche au max
@@ -1057,7 +1057,7 @@ def _generate_via_athena(prompt: str, history: list, model_name: str = "",
     # le code est TRONQUÉ (balise/JSX coupés → aperçu cassé). + auto-continuation en filet.
     _mt = int(os.getenv("ATHENADESIGN_MAX_TOKENS", "8192") or 8192)
     resp = _sw._complete(model, messages, tools_schema=None, allow_continuation=True,
-                         allow_fallback=True, max_tokens=_mt)
+                         allow_fallback=True, max_tokens=_mt, on_delta=on_delta)
     text = (resp.choices[0].message.content or "")
     _u = getattr(resp, "usage", None)
     return _attach_usage(parse_artifact_response(text),
