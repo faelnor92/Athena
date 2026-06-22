@@ -54,8 +54,22 @@ def update_goal_status(goal_id: str, status: str) -> str:
     """
     if not goals.set_status(goal_id, status):
         return f"Objectif {goal_id} introuvable."
+    norm = status.strip().lower()
     libelle = {"active": "réactivé", "paused": "mis en pause", "done": "marqué ATTEINT ✅",
-               "abandoned": "abandonné"}.get(status.strip().lower(), "mis à jour")
+               "abandoned": "abandonné"}.get(norm, "mis à jour")
+    # Objectif ATTEINT → événement sur le bus (réacteurs : notification, audit…). Best-effort.
+    if norm == "done":
+        try:
+            from core import event_bus
+            title = ""
+            try:
+                title = next((g.get("title", "") for g in (goals.list_goals("all") or [])
+                              if g.get("id") == goal_id), "")
+            except Exception:
+                pass
+            event_bus.publish("goal.completed", {"id": goal_id, "title": title})
+        except Exception:
+            pass
     return f"Objectif {goal_id} {libelle}."
 
 

@@ -7,9 +7,12 @@
   finale ; le studio remplit une bulle « live ». Chemin Athena = vrai streaming ; provider externe
   = génération non-streamée. Factorisation `_prepare_design_chat`/`_persist_design_version`.
 - **Bus d'événements pub/sub** (`core/event_bus.py`) : substrat de découplage producteurs↔réacteurs
-  (multi-abonnés, sujet `"*"`, erreurs isolées, diffusion sync/async). Le **HITL async**
-  (`approval_queue`) y publie son cycle de vie (`requested`/`resolved`/`timeout`) → réacteur
-  d'**audit** branché (les décisions d'approbation sont désormais tracées).
+  (multi-abonnés, sujet `"*"`, erreurs isolées, diffusion sync/async). Producteurs branchés :
+  **HITL async** (`approval_queue` → `requested`/`resolved`/`timeout`), **Vigie**
+  (`events.submit` → `vigie.event`), **objectifs** (`goal.completed`). Réacteurs : **audit
+  centralisé** (décisions HITL, événements Vigie, objectifs atteints) et **notification**
+  (Telegram + canaux) à la **complétion d'un objectif** (auparavant silencieuse). NB :
+  HITL→Telegram (boutons inline) et Vigie→Telegram existaient déjà en direct — non redoublés.
 
 ### CI / qualité / sécurité (renforcement)
 - **CI exécute la VRAIE suite** : `pytest tests/ -m "not network"` (via `conftest.py` hermétique)

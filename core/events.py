@@ -18,6 +18,7 @@ import uuid
 from collections import deque
 
 from core import shared_store
+from core import event_bus
 
 _NS = "events"
 _CFG_KEY = "config"
@@ -104,6 +105,12 @@ def submit(event: dict) -> dict:
     except queue.Full:
         rec["status"] = "overloaded"
         return {"status": "overloaded"}
+    # Diffusion sur le bus : en plus du worker Vigie (_run_vigie), d'autres réacteurs
+    # (audit, métriques…) peuvent réagir SANS toucher au worker. Best-effort.
+    try:
+        event_bus.publish("vigie.event", dict(rec), async_=True)
+    except Exception:
+        pass
     return {"status": "queued", "id": rec["id"]}
 
 

@@ -274,18 +274,42 @@ try:
 except Exception as e:
     logger.warning("Démarrage du moniteur Proxmox ignoré : %s", e, exc_info=True)
 
-# Bus d'événements : réacteur d'AUDIT des décisions HITL (approbations async). Découplé via
-# core.event_bus → on peut brancher d'autres réacteurs (notifications…) sans toucher au HITL.
+# Bus d'événements (core.event_bus) : réacteurs DÉCOUPLÉS. On branche ici des réactions aux
+# événements de cycle de vie sans toucher aux producteurs. NB : HITL→Telegram et Vigie→Telegram
+# sont DÉJÀ câblés en direct (engine._push_approval_notice, _run_vigie) → on ne les redouble pas.
 try:
     from core import event_bus, audit
 
+    # 1) AUDIT centralisé : trace des décisions HITL + événements Vigie + objectifs atteints.
     def _audit_approval(_topic, p):
         audit.log(f"approval_{p.get('phase', '?')}", actor=str(p.get("agent") or "?"),
                   target=str(p.get("tool") or ""),
                   detail=f"id={p.get('id')} channel={p.get('channel')} approved={p.get('approved')}")
     event_bus.subscribe("approval", _audit_approval)
+
+    def _audit_vigie(_topic, p):
+        audit.log("vigie_event", actor="vigie", target=str(p.get("type") or ""),
+                  detail=f"source={p.get('source')} severity={p.get('severity')} {p.get('message')}")
+    event_bus.subscribe("vigie.event", _audit_vigie)
+
+    def _audit_goal(_topic, p):
+        audit.log("goal_completed", actor="athena", target=str(p.get("id") or ""),
+                  detail=str(p.get("title") or ""))
+    event_bus.subscribe("goal.completed", _audit_goal)
+
+    # 2) NOTIFICATION (Telegram + canaux configurés) quand un OBJECTIF est ATTEINT — valeur
+    #    nouvelle (auparavant la complétion d'objectif était silencieuse).
+    def _notify_goal(_topic, p):
+        try:
+            from core import notifications
+            title = (p.get("title") or "").strip()
+            notifications.notify(f"✅ Objectif atteint{(' : ' + title) if title else ''}.",
+                                 title="Athena — objectif")
+        except Exception as _e:
+            logger.debug("notif objectif atteint ignorée : %s", _e)
+    event_bus.subscribe("goal.completed", _notify_goal)
 except Exception as e:
-    logger.warning("Abonnement audit HITL (event_bus) ignoré : %s", e, exc_info=True)
+    logger.warning("Abonnement des réacteurs event_bus ignoré : %s", e, exc_info=True)
 
 
 # Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Athena →
