@@ -100,7 +100,17 @@ try:
             _p = _Prs(_f)
             _sw, _sh = _p.slide_width, _p.slide_height
             for _sl in _p.slides:
+                _to_remove = []
                 for _shp in _sl.shapes:
+                    # Formes ABERRANTES (dimension <= 0 : ex. « barres » dessinées en hauteur
+                    # négative) → on les SUPPRIME (sinon rendu cassé/illisible).
+                    try:
+                        if (_shp.width is not None and _shp.width <= 0) or \
+                           (_shp.height is not None and _shp.height <= 0):
+                            _to_remove.append(_shp)
+                            continue
+                    except Exception:
+                        pass
                     if _shp.has_text_frame:
                         _tf = _shp.text_frame
                         _tf.word_wrap = True
@@ -109,10 +119,24 @@ try:
                         except Exception:
                             pass
                     try:
+                        # Clamp des formes plus GRANDES que la diapo, puis repositionnement.
+                        if _shp.width and _shp.width > _sw:
+                            _shp.width = _sw
+                        if _shp.height and _shp.height > _sh:
+                            _shp.height = _sh
                         if _shp.left is not None and _shp.width and _shp.left + _shp.width > _sw:
                             _shp.left = max(0, _sw - _shp.width)
                         if _shp.top is not None and _shp.height and _shp.top + _shp.height > _sh:
                             _shp.top = max(0, _sh - _shp.height)
+                        if _shp.left is not None and _shp.left < 0:
+                            _shp.left = 0
+                        if _shp.top is not None and _shp.top < 0:
+                            _shp.top = 0
+                    except Exception:
+                        pass
+                for _shp in _to_remove:
+                    try:
+                        _shp._element.getparent().remove(_shp._element)
                     except Exception:
                         pass
             _p.save(_f)
