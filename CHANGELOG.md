@@ -1,5 +1,21 @@
 # Historique des Versions (Changelog)
 
+## [0.26.0] - 2026-06-22
+### Feat — coder de niveau opencode/Claude Code, artifacts de chat et AthenaDesign (parité Claude Design)
+- **Boucle de feedback diagnostics (code)** : après chaque édition (`edit_file`/`write_file`/`apply_patch`), la sortie de l'outil inclut les erreurs/avertissements introduits dans le fichier → l'agent corrige immédiatement. Moteur unifié `tools/lsp_client.py` (**basedpyright** `--stdio`, mode standard ; repli `compile`/`ruff`/`json`). Même moteur pour l'onglet Code (`/api/workspace/lint`). Nouvelle dépendance `basedpyright` (couverte par `update.sh`).
+- **Liste de tâches de session** : outil `todo_write` (planification multi-étapes, un seul `in_progress`), persistée par utilisateur, rendue dans `athena_cli` et l'onglet Code (panneau 📋 + `GET /api/todos`).
+- **Mode plan (lecture seule)** : `core/plan_mode.py` retire les outils mutants et demande à l'agent de planifier sans agir. Bascule via `/plan`/`/build` (CLI) et bouton « 🧭 Mode plan » (onglet Code, `GET/POST /api/plan-mode`).
+- **Outils code** : nouvel outil `glob_files` (recherche de fichiers par motif) ; docstrings d'édition alignées sur opencode (lire-avant-éditer, indentation exacte, unicité/`replace_all`).
+- **Instructions de projet durcies** : chargement `CLAUDE.md`/`ATHENA.md`/`AGENTS.md`/`SYSTEM.md` mis en cache (mtime), cascade jusqu'à la racine git/HOME, plafond de taille, support `AGENTS.md`.
+- **Préambules de style par famille de modèle** (multi-LLM, sans dupliquer le prompt).
+- **Artifacts de chat façon Claude** : panneau **docké** avec **navigation de versions**, copier/télécharger, nouveaux types **Mermaid** et **Markdown** (en plus de React/HTML/JS/SVG), et pont **« 🎨 Ouvrir dans AthenaDesign »** (`POST /projects/{id}/import-code`). Sécurité inchangée (iframe sandbox sans `allow-same-origin` + blob).
+- **AthenaDesign — design system auto-extrait** (parité Claude Design) : `core/design_tokens.py` déduit la charte **depuis le code** (Tailwind/CSS, déterministe), **depuis une image** (vision) ou **depuis une description** (greenfield). Endpoint `POST /projects/{id}/design-system/auto` + 3 boutons dans l'éditeur de charte.
+
+### Fix — régression de sécurité CSP + hermétisme des tests
+- **CSP stricte restaurée** : v0.25.0 avait vidé `_DEFAULT_CSP` → l'application n'envoyait plus aucune `Content-Security-Policy`. Défaut strict rétabli pour toute l'app ; le studio AthenaDesign garde sa CSP permissive sur `/athenadesign`.
+- **Suite de tests rendue hermétique** : `tests/conftest.py` isole l'état global (env, `core.swarm.completion`, `Swarm._complete`, `sys.modules['server']`, store partagé, hooks d'apprentissage). `pytest tests/` passait fichier par fichier mais échouait en suite (22 échecs) → désormais déterministe quel que soit l'ordre.
+
+
 ## [0.25.0] - 2026-06-20
 ### Feat — approbation interactive CLI, terminal avec conteneur de dev et commandes slash
 - **Sécurisation du canal CLI** : Configuration par défaut du canal `cli` avec `auto_approve: False` et implémentation d'une confirmation interactive (`y/n`) en console pour toute exécution d'outil sensible (comme `execute_bash_command` ou `run_ssh_command`).
