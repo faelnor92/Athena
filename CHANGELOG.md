@@ -30,6 +30,9 @@
   relancé) ; file asynchrone **bornée** du bus d'événements (anti-OOM) ; bornes d'entrée
   (import-code ≤ 2 Mo, todo ≤ 100 items / 500 car.) ; suite rendue **hermétique au `.env`**
   (SENSITIVE_TOOLS neutralisé en test). Tests : `tests/test_hardening.py`.
+- **Timeout par requête LLM** (`LLM_REQUEST_TIMEOUT`, défaut 90 s) : un endpoint lent/instable
+  **échoue vite** au lieu de bloquer le run plusieurs minutes (« ça cherche » sans réponse) ;
+  total borné `(timeout + backoff) × tentatives`. `0` = désactivé.
 - **Audit sécurité complet** (`docs/SECURITY_AUDIT.md`) : XXE WebDAV/CalDAV/CardDAV → **defusedxml**
   (repli stdlib) ; `requests` sans timeout (Home Assistant) ; **allowlist** de colonne SQL
   (`state._update_conv`) ; `run_tool_script`/`self_update`/`nextcloud_write/delete` ajoutés aux
