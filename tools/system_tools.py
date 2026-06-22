@@ -153,8 +153,9 @@ def run_ssh_command(command: str, host_id: str = None) -> tuple[str, str, int]:
         else:
             full_command = command
             
-        # 3. Exécution de la commande
-        stdin, stdout, stderr = ssh.exec_command(full_command, timeout=15)
+        # 3. Exécution de la commande (outil run_ssh_command : SENSIBLE/HITL ; gardes blacklist
+        # commandes, sudo, lecture seule appliquées en amont ; remote_cwd échappé via shlex.quote).
+        stdin, stdout, stderr = ssh.exec_command(full_command, timeout=15)  # nosec B601
         stdout_str = stdout.read().decode('utf-8', errors='ignore')
         stderr_str = stderr.read().decode('utf-8', errors='ignore')
         return_code = stdout.channel.recv_exit_status()

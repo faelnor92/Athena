@@ -69,7 +69,7 @@ def _docker_run_args(name: str) -> List[str]:
         "--cpus", os.getenv("SANDBOX_CPUS", "1.0"),
         "--pids-limit", os.getenv("SANDBOX_PIDS_LIMIT", "128"),
         "--read-only",
-        "--tmpfs", "/tmp:rw,exec,size=64m",
+        "--tmpfs", "/tmp:rw,exec,size=64m",  # nosec B108 — argument Docker (tmpfs en conteneur), pas un chemin hôte
         "--security-opt", "no-new-privileges",
         "--cap-drop", "ALL",
         "-v", f"{ws}:/work",
@@ -158,7 +158,7 @@ def run_python_in_dir(code: str, host_dir: str, image: Optional[str] = None,
         "--cpus", os.getenv("SANDBOX_CPUS", "1.0"),
         "--pids-limit", os.getenv("SANDBOX_PIDS_LIMIT", "128"),
         "--read-only",
-        "--tmpfs", "/tmp:rw,exec,size=128m",
+        "--tmpfs", "/tmp:rw,exec,size=128m",  # nosec B108 — argument Docker (tmpfs en conteneur), pas un chemin hôte
         "--security-opt", "no-new-privileges",
         "--cap-drop", "ALL",
         # HOME/MPLCONFIGDIR dans le tmpfs : matplotlib/pptx écrivent leur cache sans heurter

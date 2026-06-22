@@ -25,6 +25,12 @@
 - **Checklist de déploiement** (`docs/DEPLOYMENT.md`) : auth/MFA, HTTPS/reverse-proxy, CORS,
   rate-limit, CSP, garde anti-SSRF, secrets, sandbox Docker, sauvegardes.
 - **Couverture** : tests du contrôle d'accès des projets partagés (`core/shared_projects`).
+- **Audit sécurité complet** (`docs/SECURITY_AUDIT.md`) : XXE WebDAV/CalDAV/CardDAV → **defusedxml**
+  (repli stdlib) ; `requests` sans timeout (Home Assistant) ; **allowlist** de colonne SQL
+  (`state._update_conv`) ; `run_tool_script`/`self_update`/`nextcloud_write/delete` ajoutés aux
+  outils **sensibles** (HITL) par défaut ; faux positifs bandit documentés (`# nosec`). Tests :
+  `tests/test_security_hardening.py`. ⚠️ **Config à vérifier** : un `.env` avec `SENSITIVE_TOOLS=""`
+  désactive toute confirmation HITL (cf. rapport).
 
 
 ## [0.26.0] - 2026-06-22

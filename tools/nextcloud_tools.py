@@ -11,7 +11,11 @@ Sécurité :
 - identifiants par-utilisateur (mot de passe d'application Nextcloud recommandé).
 """
 import re
-import xml.etree.ElementTree as ET
+# Parsing XML DURCI (anti-XXE / entity-expansion) : defusedxml si dispo, repli stdlib sinon.
+try:
+    from defusedxml.ElementTree import fromstring as _xml_fromstring
+except Exception:  # defusedxml absent → repli stdlib (réponses DAV d'un Nextcloud de confiance)
+    from xml.etree.ElementTree import fromstring as _xml_fromstring
 import urllib.parse
 from typing import List
 
@@ -88,7 +92,7 @@ def nextcloud_list_files(path: str = "") -> str:
                              data=body, timeout=_TIMEOUT)
         if r.status_code not in (207, 200):
             return f"Erreur Nextcloud ({r.status_code}) : {r.text[:200]}"
-        root = ET.fromstring(r.content)
+        root = _xml_fromstring(r.content)
         ns = {"d": "DAV:"}
         base_path = urllib.parse.urlparse(url).path
         out = []
@@ -224,7 +228,7 @@ def _propfind_collections(base_url: str) -> List[str]:
                          data=body, timeout=_TIMEOUT)
     if r.status_code not in (207, 200):
         return []
-    root = ET.fromstring(r.content)
+    root = _xml_fromstring(r.content)
     ns = {"d": "DAV:"}
     base_path = urllib.parse.urlparse(base_url).path.rstrip("/")
     scheme_host = base_url.split(urllib.parse.urlparse(base_url).path)[0]
