@@ -54,3 +54,29 @@ def test_chat_multifile_ecrit_sous_design_et_sert_les_fichiers(monkeypatch):
     assert idx.status_code == 200 and "Hi" in idx.text
     css = c.get(f"/api/athenadesign/projects/{pid}/workspace/design/css/style.css")
     assert css.status_code == 200 and "background:#111" in css.text
+
+
+def test_tweaks_derives_des_variables_css_quand_modele_les_oublie():
+    """Régression : en multi-fichiers le modèle oublie souvent <tweaks> → le dock se vidait.
+    On dérive désormais les réglages depuis les variables CSS :root du design (filet)."""
+    from core.athenadesign_generator import parse_artifact_response
+    mf = (
+        "=== FILE: index.html ===\n<link rel=stylesheet href=style.css><h1>Hi</h1>\n"
+        "=== FILE: style.css ===\n:root{--primary:#ff5733;--radius:12px;}\n"
+    )
+    r = parse_artifact_response(mf)
+    names = {t["name"] for t in r["tweaks"]}
+    assert names == {"--primary", "--radius"}
+    by = {t["name"]: t for t in r["tweaks"]}
+    assert by["--primary"]["type"] == "color" and by["--primary"]["default"] == "#ff5733"
+    assert by["--radius"]["type"] == "slider"
+
+
+def test_tweaks_explicites_priment_sur_la_derivation():
+    from core.athenadesign_generator import parse_artifact_response
+    txt = (
+        "```html\n<style>:root{--primary:#000;}</style><h1>x</h1>\n```\n"
+        "<tweaks>\ncolor|Couleur|--primary|#fff|#fff\n</tweaks>"
+    )
+    r = parse_artifact_response(txt)
+    assert len(r["tweaks"]) == 1 and r["tweaks"][0]["label"] == "Couleur"

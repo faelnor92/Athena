@@ -668,9 +668,28 @@ def _prepare_design_chat(user: str, payload: dict) -> dict:
         "model_name": payload.get("model_name", ""),
         "design_system": project.get("design_system", ""),
         "context_text": context_text, "images": images,
-        # CODE DE BASE du projet → on PART de l'existant au lieu d'inventer une page générique.
-        "base_code": _read_base_code(project_id),
+        # CODE DE BASE → si une version de design existe déjà, on PART d'ELLE (itération :
+        # « ajoute X » ne doit pas tout régénérer) ; sinon on retombe sur le code racine.
+        "base_code": _design_base_code(project, project_id),
     }
+
+
+def _design_base_code(project: dict, project_id: str, max_total: int = 60000) -> str:
+    """Code de base pour ITÉRER. Si le projet a déjà une version de design, on repart de SON
+    code (le design COURANT) — mono OU multi-fichiers (format `=== FILE: chemin ===`) — pour
+    que le modèle MODIFIE l'existant au lieu de tout réinventer. Sinon, on retombe sur le code
+    racine du projet (`_read_base_code`)."""
+    versions = (project or {}).get("versions") or []
+    last = versions[-1] if versions else None
+    if last:
+        files = last.get("files") or []
+        if files:
+            blob = "\n\n".join(
+                f"=== FILE: {f.get('path', '')} ===\n{f.get('content', '')}" for f in files)
+            return blob[:max_total]
+        if (last.get("code") or "").strip():
+            return last["code"][:max_total]
+    return _read_base_code(project_id)
 
 
 def _persist_design_version(user: str, ctx: dict, result: dict) -> dict:
