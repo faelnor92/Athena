@@ -32,7 +32,13 @@ OUTPUT FORMAT (follow EXACTLY):
        - `slider | Espacement | --section-gap | 20px,120px | 60px`
        - `toggle | Mode Sombre | --dark-theme | | false`
        - `select | Style Cartes | --card-style | flat,glass,neobrutal | glass`
-     Ensure your generated code's CSS actually uses these variables (ex: `var(--btn-color)`) so modifying the tweak changes the layout!
+     ⚠️ CRITICAL — a tweak is USELESS unless the CSS reads its variable. For EVERY tweak you declare you MUST:
+       1) define the variable on `:root` with its default value, e.g. `:root{ --btn-color:#e11d48; --section-gap:60px; }`
+       2) ACTUALLY USE it everywhere relevant via `var(--name)` — NEVER hard-code that value elsewhere.
+          ex: `.cta{ background: var(--btn-color); }`, `section{ padding: var(--section-gap); }`.
+       For React/Tailwind: still drive the tweakable properties through these CSS variables (inline style
+       `style={{background:'var(--btn-color)'}}` or a `<style>:root{…}</style>` block + `var(--…)`), NOT via
+       hard-coded Tailwind color classes — otherwise the right-side controls change nothing.
 Choose REACT (```jsx) for stateful / interactive UIs (forms with logic, tabs, todo, calculators, dashboards with interactivity). Choose ```html for static/visual pages. Choose ```python for data, charts or .pptx.
 
 REACT RULES (when you output ```jsx):

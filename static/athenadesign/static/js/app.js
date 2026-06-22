@@ -2646,33 +2646,39 @@ document.addEventListener("DOMContentLoaded", () => {
         if (btnOpenTweaks) btnOpenTweaks.style.display = "none";
     });
 
+    function _tweakValue(tweak) {
+        const input = document.getElementById(`tweak-input-${tweak.name}`);
+        if (!input) return null;
+        if (tweak.type === 'slider') {
+            const unitMatch = (tweak.values || "").match(/([a-zA-Z%]+)$/);
+            return input.value + (unitMatch ? unitMatch[1] : '');
+        }
+        if (tweak.type === 'toggle') {
+            const vl = tweak.values ? tweak.values.split(',') : [];
+            return vl.length >= 2 ? (input.checked ? vl[0] : vl[1]) : (input.checked ? '1' : '0');
+        }
+        return input.value;
+    }
+
+    // Applique les réglages dynamiques en INJECTANT un <style> dans l'iframe : `:root{--x:val
+    // !important;}`. Plus robuste que setProperty (gagne sur la spécificité) et réappliqué au
+    // (re)chargement de l'aperçu. NB : n'a d'effet QUE si le design lit `var(--x)` (cf. prompt).
     function applyAllCurrentTweaks() {
         if (!currentProjectData) return;
         const ver = currentProjectData.versions[currentVersionIndex];
         if (!ver || !ver.tweaks || ver.tweaks.length === 0) return;
-        
-        const doc = htmlPreviewFrame.contentDocument;
-        if (!doc) return;
-        
-        ver.tweaks.forEach(tweak => {
-            const input = document.getElementById(`tweak-input-${tweak.name}`);
-            if (input) {
-                let value = input.value;
-                if (tweak.type === 'slider') {
-                    const unitMatch = tweak.values.match(/([a-zA-Z%]+)$/);
-                    const unit = unitMatch ? unitMatch[1] : '';
-                    value = value + unit;
-                } else if (tweak.type === 'toggle') {
-                    const valuesList = tweak.values ? tweak.values.split(',') : [];
-                    if (valuesList.length >= 2) {
-                        value = input.checked ? valuesList[0] : valuesList[1];
-                    } else {
-                        value = input.checked ? '1' : '0';
-                    }
-                }
-                doc.documentElement.style.setProperty(tweak.name, value);
-            }
-        });
+        const decls = ver.tweaks
+            .map(t => { const v = _tweakValue(t); return v == null ? null : `${t.name}: ${v} !important;`; })
+            .filter(Boolean);
+        if (!decls.length) return;
+        const css = `:root{${decls.join("")}}`;
+        try {
+            const doc = htmlPreviewFrame.contentDocument;
+            if (!doc || !doc.head) return;   // iframe cross-origin (blob React) → silencieux
+            let s = doc.getElementById("athena-dyn-tweaks");
+            if (!s) { s = doc.createElement("style"); s.id = "athena-dyn-tweaks"; doc.head.appendChild(s); }
+            s.textContent = css;
+        } catch (e) { /* aperçu cross-origin : pas d'accès, sans gravité */ }
     }
 
     function renderVersionTweaks(version) {
@@ -2711,12 +2717,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 input.className = "tweak-color-input";
                 input.id = `tweak-input-${tweak.name}`;
                 input.value = tweak.default || "#6366f1";
-                input.addEventListener("input", () => {
-                    const doc = htmlPreviewFrame.contentDocument;
-                    if (doc) {
-                        doc.documentElement.style.setProperty(tweak.name, input.value);
-                    }
-                });
+                input.addEventListener("input", () => applyAllCurrentTweaks());
                 wrapper.appendChild(input);
                 
             } else if (tweak.type === "slider") {
@@ -2744,13 +2745,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 valSpan.textContent = `${valNum}${unit}`;
                 
                 input.addEventListener("input", () => {
-                    const doc = htmlPreviewFrame.contentDocument;
-                    if (doc) {
-                        doc.documentElement.style.setProperty(tweak.name, `${input.value}${unit}`);
-                    }
                     valSpan.textContent = `${input.value}${unit}`;
+                    applyAllCurrentTweaks();
                 });
-                
+
                 wrapper.appendChild(input);
                 wrapper.appendChild(valSpan);
                 
@@ -2769,18 +2767,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 switchLabel.appendChild(input);
                 switchLabel.appendChild(slider);
                 
-                input.addEventListener("change", () => {
-                    const doc = htmlPreviewFrame.contentDocument;
-                    if (doc) {
-                        const valuesList = tweak.values ? tweak.values.split(",") : [];
-                        let value = input.checked ? "1" : "0";
-                        if (valuesList.length >= 2) {
-                            value = input.checked ? valuesList[0] : valuesList[1];
-                        }
-                        doc.documentElement.style.setProperty(tweak.name, value);
-                    }
-                });
-                
+                input.addEventListener("change", () => applyAllCurrentTweaks());
+
                 wrapper.appendChild(switchLabel);
                 
             } else if (tweak.type === "select") {
@@ -2800,13 +2788,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     select.appendChild(optionEl);
                 });
                 
-                select.addEventListener("change", () => {
-                    const doc = htmlPreviewFrame.contentDocument;
-                    if (doc) {
-                        doc.documentElement.style.setProperty(tweak.name, select.value);
-                    }
-                });
-                
+                select.addEventListener("change", () => applyAllCurrentTweaks());
+
                 wrapper.appendChild(select);
             }
             
