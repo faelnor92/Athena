@@ -21,6 +21,12 @@ def test_politiques_par_defaut():
 
 def test_swarm_filtre_les_outils_par_canal():
     os.environ["SELF_IMPROVE"] = "false"
+    # Ce test vérifie le filtrage PAR CANAL (deny 'interdit'), pas le filtre SÉMANTIQUE
+    # top-N (orthogonal). Ce dernier se déclenche dès que >12 outils « extra » (skills/MCP)
+    # sont chargés globalement — ce qui arrive quand un autre test importe `server` — et
+    # écarterait alors 'permis' comme non pertinent pour la requête « go ». On le neutralise
+    # ici pour isoler le comportement testé. (conftest restaure os.environ → aucune fuite.)
+    os.environ["TOOL_FILTER_ENABLED"] = "false"
     import core.swarm as swarm_mod
     from core.agent import Agent
     from core.swarm import Swarm

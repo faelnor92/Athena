@@ -5,15 +5,22 @@ import os
 import sys
 import tempfile
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _ws = tempfile.mkdtemp(prefix="athena_ssh_")
-os.environ["ACTIVE_WORKSPACE_DIR"] = _ws
-os.environ["STATE_DB_PATH"] = os.path.join(_ws, "state.sqlite3")
-for _k in ("SSH_HOST", "SSH_USERNAME", "SSH_PORT", "ALLOW_SUDO_ON_VPS"):
-    os.environ.pop(_k, None)
 
 from tools.system_tools import run_ssh_command  # noqa: E402
 from tools import ssh_hosts  # noqa: E402
+
+
+# ACTIVE_WORKSPACE_DIR (global, disputé entre fichiers, lu dynamiquement) + nettoyage des
+# variables SSH héritées : réaffirmés PAR TEST pour ne pas dépendre de l'ordre de collecte.
+@pytest.fixture(autouse=True)
+def _ssh_env(monkeypatch):
+    monkeypatch.setenv("ACTIVE_WORKSPACE_DIR", _ws)
+    for _k in ("SSH_HOST", "SSH_USERNAME", "SSH_PORT", "ALLOW_SUDO_ON_VPS"):
+        monkeypatch.delenv(_k, raising=False)
 
 
 def test_blacklist_blocks_before_connect():

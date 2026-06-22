@@ -6,12 +6,21 @@ import tempfile
 import zipfile
 from unittest import mock
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Espace de travail ISOLÉ (temp) → les tests ne polluent pas le dépôt (workspace/redaction).
-os.environ["ACTIVE_WORKSPACE_DIR"] = tempfile.mkdtemp(prefix="athena_test_ws_")
+_ws = tempfile.mkdtemp(prefix="athena_test_ws_")
 
 import tools.document_editor as de  # noqa: E402
+
+
+# ACTIVE_WORKSPACE_DIR est global et disputé entre fichiers (lu dynamiquement) : on le
+# réaffirme par test pour rester sur NOTRE dossier, indépendamment de l'ordre de collecte.
+@pytest.fixture(autouse=True)
+def _workspace(monkeypatch):
+    monkeypatch.setenv("ACTIVE_WORKSPACE_DIR", _ws)
 
 try:
     import docx  # noqa: F401
