@@ -2458,13 +2458,14 @@ document.addEventListener("DOMContentLoaded", () => {
             
             appendConsoleLine("system", `>>> [Exécution terminée en ${result.execution_time}s - Code retour: ${result.success ? 'Succès (0)' : 'Échec'}]`);
             
-            pythonExecuting.style.display = "none";
             plotsContainer.innerHTML = "";
 
             // AUTO-CORRECTION : si l'exécution a échoué, on demande au serveur de corriger
-            // (boucle bornée : renvoie l'erreur au modèle → ré-exécute).
+            // (boucle bornée : renvoie l'erreur au modèle → ré-exécute). On garde un état CLAIR
+            // visible (badge + spinner) pour qu'on sache qu'il travaille et quand il a fini.
             if (!result.success) {
-                appendConsoleLine("system", ">>> [Auto-correction en cours…]");
+                if (appStatus) { appStatus.textContent = "Auto-correction…"; appStatus.className = "status-badge generating"; }
+                appendConsoleLine("system", ">>> [Auto-correction en cours… (peut prendre quelques secondes)]");
                 try {
                     const fr = await fetch("/api/athenadesign/autofix", {
                         method: "POST", headers: { "Content-Type": "application/json" },
@@ -2476,24 +2477,33 @@ document.addEventListener("DOMContentLoaded", () => {
                     // été produit → il faut l'AFFICHER, pas dire « non résolu ».
                     if (fx.success) {
                         if (fx.fixed) {
-                            appendConsoleLine("system", `>>> [Auto-correction réussie en ${fx.attempts} essai(s) — version ${fx.versions_count}]`);
+                            appendConsoleLine("system", `>>> ✅ [Auto-correction réussie en ${fx.attempts} essai(s) — version ${fx.versions_count}]`);
                         } else {
-                            appendConsoleLine("system", ">>> [Le code fonctionne — fichier généré]");
+                            appendConsoleLine("system", ">>> ✅ [Le code fonctionne — fichier généré]");
                         }
+                        if (appStatus) { appStatus.textContent = "Terminé"; appStatus.className = "status-badge success"; }
+                        pythonExecuting.style.display = "none";
                         await selectProject(currentProjectId);
                         loadVersion(currentProjectData.versions.length - 1);
                     } else {
-                        appendConsoleLine("stderr", `>>> [Auto-correction : non résolu après ${fx.attempts || 0} essai(s)]`);
+                        appendConsoleLine("stderr", `>>> ❌ [Auto-correction : non résolu après ${fx.attempts || 0} essai(s) — vérifie/régénère]`);
+                        if (appStatus) { appStatus.textContent = "Échec"; appStatus.className = "status-badge"; }
+                        pythonExecuting.style.display = "none";
                     }
                 } catch (e) {
                     appendConsoleLine("stderr", "[Auto-correction] " + e.message);
+                    if (appStatus) { appStatus.textContent = "Échec"; appStatus.className = "status-badge"; }
+                    pythonExecuting.style.display = "none";
                 }
                 return;
             }
 
+            // Exécution RÉUSSIE du 1er coup : état clair + masquage du spinner.
+            pythonExecuting.style.display = "none";
+            if (appStatus) { appStatus.textContent = "Terminé"; appStatus.className = "status-badge success"; }
             const hasPlots = (result.plots && result.plots.length > 0) || (result.interactive_plots && result.interactive_plots.length > 0);
             const hasOtherFiles = (result.other_files && result.other_files.length > 0);
-            
+
             if (hasPlots || hasOtherFiles) {
                 pythonPlotsWrapper.style.display = "block";
                 
