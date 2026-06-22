@@ -205,9 +205,13 @@ class _LspServer:
             self._notify("textDocument/didChange", {
                 "textDocument": {"uri": uri, "version": version},
                 "contentChanges": [{"text": content}]})
-        ev.wait(timeout=timeout)
+        got = ev.wait(timeout=timeout)
         # Petit délai de stabilisation : pyright peut publier un 1er lot puis l'affiner.
         time.sleep(float(os.getenv("CODE_LSP_SETTLE", "0.15") or 0.15))
+        if not got:
+            # Aucun publishDiagnostics dans le délai → serveur lent/bloqué : signal de panne
+            # (pour le disjoncteur côté module). pyright publie TOUJOURS, même sans erreur.
+            raise TimeoutError("diagnostics LSP non reçus dans le délai")
         with self._state_lock:
             return list(self._diags.get(uri, []))
 
@@ -222,6 +226,30 @@ class _LspServer:
 _SERVERS = {}            # root -> _LspServer
 _SERVERS_LOCK = threading.Lock()
 
+# DISJONCTEUR : si le LSP enchaîne les échecs (lent/cassé), on l'éteint temporairement et on
+# bascule sur le repli compile/ast → l'édition ne reste JAMAIS bloquée plusieurs secondes.
+_lsp_fails = 0
+_lsp_disabled_until = 0.0
+_LSP_FAIL_THRESHOLD = int(os.getenv("CODE_LSP_FAIL_THRESHOLD", "3") or 3)
+_LSP_COOLDOWN = float(os.getenv("CODE_LSP_COOLDOWN", "120") or 120)
+
+
+def _breaker_open() -> bool:
+    return time.time() < _lsp_disabled_until
+
+
+def _record_ok():
+    global _lsp_fails
+    _lsp_fails = 0
+
+
+def _record_fail():
+    global _lsp_fails, _lsp_disabled_until
+    _lsp_fails += 1
+    if _lsp_fails >= _LSP_FAIL_THRESHOLD:
+        _lsp_disabled_until = time.time() + _LSP_COOLDOWN
+        _lsp_fails = 0
+
 
 def _server_for(abs_path: str):
     cmd = _langserver_cmd()
@@ -230,8 +258,14 @@ def _server_for(abs_path: str):
     root = _find_root(abs_path)
     with _SERVERS_LOCK:
         srv = _SERVERS.get(root)
-        if srv is not None and srv._alive:
+        # Serveur vivant ET processus encore en vie (sinon on le remplace).
+        if srv is not None and srv._alive and srv.proc.poll() is None:
             return srv
+        if srv is not None:
+            try:
+                srv.shutdown()
+            except Exception:
+                pass
         try:
             srv = _LspServer(root, cmd)
         except Exception:
@@ -327,16 +361,18 @@ def diagnostics(abs_path: str, content: str = None, timeout: float = None):
         except Exception:
             return []
     ext = os.path.splitext(abs_path)[1].lower()
-    # Serveur LSP pour Python ; sinon repli (qui couvre aussi Python si pas de serveur).
-    if ext in _PY_EXT:
+    # Serveur LSP pour Python — sauf si le DISJONCTEUR est ouvert (échecs répétés → on évite
+    # de bloquer l'édition et on passe direct au repli). Sinon repli (couvre aussi Python).
+    if ext in _PY_EXT and not _breaker_open():
         srv = _server_for(abs_path)
         if srv is not None:
             try:
-                to = timeout if timeout is not None else float(os.getenv("CODE_LSP_TIMEOUT", "6") or 6)
+                to = timeout if timeout is not None else float(os.getenv("CODE_LSP_TIMEOUT", "2.5") or 2.5)
                 raw = srv.diagnostics(abs_path, content, to)
+                _record_ok()
                 return _normalize_lsp(raw)
             except Exception:
-                pass  # serveur HS → repli
+                _record_fail()  # timeout/erreur → compte pour le disjoncteur, puis repli
     try:
         return _fallback(abs_path, content)
     except Exception:

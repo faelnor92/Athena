@@ -282,6 +282,8 @@ async def import_code(request: Request, project_id: str, payload: dict = Body(..
     code = (payload.get("code") or "").strip()
     if not code:
         raise HTTPException(status_code=400, detail="Code vide.")
+    if len(code) > 2_000_000:   # borne anti-abus/DoS (~2 Mo) — un artefact reste raisonnable
+        raise HTTPException(status_code=413, detail="Code trop volumineux (max 2 Mo).")
     vtype = (payload.get("type") or "html").strip().lower()
     if vtype not in ("html", "react", "mermaid", "python"):
         vtype = "html"

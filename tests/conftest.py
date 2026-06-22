@@ -94,6 +94,11 @@ def _hermetic_test():
     # la CLASSE (ex. test_memory) sans la restaurer → les tests swarm suivants n'appellent
     # plus le vrai chemin LLM (« obtenu 0 appels »). On capture l'état du __dict__ de classe.
     _orig_complete = swarm_mod.Swarm.__dict__.get("_complete", _MISSING)
+    # HERMÉTISME vis-à-vis du .env de l'opérateur : la liste SENSITIVE_TOOLS (HITL) ne doit pas
+    # influencer la suite (sinon un outil nommé comme un outil sensible, ex. edit_file, part en
+    # approbation et un test d'exécution échoue/bloque). On la neutralise ; les tests du gate
+    # HITL utilisent l'attribut `_requires_approval` (indépendant de l'env) ou la posent eux-mêmes.
+    os.environ["SENSITIVE_TOOLS"] = ""
     _wipe_shared_store()  # chaque test démarre avec un store vierge
     try:
         yield

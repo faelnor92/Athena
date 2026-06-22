@@ -9,6 +9,7 @@ pour ne pas bloquer le producteur sur un réacteur lent.
 Volontairement minimal et sans dépendance (cf. principe « natif > dépendance »).
 """
 import logging
+import os
 import queue
 import threading
 
@@ -56,11 +57,14 @@ def _dispatch(topic: str, payload):
             logger.exception("event_bus: un abonné a levé une exception (topic=%s)", topic)
 
 
+_QUEUE_MAX = int(os.getenv("EVENT_BUS_QUEUE_MAX", "1000") or 1000)
+
+
 def _ensure_worker():
     global _q, _worker
     with _lock:
         if _worker is None:
-            _q = queue.Queue()
+            _q = queue.Queue(maxsize=_QUEUE_MAX)   # BORNÉE : un producteur emballé ne fait pas exploser la RAM
             _worker = threading.Thread(target=_run, name="event-bus", daemon=True)
             _worker.start()
 
@@ -78,7 +82,12 @@ def publish(topic: str, payload=None, async_: bool = False) -> int:
     n = len(_handlers_for(topic))
     if async_:
         _ensure_worker()
-        _q.put((topic, payload))
+        try:
+            _q.put_nowait((topic, payload))
+        except queue.Full:
+            # File saturée (réacteur lent / tempête d'événements) : on jette plutôt que de
+            # bloquer le producteur. Best-effort par nature de la diffusion asynchrone.
+            logger.warning("event_bus: file pleine, événement '%s' abandonné", topic)
     else:
         _dispatch(topic, payload)
     return n

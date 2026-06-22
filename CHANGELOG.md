@@ -25,6 +25,11 @@
 - **Checklist de déploiement** (`docs/DEPLOYMENT.md`) : auth/MFA, HTTPS/reverse-proxy, CORS,
   rate-limit, CSP, garde anti-SSRF, secrets, sandbox Docker, sauvegardes.
 - **Couverture** : tests du contrôle d'accès des projets partagés (`core/shared_projects`).
+- **Blindage / robustesse** : disjoncteur LSP (`tools/lsp_client` — après N échecs, repli
+  `compile`/`ast`, plus jamais d'édition bloquée ; timeout par défaut 6 s→2,5 s ; serveur mort
+  relancé) ; file asynchrone **bornée** du bus d'événements (anti-OOM) ; bornes d'entrée
+  (import-code ≤ 2 Mo, todo ≤ 100 items / 500 car.) ; suite rendue **hermétique au `.env`**
+  (SENSITIVE_TOOLS neutralisé en test). Tests : `tests/test_hardening.py`.
 - **Audit sécurité complet** (`docs/SECURITY_AUDIT.md`) : XXE WebDAV/CalDAV/CardDAV → **defusedxml**
   (repli stdlib) ; `requests` sans timeout (Home Assistant) ; **allowlist** de colonne SQL
   (`state._update_conv`) ; `run_tool_script`/`self_update`/`nextcloud_write/delete` ajoutés aux
