@@ -1,5 +1,29 @@
 # Historique des Versions (Changelog)
 
+## [0.27.0] - 2026-06-22
+### Feat — streaming AthenaDesign, bus d'événements + HITL audité
+- **Génération AthenaDesign en STREAMING** (SSE) : nouvel endpoint `POST /api/athenadesign/chat/stream`
+  diffuse le code token-par-token (ressenti « live » façon Claude Design), puis émet la version
+  finale ; le studio remplit une bulle « live ». Chemin Athena = vrai streaming ; provider externe
+  = génération non-streamée. Factorisation `_prepare_design_chat`/`_persist_design_version`.
+- **Bus d'événements pub/sub** (`core/event_bus.py`) : substrat de découplage producteurs↔réacteurs
+  (multi-abonnés, sujet `"*"`, erreurs isolées, diffusion sync/async). Le **HITL async**
+  (`approval_queue`) y publie son cycle de vie (`requested`/`resolved`/`timeout`) → réacteur
+  d'**audit** branché (les décisions d'approbation sont désormais tracées).
+
+### CI / qualité / sécurité (renforcement)
+- **CI exécute la VRAIE suite** : `pytest tests/ -m "not network"` (via `conftest.py` hermétique)
+  au lieu de `python test_x.py` par fichier — qui n'utilisait pas conftest et ignorait en silence
+  les tests sans `__main__`. Ajout `pytest.ini` (testpaths=tests, marker `network`),
+  `requirements-dev.txt` ; `test_computer_use` marqué `network`.
+- **Scan sécurité bloquant** : `scripts/security_scan.sh` distingue informatif (pip-audit, bandit
+  toutes sévérités) de **bloquant** (bandit HIGH/HIGH, secrets versionnés, `.env` suivi) ; job CI
+  `security-scan` rendu bloquant. Correction de 2 alertes B324 (SHA1 non crypto → `usedforsecurity=False`).
+- **Checklist de déploiement** (`docs/DEPLOYMENT.md`) : auth/MFA, HTTPS/reverse-proxy, CORS,
+  rate-limit, CSP, garde anti-SSRF, secrets, sandbox Docker, sauvegardes.
+- **Couverture** : tests du contrôle d'accès des projets partagés (`core/shared_projects`).
+
+
 ## [0.26.0] - 2026-06-22
 ### Feat — coder de niveau opencode/Claude Code, artifacts de chat et AthenaDesign (parité Claude Design)
 - **Boucle de feedback diagnostics (code)** : après chaque édition (`edit_file`/`write_file`/`apply_patch`), la sortie de l'outil inclut les erreurs/avertissements introduits dans le fichier → l'agent corrige immédiatement. Moteur unifié `tools/lsp_client.py` (**basedpyright** `--stdio`, mode standard ; repli `compile`/`ruff`/`json`). Même moteur pour l'onglet Code (`/api/workspace/lint`). Nouvelle dépendance `basedpyright` (couverte par `update.sh`).
