@@ -348,7 +348,10 @@ class _CompletionMixin:
         # TIMEOUT par requête : un endpoint lent/instable échoue VITE au lieu de « pendre »
         # plusieurs minutes (sinon le run reste bloqué → « ça cherche » sans réponse). Le total
         # reste borné : ~(timeout + backoff) × tentatives. Réglable via LLM_REQUEST_TIMEOUT (0 = off).
-        _to = float(os.getenv("LLM_REQUEST_TIMEOUT", "90") or 0)
+        # 180 s par défaut : assez généreux pour une génération LONGUE (design/pptx) sur un
+        # endpoint lent — un timeout trop court coupe la sortie en plein milieu (code tronqué,
+        # « unterminated string »). 0 = aucun timeout.
+        _to = float(os.getenv("LLM_REQUEST_TIMEOUT", "180") or 0)
         if _to > 0:
             completion_kwargs["timeout"] = _to
 
