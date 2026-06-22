@@ -33,6 +33,10 @@
 - **Timeout par requête LLM** (`LLM_REQUEST_TIMEOUT`, défaut 90 s) : un endpoint lent/instable
   **échoue vite** au lieu de bloquer le run plusieurs minutes (« ça cherche » sans réponse) ;
   total borné `(timeout + backoff) × tentatives`. `0` = désactivé.
+- **Fix blocs de réflexion qui fuitaient dans le chat** : le strip ne gérait que `<thought>`
+  (chevrons) ; certains modèles (qwen…) émettent `[thought]…[/thought]` (crochets) → affichés
+  en bulle. Backend (`strip_thoughts` + extraction) et frontend gèrent désormais les DEUX
+  délimiteurs (+ casse insensible + balise ouvrante non fermée). Tests : `tests/test_thoughts.py`.
 - **Audit sécurité complet** (`docs/SECURITY_AUDIT.md`) : XXE WebDAV/CalDAV/CardDAV → **defusedxml**
   (repli stdlib) ; `requests` sans timeout (Home Assistant) ; **allowlist** de colonne SQL
   (`state._update_conv`) ; `run_tool_script`/`self_update`/`nextcloud_write/delete` ajoutés aux
