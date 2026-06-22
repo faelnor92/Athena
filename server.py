@@ -274,6 +274,19 @@ try:
 except Exception as e:
     logger.warning("Démarrage du moniteur Proxmox ignoré : %s", e, exc_info=True)
 
+# Bus d'événements : réacteur d'AUDIT des décisions HITL (approbations async). Découplé via
+# core.event_bus → on peut brancher d'autres réacteurs (notifications…) sans toucher au HITL.
+try:
+    from core import event_bus, audit
+
+    def _audit_approval(_topic, p):
+        audit.log(f"approval_{p.get('phase', '?')}", actor=str(p.get("agent") or "?"),
+                  target=str(p.get("tool") or ""),
+                  detail=f"id={p.get('id')} channel={p.get('channel')} approved={p.get('approved')}")
+    event_bus.subscribe("approval", _audit_approval)
+except Exception as e:
+    logger.warning("Abonnement audit HITL (event_bus) ignoré : %s", e, exc_info=True)
+
 
 # Sert index.html avec le NOM D'APP injecté côté serveur (évite le flash « Athena →
 # Athena » au rafraîchissement : le HTML statique contenait le nom en dur).
