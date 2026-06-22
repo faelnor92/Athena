@@ -4,12 +4,20 @@ import os
 import sys
 import tempfile
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _tmp = tempfile.mkdtemp(prefix="athena_edit_")
-os.environ["ACTIVE_WORKSPACE_DIR"] = _tmp
-os.environ["STATE_DB_PATH"] = os.path.join(_tmp, "state.sqlite3")  # pas de projet actif → workspace = _tmp
 
 from tools.code_edit import edit_file  # noqa: E402
+
+
+# ACTIVE_WORKSPACE_DIR est GLOBAL et lu dynamiquement : plusieurs fichiers de test le
+# posent au niveau module → « le dernier écrivain gagne » à la collecte. On le réaffirme
+# donc PAR TEST pour pointer sur NOTRE dossier temporaire, quel que soit l'ordre.
+@pytest.fixture(autouse=True)
+def _workspace(monkeypatch):
+    monkeypatch.setenv("ACTIVE_WORKSPACE_DIR", _tmp)
 
 
 def _write(name, content):

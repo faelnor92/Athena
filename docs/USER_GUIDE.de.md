@@ -24,6 +24,7 @@ Es gibt **zwei Möglichkeiten**, mit Athena zu interagieren: die Weboberfläche 
 Das ist die anschaulichste und einfachste Methode.
 - **Die 3D-Ansicht**: Auf der Hauptseite sehen Sie eine visuelle Darstellung von Athena und ihren „Agenten" (der Programmierer, der Rechercheur usw.). Wenn Athena nachdenkt oder eine Aufgabe delegiert, sehen Sie leuchtende Animationen, die Ihnen anzeigen, welcher Agent gerade arbeitet.
 - **Der automatische Orchestrator**: Schreiben Sie in der Chatleiste unten einfach Ihre Anfrage. In der Weboberfläche **sprechen Sie immer mit dem Orchestrator**. Er ist intelligent genug, um Ihre Anfrage zu verstehen und sie automatisch dem richtigen Agenten zuzuweisen (er übergibt z. B. an den Programmierer-Agenten, wenn Sie ein Skript anfordern).
+- **Artefakte im Chat**: Wenn die KI vorschaubaren Code erzeugt (HTML, **React**, SVG, **Mermaid**, **Markdown**), öffnet eine Schaltfläche **„👁️ Vorschau"** ein **angedocktes Vorschaufenster** rechts — ausgeführt in einer isolierten Sandbox. Sie **navigieren zwischen den** im Gesprächsverlauf erzeugten **Versionen**, **kopieren/laden** den Code **herunter** oder klicken auf **„🎨 In AthenaDesign öffnen"**, um im Studio fortzufahren.
 - **Der Datei-Explorer (Workspaces)**: Links befindet sich ein Bereich mit Ihren Dateien. Sie können Dokumente (PDF, Markdown, Quellcode) per Drag & Drop ablegen, damit die KI sie analysieren kann.
 - **Der integrierte Editor (Mini-IDE)**: Klicken Sie auf eine Datei, um sie direkt im Browser zu **bearbeiten** — mehrere geöffnete Dateien als **Tabs**, Syntaxhervorhebung, Autovervollständigung (Strg+Leertaste) und **Speichern** mit **Strg+S** (💾). Ein *Leser* eines geteilten Projekts bleibt schreibgeschützt. Sie können den **Explorer verkleinern oder einklappen** (mittlerer Griff oder Schaltfläche „◀ Reduzieren"), um den Editor zu vergrößern, und wenn der **Agent eine geöffnete Datei ändert**, aktualisiert sich Ihre Ansicht **live** (zusammen mit der Präsenz der anderen Leser).
 - **Die Programmierer-Konsole (interaktives Terminal)**: ein echtes Terminal, in dem Sie zum Entwickeln mit dem **Programmierer**-Agenten sprechen. Besonderheiten:
@@ -61,13 +62,17 @@ Das ist das Herz des Systems. Athena kann einen Systemadministrator oder einen E
 - **Skill-Erstellung im Handumdrehen**: Eine einzigartige Funktion — die KI kann neue „Werkzeuge" programmieren, um sich selbst zu verbessern, und sie dauerhaft in ihrem Basisquellcode speichern!
 - **SSH-Administration**: Die KI kann sich per SSH mit Ihren anderen Remote-Servern verbinden, um Wartung durchzuführen.
 - **Computer Use (RPA 2.0)**: Die KI kann einen echten, versteckten Webbrowser öffnen, auf Schaltflächen klicken, Formulare ausfüllen und Websites scrapen.
-- **Git- & Code-Navigation**: Die KI kann Ihre Git-Repositories lesen, Ihren vorhandenen Quellcode verstehen und ihn live bearbeiten.
+- **Git- & Code-Navigation**: Die KI kann Ihre Git-Repositories lesen, Ihren vorhandenen Quellcode verstehen und ihn live bearbeiten (Datei-/`glob`-/Inhaltssuche, Dateiübersicht, Referenzen).
+- **Diagnose nach jeder Bearbeitung (Feedback-Schleife)**: Bei jeder Dateiänderung liest Athena die eingeführten **Fehler/Warnungen** erneut (LSP-Server **basedpyright** für Python, sonst integrierter Ersatz) und **behebt sie sofort**. Diese Diagnose erscheint auch im Tab **Code** (Schaltfläche „🔍 Analysieren").
+- **Aufgabenliste der Sitzung**: Bei mehrstufiger Arbeit führt der Agent eine **Checkliste** (📋 Aufgaben), sichtbar in `athena_cli` und im Code-Tab, in Echtzeit aktualisiert.
+- **Planmodus (schreibgeschützt)**: die Schaltfläche **„🧭 Planmodus"** (oder `/plan` / `/build` in der CLI) — der Agent **schlägt einen Plan vor, ohne etwas zu ändern**; wechseln Sie zurück in den normalen Modus zum Ausführen.
+- **Projektanweisungen**: Legen Sie eine `CLAUDE.md`, `ATHENA.md` oder `AGENTS.md` im Projektstamm ab (Konventionen, Befehle) — Athena lädt sie automatisch, kaskadierend bis zum Git-Stamm.
 - **Autonome Wartung**: Ein nächtlicher Agent kann den Quellcode automatisch prüfen und reparieren.
 
 ### 🎨 AthenaDesign Studio (KI-Design)
 Ein integriertes Design-Studio (Tab **🎨 Design**). Beschreiben Sie, was Sie erstellen möchten, Athena generiert es und **zeigt es live an**:
 - **Typen**: Webseiten (HTML/CSS/JS), interaktive **React-Apps**, **Mermaid-Diagramme** und **Python**-Skripte (**PowerPoint**-Präsentationen, Diagramme). **Startvorlagen** (Landing, Pitch Deck, Dashboard…) füllen einen Prompt vor.
-- **Ihre Marke (Design System)**: Klappen Sie das Panel „Design System" auf, um Ihre Farben/Schrift anzugeben — von Hand, durch Einfügen von CSS oder über **„🌐 Von einer URL"** (Athena extrahiert die Marke von einer Website).
+- **Ihre Marke (Design System)**: Panel „Design System", um Ihre Farben/Schrift anzugeben — von Hand, durch Einfügen von CSS, über **„🌐 Von einer URL"** oder durch **automatisches Generieren**: **„🧩 Aus dem Code"** (aus dem Projekt abgeleitet: Tailwind/CSS), **„🖼️ Aus einem Bild"** (Palette/Typografie aus einem Screenshot), **„✨ Aus einer Beschreibung"** (Start-Marke für ein leeres Projekt).
 - **Referenzen**: Hängen Sie ein Bild/Dokument (📎) oder eine Webseite (🔗) als Inspiration an.
 - **Verfeinern**: Annotieren Sie die Vorschau, passen Sie live an (Schieberegler für Farbe/Rundung/Schrift), durchblättern Sie die Versionen. Wenn ein Python-Skript fehlschlägt, **korrigiert sich Athena selbst**.
 - **Teilen / Exportieren**: Schaltfläche **Teilen** (schreibgeschützter Link), **PDF-Export** und Download der `.pptx`.

@@ -315,6 +315,7 @@
                                     <span id="file-viewer-title">Sélectionnez un fichier…</span>
                                     <span id="file-viewer-reloaded" style="font-size: 0.72rem; color: var(--accent-cyan); margin-left: 8px;"></span>
                                     <span style="flex:1;"></span>
+                                    <button id="btn-plan-mode" class="btn btn-secondary" style="padding: 2px 10px; font-size: 0.75rem; border-radius: 4px; margin-right: 6px;" title="Mode plan : l'agent propose un plan sans modifier le code">🧭 Mode plan : OFF</button>
                                     <button id="btn-lint-file" class="btn btn-secondary" style="display: none; padding: 2px 10px; font-size: 0.75rem; border-radius: 4px; margin-right: 6px;" title="Analyser le code (Linter)">🔍 Analyser</button>
                                     <button id="btn-autofix-file" class="btn btn-primary" style="display: none; padding: 2px 10px; font-size: 0.75rem; border-radius: 4px; margin-right: 6px; background: linear-gradient(135deg, #00ff66 0%, #00b344 100%); border: none; color: #000; font-weight: bold;" title="Corriger automatiquement avec l'IA">🔧 Auto-Fix IA</button>
                                     <button id="btn-save-file" class="btn btn-primary" style="display: none; padding: 2px 10px; font-size: 0.75rem; border-radius: 4px;" title="Enregistrer (Ctrl+S)">💾 Enregistrer</button>
@@ -334,6 +335,15 @@
                                         <button id="btn-close-linter-panel" style="background: none; border: none; color: #fff; cursor: pointer; opacity: 0.7; font-size: 1rem; padding: 0 4px;">✖</button>
                                     </div>
                                     <div id="file-linter-results" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                                </div>
+
+                                <!-- Liste de tâches de session (todo_write, façon opencode/Claude Code) -->
+                                <div id="session-todo-panel" style="display: none; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(255,255,255,0.1); padding: 10px; font-size: 0.82rem; max-height: 220px; overflow-y: auto; z-index: 10;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px;">
+                                        <span style="font-weight: bold; color: var(--accent-cyan); display: flex; align-items: center; gap: 6px;">📋 Tâches <span id="session-todo-count" style="opacity:0.7; font-weight:normal;"></span></span>
+                                        <button id="btn-close-todo-panel" style="background: none; border: none; color: #fff; cursor: pointer; opacity: 0.7; font-size: 1rem; padding: 0 4px;">✖</button>
+                                    </div>
+                                    <div id="session-todo-list" style="display: flex; flex-direction: column; gap: 3px;"></div>
                                 </div>
                             </div>
                         </div>

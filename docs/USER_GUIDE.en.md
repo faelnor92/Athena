@@ -24,6 +24,7 @@ There are **two ways** to interact with Athena: the Web Interface and the Termin
 This is the most visual and simplest method.
 - **The 3D view**: On the main page, you'll see a visual representation of Athena and its "Agents" (the Coder, the Researcher, etc.). When Athena thinks or delegates a task, you'll see glowing animations showing you which agent is working.
 - **The automatic Orchestrator**: In the chat bar at the bottom, simply type your request. In the Web Interface, **you always talk to the Orchestrator**. It is smart enough to understand your request and automatically assign it to the right agent (e.g., it will hand off to the Coder Agent if you ask for a script).
+- **Artifacts in the chat**: when the AI produces previewable code (HTML, **React**, SVG, **Mermaid**, **Markdown**), an **"👁️ Preview"** button opens a **docked preview panel** on the right — run in an isolated sandbox. You **navigate between the versions** generated through the conversation, **copy/download** the code, or click **"🎨 Open in AthenaDesign"** to continue in the studio.
 - **The file Explorer (Workspaces)**: On the left is a panel containing your files. You can drag and drop documents (PDF, Markdown, source code) so the AI can analyze them.
 - **The built-in Editor (mini-IDE)**: click a file to **edit** it directly in the browser — several open files as **tabs**, syntax highlighting, autocompletion (Ctrl+Space), and **saving** with **Ctrl+S** (💾). A *Viewer* of a shared project stays read-only. You can **shrink or collapse the explorer** (center handle or the "◀ Collapse" button) to enlarge the editor, and when the **agent modifies an open file**, your view **refreshes live** (along with the presence of other viewers).
 - **The Coder Console (interactive terminal)**: a real terminal where you talk to the **Coder** agent to develop. Specifics:
@@ -61,13 +62,17 @@ This is the heart of the system. Athena can replace a system administrator or a 
 - **On-the-fly Skill Creation**: A unique feature — the AI can code new "tools" to improve itself, and save them permanently into its base source code!
 - **SSH Administration**: The AI can connect to your other remote servers via SSH for maintenance.
 - **Computer Use (RPA 2.0)**: The AI can open a real hidden web browser, click buttons, fill in forms and scrape sites.
-- **Git & Code Navigation**: The AI can read your Git repositories, understand your existing source code and edit it live.
+- **Git & Code Navigation**: The AI can read your Git repositories, understand your existing source code and edit it live (file/`glob`/content search, file outline, references).
+- **Diagnostics after each edit (feedback loop)**: on every file change, Athena re-reads the **errors/warnings** it introduced (the **basedpyright** LSP server for Python, built-in fallback otherwise) and **fixes them immediately**. These diagnostics also appear in the **Code** tab ("🔍 Analyze" button).
+- **Session task list**: for multi-step work, the agent keeps a **checklist** (📋 Tasks) visible in `athena_cli` and the Code tab, updated in real time.
+- **Plan mode (read-only)**: the **"🧭 Plan mode"** button (or `/plan` / `/build` in the CLI) — the agent **proposes a plan without modifying anything**; switch back to normal mode to execute.
+- **Project instructions**: drop a `CLAUDE.md`, `ATHENA.md` or `AGENTS.md` at your project root (conventions, commands) — Athena loads them automatically, cascading up to the git root.
 - **Autonomous Maintenance**: A nightly agent can check and repair the source code automatically.
 
 ### 🎨 AthenaDesign Studio (AI Design)
 A built-in design studio (the **🎨 Design** tab). Describe what you want to create, Athena generates it and **displays it live**:
 - **Types**: web pages (HTML/CSS/JS), interactive **React apps**, **Mermaid diagrams**, and **Python** scripts (**PowerPoint** presentations, charts). **Starter templates** (Landing, Pitch deck, Dashboard…) pre-fill a prompt.
-- **Your brand (Design System)**: collapse the "Design System" panel to provide your colors/font — by hand, by pasting CSS, or via **"🌐 From a URL"** (Athena extracts the brand from a site).
+- **Your brand (Design System)**: the "Design System" panel to provide your colors/font — by hand, by pasting CSS, via **"🌐 From a URL"**, or by **generating it automatically**: **"🧩 From the code"** (inferred from the project: Tailwind/CSS), **"🖼️ From an image"** (palette/typography from a screenshot), **"✨ From a description"** (starter brand for an empty project).
 - **References**: attach an image/document (📎) or a web page (🔗) as inspiration.
 - **Refine**: annotate the preview, adjust live (color/radius/font sliders), browse versions. If a Python script fails, Athena **fixes itself**.
 - **Share / export**: **Share** button (read-only link), **PDF Export**, and `.pptx` download.

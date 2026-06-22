@@ -231,3 +231,40 @@ def file_outline(path: str) -> str:
     if not out:
         return f"(aucun symbole de premier niveau détecté dans {os.path.basename(real)})"
     return f"[plan de {os.path.basename(real)} — {len(out)} symbole(s)]\n" + "\n".join(out)
+
+
+def glob_files(pattern: str, path: str = "") -> str:
+    """Liste les fichiers du workspace dont le CHEMIN correspond à un motif glob (ex:
+    '**/*.py', 'src/**/*.ts', '*.json'), triés du plus récemment modifié au plus ancien.
+    Pratique pour repérer les fichiers à lire/éditer avant d'agir.
+    pattern: motif glob (les '**' traversent les sous-dossiers). path: sous-dossier de départ
+    (optionnel, relatif au workspace).
+    """
+    import fnmatch
+    pattern = (pattern or "").strip()
+    if not pattern:
+        return "Erreur : motif vide."
+    root, err = _resolve(path or ".", must_exist=True)
+    if err:
+        return err
+    ws = _ws()
+    # Normalise : un motif sans '/' s'applique à tous les sous-dossiers (**/motif).
+    pat = pattern if "/" in pattern else os.path.join("**", pattern)
+    matches = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _IGNORE_DIRS and not d.startswith(".")]
+        for fn in filenames:
+            full = os.path.join(dirpath, fn)
+            rel = os.path.relpath(full, ws)
+            if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(fn, pattern):
+                try:
+                    matches.append((os.path.getmtime(full), rel))
+                except OSError:
+                    continue
+    if not matches:
+        return f"(aucun fichier ne correspond à '{pattern}')"
+    matches.sort(reverse=True)
+    shown = matches[:_MAX]
+    lines = [rel for _, rel in shown]
+    head = f"[{len(matches)} fichier(s) pour '{pattern}'" + (f", {_MAX} premiers" if len(matches) > _MAX else "") + "]"
+    return head + "\n" + "\n".join(lines)

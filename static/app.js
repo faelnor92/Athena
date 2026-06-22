@@ -1929,6 +1929,42 @@ function renderPlan(items) {
     currentPlanEl = el;
 }
 
+// --- Liste de tâches de SESSION (todo_write) — onglet Code ------------------
+const _TODO_ICONS = { pending: "⬜", in_progress: "🔄", completed: "✅", cancelled: "⛔" };
+function renderTodos(items) {
+    const panel = document.getElementById("session-todo-panel");
+    const list = document.getElementById("session-todo-list");
+    const count = document.getElementById("session-todo-count");
+    if (!panel || !list) return;
+    items = Array.isArray(items) ? items : [];
+    if (!items.length) { panel.style.display = "none"; list.innerHTML = ""; if (count) count.textContent = ""; return; }
+    const done = items.filter(i => i.status === "completed").length;
+    if (count) count.textContent = `(${done}/${items.length})`;
+    list.innerHTML = items.map(it => {
+        const ic = _TODO_ICONS[it.status] || "⬜";
+        const strike = (it.status === "completed" || it.status === "cancelled") ? "opacity:0.6;text-decoration:line-through;" : "";
+        const hl = it.status === "in_progress" ? "font-weight:600;" : "";
+        return `<div style="display:flex;gap:8px;align-items:flex-start;padding:1px 0;"><span>${ic}</span><span style="flex:1;${strike}${hl}">${escapeHtml(it.content || "")}</span></div>`;
+    }).join("");
+    panel.style.display = "block";
+}
+async function fetchTodos() {
+    try {
+        const res = await apiFetch("/api/todos");
+        if (!res.ok) return;
+        const data = await res.json();
+        renderTodos(data.items || []);
+    } catch (e) { /* non bloquant */ }
+}
+
+function renderPlanModeBtn(active) {
+    const btn = document.getElementById("btn-plan-mode");
+    if (!btn) return;
+    btn.textContent = active ? "🧭 Mode plan : ON" : "🧭 Mode plan : OFF";
+    btn.style.background = active ? "linear-gradient(135deg,#00f3ff33,#00b3ff22)" : "";
+    btn.style.fontWeight = active ? "bold" : "";
+}
+
 function updatePlanStep(index, status) {
     if (!currentPlanEl) return;
     const row = currentPlanEl.querySelector(`.plan-item[data-index="${index}"]`);
@@ -2135,6 +2171,10 @@ async function playAgentSteps(steps, immediate = false) {
                     });
                 }
 
+                else if (step.type === "todo") {
+                    renderTodos(step.items || []);
+                }
+
                 else if (step.type === "plan") {
                     if (window._coderConsoleActive) renderPlanTerminal(step.items || []);
                     else renderPlan(step.items || []);
@@ -2231,6 +2271,9 @@ function _artifactKind(lang, code) {
     const l = (lang || "").toLowerCase();
     const c = code || "";
     if (["jsx", "tsx", "react"].includes(l)) return "react";
+    if (l === "mermaid") return "mermaid";
+    if (/^\s*(flowchart|sequenceDiagram|classDiagram|erDiagram|stateDiagram(-v2)?|gantt|mindmap|journey|pie\s|graph\s+(TD|LR|TB|RL|BT))/i.test(c)) return "mermaid";
+    if (["md", "markdown"].includes(l)) return "markdown";
     if (["html", "htm", "xml", "svg"].includes(l)) return "html";
     if (/<!DOCTYPE html|<html[\s>]|<body[\s>]|<svg[\s>]/i.test(c)) return "html";
     // JS seul : prévisualisable seulement s'il manipule le DOM.
@@ -2260,43 +2303,159 @@ try { if (typeof App !== "undefined") ReactDOM.createRoot(document.getElementByI
 <\/script></body></html>`;
 }
 
-function openArtifact(i) {
-    const a = ARTIFACTS[i];
+function _mermaidTemplate(code) {
+    const esc = (code || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"><\/script>
+<style>body{margin:0;padding:24px;display:flex;justify-content:center;font-family:system-ui;background:#fff}.mermaid{max-width:100%}</style></head>
+<body><pre class="mermaid">${esc}</pre>
+<script>try{mermaid.initialize({startOnLoad:true,theme:"default"});}catch(e){document.body.textContent=e.message;}<\/script></body></html>`;
+}
+
+function _markdownTemplate(code) {
+    // marked depuis CDN ; le markdown vit dans un <script type="text/plain"> (jamais exécuté),
+    // rendu via textContent → pas d'échappement à gérer. Iframe sandbox sans same-origin = sûr.
+    const safe = (code || "").replace(/<\/script/gi, "<\\/script");
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\/script>
+<style>body{font-family:system-ui;margin:24px;max-width:820px;line-height:1.65;color:#111}
+pre{background:#f4f4f5;padding:12px;border-radius:8px;overflow:auto}code{font-family:ui-monospace,Menlo,Consolas,monospace}
+h1,h2,h3{line-height:1.25}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px 10px}img{max-width:100%}</style></head>
+<body><div id="c"></div>
+<script type="text/plain" id="src">${safe}<\/script>
+<script>try{document.getElementById("c").innerHTML=marked.parse(document.getElementById("src").textContent);}
+catch(e){document.getElementById("c").textContent=document.getElementById("src").textContent;}<\/script>
+</body></html>`;
+}
+
+function _artifactHtml(a) {
+    return a.kind === "react" ? _reactTemplate(a.code)
+         : a.kind === "mermaid" ? _mermaidTemplate(a.code)
+         : a.kind === "markdown" ? _markdownTemplate(a.code)
+         : a.kind === "js" ? _jsTemplate(a.code)
+         : _htmlTemplate(a.code);
+}
+
+function _artifactExt(kind) {
+    return ({ react: "jsx", mermaid: "mmd", markdown: "md", js: "js", html: "html" })[kind] || "txt";
+}
+
+// État du panneau d'artifacts DOCKÉ (façon Claude Artifacts) : ARTIFACTS = pile de versions
+// de la conversation ; _artifactView.idx = version affichée (navigation préc./suiv.).
+let _artifactView = { idx: -1, blobUrl: null };
+
+function _artifactDock() {
+    let dock = document.getElementById("artifact-dock");
+    if (dock) return dock;
+    dock = document.createElement("div");
+    dock.id = "artifact-dock";
+    dock.style.cssText = "position:fixed;top:0;right:0;width:min(46vw,760px);height:100vh;" +
+        "background:#0d1117;border-left:1px solid rgba(255,255,255,0.12);box-shadow:-8px 0 30px rgba(0,0,0,0.45);" +
+        "display:none;flex-direction:column;z-index:9000;";
+    dock.innerHTML =
+        '<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:#161b22;color:#fff;font-size:0.78rem;border-bottom:1px solid rgba(255,255,255,0.08);">' +
+        '<span id="artifact-dock-title" style="font-weight:600;">👁️ Artifact</span>' +
+        '<button id="artifact-prev" title="Version précédente" class="ad-dock-btn">‹</button>' +
+        '<span id="artifact-counter" style="opacity:0.7;"></span>' +
+        '<button id="artifact-next" title="Version suivante" class="ad-dock-btn">›</button>' +
+        '<span style="flex:1;"></span>' +
+        '<button id="artifact-copy" title="Copier le code" class="ad-dock-btn">⧉</button>' +
+        '<button id="artifact-download" title="Télécharger" class="ad-dock-btn">⬇</button>' +
+        '<button id="artifact-studio" title="Ouvrir dans AthenaDesign" class="ad-dock-btn">🎨</button>' +
+        '<button id="artifact-close" title="Fermer" class="ad-dock-btn">✕</button>' +
+        '</div>' +
+        '<div id="artifact-dock-body" style="flex:1;position:relative;background:#fff;"></div>';
+    document.body.appendChild(dock);
+    // Style des boutons (injecté une fois).
+    const st = document.createElement("style");
+    st.textContent = ".ad-dock-btn{background:none;border:1px solid rgba(255,255,255,0.25);color:#fff;" +
+        "cursor:pointer;border-radius:6px;padding:1px 8px;font-size:0.85rem;line-height:1.4;}" +
+        ".ad-dock-btn:hover{background:rgba(255,255,255,0.12);}.ad-dock-btn:disabled{opacity:0.35;cursor:default;}";
+    document.head.appendChild(st);
+    dock.querySelector("#artifact-close").onclick = _closeArtifact;
+    dock.querySelector("#artifact-prev").onclick = () => { if (_artifactView.idx > 0) { _artifactView.idx--; _renderArtifact(); } };
+    dock.querySelector("#artifact-next").onclick = () => { if (_artifactView.idx < ARTIFACTS.length - 1) { _artifactView.idx++; _renderArtifact(); } };
+    dock.querySelector("#artifact-copy").onclick = async () => {
+        const a = ARTIFACTS[_artifactView.idx]; if (!a) return;
+        try { await navigator.clipboard.writeText(a.code); showArtifactToast("Code copié"); } catch (e) {}
+    };
+    dock.querySelector("#artifact-download").onclick = () => {
+        const a = ARTIFACTS[_artifactView.idx]; if (!a) return;
+        const blob = new Blob([a.code], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url; link.download = `artifact-v${_artifactView.idx + 1}.${_artifactExt(a.kind)}`;
+        link.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+    };
+    dock.querySelector("#artifact-studio").onclick = () => {
+        const a = ARTIFACTS[_artifactView.idx]; if (a) openArtifactInStudio(a);
+    };
+    return dock;
+}
+
+function showArtifactToast(msg) {
+    if (typeof pushNotification === "function") pushNotification("Artifact", msg, "info");
+}
+
+function _closeArtifact() {
+    const dock = document.getElementById("artifact-dock");
+    if (dock) dock.style.display = "none";
+    if (_artifactView.blobUrl) { try { URL.revokeObjectURL(_artifactView.blobUrl); } catch (e) {} _artifactView.blobUrl = null; }
+}
+
+function _renderArtifact() {
+    const a = ARTIFACTS[_artifactView.idx];
     if (!a) return;
-    const overlay = document.createElement("div");
-    overlay.className = "lightbox-overlay";
-    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-    const card = document.createElement("div");
-    card.style.cssText = "background:#fff;width:90vw;height:85vh;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,0.5);";
-    const bar = document.createElement("div");
-    bar.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:#111;color:#fff;font-size:0.78rem;";
-    const label = document.createElement("span");
-    label.textContent = `👁️ Aperçu (${a.kind}) — bac à sable isolé`;
-    const close = document.createElement("button");
-    close.textContent = "✕ Fermer";
-    close.style.cssText = "background:none;border:1px solid #555;color:#fff;cursor:pointer;border-radius:6px;padding:2px 8px;";
-    close.onclick = () => overlay.remove();
-    bar.append(label, close);
+    const dock = _artifactDock();
+    dock.style.display = "flex";
+    dock.querySelector("#artifact-dock-title").textContent = `👁️ Artifact (${a.kind})`;
+    dock.querySelector("#artifact-counter").textContent = `${_artifactView.idx + 1}/${ARTIFACTS.length}`;
+    dock.querySelector("#artifact-prev").disabled = _artifactView.idx <= 0;
+    dock.querySelector("#artifact-next").disabled = _artifactView.idx >= ARTIFACTS.length - 1;
+    // « Ouvrir dans AthenaDesign » : seulement pour les types gérés par le studio.
+    dock.querySelector("#artifact-studio").style.display =
+        ["react", "html", "mermaid", "js"].includes(a.kind) ? "" : "none";
+    const body = dock.querySelector("#artifact-dock-body");
+    body.innerHTML = "";
+    if (_artifactView.blobUrl) { try { URL.revokeObjectURL(_artifactView.blobUrl); } catch (e) {} }
     const iframe = document.createElement("iframe");
+    // Sandbox SANS allow-same-origin → origine opaque : pas d'accès au token/localStorage/DOM
+    // parent. Chargé en blob: (son propre contexte CSP) plutôt que srcdoc (qui hériterait de
+    // la CSP stricte de la page et bloquerait React/unpkg/mermaid).
     iframe.setAttribute("sandbox", "allow-scripts");
     iframe.setAttribute("referrerpolicy", "no-referrer");
-    iframe.style.cssText = "flex:1;border:none;width:100%;background:#fff;";
-    // On charge via une URL blob: (autorisée par frame-src) plutôt que srcdoc : un iframe
-    // srcdoc HÉRITE de la CSP de la page (qui bloquerait les scripts React/unpkg), alors
-    // qu'un document blob: a son propre contexte. Sandbox sans allow-same-origin → origine
-    // opaque : pas d'accès au token/localStorage/DOM parent. La barrière de sécurité tient.
-    const html = a.kind === "react" ? _reactTemplate(a.code)
-               : a.kind === "js" ? _jsTemplate(a.code)
-               : _htmlTemplate(a.code);
-    const blobUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    iframe.style.cssText = "border:none;width:100%;height:100%;background:#fff;";
+    const blobUrl = URL.createObjectURL(new Blob([_artifactHtml(a)], { type: "text/html" }));
+    _artifactView.blobUrl = blobUrl;
     iframe.src = blobUrl;
-    overlay._blobUrl = blobUrl;
-    const _revoke = () => { try { URL.revokeObjectURL(blobUrl); } catch (e) {} };
-    close.onclick = () => { _revoke(); overlay.remove(); };
-    overlay.onclick = (e) => { if (e.target === overlay) { _revoke(); overlay.remove(); } };
-    card.append(bar, iframe);
-    overlay.appendChild(card);
-    document.body.appendChild(overlay);
+    body.appendChild(iframe);
+}
+
+// Ouvre l'artifact dans le panneau DOCKÉ (remplace l'ancienne modale plein écran).
+function openArtifact(i) {
+    if (i == null || !ARTIFACTS[i]) return;
+    _artifactView.idx = i;
+    _renderArtifact();
+}
+
+// Pont : crée un projet AthenaDesign amorcé avec le code de l'artifact, puis ouvre le studio.
+async function openArtifactInStudio(a) {
+    try {
+        const type = a.kind === "js" ? "html" : a.kind;  // le studio gère html/react/mermaid
+        const r = await apiFetch("/api/athenadesign/projects/new", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: "Artifact du chat" }),
+        });
+        if (!r.ok) throw new Error("création projet");
+        const proj = await r.json();
+        await apiFetch(`/api/athenadesign/projects/${proj.id}/import-code`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code: a.code, type, explanation: "Importé depuis un artifact du chat" }),
+        });
+        window.open(`/athenadesign/?project=${encodeURIComponent(proj.id)}`, "_blank");
+    } catch (e) {
+        showArtifactToast("Échec de l'ouverture dans AthenaDesign");
+    }
 }
 
 // Retire les balises d'émotion vocale ([emotion: …], (ton: …)) pour qu'elles
@@ -9872,12 +10031,15 @@ function detachCodeEditor() {
                     if (data.success && data.errors.length === 0) {
                         lintResults.innerHTML = `<div style="color: #44db5c; font-weight: bold;">✅ Aucun problème détecté dans ce fichier !</div>`;
                     } else {
-                        lintResults.innerHTML = data.errors.map(err => `
+                        const engineTag = data.engine === "lsp" ? "" : ` <span style="opacity:0.5;">(analyse de base)</span>`;
+                        lintResults.innerHTML = data.errors.map(err => {
+                            const codeBadge = err.code ? ` <span style="opacity:0.55;">[${escapeHtml(err.code)}]</span>` : "";
+                            return `
                             <div class="lint-error-item" style="padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; gap: 8px; align-items: flex-start; cursor: pointer;" data-line="${err.line}">
                                 <span style="color: ${err.severity === 'error' ? '#ff453a' : '#ff9f0a'}; font-weight: bold;">[${err.severity.toUpperCase()}]</span>
-                                <span>Ligne ${err.line}, col ${err.column}: ${escapeHtml(err.message)}</span>
-                            </div>
-                        `).join('');
+                                <span>Ligne ${err.line}, col ${err.column}: ${escapeHtml(err.message)}${codeBadge}</span>
+                            </div>`;
+                        }).join('') + (engineTag ? `<div style="padding:6px; font-size:0.85em;">${engineTag}</div>` : "");
                     }
                 }
             } catch (err) {
@@ -9905,6 +10067,37 @@ function detachCodeEditor() {
             if (lintPanel) lintPanel.style.display = "none";
         });
     }
+
+    const btnCloseTodoPanel = document.getElementById("btn-close-todo-panel");
+    if (btnCloseTodoPanel) {
+        btnCloseTodoPanel.addEventListener("click", () => {
+            const p = document.getElementById("session-todo-panel");
+            if (p) p.style.display = "none";
+        });
+    }
+
+    const btnPlanMode = document.getElementById("btn-plan-mode");
+    if (btnPlanMode) {
+        btnPlanMode.addEventListener("click", async () => {
+            try {
+                const cur = await (await apiFetch("/api/plan-mode")).json();
+                const res = await apiFetch("/api/plan-mode", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ active: !cur.active }),
+                });
+                const data = await res.json();
+                renderPlanModeBtn(data.active);
+                if (typeof pushNotification === "function") {
+                    pushNotification("Athena", data.active
+                        ? "🧭 Mode plan activé (lecture seule)." : "🔨 Mode build activé.", "info");
+                }
+            } catch (e) { /* non bloquant */ }
+        });
+        // Reflète l'état courant à l'ouverture.
+        apiFetch("/api/plan-mode").then(r => r.json()).then(d => renderPlanModeBtn(d.active)).catch(() => {});
+    }
+    // Charge la liste de tâches existante à l'ouverture de l'onglet Code.
+    fetchTodos();
 
     async function sendCoderCommand(command, agentName = "Codeur") {
         const projectId = (typeof _consoleProjectId === "function") ? _consoleProjectId() : null;

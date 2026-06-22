@@ -72,7 +72,21 @@ app.middleware("http")(auth_middleware)
 
 # --- En-têtes HTTP de sécurité (anti-clickjacking / sniffing / XSS) -----------
 _SECURITY_HEADERS = os.getenv("SECURITY_HEADERS", "true").lower() not in ("false", "0", "no")
-_DEFAULT_CSP = ""
+# CSP STRICTE par défaut pour TOUTE l'application. Le studio AthenaDesign reçoit une CSP
+# permissive distincte (_CSP_ATHENADESIGN) uniquement sur /athenadesign — voir plus bas.
+# (Régression v0.25.0 : ce défaut avait été vidé, ce qui supprimait la CSP de toute l'app.)
+_DEFAULT_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+    "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+    "img-src 'self' data: blob:; connect-src 'self'; "
+    "media-src 'self' blob: data:; "  # lecture TTS (chat/aperçu voix) via Blob/object URL
+    "frame-src 'self' blob:; "  # aperçu PDF (object URL) + studio AthenaDesign en iframe
+    # 'self' (et non 'none') : Athena peut embarquer ses PROPRES pages (ex. AthenaDesign
+    # Studio à /athenadesign/) ; un site externe ne peut toujours pas framer Athena.
+    "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'"
+)
 _CSP = os.getenv("CONTENT_SECURITY_POLICY", _DEFAULT_CSP)
 
 # CSP PERMISSIVE réservée au studio AthenaDesign (/athenadesign et /api/athenadesign).

@@ -65,10 +65,22 @@ def _atomic_write(real_path: str, content: str):
         raise
 
 
+def _diagnostics_suffix(real_path: str, rel_path: str, content: str) -> str:
+    """Boucle de feedback (façon opencode/Claude Code) : après une écriture réussie, renvoie
+    les erreurs/avertissements introduits dans le fichier pour que l'agent corrige tout de
+    suite. Non bloquant : chaîne vide si rien à signaler ou si l'analyse échoue."""
+    try:
+        from tools import lsp_client
+        return lsp_client.format_for_agent(rel_path, lsp_client.diagnostics(real_path, content))
+    except Exception:
+        return ""
+
+
 def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
     """
-    Lit un fichier texte du workspace avec NUMÉROS DE LIGNE (nécessaires pour éditer
-    ensuite précisément). Optionnellement borné à [start_line, end_line] (1-indexé).
+    Lit un fichier texte du workspace avec NUMÉROS DE LIGNE. À utiliser AVANT edit_file pour
+    copier le texte exact à remplacer (le numéro de ligne + tabulation n'est PAS du contenu :
+    ne l'inclus jamais dans old_string). Optionnellement borné à [start_line, end_line] (1-indexé).
     path: chemin relatif au workspace (ex: 'src/app.py').
     """
     real, err = _resolve(path, must_exist=True)
@@ -92,8 +104,10 @@ def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
 
 def write_file(path: str, content: str) -> str:
     """
-    Crée ou REMPLACE intégralement un fichier du workspace (écriture atomique).
-    À utiliser pour un nouveau fichier ; pour une modification ciblée, préfère edit_file.
+    Crée ou REMPLACE intégralement un fichier du workspace (écriture atomique). Réserve cet
+    outil aux NOUVEAUX fichiers : pour modifier un fichier existant, préfère TOUJOURS edit_file
+    (plus sûr, économe en tokens, ne risque pas d'écraser le reste). Renvoie aussi les
+    diagnostics introduits dans le fichier.
     path: chemin relatif au workspace. content: contenu complet du fichier.
     """
     real, err = _resolve(path, must_exist=False)
@@ -105,18 +119,27 @@ def write_file(path: str, content: str) -> str:
     except Exception as e:
         return f"Erreur d'écriture : {e}"
     n = content.count("\n") + (0 if content.endswith("\n") or not content else 1)
-    return f"{'Remplacé' if existed else 'Créé'} : {path} ({n} lignes)."
+    return f"{'Remplacé' if existed else 'Créé'} : {path} ({n} lignes)." + _diagnostics_suffix(real, path, content)
 
 
 def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = False) -> str:
     """
-    Édition NON destructive par remplacement de chaîne EXACTE (comme un str-replace).
-    `old_string` doit apparaître TEL QUEL dans le fichier et être UNIQUE (sauf
-    replace_all=True). Échoue sans rien écrire si introuvable ou ambigu — c'est le
-    moyen le plus sûr et le plus économe en tokens pour modifier un fichier existant.
+    Édition NON destructive par remplacement de chaîne EXACTE (comme un str-replace) — moyen
+    PRIVILÉGIÉ pour modifier un fichier existant (sûr, économe en tokens). Renvoie aussi les
+    diagnostics (erreurs/avertissements) introduits dans le fichier : corrige-les si présents.
+
+    RÈGLES :
+    - LIS le fichier avec read_file AVANT d'éditer, pour copier le texte EXACT (l'édition
+      échoue sans rien écrire si old_string est introuvable).
+    - Préserve l'INDENTATION exacte (espaces/tabulations) telle qu'affichée APRÈS le numéro
+      de ligne de read_file — n'inclus JAMAIS le préfixe « numéro + tabulation » dans old_string.
+    - old_string doit être UNIQUE : s'il apparaît plusieurs fois, l'édition échoue → ajoute des
+      lignes de contexte autour pour le rendre unique, ou mets replace_all=True.
+    - Préfère ÉDITER un fichier existant plutôt qu'en réécrire un (write_file).
+
     path: chemin relatif au workspace. old_string: texte exact à remplacer (avec son
     indentation). new_string: texte de remplacement. replace_all: remplace toutes les
-    occurrences au lieu d'exiger l'unicité.
+    occurrences au lieu d'exiger l'unicité (utile pour renommer une variable partout).
     """
     real, err = _resolve(path, must_exist=True)
     if err:
@@ -139,7 +162,8 @@ def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = F
             _atomic_write(real, new_content)
         except Exception as e:
             return f"Erreur d'écriture : {e}"
-        return f"Modifié : {path} ({count if replace_all else 1} remplacement{'s' if (replace_all and count > 1) else ''})."
+        return (f"Modifié : {path} ({count if replace_all else 1} remplacement{'s' if (replace_all and count > 1) else ''})."
+                + _diagnostics_suffix(real, path, new_content))
 
     # Repli TOLÉRANT (style Aider) : old_string introuvable au caractère près → on tente
     # une correspondance en ignorant l'indentation/les espaces de bord, puis on réindente
@@ -150,7 +174,8 @@ def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = F
             _atomic_write(real, flexible)
         except Exception as e:
             return f"Erreur d'écriture : {e}"
-        return f"Modifié : {path} ({fcount} remplacement{'s' if fcount > 1 else ''}, correspondance tolérante aux espaces)."
+        return (f"Modifié : {path} ({fcount} remplacement{'s' if fcount > 1 else ''}, correspondance tolérante aux espaces)."
+                + _diagnostics_suffix(real, path, flexible))
     if fcount == -1:
         return ("Erreur : correspondance tolérante AMBIGUË (plusieurs blocs similaires). "
                 "Ajoute du contexte unique ou utilise replace_all=True.")
@@ -300,4 +325,4 @@ def apply_patch(path: str, patch: str) -> str:
         _atomic_write(real, new_content)
     except Exception as e:
         return f"Erreur d'écriture : {e}"
-    return f"Patch appliqué : {path}."
+    return f"Patch appliqué : {path}." + _diagnostics_suffix(real, path, new_content)

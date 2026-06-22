@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _tmp = tempfile.mkdtemp(prefix="athena_it_")
 os.environ.update({
     "HOST": "127.0.0.1",                       # évite le garde-fou réseau
-    "ADMIN_PASSWORD": "admin-secret-itest",    # active l'authentification
     "MIN_PASSWORD_LENGTH": "8",
     "RATE_LIMIT_PER_MIN": "100000",            # neutralise le rate-limit dans les tests
     "STATE_DB_PATH": os.path.join(_tmp, "state.sqlite3"),
@@ -26,11 +25,21 @@ os.environ.update({
     "ROUTINES_PATH": os.path.join(_tmp, "routines.json"),   # inexistant → pas de migration du dépôt
 })
 
+import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 import server  # noqa: E402
 
 client = TestClient(server.app)
 _ADMIN = "admin-secret-itest"
+
+
+# ADMIN_PASSWORD active l'authentification. On le pose PAR TEST (et non au niveau module)
+# pour ne pas contaminer les autres fichiers via os.environ pendant la collecte pytest :
+# sinon test_api_smoke verrait l'auth active et recevrait 401 au lieu de 200.
+# (auth.py relit ADMIN_PASSWORD dynamiquement à chaque requête → une fixture suffit.)
+@pytest.fixture(autouse=True)
+def _auth_active(monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", _ADMIN)
 
 
 def _admin_token():

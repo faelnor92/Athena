@@ -24,6 +24,7 @@ Il existe **deux moyens** d'interagir avec Athena : l'Interface Web et le Termin
 C'est la méthode la plus visuelle et la plus simple.
 - **La vue 3D** : Sur la page principale, vous verrez une représentation visuelle d'Athena et de ses "Agents" (Le Codeur, Le Chercheur, etc.). Lorsqu'Athena réfléchit ou délègue une tâche, vous verrez des animations lumineuses vous indiquant quel agent est en train de travailler.
 - **L'Orchestrateur automatique** : Dans la barre de discussion en bas, écrivez simplement votre requête. Dans l'Interface Web, **vous parlez toujours à l'Orchestrateur**. C'est lui qui est assez intelligent pour comprendre votre demande et l'assigner automatiquement au bon agent (ex: il passera le relais à l'Agent Codeur si vous demandez un script).
+- **Artifacts dans le chat** : quand l'IA produit du code prévisualisable (HTML, **React**, SVG, **Mermaid**, **Markdown**), un bouton **« 👁️ Aperçu »** ouvre un **panneau d'aperçu docké** à droite — exécuté dans un bac à sable isolé. Vous **naviguez entre les versions** générées au fil de la conversation, **copiez/téléchargez** le code, ou cliquez **« 🎨 Ouvrir dans AthenaDesign »** pour poursuivre dans le studio.
 - **L'Explorateur de fichiers (Workspaces)** : Sur la gauche se trouve un panneau contenant vos fichiers. Vous pouvez y glisser-déposer des documents (PDF, Markdown, code source) pour que l'IA puisse les analyser.
 - **L'Éditeur intégré (mini-IDE)** : cliquez sur un fichier pour l'**éditer** directement dans le navigateur — plusieurs fichiers ouverts en **onglets**, coloration syntaxique, autocomplétion (Ctrl+Espace), et **enregistrement** avec **Ctrl+S** (💾). Un *Lecteur* d'un projet partagé reste en lecture seule. Vous pouvez **rétrécir ou replier l'explorateur** (poignée centrale ou bouton « ◀ Réduire ») pour agrandir l'éditeur, et quand l'**agent modifie un fichier ouvert**, votre vue se **rafraîchit en direct** (avec la présence des autres lecteurs).
 - **La Console Codeur (Terminal interactif)** : un véritable terminal où vous parlez à l'agent **Codeur** pour développer. Spécificités :
@@ -66,13 +67,17 @@ C'est le cœur du système. Athena peut remplacer un administrateur système ou 
 - **Création de Skills à la Volée** : Fonctionnalité unique, l'IA peut coder de nouveaux "outils" pour s'améliorer elle-même, et les enregistrer définitivement dans son code source de base !
 - **Administration SSH** : L'IA peut se connecter à vos autres serveurs distants via SSH pour faire de la maintenance.
 - **Computer Use (RPA 2.0)** : L'IA peut ouvrir un vrai navigateur web caché, cliquer sur des boutons, remplir des formulaires et scraper des sites.
-- **Navigation Git & Code** : L'IA peut lire vos dépôts Git, comprendre votre code source existant et l'éditer en direct.
+- **Navigation Git & Code** : L'IA peut lire vos dépôts Git, comprendre votre code source existant et l'éditer en direct (recherche `glob`/contenu, plan de fichier, références).
+- **Diagnostics après édition (boucle de feedback)** : à chaque modification de fichier, Athena relit les **erreurs/avertissements** introduits (serveur LSP **basedpyright** pour Python, repli intégré sinon) et les **corrige immédiatement**. Ces diagnostics s'affichent aussi dans l'onglet **Code** (bouton « 🔍 Analyser »).
+- **Liste de tâches de session** : pour un travail en plusieurs étapes, l'agent tient une **checklist** (📋 Tâches) visible dans `athena_cli` et l'onglet Code, mise à jour en temps réel.
+- **Mode plan (lecture seule)** : bouton **« 🧭 Mode plan »** (ou `/plan` / `/build` en CLI) — l'agent **propose un plan sans rien modifier** ; repassez en mode normal pour exécuter.
+- **Instructions de projet** : posez un `CLAUDE.md`, `ATHENA.md` ou `AGENTS.md` à la racine de votre projet (conventions, commandes) — Athena les charge automatiquement, en cascade jusqu'à la racine git.
 - **Maintenance autonome** : Un agent nocturne peut vérifier et réparer le code source automatiquement.
 
 ### 🎨 AthenaDesign Studio (Design IA)
 Un studio de design intégré (onglet **🎨 Design**). Décrivez ce que vous voulez créer, Athena le génère et l'**affiche en direct** :
 - **Types** : pages web (HTML/CSS/JS), **apps React** interactives, **diagrammes Mermaid**, et scripts **Python** (présentations **PowerPoint**, graphiques). Des **modèles de départ** (Landing, Pitch deck, Dashboard…) pré-remplissent un prompt.
-- **Votre charte (Design System)** : repliez le panneau « Design System » pour donner vos couleurs/police — à la main, en collant un CSS, ou via **« 🌐 D'une URL »** (Athena extrait la charte d'un site).
+- **Votre charte (Design System)** : panneau « Design System » pour donner vos couleurs/police — à la main, en collant un CSS, via **« 🌐 D'une URL »**, ou en la **générant automatiquement** : **« 🧩 Depuis le code »** (déduite du projet : Tailwind/CSS), **« 🖼️ Depuis une image »** (palette/typo d'une capture), **« ✨ Depuis une description »** (charte de départ pour un projet vide).
 - **Références** : joignez une image/un document (📎) ou une page web (🔗) comme inspiration.
 - **Affiner** : annotez l'aperçu, ajustez en direct (sliders couleur/arrondi/police), parcourez les versions. Si un script Python échoue, Athena **se corrige toute seule**.
 - **Partager / exporter** : bouton **Partager** (lien lecture seule), **Export PDF**, et téléchargement des `.pptx`.

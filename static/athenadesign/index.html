@@ -142,6 +142,13 @@
                             <button type="button" id="btn-ds-extract" class="draw-btn" style="padding:6px 12px;font-size:0.75rem;" title="Extraire couleurs+typo d'un CSS/HTML collé">Extraire</button>
                             <button type="button" id="btn-ds-url" class="draw-btn" style="padding:6px 12px;font-size:0.75rem;" title="Extraire la charte depuis l'URL d'un site">🌐 D'une URL</button>
                         </div>
+                        <!-- Génération AUTOMATIQUE de la charte (parité Claude Design) -->
+                        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+                            <button type="button" id="btn-ds-codebase" class="draw-btn" style="padding:6px 12px;font-size:0.75rem;" title="Déduire la charte du CODE du projet (Tailwind/CSS)">🧩 Depuis le code</button>
+                            <button type="button" id="btn-ds-image" class="draw-btn" style="padding:6px 12px;font-size:0.75rem;" title="Déduire la charte d'une capture / maquette (vision)">🖼️ Depuis une image</button>
+                            <button type="button" id="btn-ds-brief" class="draw-btn" style="padding:6px 12px;font-size:0.75rem;" title="Déduire une charte de départ d'une description (projet vide)">✨ Depuis une description</button>
+                            <input type="file" id="ds-image-file" accept="image/*" style="display:none;">
+                        </div>
                     </div>
                 </details>
             </div>

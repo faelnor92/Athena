@@ -436,6 +436,52 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Génération AUTOMATIQUE de la charte (parité Claude Design) : code / image / description.
+    async function _runAutoDs(source, extra, btn) {
+        if (!currentProjectId) { appendSystemMessage && appendSystemMessage("Ouvre un projet d'abord."); return; }
+        const old = btn ? btn.textContent : "";
+        if (btn) { btn.disabled = true; btn.textContent = "⏳…"; }
+        try {
+            const r = await fetch(`/api/athenadesign/projects/${currentProjectId}/design-system/auto`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(Object.assign({ source }, extra || {}))
+            });
+            const d = await r.json();
+            const ds = d.design_system || "";
+            if (designSystemInput) { designSystemInput.value = ds; parseTextToDs(ds); }
+            if (currentProjectData) currentProjectData.design_system = ds;
+            if (!ds.trim()) appendSystemMessage && appendSystemMessage("Aucune charte déduite (code/image/description insuffisants).");
+        } catch (e) {
+            appendConsoleLine && appendConsoleLine("stderr", "[Charte auto] échec : " + e.message);
+        } finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+    }
+
+    const btnDsCodebase = document.getElementById("btn-ds-codebase");
+    if (btnDsCodebase) btnDsCodebase.addEventListener("click", () => _runAutoDs("codebase", null, btnDsCodebase));
+
+    const btnDsBrief = document.getElementById("btn-ds-brief");
+    if (btnDsBrief) btnDsBrief.addEventListener("click", () => {
+        const brief = prompt("Décris le projet (sujet, ton, ambiance) pour générer une charte de départ :");
+        if (brief && brief.trim()) _runAutoDs("brief", { brief: brief.trim() }, btnDsBrief);
+    });
+
+    const btnDsImage = document.getElementById("btn-ds-image");
+    const dsImageFile = document.getElementById("ds-image-file");
+    if (btnDsImage && dsImageFile) {
+        btnDsImage.addEventListener("click", () => {
+            if (!currentProjectId) { appendSystemMessage && appendSystemMessage("Ouvre un projet d'abord."); return; }
+            dsImageFile.click();
+        });
+        dsImageFile.addEventListener("change", () => {
+            const f = dsImageFile.files && dsImageFile.files[0];
+            if (!f) return;
+            const reader = new FileReader();
+            reader.onload = () => _runAutoDs("image", { images: [reader.result] }, btnDsImage);
+            reader.readAsDataURL(f);
+            dsImageFile.value = "";
+        });
+    }
+
     // Modèles de départ : pré-remplissent un prompt riche (évite le « blank canvas »).
     const STARTER_TEMPLATES = {
         landing: "Crée une landing page moderne et responsive pour [PRODUIT] : hero plein écran (titre accrocheur, sous-titre, CTA), section 3 avantages avec icônes, témoignages, et footer. Style premium glassmorphism, palette soignée, micro-animations.",
@@ -1547,6 +1593,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
                 projectsList.appendChild(item);
             });
+            // Pont depuis le chat : ?project=<id> → ouvre directement ce projet (une seule fois).
+            if (!window._adProjectParamHandled) {
+                window._adProjectParamHandled = true;
+                const pid = new URLSearchParams(location.search).get("project");
+                if (pid && projects.some(p => p.id === pid)) selectProject(pid);
+            }
         } catch (e) {
             console.error("Error loading projects", e);
         }

@@ -92,6 +92,8 @@ agents:
   - file_outline
   - find_definition
   - find_references
+  - glob_files
+  - todo_write
   - git_status
   - git_diff
   - git_log

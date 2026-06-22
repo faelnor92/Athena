@@ -35,7 +35,7 @@ from core.swarm.context import _ContextMixin
 # Sous-module 'llm' (et NON 'completion') : un module nommé 'completion' occuperait
 # l'attribut core.swarm.completion et écraserait la fonction litellm du même nom → la
 # couche LLM appellerait un module (« 'module' object is not callable »).
-from core.swarm.llm import _CompletionMixin
+from core.swarm.llm import _CompletionMixin, model_style_preamble
 
 
 import tools.home_assistant
@@ -78,6 +78,7 @@ import tools.email_tools
 import tools.nextcloud_tools
 import tools.proxmox_tools
 import tools.document_editor
+import tools.todo_tools
 
 # Profondeur de DÉLÉGATION du contexte courant (anti-récursion infinie entre sous-agents).
 # parent=0 → enfant=1 → petit-enfant rejeté au-delà de DELEGATE_MAX_DEPTH.
@@ -91,6 +92,104 @@ DELEGATE_BLOCKED_TOOLS = [
     "memorize_fact", "store_document",  # pas d'écriture mémoire partagée
     "send_notification",                # pas d'effets cross-canal
 ]
+
+
+# --- Instructions de PROJET LOCALES (CLAUDE.md / ATHENA.md / AGENTS.md / SYSTEM.md) -------
+# Chargées en cascade du workspace jusqu'à la racine du projet (dossier .git) ou le HOME, puis
+# injectées dans le prompt système. Mises en CACHE par (dossier de départ + empreinte mtime) :
+# sans cache, on relisait ~12 fichiers par dossier remonté À CHAQUE TOUR. Plafond de taille
+# pour ne pas faire exploser le contexte (façon avertissement 40k de Claude Code).
+_LOCAL_INSTR_CACHE = {}
+_LOCAL_INSTR_LOCK = threading.Lock()
+_LOCAL_INSTR_MAX = int(os.getenv("PROJECT_INSTRUCTIONS_MAX_CHARS", "32000") or 32000)
+
+# (uppercase, lowercase) : la variante MAJUSCULE l'emporte si les deux existent.
+_PROJECT_APPEND_FILES = [
+    ("APPEND_SYSTEM.md", None),
+    ("ATHENA.md", "athena.md"),
+    ("CLAUDE.md", "claude.md"),
+    ("AGENTS.md", "agents.md"),          # standard inter-outils (opencode, etc.)
+    (".athena-rules.md", None), (".athenarules", None),
+    (".claudecode.md", None), (".claudecoderc", None),
+]
+
+
+def _project_boundary(start_dir: str) -> str:
+    """Dernier dossier à inclure dans la remontée : racine du projet (contient .git) si on en
+    trouve une avant le HOME, sinon le HOME, sinon la racine du système. Évite de lire des
+    fichiers d'instructions PARENTS involontaires (ex. ~/CLAUDE.md global d'un autre projet)."""
+    home = os.path.realpath(os.path.expanduser("~"))
+    cur = os.path.realpath(start_dir)
+    while True:
+        if os.path.isdir(os.path.join(cur, ".git")):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return home if os.path.commonpath([os.path.realpath(start_dir), home]) == home else cur
+        if cur == home:
+            return home
+        cur = parent
+
+
+def _scan_local_instruction_paths(start_dir: str):
+    """Liste ordonnée (racine → plus proche) des fichiers d'instructions présents + SYSTEM.md
+    le plus proche. Renvoie (system_md_path|None, [chemins_append])."""
+    boundary = _project_boundary(start_dir)
+    chain = []
+    cur = os.path.realpath(start_dir)
+    while True:
+        chain.append(cur)
+        if cur == boundary or os.path.dirname(cur) == cur:
+            break
+        cur = os.path.dirname(cur)
+    system_md = None
+    appends = []  # construit racine→proche pour que le plus spécifique soit lu EN DERNIER
+    for d in reversed(chain):
+        smd = os.path.join(d, "SYSTEM.md")
+        if os.path.isfile(smd):
+            system_md = smd  # le plus proche écrase (parcours racine→proche)
+        for up, low in _PROJECT_APPEND_FILES:
+            p = os.path.join(d, up)
+            if os.path.isfile(p):
+                appends.append(p)
+            elif low and os.path.isfile(os.path.join(d, low)):
+                appends.append(os.path.join(d, low))
+    return system_md, appends
+
+
+def _load_local_instructions(start_dir: str):
+    """(system_override|None, instructions_concaténées). Caché par empreinte mtime."""
+    try:
+        system_md, appends = _scan_local_instruction_paths(start_dir)
+    except Exception:
+        return None, ""
+    relevant = ([system_md] if system_md else []) + appends
+    try:
+        sig = tuple((p, os.path.getmtime(p)) for p in relevant)
+    except OSError:
+        sig = None
+    with _LOCAL_INSTR_LOCK:
+        cached = _LOCAL_INSTR_CACHE.get(start_dir)
+    if cached and sig is not None and cached[0] == sig:
+        return cached[1], cached[2]
+
+    def _read(p):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            print(f"[\033[91mErreur instructions projet\033[0m] {p}: {e}")
+            return ""
+
+    system_override = _read(system_md) if system_md else None
+    instructions = "\n".join(t for t in (_read(p) for p in appends) if t.strip())
+    if len(instructions) > _LOCAL_INSTR_MAX:
+        instructions = (instructions[:_LOCAL_INSTR_MAX]
+                        + f"\n\n[… instructions de projet tronquées à {_LOCAL_INSTR_MAX} caractères]")
+    with _LOCAL_INSTR_LOCK:
+        _LOCAL_INSTR_CACHE[start_dir] = (sig, system_override, instructions)
+    return system_override, instructions
+
 
 # Map statique des outils disponibles d'origine
 AVAILABLE_TOOLS = {
@@ -175,6 +274,8 @@ AVAILABLE_TOOLS = {
     "find_definition": tools.code_nav.find_definition,
     "find_references": tools.code_nav.find_references,
     "file_outline": tools.code_nav.file_outline,
+    "glob_files": tools.code_nav.glob_files,      # recherche de fichiers par motif glob
+    "todo_write": tools.todo_tools.todo_write,    # liste de tâches de session (planification multi-étapes)
     "get_current_room": tools.presence.get_current_room,
     "trigger_workflow": tools.n8n_tools.trigger_workflow,
     "computer_use_action": tools.computer_use.computer_use_action,
@@ -569,6 +670,13 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             chan = channels.current_channel.get()
             if chan:
                 effective_tools = [f for f in effective_tools if channels.tool_allowed(chan, f.__name__)]
+
+            # MODE PLAN (lecture seule) : retire les outils mutants → l'agent ne peut que
+            # proposer un plan (le préambule correspondant est ajouté au prompt plus bas).
+            from core import plan_mode as _plan_mode
+            _plan_active = _plan_mode.is_active()
+            if _plan_active:
+                effective_tools = [f for f in effective_tools if not _plan_mode.is_blocked(f.__name__)]
 
             # Allowlist/denylist PAR SESSION (runtime, façon OpenClaw) : un appelant peut
             # clamper les outils de CE run (console de code, sous-agent délégué, mode
@@ -1093,97 +1201,16 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     "sérieux, empathique, fâché, chuchoté). Elle est invisible pour l'utilisateur "
                     "et sert à colorer la voix. N'en mets qu'UNE, au tout début.\n")
 
-            # Chargement en cascade des fichiers de prompt locaux (custom Athena Swarm)
-            local_instructions = ""
+            # Instructions de PROJET LOCALES (CLAUDE.md/ATHENA.md/AGENTS.md/SYSTEM.md…) chargées
+            # en cascade jusqu'à la racine du projet, avec cache mtime + plafond de taille.
             try:
                 from core.state import get_workspace_dir
-                current_dir = get_workspace_dir() or os.getcwd()
+                _start_dir = get_workspace_dir() or os.getcwd()
             except Exception:
-                current_dir = os.getcwd()
-            while True:
-                system_md = os.path.join(current_dir, "SYSTEM.md")
-                append_system_md = os.path.join(current_dir, "APPEND_SYSTEM.md")
-                athena_md = os.path.join(current_dir, "ATHENA.md")
-                athena_md_lower = os.path.join(current_dir, "athena.md")
-                claude_md = os.path.join(current_dir, "CLAUDE.md")
-                claude_md_lower = os.path.join(current_dir, "claude.md")
-                athena_rules = os.path.join(current_dir, ".athena-rules.md")
-                athena_rules_rc = os.path.join(current_dir, ".athenarules")
-                claude_rules = os.path.join(current_dir, ".claudecode.md")
-                claude_rules_rc = os.path.join(current_dir, ".claudecoderc")
-                
-                if os.path.exists(system_md):
-                    try:
-                         with open(system_md, "r", encoding="utf-8") as f:
-                             system_prompt = f.read()
-                         break
-                    except Exception as e:
-                         print(f"[\033[91mErreur SYSTEM.md\033[0m] Impossible de lire {system_md}: {e}")
-                         
-                if os.path.exists(append_system_md):
-                    try:
-                         with open(append_system_md, "r", encoding="utf-8") as f:
-                             local_instructions = f.read() + "\n" + local_instructions
-                    except Exception as e:
-                         print(f"[\033[91mErreur APPEND_SYSTEM.md\033[0m] {e}")
-                         
-                if os.path.exists(athena_md):
-                    try:
-                         with open(athena_md, "r", encoding="utf-8") as f:
-                             local_instructions = f.read() + "\n" + local_instructions
-                    except Exception as e:
-                         print(f"[\033[91mErreur ATHENA.md\033[0m] {e}")
-                elif os.path.exists(athena_md_lower):
-                    try:
-                         with open(athena_md_lower, "r", encoding="utf-8") as f:
-                             local_instructions = f.read() + "\n" + local_instructions
-                    except Exception as e:
-                         print(f"[\033[91mErreur athena.md\033[0m] {e}")
-
-                if os.path.exists(claude_md):
-                    try:
-                        with open(claude_md, "r", encoding="utf-8") as f:
-                            local_instructions = f.read() + "\n" + local_instructions
-                    except Exception as e:
-                        print(f"[\033[91mErreur CLAUDE.md\033[0m] {e}")
-
-                elif os.path.exists(claude_md_lower):
-                    try:
-                        with open(claude_md_lower, "r", encoding="utf-8") as f:
-                            local_instructions = f.read() + "\n" + local_instructions
-                    except Exception as e:
-                        print(f"[\033[91mErreur claude.md\033[0m] {e}")
-
-                if os.path.exists(athena_rules):
-                    try:
-                        with open(athena_rules, "r", encoding="utf-8") as f:
-                            local_instructions = f.read() + "\n" + local_instructions
-                    except Exception as e:
-                        print(f"[\033[91mErreur .athena-rules.md\033[0m] {e}")
-                if os.path.exists(athena_rules_rc):
-                    try:
-                        with open(athena_rules_rc, "r", encoding="utf-8") as f:
-                            local_instructions = f.read() + "\n" + local_instructions
-                    except Exception as e:
-                        print(f"[\033[91mErreur .athenarules\033[0m] {e}")
-                if os.path.exists(claude_rules):
-                    try:
-                        with open(claude_rules, "r", encoding="utf-8") as f:
-                            local_instructions = f.read() + "\n" + local_instructions
-                    except Exception as e:
-                        print(f"[\033[91mErreur .claudecode.md\033[0m] {e}")
-                if os.path.exists(claude_rules_rc):
-                    try:
-                        with open(claude_rules_rc, "r", encoding="utf-8") as f:
-                            local_instructions = f.read() + "\n" + local_instructions
-                    except Exception as e:
-                        print(f"[\033[91mErreur .claudecoderc\033[0m] {e}")
-                        
-                parent_dir = os.path.dirname(current_dir)
-                if parent_dir == current_dir:
-                    break
-                current_dir = parent_dir
-                
+                _start_dir = os.getcwd()
+            _sys_override, local_instructions = _load_local_instructions(_start_dir)
+            if _sys_override is not None:       # SYSTEM.md = remplacement TOTAL du prompt système
+                system_prompt = _sys_override
             if local_instructions.strip():
                 system_prompt += "\n\n=== INSTRUCTIONS DE PROJET LOCALES ===\n" + local_instructions
 
@@ -1209,6 +1236,13 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
 
             # Détection automatique de l'OS / environnement d'exécution.
             system_prompt += platform_info.execution_env_hint()
+
+            # Ajustement de style selon la FAMILLE du modèle (multi-LLM, sans dupliquer le prompt).
+            system_prompt += model_style_preamble(current_agent.model)
+
+            # Mode plan (lecture seule) : rappel à l'agent de planifier sans agir.
+            if _plan_active:
+                system_prompt += _plan_mode.PREAMBLE
 
             # Index des PLAYBOOKS (savoir-faire procédural) si l'agent peut les charger.
             # Stable (ne change qu'à l'ajout/retrait d'un playbook) → reste dans le préfixe caché.

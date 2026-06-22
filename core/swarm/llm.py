@@ -21,6 +21,35 @@ def _completion(*args, **kwargs):
     return _pkg.completion(*args, **kwargs)
 
 
+# Petits AJUSTEMENTS DE STYLE par FAMILLE de modèle (Athena reste multi-LLM : on ne duplique
+# PAS le prompt, on ajoute juste 1-3 lignes qui corrigent les travers connus de chaque famille).
+_MODEL_STYLE = {
+    "qwen":   "Appelle les outils via le format tool_calls NATIF (JSON structuré), jamais en texte brut dans la réponse.",
+    "gemini": "Sois CONCIS : pas de longues introductions ni de récapitulatifs verbeux ; agis via les outils.",
+    "mistral": "Appelle les outils via le format tool_calls natif ; reste concis et orienté action.",
+    "llama":  "Appelle les outils via le format tool_calls natif (JSON), un seul objectif à la fois.",
+}
+
+
+def model_style_preamble(model: str) -> str:
+    """Préambule de style adapté à la famille du modèle (chaîne vide si rien de spécifique).
+    Détection par sous-chaîne sur le nom de modèle — robuste aux alias (coder-qwen, chat-gemma…)."""
+    m = (model or "").lower()
+    fam = None
+    if any(k in m for k in ("qwen", "qwq")):
+        fam = "qwen"
+    elif any(k in m for k in ("gemini", "gemma")):
+        fam = "gemini"
+    elif "mistral" in m or "ministral" in m or "mixtral" in m:
+        fam = "mistral"
+    elif "llama" in m:
+        fam = "llama"
+    # anthropic/claude, openai/gpt/o-series : déjà excellents en tool-calling → aucun ajout.
+    if not fam:
+        return ""
+    return "\n\n[Style modèle] " + _MODEL_STYLE[fam]
+
+
 class _CompletionMixin:
     """Appel/streaming LLM + routage, mélangés dans `Swarm`."""
 
