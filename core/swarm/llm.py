@@ -345,6 +345,13 @@ class _CompletionMixin:
 
         stream = on_delta is not None and os.getenv("STREAM_TOKENS", "true").lower() in ("true", "1", "yes")
 
+        # TIMEOUT par requête : un endpoint lent/instable échoue VITE au lieu de « pendre »
+        # plusieurs minutes (sinon le run reste bloqué → « ça cherche » sans réponse). Le total
+        # reste borné : ~(timeout + backoff) × tentatives. Réglable via LLM_REQUEST_TIMEOUT (0 = off).
+        _to = float(os.getenv("LLM_REQUEST_TIMEOUT", "90") or 0)
+        if _to > 0:
+            completion_kwargs["timeout"] = _to
+
         # Garde-fou : retries avec backoff exponentiel sur erreur LLM transitoire.
         retries = int(os.getenv("LLM_MAX_RETRIES", "2"))
         last_err = None
