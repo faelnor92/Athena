@@ -1036,6 +1036,45 @@ async def set_design_system(request: Request, project_id: str, payload: dict = B
     return {"design_system": db[project_id]["design_system"]}
 
 
+@router.post("/projects/{project_id}/design-system/auto")
+async def auto_design_system(request: Request, project_id: str, payload: dict = Body(...)):
+    """Génère AUTOMATIQUEMENT la charte (parité Claude Design). `source` :
+    - 'codebase' : extraction déterministe des tokens du code du projet (Tailwind/CSS) ;
+    - 'image'    : extraction via la vision (`images` = data URLs / URLs) ;
+    - 'brief'    : déduction depuis une description (`brief`) — cas greenfield sans code.
+    Enregistre la charte dans le projet si `save` (défaut True)."""
+    user = _current_user(request)
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    from core import design_tokens
+    source = (payload.get("source") or "codebase").strip().lower()
+    charte = ""
+    if source == "codebase":
+        from core import projects as _proj
+        from core.state import get_workspace_dir
+        tok = _proj.set_override(project_id)
+        try:
+            ws = get_workspace_dir()
+        finally:
+            _proj.reset_override(tok)
+        charte = design_tokens.from_codebase(ws)
+    elif source == "image":
+        charte = design_tokens.from_image(payload.get("images") or [])
+    elif source == "brief":
+        charte = design_tokens.from_brief(payload.get("brief") or "")
+    else:
+        raise HTTPException(status_code=400, detail="source invalide (codebase|image|brief).")
+
+    saved = False
+    if payload.get("save", True) and charte:
+        db = read_db(user)
+        db.setdefault(project_id, _new_design(project_id))
+        db[project_id]["design_system"] = charte[:4000]
+        write_db(user, db)
+        saved = True
+    return {"design_system": charte, "source": source, "saved": saved}
+
+
 @router.post("/export/pdf")
 async def export_pdf(request: Request, payload: dict = Body(...)):
     """Exporte un design HTML en PDF (Chromium headless --print-to-pdf). Ownership requis."""
