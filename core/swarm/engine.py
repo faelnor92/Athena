@@ -346,15 +346,17 @@ def strip_thoughts(text: str) -> str:
     if not text:
         return text
     import re
-    # 1. Closed tags
-    for pattern in (r"<thought>(.*?)</thought>", r"<thinking>(.*?)</thinking>"):
-        text = re.sub(pattern, "", text, flags=re.DOTALL).strip()
-    # 2. Unclosed tags
-    for tag in ("thought", "thinking"):
-        start_tag = f"<{tag}>"
-        if start_tag in text:
-            parts = text.split(start_tag, 1)
-            text = parts[0].strip()
+    # Tolère les DEUX délimiteurs : <thought>…</thought> (consigne) ET [thought]…[/thought]
+    # (certains modèles, ex. qwen, les émettent en crochets → sinon ils FUITENT dans le chat).
+    # 1. Blocs fermés (chevrons ou crochets), thought|thinking.
+    for pattern in (r"<(?:thought|thinking)>.*?</(?:thought|thinking)>",
+                    r"\[(?:thought|thinking)\].*?\[/(?:thought|thinking)\]"):
+        text = re.sub(pattern, "", text, flags=re.DOTALL | re.IGNORECASE).strip()
+    # 2. Balise ouvrante non fermée (réponse tronquée) → on coupe à partir d'elle.
+    for start_tag in ("<thought>", "<thinking>", "[thought]", "[thinking]"):
+        idx = text.lower().find(start_tag)
+        if idx != -1:
+            text = text[:idx].strip()
     return text
 
 
@@ -1430,25 +1432,28 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             response = self._complete(effective_model, current_messages, tools_schema, on_delta=_emit_delta)
 
             message = response.choices[0].message
-            # Extraction des blocs <thought> et <thinking> (fermés et non-fermés)
+            # Extraction des blocs de réflexion — DEUX délimiteurs : <thought>/<thinking>
+            # (consigne) ET [thought]/[thinking] (certains modèles, ex. qwen, les émettent en
+            # crochets → sinon ils FUITENT dans le chat sous forme de bulle).
             import re
             cleaned_message_content = getattr(message, "content", "") or ""
             thoughts = []
-            
-            # 1. Closed tags
-            for pattern in (r"<thought>(.*?)</thought>", r"<thinking>(.*?)</thinking>"):
-                found = re.findall(pattern, cleaned_message_content, re.DOTALL)
+
+            # 1. Blocs fermés (chevrons ou crochets).
+            for pattern in (r"<(?:thought|thinking)>(.*?)</(?:thought|thinking)>",
+                            r"\[(?:thought|thinking)\](.*?)\[/(?:thought|thinking)\]"):
+                found = re.findall(pattern, cleaned_message_content, re.DOTALL | re.IGNORECASE)
                 if found:
                     thoughts.extend([t.strip() for t in found if t.strip()])
-                    cleaned_message_content = re.sub(pattern, "", cleaned_message_content, flags=re.DOTALL).strip()
-            
-            # 2. Unclosed tags
-            for tag in ("thought", "thinking"):
-                start_tag = f"<{tag}>"
-                if start_tag in cleaned_message_content:
-                    parts = cleaned_message_content.split(start_tag, 1)
-                    pre_content = parts[0].strip()
-                    post_content = parts[1].strip()
+                    cleaned_message_content = re.sub(pattern, "", cleaned_message_content,
+                                                     flags=re.DOTALL | re.IGNORECASE).strip()
+
+            # 2. Balise ouvrante non fermée (réponse tronquée).
+            for start_tag in ("<thought>", "<thinking>", "[thought]", "[thinking]"):
+                idx = cleaned_message_content.lower().find(start_tag)
+                if idx != -1:
+                    pre_content = cleaned_message_content[:idx].strip()
+                    post_content = cleaned_message_content[idx + len(start_tag):].strip()
                     if post_content:
                         thoughts.append(post_content)
                     cleaned_message_content = pre_content

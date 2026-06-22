@@ -2524,24 +2524,23 @@ function appendAgentMessage(agentName, content, id = null) {
     let thoughts = [];
     let cleanContent = String(content);
     
-    // 1. Closed tags
-    const closedRegex = /<(?:thought|thinking)>([\s\S]*?)<\/(?:thought|thinking)>/gi;
-    cleanContent = cleanContent.replace(closedRegex, (match, thoughtText) => {
-        if (thoughtText.trim()) {
-            thoughts.push(thoughtText.trim());
-        }
+    // 1. Blocs fermés — DEUX délimiteurs : <thought>…</thought> ET [thought]…[/thought]
+    //    (certains modèles, ex. qwen, émettent des crochets → sinon ça fuit dans la bulle).
+    const closedRegex = /<(?:thought|thinking)>([\s\S]*?)<\/(?:thought|thinking)>|\[(?:thought|thinking)\]([\s\S]*?)\[\/(?:thought|thinking)\]/gi;
+    cleanContent = cleanContent.replace(closedRegex, (match, t1, t2) => {
+        const thoughtText = (t1 || t2 || "").trim();
+        if (thoughtText) thoughts.push(thoughtText);
         return "";
     });
-    
-    // 2. Unclosed tags
-    const openTags = ["<thought>", "<thinking>"];
+
+    // 2. Balise ouvrante non fermée (réponse tronquée).
+    const openTags = ["<thought>", "<thinking>", "[thought]", "[thinking]"];
     openTags.forEach(tag => {
-        if (cleanContent.includes(tag)) {
-            const parts = cleanContent.split(tag, 2);
-            cleanContent = parts[0];
-            if (parts[1] && parts[1].trim()) {
-                thoughts.push(parts[1].trim());
-            }
+        const idx = cleanContent.toLowerCase().indexOf(tag);
+        if (idx !== -1) {
+            const after = cleanContent.slice(idx + tag.length);
+            cleanContent = cleanContent.slice(0, idx);
+            if (after && after.trim()) thoughts.push(after.trim());
         }
     });
     
