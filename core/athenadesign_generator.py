@@ -74,6 +74,11 @@ DESIGN RULES:
 4. SELF-CONTAINED HTML: a web artifact is ONE standalone .html file. If you use a library, you MUST load it from a CDN in the file. In particular, if you use Lucide icons (<i data-lucide="...">), you MUST add `<script src="https://unpkg.com/lucide@latest"></script>` AND call `lucide.createIcons()` after the DOM is ready — otherwise icons stay invisible. Same for Chart.js / FontAwesome. If unsure, prefer inline SVG or emoji. Never reference a library you did not load.
 5. PYTHON CODE: generate useful data, charts (Matplotlib/Plotly, clean modern styling, no grey background) or PowerPoint via python-pptx saved to the current directory. End charts with plt.show()/fig.show() to render a preview.
 6. POWERPOINT — NO OVERFLOW (critical): content MUST fit inside each slide. Slide size is 13.333 in × 7.5 in (16:9). Rules: keep ≤ 5-6 short bullet lines per slide and SPLIT long content across MULTIPLE slides; size every text box explicitly with Inches() so left+width ≤ 13.0 and top+height ≤ 7.0 (leave margins); enable wrapping and shrink-to-fit on body text frames (`tf.word_wrap = True` and `from pptx.enum.text import MSO_AUTO_SIZE; tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE`); use reasonable font sizes (title 32-40pt, body 16-20pt). Never let text run past the slide edges.
+   COLORS (apply to EVERY slide, not just the first): set a slide BACKGROUND fill on each slide
+   (`slide.background.fill.solid(); slide.background.fill.fore_color.rgb = COLOR_BG`) and set the
+   font color of TITLES and of EVERY body run (`run.font.color.rgb = …`) on ALL slides — the
+   default template is white/black, so without explicit colors the deck looks colorless. Define
+   your palette once (RGBColor constants) and reuse it consistently across all slides.
 7. RESPONSIVENESS (HTML): fluid layouts (%, vw/vh, flexbox, CSS grid auto-fit, fr units), not fixed pixel widths. Must scale to tablet/phone without horizontal scroll.
 """
 

@@ -863,8 +863,9 @@ async def autofix_endpoint(request: Request, payload: dict = Body(...)):
     fixed = False
     attempts = 0
 
-    if error_message or v.get("type") in ("html", "react"):
-        # Web auto-fix (HTML/React browser console runtime errors)
+    if v.get("type") in ("html", "react"):
+        # Web auto-fix (HTML/React browser console runtime errors). NB : on route par TYPE —
+        # un artefact python avec error_message ne doit PAS finir ici (sinon prompt web inadapté).
         attempts = 1
         code = v.get("code", "")
         err = str(error_message or "Erreur d'exécution inconnue")[:2000]

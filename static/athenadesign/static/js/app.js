@@ -2471,8 +2471,15 @@ document.addEventListener("DOMContentLoaded", () => {
                         body: JSON.stringify({ project_id: currentProjectId })
                     });
                     const fx = await fr.json();
-                    if (fx.fixed) {
-                        appendConsoleLine("system", `>>> [Auto-correction réussie en ${fx.attempts} essai(s) — version ${fx.versions_count}]`);
+                    // On branche sur `success` (le code FONCTIONNE), pas seulement `fixed` : si la
+                    // ré-exécution a réussi sans correction (attempts=0), le fichier (.pptx…) a bien
+                    // été produit → il faut l'AFFICHER, pas dire « non résolu ».
+                    if (fx.success) {
+                        if (fx.fixed) {
+                            appendConsoleLine("system", `>>> [Auto-correction réussie en ${fx.attempts} essai(s) — version ${fx.versions_count}]`);
+                        } else {
+                            appendConsoleLine("system", ">>> [Le code fonctionne — fichier généré]");
+                        }
                         await selectProject(currentProjectId);
                         loadVersion(currentProjectData.versions.length - 1);
                     } else {
