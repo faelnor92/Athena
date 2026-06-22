@@ -2250,8 +2250,12 @@ async function playAgentSteps(steps, immediate = false) {
                     sb.raw += (step.content || "");
                     const cEl = sb.el.querySelector(".message-content");
                     if (cEl) {
-                        cEl.innerHTML = escapeHtml(_liveStripThoughts(sb.raw)).replace(/\n/g, "<br>")
-                            + '<span class="stream-caret">▌</span>';
+                        const shown = _liveStripThoughts(sb.raw);
+                        // Tant que le modèle « réfléchit » (pas encore de texte de réponse),
+                        // on affiche un indicateur plutôt qu'une bulle vide.
+                        cEl.innerHTML = shown.trim()
+                            ? escapeHtml(shown).replace(/\n/g, "<br>") + '<span class="stream-caret">▌</span>'
+                            : '<span class="thinking-indic">💭 réfléchit…</span>';
                     }
                     chatMessages.scrollTop = chatMessages.scrollHeight;
                 }

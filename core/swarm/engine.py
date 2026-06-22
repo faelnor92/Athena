@@ -1192,10 +1192,12 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         "\n🧰 OUTILS DISPONIBLES (détails dans le schéma ; ne dis JAMAIS « je ne peux pas » "
                         "pour ce qu'un de ces outils permet — appelle-le) : " + ", ".join(_tool_names_list) + "\n")
 
-            # Expressivité vocale : balise d'émotion en TÊTE de réponse, retirée du texte affiché
-            # ET prononcé, exploitée par le TTS (mapping émotion→vitesse Kokoro). Active par DÉFAUT
-            # désormais (le tag ne fuite jamais) ; VOICE_EMOTION_TAGS=false pour la désactiver.
-            if os.getenv("VOICE_EMOTION_TAGS", "true").lower() in ("true", "1", "yes"):
+            # Expressivité vocale : balise d'émotion en TÊTE de réponse, exploitée par le TTS
+            # (mapping émotion→vitesse). N'a de sens QU'EN VOCAL → on ne l'ajoute que sur le canal
+            # voice (sinon tokens gâchés + tag inutile en texte). VOICE_EMOTION_TAGS=false pour off.
+            _chan_now = (channels.current_channel.get() or "")
+            _is_voice_chan = _chan_now == "voice" or _chan_now.startswith("voice:")
+            if _is_voice_chan and os.getenv("VOICE_EMOTION_TAGS", "true").lower() in ("true", "1", "yes"):
                 system_prompt += (
                     "\n🎭 EXPRESSIVITÉ : tu peux commencer ta réponse par UNE balise d'émotion "
                     "entre crochets, ex. « [emotion: enjoué] », « [emotion: calme] », "
