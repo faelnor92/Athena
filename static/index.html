@@ -335,6 +335,15 @@
                                     </div>
                                     <div id="file-linter-results" style="display: flex; flex-direction: column; gap: 4px;"></div>
                                 </div>
+
+                                <!-- Liste de tâches de session (todo_write, façon opencode/Claude Code) -->
+                                <div id="session-todo-panel" style="display: none; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(255,255,255,0.1); padding: 10px; font-size: 0.82rem; max-height: 220px; overflow-y: auto; z-index: 10;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px;">
+                                        <span style="font-weight: bold; color: var(--accent-cyan); display: flex; align-items: center; gap: 6px;">📋 Tâches <span id="session-todo-count" style="opacity:0.7; font-weight:normal;"></span></span>
+                                        <button id="btn-close-todo-panel" style="background: none; border: none; color: #fff; cursor: pointer; opacity: 0.7; font-size: 1rem; padding: 0 4px;">✖</button>
+                                    </div>
+                                    <div id="session-todo-list" style="display: flex; flex-direction: column; gap: 3px;"></div>
+                                </div>
                             </div>
                         </div>
                     </div>

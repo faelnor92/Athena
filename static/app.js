@@ -1929,6 +1929,34 @@ function renderPlan(items) {
     currentPlanEl = el;
 }
 
+// --- Liste de tâches de SESSION (todo_write) — onglet Code ------------------
+const _TODO_ICONS = { pending: "⬜", in_progress: "🔄", completed: "✅", cancelled: "⛔" };
+function renderTodos(items) {
+    const panel = document.getElementById("session-todo-panel");
+    const list = document.getElementById("session-todo-list");
+    const count = document.getElementById("session-todo-count");
+    if (!panel || !list) return;
+    items = Array.isArray(items) ? items : [];
+    if (!items.length) { panel.style.display = "none"; list.innerHTML = ""; if (count) count.textContent = ""; return; }
+    const done = items.filter(i => i.status === "completed").length;
+    if (count) count.textContent = `(${done}/${items.length})`;
+    list.innerHTML = items.map(it => {
+        const ic = _TODO_ICONS[it.status] || "⬜";
+        const strike = (it.status === "completed" || it.status === "cancelled") ? "opacity:0.6;text-decoration:line-through;" : "";
+        const hl = it.status === "in_progress" ? "font-weight:600;" : "";
+        return `<div style="display:flex;gap:8px;align-items:flex-start;padding:1px 0;"><span>${ic}</span><span style="flex:1;${strike}${hl}">${escapeHtml(it.content || "")}</span></div>`;
+    }).join("");
+    panel.style.display = "block";
+}
+async function fetchTodos() {
+    try {
+        const res = await apiFetch("/api/todos");
+        if (!res.ok) return;
+        const data = await res.json();
+        renderTodos(data.items || []);
+    } catch (e) { /* non bloquant */ }
+}
+
 function updatePlanStep(index, status) {
     if (!currentPlanEl) return;
     const row = currentPlanEl.querySelector(`.plan-item[data-index="${index}"]`);
@@ -2133,6 +2161,10 @@ async function playAgentSteps(steps, immediate = false) {
                     lines.forEach(l => {
                         logToTerminal(l, streamType);
                     });
+                }
+
+                else if (step.type === "todo") {
+                    renderTodos(step.items || []);
                 }
 
                 else if (step.type === "plan") {
@@ -9908,6 +9940,16 @@ function detachCodeEditor() {
             if (lintPanel) lintPanel.style.display = "none";
         });
     }
+
+    const btnCloseTodoPanel = document.getElementById("btn-close-todo-panel");
+    if (btnCloseTodoPanel) {
+        btnCloseTodoPanel.addEventListener("click", () => {
+            const p = document.getElementById("session-todo-panel");
+            if (p) p.style.display = "none";
+        });
+    }
+    // Charge la liste de tâches existante à l'ouverture de l'onglet Code.
+    fetchTodos();
 
     async function sendCoderCommand(command, agentName = "Codeur") {
         const projectId = (typeof _consoleProjectId === "function") ? _consoleProjectId() : null;

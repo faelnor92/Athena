@@ -78,6 +78,7 @@ import tools.email_tools
 import tools.nextcloud_tools
 import tools.proxmox_tools
 import tools.document_editor
+import tools.todo_tools
 
 # Profondeur de DÉLÉGATION du contexte courant (anti-récursion infinie entre sous-agents).
 # parent=0 → enfant=1 → petit-enfant rejeté au-delà de DELEGATE_MAX_DEPTH.
@@ -175,6 +176,7 @@ AVAILABLE_TOOLS = {
     "find_definition": tools.code_nav.find_definition,
     "find_references": tools.code_nav.find_references,
     "file_outline": tools.code_nav.file_outline,
+    "todo_write": tools.todo_tools.todo_write,    # liste de tâches de session (planification multi-étapes)
     "get_current_room": tools.presence.get_current_room,
     "trigger_workflow": tools.n8n_tools.trigger_workflow,
     "computer_use_action": tools.computer_use.computer_use_action,

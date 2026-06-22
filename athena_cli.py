@@ -105,6 +105,18 @@ async def main():
                     print(f"{Colors.WARNING}  🔧 Outil utilisé : {tool}{Colors.ENDC}")
                     if tool.startswith("delegate_to_"):
                         print(f"{Colors.WARNING}  🤝 L'agent sous-traite la demande en tâche de fond...{Colors.ENDC}")
+                elif step.get("type") == "tool_output":
+                    # Rendre VISIBLE ce qui aide l'utilisateur à suivre : la liste de tâches
+                    # (todo_write) et les diagnostics de code (boucle de feedback LSP).
+                    out = str(step.get("output", ""))
+                    tool = step.get("tool", "")
+                    if tool == "todo_write" or out.startswith("📋"):
+                        print(f"{Colors.OKCYAN}{out}{Colors.ENDC}")
+                    elif "❌ Erreurs détectées" in out or "⚠️ Avertissements" in out:
+                        idx = out.find("❌")
+                        if idx < 0:
+                            idx = out.find("⚠️")
+                        print(f"{Colors.WARNING}{out[idx:]}{Colors.ENDC}")
 
         except KeyboardInterrupt:
             print("\n")

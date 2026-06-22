@@ -387,6 +387,16 @@ async def search_workspace_endpoint(q: str, path: str = "", project_id: str = No
         return results
 
 
+@router.get("/api/todos")
+async def get_session_todos():
+    """Liste de tâches de session de l'utilisateur courant (planification du Codeur/agent),
+    pour l'onglet Code de l'UI. Mise à jour live aussi via les steps 'todo' de /api/chat/status."""
+    from tools import todo_tools
+    items = todo_tools.get_todos()
+    done = sum(1 for i in items if i.get("status") == "completed")
+    return {"items": items, "total": len(items), "completed": done}
+
+
 @router.get("/api/workspace/lint")
 async def lint_workspace_file(path: str, project_id: str = None):
     """Diagnostics de l'onglet Code : même moteur que la boucle de feedback de l'agent
