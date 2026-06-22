@@ -1957,6 +1957,14 @@ async function fetchTodos() {
     } catch (e) { /* non bloquant */ }
 }
 
+function renderPlanModeBtn(active) {
+    const btn = document.getElementById("btn-plan-mode");
+    if (!btn) return;
+    btn.textContent = active ? "🧭 Mode plan : ON" : "🧭 Mode plan : OFF";
+    btn.style.background = active ? "linear-gradient(135deg,#00f3ff33,#00b3ff22)" : "";
+    btn.style.fontWeight = active ? "bold" : "";
+}
+
 function updatePlanStep(index, status) {
     if (!currentPlanEl) return;
     const row = currentPlanEl.querySelector(`.plan-item[data-index="${index}"]`);
@@ -9947,6 +9955,27 @@ function detachCodeEditor() {
             const p = document.getElementById("session-todo-panel");
             if (p) p.style.display = "none";
         });
+    }
+
+    const btnPlanMode = document.getElementById("btn-plan-mode");
+    if (btnPlanMode) {
+        btnPlanMode.addEventListener("click", async () => {
+            try {
+                const cur = await (await apiFetch("/api/plan-mode")).json();
+                const res = await apiFetch("/api/plan-mode", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ active: !cur.active }),
+                });
+                const data = await res.json();
+                renderPlanModeBtn(data.active);
+                if (typeof pushNotification === "function") {
+                    pushNotification("Athena", data.active
+                        ? "🧭 Mode plan activé (lecture seule)." : "🔨 Mode build activé.", "info");
+                }
+            } catch (e) { /* non bloquant */ }
+        });
+        // Reflète l'état courant à l'ouverture.
+        apiFetch("/api/plan-mode").then(r => r.json()).then(d => renderPlanModeBtn(d.active)).catch(() => {});
     }
     // Charge la liste de tâches existante à l'ouverture de l'onglet Code.
     fetchTodos();

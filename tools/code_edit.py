@@ -78,8 +78,9 @@ def _diagnostics_suffix(real_path: str, rel_path: str, content: str) -> str:
 
 def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
     """
-    Lit un fichier texte du workspace avec NUMÉROS DE LIGNE (nécessaires pour éditer
-    ensuite précisément). Optionnellement borné à [start_line, end_line] (1-indexé).
+    Lit un fichier texte du workspace avec NUMÉROS DE LIGNE. À utiliser AVANT edit_file pour
+    copier le texte exact à remplacer (le numéro de ligne + tabulation n'est PAS du contenu :
+    ne l'inclus jamais dans old_string). Optionnellement borné à [start_line, end_line] (1-indexé).
     path: chemin relatif au workspace (ex: 'src/app.py').
     """
     real, err = _resolve(path, must_exist=True)
@@ -103,8 +104,10 @@ def read_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
 
 def write_file(path: str, content: str) -> str:
     """
-    Crée ou REMPLACE intégralement un fichier du workspace (écriture atomique).
-    À utiliser pour un nouveau fichier ; pour une modification ciblée, préfère edit_file.
+    Crée ou REMPLACE intégralement un fichier du workspace (écriture atomique). Réserve cet
+    outil aux NOUVEAUX fichiers : pour modifier un fichier existant, préfère TOUJOURS edit_file
+    (plus sûr, économe en tokens, ne risque pas d'écraser le reste). Renvoie aussi les
+    diagnostics introduits dans le fichier.
     path: chemin relatif au workspace. content: contenu complet du fichier.
     """
     real, err = _resolve(path, must_exist=False)
@@ -121,13 +124,22 @@ def write_file(path: str, content: str) -> str:
 
 def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = False) -> str:
     """
-    Édition NON destructive par remplacement de chaîne EXACTE (comme un str-replace).
-    `old_string` doit apparaître TEL QUEL dans le fichier et être UNIQUE (sauf
-    replace_all=True). Échoue sans rien écrire si introuvable ou ambigu — c'est le
-    moyen le plus sûr et le plus économe en tokens pour modifier un fichier existant.
+    Édition NON destructive par remplacement de chaîne EXACTE (comme un str-replace) — moyen
+    PRIVILÉGIÉ pour modifier un fichier existant (sûr, économe en tokens). Renvoie aussi les
+    diagnostics (erreurs/avertissements) introduits dans le fichier : corrige-les si présents.
+
+    RÈGLES :
+    - LIS le fichier avec read_file AVANT d'éditer, pour copier le texte EXACT (l'édition
+      échoue sans rien écrire si old_string est introuvable).
+    - Préserve l'INDENTATION exacte (espaces/tabulations) telle qu'affichée APRÈS le numéro
+      de ligne de read_file — n'inclus JAMAIS le préfixe « numéro + tabulation » dans old_string.
+    - old_string doit être UNIQUE : s'il apparaît plusieurs fois, l'édition échoue → ajoute des
+      lignes de contexte autour pour le rendre unique, ou mets replace_all=True.
+    - Préfère ÉDITER un fichier existant plutôt qu'en réécrire un (write_file).
+
     path: chemin relatif au workspace. old_string: texte exact à remplacer (avec son
     indentation). new_string: texte de remplacement. replace_all: remplace toutes les
-    occurrences au lieu d'exiger l'unicité.
+    occurrences au lieu d'exiger l'unicité (utile pour renommer une variable partout).
     """
     real, err = _resolve(path, must_exist=True)
     if err:

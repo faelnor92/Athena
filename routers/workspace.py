@@ -387,6 +387,24 @@ async def search_workspace_endpoint(q: str, path: str = "", project_id: str = No
         return results
 
 
+@router.get("/api/plan-mode")
+async def get_plan_mode():
+    """État du mode plan (lecture seule) de l'utilisateur courant — onglet Code de l'UI."""
+    from core import plan_mode
+    return {"active": plan_mode.is_active()}
+
+
+class PlanModeRequest(BaseModel):
+    active: bool
+
+
+@router.post("/api/plan-mode")
+async def set_plan_mode(req: PlanModeRequest):
+    """Active/désactive le mode plan (lecture seule) pour l'utilisateur courant."""
+    from core import plan_mode
+    return {"active": plan_mode.set_active(req.active)}
+
+
 @router.get("/api/todos")
 async def get_session_todos():
     """Liste de tâches de session de l'utilisateur courant (planification du Codeur/agent),

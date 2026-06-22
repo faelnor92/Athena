@@ -71,6 +71,19 @@ async def main():
             if not user_input:
                 continue
 
+            # Mode plan (lecture seule) : /plan, /build, /mode — interceptés AVANT le shell.
+            if user_input.lower() in ("/plan", "/build", "/mode"):
+                from core import plan_mode
+                if user_input.lower() == "/plan":
+                    plan_mode.set_active(True)
+                    print_system_msg("🧭 Mode PLAN activé (lecture seule : l'agent propose un plan, n'écrit rien).")
+                elif user_input.lower() == "/build":
+                    plan_mode.set_active(False)
+                    print_system_msg("🔨 Mode BUILD activé (édition et exécution autorisées).")
+                else:
+                    print_system_msg(f"Mode plan : {'ACTIF' if plan_mode.is_active() else 'inactif'}")
+                continue
+
             # Commandes bash directes (!, /, $)
             if user_input.startswith(("!", "/", "$")):
                 if user_input.startswith(("/bash")):
