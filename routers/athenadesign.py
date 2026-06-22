@@ -498,6 +498,23 @@ def _mirror_version_to_workspace(project_id: str, version: dict):
     try:
         ddir = os.path.join(base, _DESIGN_SUBDIR)
         os.makedirs(ddir, exist_ok=True)
+        # PROJET MULTI-FICHIERS : on écrit toute l'arborescence sous design/ (anti-traversée),
+        # l'entrée (index.html) sert d'aperçu. Prioritaire sur le rendu mono-bloc.
+        _files = version.get("files") or []
+        if _files:
+            for f in _files:
+                rel = (f.get("path") or "").strip().lstrip("/")
+                dest = _safe_join(ddir, rel)
+                if not dest or ".." in rel.split("/"):
+                    continue
+                os.makedirs(os.path.dirname(dest) or ddir, exist_ok=True)
+                with open(dest, "w", encoding="utf-8") as fh:
+                    fh.write(f.get("content", ""))
+            ep = (version.get("entry") or "index.html").strip().lstrip("/")
+            entry = f"{_DESIGN_SUBDIR}/{ep}"
+            with open(os.path.join(base, _DESIGN_MARKER), "w", encoding="utf-8") as f:
+                json.dump({"entry": entry}, f)
+            return
         if t == "html":
             # Page HTML autonome → on sépare le CSS/JS inline en fichiers dédiés pour
             # retrouver une structure multi-fichiers (style.css / script.js) côté Code.
@@ -671,6 +688,8 @@ def _persist_design_version(user: str, ctx: dict, result: dict) -> dict:
         "prompt": ctx["prompt"],
         "comments": [], "tweaks": result.get("tweaks", []),
         "suggestions": result.get("suggestions", []), "usage": _usage,
+        "files": result.get("files", []),      # projet multi-fichiers (vide = mono-bloc)
+        "entry": result.get("entry", ""),      # fichier d'aperçu (ex. index.html)
     }
     project["versions"].append(new_version)
     try:

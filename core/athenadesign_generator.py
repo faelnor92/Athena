@@ -763,6 +763,32 @@ print(f"Présentation PPTX générée avec succès : {output_filename}")
     }
 }
 
+_FILE_MARKER = re.compile(r"^[ \t]*===[ \t]*FILE:[ \t]*(.+?)[ \t]*===[ \t]*$", re.MULTILINE)
+
+
+def _parse_multifile_blocks(text: str):
+    """Projet MULTI-FICHIERS : segments précédés de `=== FILE: chemin ===`.
+    Renvoie (prose_avant, [{path, content}]) ; ("", []) si aucun marqueur."""
+    marks = list(_FILE_MARKER.finditer(text))
+    if not marks:
+        return "", []
+    prose = text[:marks[0].start()].strip()
+    files = []
+    for i, m in enumerate(marks):
+        path = m.group(1).strip().strip('"').strip("'").lstrip("/")
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+        content = text[m.end():end]
+        # Le DERNIER segment peut embarquer les blocs <suggestions>/<tweaks> finaux → on coupe.
+        content = re.split(r"<(?:suggestions|tweaks)>", content, maxsplit=1, flags=re.IGNORECASE)[0]
+        content = content.strip("\n")
+        # Retire une fence ```lang … ``` éventuelle autour du contenu d'un fichier.
+        content = re.sub(r"^[ \t]*```[a-zA-Z0-9]*[ \t]*\n", "", content)
+        content = re.sub(r"\n?[ \t]*```[ \t]*$", "", content)
+        if path and ".." not in path.split("/"):   # anti-traversée dès le parsing
+            files.append({"path": path, "content": content})
+    return prose, files
+
+
 def parse_artifact_response(text: str) -> dict:
     """Extrait {type, explanation, code} de la réponse du LLM, de façon ROBUSTE.
 
@@ -776,40 +802,54 @@ def parse_artifact_response(text: str) -> dict:
     explanation = ""
     code = ""
 
-    # 1) Balises explicites (si le modèle les respecte).
-    t = re.search(r"<artifact_type>(.*?)</artifact_type>", text, re.DOTALL)
-    if t:
-        artifact_type = t.group(1).strip().lower()
-    e = re.search(r"<artifact_explanation>(.*?)</artifact_explanation>", text, re.DOTALL)
-    if e:
-        explanation = e.group(1).strip()
-    c = re.search(r"<artifact_code>(.*?)</artifact_code>", text, re.DOTALL)
-    if c:
-        code = c.group(1).strip()
-    else:
-        # 2) Bloc de code fencé ```lang … ``` (cas le plus fréquent). On prend le PLUS GROS
-        #    bloc comme code ; la prose qui le précède devient l'explication.
-        fences = list(re.finditer(r"```([a-zA-Z0-9]*)\s*\n(.*?)```", text, re.DOTALL))
-        if fences:
-            best = max(fences, key=lambda m: len(m.group(2)))
-            code = best.group(2).strip()
-            if not artifact_type and best.group(1):
-                artifact_type = best.group(1).strip().lower()
-            if not explanation:
-                explanation = text[:best.start()].strip()
+    # 0) PROJET MULTI-FICHIERS (`=== FILE: chemin ===`) : on extrait tous les fichiers, l'ENTRÉE
+    #    (index.html sinon 1er .html) sert d'aperçu/`code`, le reste est écrit sous design/.
+    _prose_mf, _files = _parse_multifile_blocks(text)
+    _entry_path = ""
+    if _files:
+        entry = (next((f for f in _files if f["path"].lower().endswith("index.html")), None)
+                 or next((f for f in _files if f["path"].lower().endswith((".html", ".htm"))), None)
+                 or _files[0])
+        _entry_path = entry["path"]
+        code = entry["content"]
+        explanation = _prose_mf
+
+    # 1)–4) Artefact MONO-BLOC — uniquement si AUCUN projet multi-fichiers n'a été extrait.
+    if not _files:
+        # 1) Balises explicites (si le modèle les respecte).
+        t = re.search(r"<artifact_type>(.*?)</artifact_type>", text, re.DOTALL)
+        if t:
+            artifact_type = t.group(1).strip().lower()
+        e = re.search(r"<artifact_explanation>(.*?)</artifact_explanation>", text, re.DOTALL)
+        if e:
+            explanation = e.group(1).strip()
+        c = re.search(r"<artifact_code>(.*?)</artifact_code>", text, re.DOTALL)
+        if c:
+            code = c.group(1).strip()
         else:
-            # 3) Pas de fence : repérer le DÉBUT du vrai code (HTML ou Python) et couper.
-            m = re.search(r"(<!DOCTYPE html|<html|<\?xml|<svg\b|^\s*import\s+\w|^\s*from\s+\w+\s+import|^\s*def\s+\w)",
-                          text, re.IGNORECASE | re.MULTILINE)
-            if m and m.start() > 0:
-                explanation = text[:m.start()].strip()
-                code = text[m.start():].strip()
-            elif m:
-                code = text
+            # 2) Bloc de code fencé ```lang … ``` (cas le plus fréquent). On prend le PLUS GROS
+            #    bloc comme code ; la prose qui le précède devient l'explication.
+            fences = list(re.finditer(r"```([a-zA-Z0-9]*)\s*\n(.*?)```", text, re.DOTALL))
+            if fences:
+                best = max(fences, key=lambda m: len(m.group(2)))
+                code = best.group(2).strip()
+                if not artifact_type and best.group(1):
+                    artifact_type = best.group(1).strip().lower()
+                if not explanation:
+                    explanation = text[:best.start()].strip()
             else:
-                # 4) Rien d'identifiable comme code → on ne dumpe PAS la prose dans le code.
-                explanation = text
-                code = ""
+                # 3) Pas de fence : repérer le DÉBUT du vrai code (HTML ou Python) et couper.
+                m = re.search(r"(<!DOCTYPE html|<html|<\?xml|<svg\b|^\s*import\s+\w|^\s*from\s+\w+\s+import|^\s*def\s+\w)",
+                              text, re.IGNORECASE | re.MULTILINE)
+                if m and m.start() > 0:
+                    explanation = text[:m.start()].strip()
+                    code = text[m.start():].strip()
+                elif m:
+                    code = text
+                else:
+                    # 4) Rien d'identifiable comme code → on ne dumpe PAS la prose dans le code.
+                    explanation = text
+                    code = ""
 
     # Nettoyage : retirer des fences résiduelles autour du code.
     if code.startswith("```"):
@@ -876,7 +916,9 @@ def parse_artifact_response(text: str) -> dict:
         "explanation": explanation,
         "code": code,
         "tweaks": tweaks,
-        "suggestions": suggestions
+        "suggestions": suggestions,
+        "files": _files,          # projet multi-fichiers (vide = artefact mono-bloc)
+        "entry": _entry_path,     # fichier d'aperçu du projet (ex. index.html)
     }
 
 def react_scaffold(code: str) -> str:
