@@ -817,6 +817,49 @@ def _parse_multifile_blocks(text: str):
     return prose, files
 
 
+_TWEAK_LABELS = {
+    "primary": "Couleur principale", "secondary": "Couleur secondaire",
+    "accent": "Accent", "bg": "Fond", "background": "Fond", "surface": "Surface",
+    "text": "Texte", "fg": "Texte", "foreground": "Texte", "border": "Bordure",
+    "radius": "Arrondi", "border-radius": "Arrondi", "gap": "Espacement",
+    "spacing": "Espacement", "font-size": "Taille du texte", "shadow": "Ombre",
+}
+
+
+def _derive_tweaks_from_code(code: str, files: list) -> list:
+    """FILET déterministe : si le modèle n'a pas émis de bloc <tweaks>, on dérive les réglages
+    dynamiques depuis les variables CSS `:root { --x: … }` du design lui-même (couleurs →
+    color picker, longueurs px/rem/% → slider). Garantit un dock de personnalisation utile
+    même quand le LLM l'oublie (fréquent en mode multi-fichiers). Max 6 contrôles."""
+    css = code or ""
+    for f in (files or []):
+        css += "\n" + (f.get("content") or "")
+    tweaks, seen = [], set()
+    for block in re.findall(r":root\s*\{([^}]*)\}", css, re.IGNORECASE | re.DOTALL):
+        for name, value in re.findall(r"(--[\w-]+)\s*:\s*([^;]+);", block):
+            name, value = name.strip(), value.strip()
+            if name in seen or len(tweaks) >= 6:
+                continue
+            key = name[2:].lower()
+            label = _TWEAK_LABELS.get(key) or key.replace("-", " ").replace("_", " ").capitalize()
+            if re.match(r"#[0-9a-fA-F]{3,8}$", value) or re.match(r"(rgb|rgba|hsl|hsla)\(", value, re.I):
+                hexv = value if value.startswith("#") else "#6366f1"  # picker ne gère que le hex
+                tweaks.append({"type": "color", "label": label, "name": name,
+                               "values": "", "default": hexv})
+                seen.add(name)
+            else:
+                m = re.match(r"(-?\d*\.?\d+)\s*(px|rem|em|%|vh|vw|pt)$", value)
+                if m:
+                    num, unit = float(m.group(1)), m.group(2)
+                    lo = 0 if num >= 0 else int(num * 2)
+                    hi = max(int(round(num * 2)), int(round(num)) + 8)
+                    tweaks.append({"type": "slider", "label": label, "name": name,
+                                   "values": f"{lo}{unit},{hi}{unit}",
+                                   "default": (f"{num:g}")})
+                    seen.add(name)
+    return tweaks
+
+
 def parse_artifact_response(text: str) -> dict:
     """Extrait {type, explanation, code} de la réponse du LLM, de façon ROBUSTE.
 
@@ -938,6 +981,11 @@ def parse_artifact_response(text: str) -> dict:
                     "values": parts[3],
                     "default": parts[4]
                 })
+
+    # Filet : si le modèle n'a pas fourni de tweaks (fréquent en multi-fichiers), on les dérive
+    # des variables CSS du design — seulement pour le web (html/react), pas python/mermaid.
+    if not tweaks and atype in ("html", "react"):
+        tweaks = _derive_tweaks_from_code(code, _files)
 
     return {
         "type": atype,
@@ -1084,9 +1132,12 @@ def _build_system(design_system: str = "", context_text: str = "", note: str = "
         parts.append(
             "=== CODE ACTUEL DU PROJET (point de départ OBLIGATOIRE) ===\n"
             "Voici le code EXISTANT de la page du projet. Sauf demande explicite de repartir "
-            "de zéro, tu dois PARTIR DE CE CODE : conserve sa structure, son contenu et ses "
-            "fonctionnalités, et applique les modifications/améliorations demandées DESSUS "
-            "(n'invente pas une page générique sans rapport). Produis la page COMPLÈTE modifiée.\n\n"
+            "de zéro, tu dois PARTIR DE CE CODE : conserve sa structure, son contenu, son "
+            "design ET ses fonctionnalités, et applique UNIQUEMENT la modification demandée "
+            "DESSUS (n'invente PAS une nouvelle page, ne change PAS le style existant sauf si "
+            "c'est explicitement demandé). Si le code est un projet MULTI-FICHIERS "
+            "(`=== FILE: chemin ===`), réémets TOUS les fichiers dans CE MÊME format en "
+            "préservant l'arborescence ; sinon produis la page COMPLÈTE modifiée.\n\n"
             + base_code.strip())
     if (context_text or "").strip():
         parts.append("=== CONTEXTE FOURNI PAR L'UTILISATEUR (références, documents, capture "
