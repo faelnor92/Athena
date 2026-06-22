@@ -371,3 +371,12 @@ Athena (`core/swarm.py:400` `create_delegate_function`) : `delegate_to_<AgentNom
 - **Prompt enfant discipliné** (`_build_child_system_prompt`) : « tu es un sous-agent focalisé, tu ne sais RIEN du parent, voici GOAL+CONTEXT, finis par un résumé : ce que tu as fait / trouvé / fichiers modifiés / problèmes ». Doc Hermes insiste : *le parent doit tout passer dans goal+context* (l'enfant part d'une conversation vierge).
 - **À porter (proposition, par valeur/coût)** : (1) résultat structuré + résumé discipliné (cheap) ; (2) blocked-tools + budget enfant (cheap, sécurité) ; (3) batch parallèle (moyen) ; (4) garde profondeur + leaf/orchestrator (moyen) ; (5) timeout/heartbeat (moyen). Délégation par goal+toolsets = changement d'API plus lourd, à arbitrer.
 - **Conclusion** : notre boucle (swarm) est architecturalement comparable à OpenClaw. Vrais leviers restants = **modèle (choix user)**, **repo-map ranking**, **édition batch/LF**, **steering + outils parallèles**, **délégation (Hermes)**. L'édition fiable + repo-map + budget↑ + projets isolés sont **faits**.
+
+#### Backlog — notification `run.completed` (hors chat direct) [2026-06-22]
+Idée (cadrée, non implémentée) : émettre `run.completed` sur le bus (`core/event_bus`) et notifier
+(Telegram + canaux) **UNIQUEMENT les runs non « en direct »** — i.e. là où l'utilisateur ne regarde
+pas la surface d'origine : **routines planifiées**, **runs déclenchés par API/webhook/n8n**, **run
+long dont le client s'est déconnecté** (cf. `registry.set_result` + `/api/chat/reconnect`), **voix**.
+À NE PAS notifier : chat web/CLI/Telegram en direct (réponse déjà visible → sinon spam). Gating via
+`channels.current_channel` + état de connexion du client. Réacteur ~5 lignes une fois `run.completed`
+publié par le moteur.

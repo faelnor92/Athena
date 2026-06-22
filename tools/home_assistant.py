@@ -2,6 +2,9 @@ import os
 import requests
 import json
 
+# Timeout réseau (anti-blocage de thread / DoS) ; configurable.
+_HA_TIMEOUT = int(os.getenv("HA_HTTP_TIMEOUT", "15") or 15)
+
 def get_ha_headers():
     token = os.getenv("HA_TOKEN")
     return {
@@ -25,7 +28,7 @@ def get_ha_state(entity_id: str) -> str:
     
     endpoint = f"{url.rstrip('/')}/api/states/{entity_id}"
     try:
-        response = requests.get(endpoint, headers=get_ha_headers())
+        response = requests.get(endpoint, headers=get_ha_headers(), timeout=_HA_TIMEOUT)
         response.raise_for_status()
         return json.dumps(response.json())
     except Exception as e:
@@ -53,7 +56,7 @@ def call_ha_service(domain: str, service: str, entity_id: str = None) -> str:
         data["entity_id"] = entity_id
         
     try:
-        response = requests.post(endpoint, headers=get_ha_headers(), json=data)
+        response = requests.post(endpoint, headers=get_ha_headers(), json=data, timeout=_HA_TIMEOUT)
         response.raise_for_status()
         return json.dumps([r for r in response.json()]) if response.json() else "Succès"
     except Exception as e:

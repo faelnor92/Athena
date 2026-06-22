@@ -1,11 +1,14 @@
 import os
 import sys
 
+import pytest
+
 # Ajouter le répertoire parent au sys.path pour les imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from tools.computer_use import computer_use_action, _PLAYWRIGHT_AVAILABLE
 
+@pytest.mark.network  # lance un vrai navigateur vers example.com → exclu par défaut (-m "not network")
 def test_computer_use():
     if not _PLAYWRIGHT_AVAILABLE:
         print("⚠️ Playwright non installé. Le test est ignoré (mais l'outil gère correctement cette erreur).")

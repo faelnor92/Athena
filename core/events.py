@@ -18,6 +18,7 @@ import uuid
 from collections import deque
 
 from core import shared_store
+from core import event_bus
 
 _NS = "events"
 _CFG_KEY = "config"
@@ -85,7 +86,9 @@ def submit(event: dict) -> dict:
     }
     if _SEV_ORDER.get(ev["severity"], 0) < _SEV_ORDER.get(cfg.get("min_severity", "warning"), 1):
         return {"status": "filtered", "reason": "severity"}
-    sig = hashlib.sha1(f"{ev['type']}|{ev['source']}|{ev['message']}".encode("utf-8", "ignore")).hexdigest()[:12]
+    # SHA1 NON cryptographique : simple signature de déduplication d'événements (usedforsecurity=False).
+    sig = hashlib.sha1(f"{ev['type']}|{ev['source']}|{ev['message']}".encode("utf-8", "ignore"),
+                       usedforsecurity=False).hexdigest()[:12]
     now = time.time()
     win = float(cfg.get("dedup_window", 300) or 0)
     with _lock:
@@ -102,6 +105,12 @@ def submit(event: dict) -> dict:
     except queue.Full:
         rec["status"] = "overloaded"
         return {"status": "overloaded"}
+    # Diffusion sur le bus : en plus du worker Vigie (_run_vigie), d'autres réacteurs
+    # (audit, métriques…) peuvent réagir SANS toucher au worker. Best-effort.
+    try:
+        event_bus.publish("vigie.event", dict(rec), async_=True)
+    except Exception:
+        pass
     return {"status": "queued", "id": rec["id"]}
 
 

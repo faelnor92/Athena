@@ -169,7 +169,7 @@ def run_tool_script(code: str) -> str:
         try:
             _sys.settrace(_tracer)
             with contextlib.redirect_stdout(out):
-                exec(code, ns)
+                exec(code, ns)  # nosec B102 — code validé par AST (imports/appels allowlistés, eval/exec/open interdits) + builtins restreints + budget d'instructions
         except Exception as e:
             result_holder["err"] = e
         finally:

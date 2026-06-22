@@ -14,8 +14,25 @@ import threading
 import time
 import uuid
 
+from core import event_bus
+
 _lock = threading.Lock()
 _pending: dict = {}   # id -> {event, decision, tool, args, agent, channel, created}
+
+
+def _emit(phase: str, aid: str, entry: dict = None, approved: bool = None):
+    """Publie une étape du cycle HITL sur le bus d'événements (topic 'approval') → réacteurs
+    découplés (audit, notifications…). Best-effort : ne casse jamais le flux d'approbation."""
+    try:
+        payload = {"phase": phase, "id": aid}
+        if entry:
+            payload.update({"tool": entry.get("tool"), "agent": entry.get("agent"),
+                            "channel": entry.get("channel")})
+        if approved is not None:
+            payload["approved"] = approved
+        event_bus.publish("approval", payload)
+    except Exception:
+        pass
 
 
 def async_enabled(channel: str) -> bool:
@@ -41,6 +58,7 @@ def request(tool: str, args: dict, agent: str, channel: str) -> str:
             "tool": tool, "args": args or {}, "agent": agent,
             "channel": channel, "created": time.time(),
         }
+    _emit("requested", aid, _pending[aid])
     return aid
 
 
@@ -53,6 +71,7 @@ def resolve(aid: str, approved: bool) -> bool:
             return False
         entry["decision"] = "approved" if approved else "denied"
         entry["event"].set()
+    _emit("resolved", aid, entry, approved=approved)
     return True
 
 
@@ -67,6 +86,7 @@ def wait(aid: str, timeout: float) -> str:
         decision = _pending.get(aid, {}).get("decision")
         _pending.pop(aid, None)   # nettoyage : une demande ne sert qu'une fois
     if not got or not decision:
+        _emit("timeout", aid, entry)
         return "timeout"
     return decision
 

@@ -25,14 +25,18 @@ def get_todos(scope: str = None) -> list:
     return list(shared_store.get(_NS, scope or _scope()) or [])
 
 
+_MAX_ITEMS = 100          # garde-fou : une todo-list de session reste raisonnable
+_MAX_CONTENT = 500        # longueur max d'une tâche (anti-explosion de contexte/stockage)
+
+
 def _normalize(items) -> list:
     out = []
-    for it in (items or []):
+    for it in (items or [])[:_MAX_ITEMS]:
         if isinstance(it, str):
             it = {"content": it}
         if not isinstance(it, dict):
             continue
-        content = str(it.get("content") or it.get("task") or it.get("title") or "").strip()
+        content = str(it.get("content") or it.get("task") or it.get("title") or "").strip()[:_MAX_CONTENT]
         if not content:
             continue
         status = str(it.get("status") or "pending").strip().lower()

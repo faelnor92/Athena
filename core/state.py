@@ -350,13 +350,20 @@ class ConversationManager:
     def save(self):
         pass
         
+    # Colonnes autorisées : le nom de colonne est interpolé dans le SQL (les valeurs, elles,
+    # sont paramétrées). ALLOWLIST stricte → aucune injection possible via `key`, même si un
+    # futur appelant passait une valeur non maîtrisée. (Défense en profondeur.)
+    _ALLOWED_CONV_COLS = {"messages", "active_node_id", "active_agent", "name"}
+
     def _update_conv(self, conv_id, key, value):
+        if key not in self._ALLOWED_CONV_COLS:
+            raise ValueError(f"colonne de conversation non autorisée : {key!r}")
         if key == "messages":
             col, val = "messages_json", _encrypt(json.dumps(value))
         else:
             col, val = key, value
         with _db_lock, sqlite3.connect(_CONV_DB_PATH) as conn:
-            conn.execute(f"UPDATE conversations SET {col}=?, updated_at=? WHERE client_id=? AND conv_id=?", 
+            conn.execute(f"UPDATE conversations SET {col}=?, updated_at=? WHERE client_id=? AND conv_id=?",  # nosec B608 — `col` validé par allowlist ci-dessus
                          (val, time.time(), self.client_id, conv_id))
 
     def new_conversation(self, name=None):

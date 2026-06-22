@@ -58,3 +58,8 @@ uv>=0.5.0
 # propre runtime Node (nodejs-wheel) → aucune dépendance système. Repli compile/ast + ruff
 # si absent. Voir tools/lsp_client.py.
 basedpyright>=1.39
+
+# --- Durcissement sécurité ---------------------------------------------------
+# Parsing XML sûr (anti-XXE/entity-expansion) des réponses WebDAV/CalDAV/CardDAV Nextcloud.
+# Repli stdlib si absent (cf. tools/nextcloud_tools.py).
+defusedxml>=0.7
