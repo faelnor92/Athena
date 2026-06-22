@@ -88,6 +88,9 @@ DESIGN RULES:
      EXPLICIT, CONTRASTING font color on the title and on EVERY body run
      (`run.font.color.rgb = COLOR_TEXT`). Light text on dark bg OR dark text on light bg — NEVER rely
      on the default ('auto') color and NEVER dark-on-dark. Define a small RGBColor palette once and reuse it.
+   - LAYERING: add any decorative/colored shape (rectangle, band, accent) BEFORE the text it
+     decorates, so the TEXT stays ON TOP. A colored shape must NEVER cover text. Prefer placing
+     decorations in empty zones (header band, side strip) rather than behind paragraphs.
    - Body frames: `tf.word_wrap = True`; titles 32-40pt, body 16-20pt.
 7. RESPONSIVENESS (HTML): fluid layouts (%, vw/vh, flexbox, CSS grid auto-fit, fr units), not fixed pixel widths. Must scale to tablet/phone without horizontal scroll.
 """

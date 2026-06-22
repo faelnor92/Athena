@@ -139,6 +139,16 @@ try:
                         _shp._element.getparent().remove(_shp._element)
                     except Exception:
                         pass
+                # LISIBILITÉ : on remet TOUT shape porteur de TEXTE au PREMIER PLAN (les formes
+                # décoratives colorées, ajoutées après, passaient DEVANT le texte → illisible).
+                # Réordonner le spTree = appendre les éléments texte à la fin (= dessus).
+                try:
+                    _spTree = _sl.shapes._spTree
+                    for _shp in list(_sl.shapes):
+                        if _shp.has_text_frame and (_shp.text_frame.text or "").strip():
+                            _spTree.append(_shp._element)
+                except Exception:
+                    pass
             _p.save(_f)
             print(f"[AthenaDesign PPTX ajuste: {_f}]")
         except Exception as _e:
