@@ -272,6 +272,39 @@ async def create_project(request: Request, payload: dict = Body(...)):
     write_db(user, db)
     return db[proj["id"]]
 
+@router.post("/projects/{project_id}/import-code")
+async def import_code(request: Request, project_id: str, payload: dict = Body(...)):
+    """Amorce un projet avec du code EXISTANT (ex. artifact venu du chat) en l'ajoutant comme
+    nouvelle version — sans appel LLM. Sert de pont « Ouvrir dans AthenaDesign »."""
+    user = _current_user(request)
+    if not _can_access(project_id):
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    code = (payload.get("code") or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Code vide.")
+    vtype = (payload.get("type") or "html").strip().lower()
+    if vtype not in ("html", "react", "mermaid", "python"):
+        vtype = "html"
+    db = read_db(user)
+    project = db.get(project_id) or _new_design(project_id)
+    db[project_id] = project
+    new_version = {
+        "version": len(project.get("versions", [])) + 1,
+        "type": vtype,
+        "explanation": payload.get("explanation") or "Code importé.",
+        "code": code,
+        "prompt": "(import)",
+        "comments": [], "tweaks": [], "suggestions": [], "usage": {},
+    }
+    project.setdefault("versions", []).append(new_version)
+    write_db(user, db)
+    try:
+        _mirror_version_to_workspace(project_id, new_version)
+    except Exception:
+        pass
+    return {"project_id": project_id, "version": new_version}
+
+
 @router.post("/projects/{project_id}/rename")
 async def rename_design_project(request: Request, project_id: str, payload: dict = Body(...)):
     """Renomme un projet (registre unifié code+design)."""

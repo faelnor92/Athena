@@ -1547,6 +1547,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
                 projectsList.appendChild(item);
             });
+            // Pont depuis le chat : ?project=<id> → ouvre directement ce projet (une seule fois).
+            if (!window._adProjectParamHandled) {
+                window._adProjectParamHandled = true;
+                const pid = new URLSearchParams(location.search).get("project");
+                if (pid && projects.some(p => p.id === pid)) selectProject(pid);
+            }
         } catch (e) {
             console.error("Error loading projects", e);
         }
