@@ -36,7 +36,9 @@ jobs:
 
   security-scan:
     runs-on: ubuntu-latest
-    continue-on-error: true   # informatif : n'échoue pas le build sur une CVE transitive
+    # Le job ÉCHOUE désormais sur les alertes BLOQUANTES (bandit HIGH/HIGH, secrets versionnés,
+    # .env suivi) ; pip-audit et bandit toutes-sévérités restent informatifs (cf. security_scan.sh
+    # qui gère lui-même le seuil) → pas de faux échec sur une CVE transitive non corrigeable.
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

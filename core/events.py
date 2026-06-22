@@ -85,7 +85,9 @@ def submit(event: dict) -> dict:
     }
     if _SEV_ORDER.get(ev["severity"], 0) < _SEV_ORDER.get(cfg.get("min_severity", "warning"), 1):
         return {"status": "filtered", "reason": "severity"}
-    sig = hashlib.sha1(f"{ev['type']}|{ev['source']}|{ev['message']}".encode("utf-8", "ignore")).hexdigest()[:12]
+    # SHA1 NON cryptographique : simple signature de déduplication d'événements (usedforsecurity=False).
+    sig = hashlib.sha1(f"{ev['type']}|{ev['source']}|{ev['message']}".encode("utf-8", "ignore"),
+                       usedforsecurity=False).hexdigest()[:12]
     now = time.time()
     win = float(cfg.get("dedup_window", 300) or 0)
     with _lock:

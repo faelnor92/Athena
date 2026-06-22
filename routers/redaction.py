@@ -160,7 +160,8 @@ async def onlyoffice_config(path: str, request: Request, mode: str = "edit"):
         ver = str(int(os.path.getmtime(abs_path)))
     except Exception:
         ver = "0"
-    key = hashlib.sha1((abs_path + ver).encode()).hexdigest()[:20]
+    # SHA1 NON cryptographique : clé de cache du design-system par version (usedforsecurity=False).
+    key = hashlib.sha1((abs_path + ver).encode(), usedforsecurity=False).hexdigest()[:20]
 
     cfg = {
         "document": {
