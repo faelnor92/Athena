@@ -389,68 +389,29 @@ async def search_workspace_endpoint(q: str, path: str = "", project_id: str = No
 
 @router.get("/api/workspace/lint")
 async def lint_workspace_file(path: str, project_id: str = None):
+    """Diagnostics de l'onglet Code : même moteur que la boucle de feedback de l'agent
+    (tools.lsp_client → basedpyright, repli compile/ruff). Format rétro-compatible avec le
+    front (errors[] avec line/column/message/severity) + champs enrichis (code/source/end_*)."""
     with _project_scope(project_id):
         clean_path = _safe_workspace_path(path)
         if not os.path.exists(clean_path) or os.path.isdir(clean_path):
             raise HTTPException(status_code=404, detail="Fichier introuvable.")
-            
+
         with open(clean_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
-            
-        ext = os.path.splitext(clean_path)[1].lower()
-        errors = []
-        
-        if ext == ".py":
-            try:
-                compile(content, path, 'exec')
-            except SyntaxError as e:
-                errors.append({
-                    "line": e.lineno or 1,
-                    "column": e.offset or 1,
-                    "message": f"SyntaxError: {e.msg}",
-                    "severity": "error"
-                })
-            except Exception as e:
-                errors.append({
-                    "line": 1,
-                    "column": 1,
-                    "message": f"Compilation Error: {str(e)}",
-                    "severity": "error"
-                })
-                
-            # If no critical compile errors, run ruff or flake8 if available for style/lint warnings
-            if not errors:
-                import subprocess
-                try:
-                    res = subprocess.run(["ruff", "check", "--format", "json", clean_path], capture_output=True, text=True)
-                    # Ruff output is json on stdout even if exit code is not 0
-                    if res.stdout:
-                        import json
-                        ruff_errs = json.loads(res.stdout)
-                        for r_err in ruff_errs:
-                            errors.append({
-                                "line": r_err.get("location", {}).get("row", 1),
-                                "column": r_err.get("location", {}).get("column", 1),
-                                "message": f"{r_err.get('code', '')}: {r_err.get('message', '')}",
-                                "severity": "warning"
-                            })
-                except Exception:
-                    pass
-        elif ext == ".json":
-            try:
-                import json
-                json.loads(content)
-            except json.JSONDecodeError as e:
-                errors.append({
-                    "line": e.lineno,
-                    "column": e.colno,
-                    "message": f"JSONDecodeError: {e.msg}",
-                    "severity": "error"
-                })
-        
+
+        from tools import lsp_client
+        diags = lsp_client.diagnostics(clean_path, content)
+        # Le front n'attend que error/warning ; on rétrograde information/hint en "info".
+        for d in diags:
+            if d.get("severity") not in ("error", "warning"):
+                d["severity"] = "info"
+        errors = [d for d in diags if d["severity"] in ("error", "warning")]
         return {
-            "success": len(errors) == 0,
-            "errors": errors
+            "success": not any(d["severity"] == "error" for d in errors),
+            "errors": errors,
+            "diagnostics": diags,
+            "engine": "lsp" if lsp_client.has_lsp() else "fallback",
         }
 
 

@@ -9872,12 +9872,15 @@ function detachCodeEditor() {
                     if (data.success && data.errors.length === 0) {
                         lintResults.innerHTML = `<div style="color: #44db5c; font-weight: bold;">✅ Aucun problème détecté dans ce fichier !</div>`;
                     } else {
-                        lintResults.innerHTML = data.errors.map(err => `
+                        const engineTag = data.engine === "lsp" ? "" : ` <span style="opacity:0.5;">(analyse de base)</span>`;
+                        lintResults.innerHTML = data.errors.map(err => {
+                            const codeBadge = err.code ? ` <span style="opacity:0.55;">[${escapeHtml(err.code)}]</span>` : "";
+                            return `
                             <div class="lint-error-item" style="padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; gap: 8px; align-items: flex-start; cursor: pointer;" data-line="${err.line}">
                                 <span style="color: ${err.severity === 'error' ? '#ff453a' : '#ff9f0a'}; font-weight: bold;">[${err.severity.toUpperCase()}]</span>
-                                <span>Ligne ${err.line}, col ${err.column}: ${escapeHtml(err.message)}</span>
-                            </div>
-                        `).join('');
+                                <span>Ligne ${err.line}, col ${err.column}: ${escapeHtml(err.message)}${codeBadge}</span>
+                            </div>`;
+                        }).join('') + (engineTag ? `<div style="padding:6px; font-size:0.85em;">${engineTag}</div>` : "");
                     }
                 }
             } catch (err) {
