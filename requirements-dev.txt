@@ -1,0 +1,4 @@
+# Dépendances de DÉVELOPPEMENT / TESTS (hors runtime). Installées en CI et en local pour
+# lancer la suite : `pip install -r requirements-dev.txt`.
+pytest>=8.0
+pytest-asyncio>=0.23
