@@ -2216,8 +2216,15 @@ document.addEventListener("DOMContentLoaded", () => {
             // Apply current responsive viewport
             applyViewport(activeViewport);
 
-            // React → on enveloppe le composant dans une page (React/Babel/Tailwind via CDN).
-            htmlPreviewFrame.srcdoc = injectConsoleBridge(buildWebPreview(ver));
+            if (ver.files && ver.files.length && ver.entry) {
+                // PROJET MULTI-FICHIERS : aperçu via l'URL workspace (design/index.html) pour que
+                // les liens RELATIFS (./style.css, ./js/app.js) résolvent. Les fichiers ont été
+                // écrits sous <projet>/design/ par le serveur (_mirror_version_to_workspace).
+                showWorkspacePreview(currentProjectId, `${"design"}/${ver.entry}`);
+            } else {
+                // Mono-fichier : page autonome en srcdoc (React/Babel/Tailwind via CDN).
+                htmlPreviewFrame.srcdoc = injectConsoleBridge(buildWebPreview(ver));
+            }
             if (btnExportPdf) btnExportPdf.style.display = "flex";
             if (adjustToolbar) adjustToolbar.style.display = "flex";
             switchTab("preview");

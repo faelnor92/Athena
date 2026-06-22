@@ -20,6 +20,16 @@ OUTPUT FORMAT (follow EXACTLY):
    ```jsx       for React components / interactive apps
    ```mermaid   for diagrams (flowchart, sequence, class, ER, gantt, state, mindmap…)
    Put ALL the code in that single block. Never truncate. Do NOT mix explanation text inside the code. Do NOT output two code blocks.
+   ── MULTI-FILE PROJECTS (preferred for anything beyond a tiny standalone page) ──
+   For a STRUCTURED project (real site with separate CSS/JS, multiple pages, assets, or a React
+   app split into files), output SEVERAL files instead of one block. Precede EACH file with a line:
+       === FILE: relative/path ===
+   then its content (optionally in a fenced block). Rules:
+   - The entry point MUST be `index.html`. Keep the French explanation BEFORE the first `=== FILE: ===`.
+   - Use RELATIVE links between files: `<link rel="stylesheet" href="./css/style.css">`,
+     `<script src="./js/app.js"></script>`, images in `./assets/…`. NEVER absolute paths.
+   - Typical layout: `index.html`, `css/style.css`, `js/app.js` (+ extra pages/components as needed).
+   - Keep a SINGLE fenced block only for a genuinely simple, one-file artifact, a diagram, or Python.
 3. Finally, under the code block, you MUST append:
    - A `<suggestions>` block containing 3 proposed next steps (one per line, prefixed by a dash `-`).
    - For web layouts (html/jsx), a `<tweaks>` block containing 2 to 4 visual controls mapping to CSS variables used in your layout.
