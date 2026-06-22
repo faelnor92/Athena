@@ -32,6 +32,10 @@ async function adFileBlobUrl(projectId, filename) {
     return URL.createObjectURL(await r.blob());
 }
 
+// Derniers FICHIERS GÉNÉRÉS par l'exécution Python (ex. .pptx) → le bouton « Télécharger » de
+// la barre propose le fichier produit plutôt que le code source pour les artefacts python.
+let _lastPyOutputs = { projectId: null, files: [] };
+
 document.addEventListener("DOMContentLoaded", () => {
     // Check if framed inside an iframe
     if (window.self !== window.top) {
@@ -2216,8 +2220,15 @@ document.addEventListener("DOMContentLoaded", () => {
             // Apply current responsive viewport
             applyViewport(activeViewport);
 
-            // React → on enveloppe le composant dans une page (React/Babel/Tailwind via CDN).
-            htmlPreviewFrame.srcdoc = injectConsoleBridge(buildWebPreview(ver));
+            if (ver.files && ver.files.length && ver.entry) {
+                // PROJET MULTI-FICHIERS : aperçu via l'URL workspace (design/index.html) pour que
+                // les liens RELATIFS (./style.css, ./js/app.js) résolvent. Les fichiers ont été
+                // écrits sous <projet>/design/ par le serveur (_mirror_version_to_workspace).
+                showWorkspacePreview(currentProjectId, `${"design"}/${ver.entry}`);
+            } else {
+                // Mono-fichier : page autonome en srcdoc (React/Babel/Tailwind via CDN).
+                htmlPreviewFrame.srcdoc = injectConsoleBridge(buildWebPreview(ver));
+            }
             if (btnExportPdf) btnExportPdf.style.display = "flex";
             if (adjustToolbar) adjustToolbar.style.display = "flex";
             switchTab("preview");
@@ -2435,7 +2446,9 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             
             const result = await resp.json();
-            
+            // Mémorise les fichiers produits (ex. .pptx) pour le bouton Télécharger de la barre.
+            _lastPyOutputs = { projectId: currentProjectId, files: (result.other_files || []) };
+
             if (result.stdout) {
                 appendConsoleLine("stdout", result.stdout);
             }
@@ -2458,8 +2471,15 @@ document.addEventListener("DOMContentLoaded", () => {
                         body: JSON.stringify({ project_id: currentProjectId })
                     });
                     const fx = await fr.json();
-                    if (fx.fixed) {
-                        appendConsoleLine("system", `>>> [Auto-correction réussie en ${fx.attempts} essai(s) — version ${fx.versions_count}]`);
+                    // On branche sur `success` (le code FONCTIONNE), pas seulement `fixed` : si la
+                    // ré-exécution a réussi sans correction (attempts=0), le fichier (.pptx…) a bien
+                    // été produit → il faut l'AFFICHER, pas dire « non résolu ».
+                    if (fx.success) {
+                        if (fx.fixed) {
+                            appendConsoleLine("system", `>>> [Auto-correction réussie en ${fx.attempts} essai(s) — version ${fx.versions_count}]`);
+                        } else {
+                            appendConsoleLine("system", ">>> [Le code fonctionne — fichier généré]");
+                        }
                         await selectProject(currentProjectId);
                         loadVersion(currentProjectData.versions.length - 1);
                     } else {
@@ -2603,16 +2623,31 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    btnDownload.addEventListener("click", () => {
+    btnDownload.addEventListener("click", async () => {
+        // Pour un artefact PYTHON ayant produit des fichiers (ex. .pptx/.docx/.xlsx), on télécharge
+        // le FICHIER GÉNÉRÉ — pas le code source (l'utilisateur veut son .pptx, pas le script).
+        if (currentLanguage === "python" && _lastPyOutputs.files.length && _lastPyOutputs.projectId === currentProjectId) {
+            const prio = [".pptx", ".docx", ".xlsx", ".pdf", ".csv", ".png"];
+            const files = _lastPyOutputs.files.slice().sort(
+                (a, b) => (prio.findIndex(e => a.name.toLowerCase().endsWith(e)) + 1 || 99)
+                        - (prio.findIndex(e => b.name.toLowerCase().endsWith(e)) + 1 || 99));
+            const target = files[0];
+            try {
+                const url = await adFileBlobUrl(currentProjectId, target.name);
+                const a = document.createElement("a");
+                a.href = url; a.download = target.name;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+                return;
+            } catch (e) { /* repli sur le code source ci-dessous */ }
+        }
         if (!currentCode) return;
         const extension = currentLanguage === "python" ? "py" : "html";
-        const filename = `athenadesign_export.${extension}`;
-        
         const blob = new Blob([currentCode], { type: "text/plain;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = filename;
+        a.download = `athenadesign_export.${extension}`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

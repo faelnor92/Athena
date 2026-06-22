@@ -6,31 +6,58 @@ from datetime import datetime
 from tools.agenda_tools import load_agenda
 from tools.list_tools import get_list_items
 
-def get_daily_briefing(city: str = "Paris") -> str:
+def _resolve_city() -> str:
+    """Ville de l'utilisateur depuis sa config (par-compte) puis l'environnement. PAS de
+    « Paris » en dur : si rien n'est configuré, on renvoie "" (la météo le signalera)."""
+    try:
+        from core import user_config
+        cfg = user_config.get_all() or {}
+        for k in ("WEATHER_CITY", "CITY", "LOCATION", "VILLE"):
+            v = (cfg.get(k) or "").strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    for k in ("WEATHER_CITY", "DEFAULT_CITY", "CITY"):
+        v = os.getenv(k, "").strip()
+        if v:
+            return v
+    return ""
+
+
+def get_daily_briefing(city: str = "") -> str:
     """
     Génère un bulletin quotidien : météo, agenda du jour, tâches & courses, et — si Proxmox
     est configuré — un point INFRASTRUCTURE (VM en marche/arrêt, stockages élevés) ainsi que
     les alertes Vigie des dernières 24 h. Idéal en routine matinale (livrée sur Telegram).
+    city: ville de l'utilisateur pour la météo. Si tu la connais (mémoire/profil), PASSE-LA ;
+    sinon laisse vide → elle est déduite de la config du compte (jamais « Paris » par défaut).
     """
     today_str = datetime.now().strftime("%Y-%m-%d")
     readable_today = datetime.now().strftime("%A %d %B %Y")
-    
+
     briefing = f"☀️ **BRIEFING DU JOUR - {readable_today}** ☀️\n\n"
-    
-    # 1. METEO
-    print(f"☀️ [Briefing] Récupération de la météo pour : {city}")
-    try:
-        # Requête wttr.in formatée
-        encoded_city = urllib.parse.quote(city)
-        url = f"https://wttr.in/{encoded_city}?format=%C:+%t+(ressenti+%f),+Humidité+%h,+Vent+%w"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            weather_text = r.text.strip()
-            briefing += f"🌡️ **Météo à {city.capitalize()}** :\n> {weather_text}\n\n"
-        else:
-            briefing += f"🌡️ **Météo à {city.capitalize()}** : Indisponible temporairement.\n\n"
-    except Exception as e:
-        briefing += f"🌡️ **Météo à {city.capitalize()}** : Échec de la récupération ({str(e)}).\n\n"
+
+    # 1. METEO — ville fournie par le modèle, sinon config du compte (pas de Paris codé en dur).
+    if not (city or "").strip():
+        city = _resolve_city()
+    if not (city or "").strip():
+        briefing += ("🌡️ **Météo** : ville non configurée. Précise ta ville ou enregistre-la "
+                     "(Réglages → profil, ou demande-moi de la mémoriser).\n\n")
+        # On poursuit le reste du briefing (agenda, tâches, infra) sans bloquer.
+        city = None
+    if city:
+        print(f"☀️ [Briefing] Récupération de la météo pour : {city}")
+        try:
+            encoded_city = urllib.parse.quote(city)
+            url = f"https://wttr.in/{encoded_city}?format=%C:+%t+(ressenti+%f),+Humidité+%h,+Vent+%w"
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                briefing += f"🌡️ **Météo à {city.capitalize()}** :\n> {r.text.strip()}\n\n"
+            else:
+                briefing += f"🌡️ **Météo à {city.capitalize()}** : Indisponible temporairement.\n\n"
+        except Exception as e:
+            briefing += f"🌡️ **Météo à {city.capitalize()}** : Échec de la récupération ({str(e)}).\n\n"
         
     # 2. AGENDA DU JOUR (agenda de l'utilisateur courant)
     today_events = []
