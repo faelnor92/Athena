@@ -2043,12 +2043,14 @@ function updatePlanStepTerminal(index, status) {
 let _streamBubble = null;
 
 function _liveStripThoughts(s) {
-    // Masque les blocs de réflexion EN COURS de stream (chevrons/crochets, même non fermés).
+    // Masque, EN COURS de stream : blocs de réflexion (chevrons/crochets, même non fermés)
+    // ET balises d'émotion ([emotion: …], (ton: …)) — réservées au TTS.
     s = s.replace(/<(?:thought|thinking)>[\s\S]*?<\/(?:thought|thinking)>|\[(?:thought|thinking)\][\s\S]*?\[\/(?:thought|thinking)\]/gi, "");
     for (const t of ["<thought>", "<thinking>", "[thought]", "[thinking]"]) {
         const i = s.toLowerCase().indexOf(t);
         if (i !== -1) s = s.slice(0, i);
     }
+    s = s.replace(/[\[(]\s*(?:emotion|émotion|ton|tone|style)\s*[:=]\s*[^\])]+?\s*[\])]/gi, "");
     return s;
 }
 

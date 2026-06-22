@@ -342,6 +342,16 @@ def _push_approval_notice(aid: str, tool: str, notice: str, channel: str) -> Non
         pass
 
 
+def strip_emotion_tags(text: str) -> str:
+    """Retire les balises d'émotion vocale ([emotion: …], (ton: …)) du texte AFFICHÉ/ENVOYÉ
+    (chat, Telegram…). Elles ne servent qu'au TTS. Même motif que le strip côté front."""
+    if not text:
+        return text
+    import re
+    return re.sub(r"[\[(]\s*(?:emotion|émotion|ton|tone|style)\s*[:=]\s*[^\])]+?\s*[\])]",
+                  "", text, flags=re.IGNORECASE).strip()
+
+
 def strip_thoughts(text: str) -> str:
     if not text:
         return text

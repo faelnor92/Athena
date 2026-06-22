@@ -10,6 +10,17 @@ from core.swarm.engine import strip_thoughts  # noqa: E402
 
 
 @pytest.mark.parametrize("inp,exp", [
+    ("[emotion: enjoué] Bonjour", "Bonjour"),
+    ("(ton: calme) Salut", "Salut"),
+    ("[emotion:excité]Ça marche", "Ça marche"),
+    ("Aucun tag d'émotion", "Aucun tag d'émotion"),
+])
+def test_strip_emotion_tags(inp, exp):
+    from core.swarm.engine import strip_emotion_tags
+    assert strip_emotion_tags(inp) == exp
+
+
+@pytest.mark.parametrize("inp,exp", [
     ("<thought>x</thought>Réponse", "Réponse"),
     ("<thinking>x</thinking>Réponse", "Réponse"),
     ("[thought]x[/thought]Réponse", "Réponse"),          # crochets (cas observé en prod)

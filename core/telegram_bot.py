@@ -139,6 +139,13 @@ def _respond(chat_id: str, user_text: str) -> str:
             if m.get("role") == "assistant" and (m.get("content") or "").strip():
                 final = m["content"].strip()
                 break
+        # Telegram = texte : on retire les balises de réflexion ET d'émotion (réservées au TTS),
+        # sinon « [emotion: …] » / « <thought>… » fuitent dans le message.
+        try:
+            from core.swarm.engine import strip_thoughts, strip_emotion_tags
+            final = strip_emotion_tags(strip_thoughts(final))
+        except Exception:
+            pass
         # Mémorise le contexte (borné) pour les échanges suivants.
         with _LOCK:
             _HISTORY[chat_id] = new_chain[-_HISTORY_MAX:]
