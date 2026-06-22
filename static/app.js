@@ -2036,6 +2036,39 @@ function updatePlanStepTerminal(index, status) {
     if (logsTerminal) logsTerminal.scrollTop = logsTerminal.scrollHeight;
 }
 
+// --- Streaming live de la réponse (bulle temporaire « en train d'écrire ») ----------------
+// Le moteur publie des steps `message_delta` au fil de la génération (comme AthenaDesign). On
+// les affiche dans une bulle provisoire (typing), remplacée par le rendu RICHE final au step
+// `message` (markdown/artifacts/voix). Évite de retoucher appendAgentMessage.
+let _streamBubble = null;
+
+function _liveStripThoughts(s) {
+    // Masque les blocs de réflexion EN COURS de stream (chevrons/crochets, même non fermés).
+    s = s.replace(/<(?:thought|thinking)>[\s\S]*?<\/(?:thought|thinking)>|\[(?:thought|thinking)\][\s\S]*?\[\/(?:thought|thinking)\]/gi, "");
+    for (const t of ["<thought>", "<thinking>", "[thought]", "[thinking]"]) {
+        const i = s.toLowerCase().indexOf(t);
+        if (i !== -1) s = s.slice(0, i);
+    }
+    return s;
+}
+
+function _ensureStreamBubble(agent) {
+    if (_streamBubble && _streamBubble.agent === agent) return _streamBubble;
+    _clearStreamBubble();
+    const el = document.createElement("div");
+    el.className = `message agent-msg agent-${agent} animate-fade-in streaming-bubble`;
+    el.innerHTML = `<div class="message-content"></div>`;
+    chatMessages.appendChild(el);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    _streamBubble = { agent, el, raw: "" };
+    return _streamBubble;
+}
+
+function _clearStreamBubble() {
+    if (_streamBubble && _streamBubble.el) { try { _streamBubble.el.remove(); } catch (e) {} }
+    _streamBubble = null;
+}
+
 async function playAgentSteps(steps, immediate = false) {
     // Rafraîchit les vues impactées par les outils utilisés (liste, agenda…) — sinon l'UI
     // reste figée et on croit à tort que l'action de l'agent n'a rien écrit.
@@ -2211,7 +2244,20 @@ async function playAgentSteps(steps, immediate = false) {
                     logToOrchestrator(`💭 ${step.agent} : ${(step.content || "").slice(0, 120)}`, "system");
                 }
 
+                else if (step.type === "message_delta") {
+                    // Affichage LIVE token-par-token (façon Design) dans une bulle provisoire.
+                    const sb = _ensureStreamBubble(step.agent || "Athena");
+                    sb.raw += (step.content || "");
+                    const cEl = sb.el.querySelector(".message-content");
+                    if (cEl) {
+                        cEl.innerHTML = escapeHtml(_liveStripThoughts(sb.raw)).replace(/\n/g, "<br>")
+                            + '<span class="stream-caret">▌</span>';
+                    }
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+
                 else if (step.type === "message" || step.type === "terminal_message") {
+                    _clearStreamBubble();   // la bulle provisoire est remplacée par le rendu final riche
                     if (step.type === "terminal_message") {
                         // Afficher le message directement dans la console interactive avec rendu Markdown HTML
                         let htmlContent = step.content;
@@ -3088,9 +3134,11 @@ chatForm.addEventListener("submit", async (e) => {
                     } else if (ev === "step") {
                         await playAgentSteps([payload], true);   // immédiat : pas de délai cinéma en streaming
                     } else if (ev === "error") {
+                        _clearStreamBubble();
                         logToTerminal("Erreur essaim: " + (payload.detail || ""), "error");
                         try { localStorage.removeItem("athena_active_run"); } catch (e) {}
                     } else if (ev === "done") {
+                        _clearStreamBubble();
                         finished = true;
                         try { localStorage.removeItem("athena_active_run"); } catch (e) {}
                     }
@@ -3113,6 +3161,7 @@ chatForm.addEventListener("submit", async (e) => {
             logToTerminal("Erreur de connexion: " + err, "error");
         }
     } finally {
+        _clearStreamBubble();   // sécurité : pas de bulle provisoire orpheline (abort/erreur)
         activeAbortController = null;
         activeRunId = null;
         // Run terminé/interrompu côté UI : ne pas tenter de le reprendre au prochain chargement.
