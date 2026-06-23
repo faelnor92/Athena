@@ -7112,28 +7112,59 @@ async function executeTerminalCommand() {
     const _hostLabel = (hostSelect && hostId) ? hostSelect.options[hostSelect.selectedIndex].text : "local";
     logToTerminal(`$ athena-${selectedAgent.toLowerCase()} [${_hostLabel}] > ${command}`, "transition");
 
+    // Mode console actif : les étapes (plan, messages, sortie) se rendent DANS le terminal coloré.
+    window._coderConsoleActive = true;
     try {
-        const response = await apiFetch("/api/terminal/coder", {
+        const response = await apiFetch("/api/terminal/coder/stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ command: command, agent: selectedAgent, project_id: projectId, host_id: hostId })
         });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            // Mode console actif : les steps de plan se rendent DANS le terminal (pas le chat).
-            window._coderConsoleActive = true;
-            // Jouer les étapes d'exécution de l'Agent Codeur dans le terminal de logs
-            await playAgentSteps(data.steps);
-            // Recharger l'arbre des conversations
-            await reloadChatHistory(true);
-            await refreshMemory();
-        } else {
-            // data.detail peut être une chaîne OU un objet (erreur structurée) → message lisible.
-            let msg = data && data.detail;
+
+        if (!response.ok || !response.body) {
+            // Repli : erreur lisible (réponse non-stream, ex. 404/500 avant le flux).
+            let msg; try { const d = await response.json(); msg = d && d.detail; } catch (_) {}
             if (msg && typeof msg === "object") msg = msg.message || msg.detail || JSON.stringify(msg);
             logToTerminal("Erreur terminal : " + (msg || `HTTP ${response.status}`), "error");
+        } else {
+            // Lecture SSE : étapes au fil de l'eau → MÊME rendu terminal que la version bloc.
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = "";
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                let idx;
+                while ((idx = buf.indexOf("\n\n")) >= 0) {
+                    const block = buf.slice(0, idx); buf = buf.slice(idx + 2);
+                    let ev = "", dataStr = "";
+                    block.split("\n").forEach(line => {
+                        if (line.startsWith("event:")) ev = line.slice(6).trim();
+                        else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+                    });
+                    if (!dataStr) continue;
+                    let payload; try { payload = JSON.parse(dataStr); } catch (_) { continue; }
+                    if (ev === "run") {
+                        tokenMeterReset();   // compteur in/out du run console
+                    } else if (ev === "step") {
+                        // Les deltas de tokens (prose en streaming) iraient dans une bulle de CHAT
+                        // (invisible dans l'onglet Code) : on ne les REND pas ici, mais on alimente
+                        // le compteur. La prose complète arrive en `terminal_message` final.
+                        if (payload.type === "message_delta") {
+                            tokenMeterAddEstimate((payload.content || "").length);
+                            continue;
+                        }
+                        // Console : un message d'agent se rend dans le TERMINAL (pas le chat).
+                        if (payload.type === "message") payload.type = "terminal_message";
+                        await playAgentSteps([payload], true);   // immédiat : pas de délai cinéma
+                    } else if (ev === "error") {
+                        logToTerminal("Erreur terminal : " + (payload.detail || ""), "error");
+                    }
+                }
+            }
+            await reloadChatHistory(true);
+            await refreshMemory();
         }
     } catch (err) {
         logToTerminal("Erreur de connexion terminal : " + (err && err.message ? err.message : err), "error");

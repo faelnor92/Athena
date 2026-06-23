@@ -818,8 +818,11 @@ class TerminalRequest(BaseModel):
     project_id: Optional[str] = None  # projet ciblé par la CONSOLE (None = projet courant)
     host_id: Optional[str] = None     # hôte SSH ciblé (None = défaut .env / local)
 
-@router.post("/api/terminal/coder")
-async def terminal_coder(req: TerminalRequest):
+def _coder_console_work(req: TerminalRequest, run_id: str) -> dict:
+    """Corps SYNCHRONE de la console codeur (bash direct OU run LLM). Conçu pour tourner dans un
+    thread à contexte copié où current_run_id == run_id est déjà posé → les étapes publiées
+    (run_context) alimentent run_registry et sont diffusables en SSE (live), tout en restant
+    rendues par le MÊME chemin terminal côté front (coloration conservée)."""
     if not session.active_agent:
         raise HTTPException(status_code=500, detail=f"{_app_name()} n'est pas initialisé.")
 
@@ -1039,6 +1042,12 @@ async def terminal_coder(req: TerminalRequest):
                 "stream": "stdout"
             })
             
+        # Diffusion live (SSE) : on pousse les étapes du bash direct dans run_registry.
+        for _s in steps:
+            try:
+                run_context.publish_step(dict(_s))
+            except Exception:
+                pass
         return {
             "status": "success",
             "steps": steps,
@@ -1048,8 +1057,7 @@ async def terminal_coder(req: TerminalRequest):
     # Sinon, on passe par l'exécution standard de l'Agent Codeur
     chain.append({"role": "user", "content": req.command})
 
-    run_id = run_store.new_run_id()
-    run_registry.start(run_id)
+    # run_id et run_registry.start() sont fournis/faits par l'appelant (endpoint) → live SSE.
     token = current_run_id.set(run_id)
     chan_token = channels.current_channel.set("web")
     # La console codeur est admin-only ET pilotée en direct par l'utilisateur : on
@@ -1137,9 +1145,9 @@ async def terminal_coder(req: TerminalRequest):
                     (getattr(_a, "display_name", "") or "")).lower()
             if any(k in _txt for k in _CODE_KW):
                 _code_agents.add(_n)
-        next_agent, new_chain, steps = await asyncio.to_thread(
-            functools.partial(swarm.run, coder_agent, run_chain, max_turns=max_turns,
-                              locked=True, delegate_allowlist=_code_agents, context_variables=_ctx_vars))
+        next_agent, new_chain, steps = swarm.run(
+            coder_agent, run_chain, max_turns=max_turns,
+            locked=True, delegate_allowlist=_code_agents, context_variables=_ctx_vars)
 
         # CODE-TEST-FIX (auto-correction du code) : on lance les vérifications du projet ; en
         # cas d'échec, on renvoie les erreurs au codeur pour qu'il corrige, puis on revérifie
@@ -1151,7 +1159,8 @@ async def terminal_coder(req: TerminalRequest):
                 _cmd = code_autofix.detect_check_command(get_workspace_dir())
                 _att = 0
                 while _cmd and _att < code_autofix.max_attempts():
-                    _checks = await asyncio.to_thread(run_checks, _cmd)
+                    _checks = run_checks(_cmd)
+                    # `steps` vient de swarm.run → SwarmStepsList : .append() publie déjà en live.
                     steps.append({"type": "tool_output", "agent": coder_agent.name,
                                   "tool": "run_checks", "output": _checks})
                     if code_autofix.checks_passed(_checks):
@@ -1160,9 +1169,9 @@ async def terminal_coder(req: TerminalRequest):
                     new_chain.append({"role": "user", "content":
                         f"🔧 Code-Test-Fix : les vérifications ont ÉCHOUÉ.\n{_checks[:2000]}\n"
                         "Corrige le code pour les faire passer (n'explique pas, agis)."})
-                    next_agent, new_chain, _s2 = await asyncio.to_thread(
-                        functools.partial(swarm.run, coder_agent, new_chain, max_turns=max_turns,
-                                          locked=True, context_variables=_ctx_vars))
+                    next_agent, new_chain, _s2 = swarm.run(
+                        coder_agent, new_chain, max_turns=max_turns,
+                        locked=True, context_variables=_ctx_vars)
                     steps += _s2
         except Exception:
             import logging
@@ -1209,6 +1218,82 @@ async def terminal_coder(req: TerminalRequest):
             _tool_policy.reset_policy(_tp_token)
         if _fm_token is not None:
             _fm_var.reset(_fm_token)
+
+
+def _coder_validate(req: TerminalRequest):
+    """Validations communes aux deux endpoints console (avant de lancer le worker)."""
+    if not session.active_agent:
+        raise HTTPException(status_code=500, detail=f"{_app_name()} n'est pas initialisé.")
+    if not swarm.agents.get(req.agent or "Codeur"):
+        raise HTTPException(status_code=404, detail=f"Agent {req.agent or 'Codeur'} introuvable.")
+
+
+@router.post("/api/terminal/coder")
+async def terminal_coder(req: TerminalRequest):
+    """Console codeur — réponse en BLOC (compat). Le run tourne dans un thread à contexte copié."""
+    _coder_validate(req)
+    run_id = run_store.new_run_id()
+    run_registry.start(run_id)
+    ctx = contextvars.copy_context()
+    ctx.run(current_run_id.set, run_id)
+    try:
+        return await asyncio.to_thread(lambda: ctx.run(_coder_console_work, req, run_id))
+    finally:
+        run_registry.finish(run_id)
+
+
+@router.post("/api/terminal/coder/stream")
+async def terminal_coder_stream(req: TerminalRequest):
+    """Console codeur en STREAMING SSE : diffuse les étapes (activation, outils, sortie terminal,
+    plan, conso tokens) AU FIL DE L'EAU, puis un event 'done'. Le run tourne dans un thread à
+    contexte copié (survit à la déconnexion). Le front rend ces étapes par le MÊME chemin terminal
+    que la version bloc → coloration conservée + compteur in/out live."""
+    _coder_validate(req)
+    run_id = run_store.new_run_id()
+    run_registry.start(run_id)
+
+    async def gen():
+        rc_token = current_run_id.set(run_id)
+        ctx = contextvars.copy_context()
+
+        def _work():
+            try:
+                res = _coder_console_work(req, run_id)
+                run_registry.set_result(run_id, res)
+            except HTTPException as he:
+                run_registry.set_result(run_id, {"error": str(he.detail)})
+            except Exception as e:  # noqa: BLE001
+                logger.exception("Erreur console codeur stream (run %s)", run_id)
+                run_registry.set_result(run_id, {"error": str(e)})
+            finally:
+                run_registry.finish(run_id)
+
+        loop = asyncio.get_event_loop()
+        fut = loop.run_in_executor(None, lambda: ctx.run(_work))
+        try:
+            yield _sse("run", {"run_id": run_id})
+            sent = 0
+            while True:
+                live = run_registry.status(run_id)["steps"]
+                while sent < len(live):
+                    yield _sse("step", live[sent]); sent += 1
+                if fut.done():
+                    break
+                await asyncio.sleep(0.08)
+            # Drain final puis résultat.
+            live = run_registry.status(run_id)["steps"]
+            while sent < len(live):
+                yield _sse("step", live[sent]); sent += 1
+            res = run_registry.status(run_id).get("result") or {}
+            if res.get("error"):
+                yield _sse("error", {"detail": res["error"]})
+            else:
+                yield _sse("done", {"active_node_id": res.get("active_node_id")})
+        finally:
+            current_run_id.reset(rc_token)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
 
 # Endpoints mémoire / connaissances / agenda / listes : extraits en routeurs
 # dédiés (Single Responsibility). Voir routers/{memory,agenda,lists}.py.

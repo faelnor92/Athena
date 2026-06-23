@@ -1501,21 +1501,18 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             except Exception:
                 pass
             # -----------------------------
-            _usage_step = {
+            # LIVE : `steps` est une SwarmStepsList → .append() publie déjà l'étape dans
+            # run_context (un event par tour LLM, pas de flood) → le compteur in/out du client
+            # se met à jour pendant le run, pas seulement à la fin. (Pas de publish_step en plus,
+            # ce serait un doublon → double comptage.)
+            steps.append({
                 "type": "usage",
                 "agent": current_agent.name,
                 "model": current_agent.model,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "cumulative_tokens": tokens_used,  # total du run jusqu'ici (in+out)
-            }
-            steps.append(_usage_step)
-            # LIVE : pousse la conso au fil de l'eau (un event par tour LLM, pas de flood) →
-            # le compteur in/out du client se met à jour pendant le run, pas seulement à la fin.
-            try:
-                run_context.publish_step(dict(_usage_step))
-            except Exception:
-                pass
+            })
 
             # Va-t-on AUTO-CONTINUER ce tour ? (intention annoncée sans appel d'outil → on
             # relancera l'agent pour qu'il AGISSE). Calculé ici pour que l'échafaudage reste
