@@ -668,19 +668,31 @@ def _prepare_design_chat(user: str, payload: dict) -> dict:
         "model_name": payload.get("model_name", ""),
         "design_system": project.get("design_system", ""),
         "context_text": context_text, "images": images,
-        # CODE DE BASE → si une version de design existe déjà, on PART d'ELLE (itération :
-        # « ajoute X » ne doit pas tout régénérer) ; sinon on retombe sur le code racine.
-        "base_code": _design_base_code(project, project_id),
+        # CODE DE BASE → on PART de la version SÉLECTIONNÉE dans l'UI (base_version, 1-indexée).
+        # Sinon, de la dernière version ; sinon du code racine. Corrige le bug « la modif repartait
+        # toujours de la dernière version même après être revenu sur une version antérieure ».
+        "base_code": _design_base_code(project, project_id, base_version=payload.get("base_version")),
     }
 
 
-def _design_base_code(project: dict, project_id: str, max_total: int = 60000) -> str:
-    """Code de base pour ITÉRER. Si le projet a déjà une version de design, on repart de SON
-    code (le design COURANT) — mono OU multi-fichiers (format `=== FILE: chemin ===`) — pour
-    que le modèle MODIFIE l'existant au lieu de tout réinventer. Sinon, on retombe sur le code
-    racine du projet (`_read_base_code`)."""
+def _design_base_code(project: dict, project_id: str, max_total: int = 60000,
+                      base_version=None) -> str:
+    """Code de base pour ITÉRER. On repart de la version SÉLECTIONNÉE (`base_version`, 1-indexée)
+    si fournie et valide — sinon de la DERNIÈRE version — mono OU multi-fichiers (format
+    `=== FILE: chemin ===`), pour que le modèle MODIFIE cet état au lieu de tout réinventer.
+    Sinon, on retombe sur le code racine du projet (`_read_base_code`)."""
     versions = (project or {}).get("versions") or []
-    last = versions[-1] if versions else None
+    last = None
+    if versions:
+        # base_version est 1-indexée (numéro affiché) ; on tolère str/None et hors bornes.
+        try:
+            _idx = int(base_version) - 1
+            if 0 <= _idx < len(versions):
+                last = versions[_idx]
+        except (TypeError, ValueError):
+            last = None
+        if last is None:
+            last = versions[-1]
     if last:
         files = last.get("files") or []
         if files:
@@ -893,11 +905,16 @@ async def autofix_endpoint(request: Request, payload: dict = Body(...)):
         code = v.get("code", "")
         err = str(error_message or "Erreur d'exécution inconnue")[:2000]
         fix_prompt = (
-            "L'aperçu Web (HTML/React) ci-dessous a généré une erreur JavaScript à l'exécution. "
-            "Corrige le code pour qu'il fonctionne correctement sans cette erreur, en conservant "
-            "toute l'intention initiale, le style, les fonctionnalités et les bibliothèques CDN. "
-            "Renvoie le code complet de la page.\n\n"
-            f"ERREUR:\n{err}\n\nCODE ACTUEL:\n{code}"
+            "L'aperçu Web (HTML/React) ci-dessous est DÉFECTUEUX : il a produit l'erreur ci-après "
+            "(erreur JavaScript À L'EXÉCUTION, promesse rejetée, OU rendu visuellement VIDE / écran "
+            "blanc — souvent un problème CSS : body/conteneur en display:none, visibility:hidden, "
+            "opacity:0, hauteur nulle, z-index/position qui masque, ou contenu hors écran). "
+            "DIAGNOSTIQUE la cause et CORRIGE le code pour qu'il s'affiche et fonctionne, en "
+            "conservant toute l'intention initiale, le style, les fonctionnalités et les "
+            "bibliothèques CDN. Si c'est un écran blanc, vérifie en priorité le CSS de html/body et "
+            "des conteneurs principaux (dimensions, visibilité, overflow, positionnement). "
+            "Renvoie le code COMPLET de la page.\n\n"
+            f"PROBLÈME:\n{err}\n\nCODE ACTUEL:\n{code}"
         )
         gen = await generator.generate_design(
             prompt=fix_prompt, history=project.get("history", []),

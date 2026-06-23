@@ -1460,9 +1460,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 prompt: aiPrompt,
                 provider: aiProviderSelect.value,
                 api_key: apiKeyInput.value,
-                model_name: modelNameInput.value
+                model_name: modelNameInput.value,
+                base_version: (currentVersionIndex != null) ? currentVersionIndex + 1 : undefined
             };
-            
+
             const chatResp = await fetch("/api/athenadesign/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1900,6 +1901,27 @@ document.addEventListener("DOMContentLoaded", () => {
     console.error = wrap('error', console.error);
     window.addEventListener('error', e => {
         sendLog('stderr', e.message + ' (' + e.filename + ':' + e.lineno + ':' + e.colno + ')');
+    });
+    // Promesses rejetées non gérées (souvent à l'origine d'un rendu cassé sans erreur visible).
+    window.addEventListener('unhandledrejection', e => {
+        var r = e && e.reason; sendLog('stderr', 'Promesse rejetée: ' + ((r && (r.message || r)) || 'inconnue'));
+    });
+    // DÉTECTION D'ÉCRAN BLANC (souvent dû au CSS, sans erreur JS) : après le rendu (délai pour
+    // React/Babel/Mermaid asynchrones), si le <body> est masqué OU sans aucun texte ni visuel,
+    // on signale → l'utilisateur peut lancer l'auto-correction.
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            try {
+                var b = document.body; if (!b) return;
+                var txt = (b.innerText || '').trim();
+                var hasVisual = !!b.querySelector('img,svg,canvas,video,picture,iframe,input,button,select,textarea,[style*="background-image"]');
+                var cs = getComputedStyle(b);
+                var hidden = cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') === 0;
+                if (hidden || (txt.length === 0 && !hasVisual)) {
+                    sendLog('stderr', 'Écran blanc : le rendu est vide (probable problème CSS — body/conteneur masqué via display:none, visibility:hidden, opacity:0, hauteur nulle, ou contenu positionné hors écran). Vérifie le CSS de html/body et des conteneurs principaux.');
+                }
+            } catch (_) {}
+        }, 900);
     });
 })();
 </script>
@@ -2390,7 +2412,10 @@ document.addEventListener("DOMContentLoaded", () => {
             provider: aiProviderSelect.value,
             api_key: apiKeyInput.value,
             model_name: modelNameInput.value,
-            attachments: pendingAttachments.slice()
+            attachments: pendingAttachments.slice(),
+            // Version SÉLECTIONNÉE comme base d'itération (1-indexée) : la modif part de CELLE
+            // qu'on regarde, pas systématiquement de la dernière.
+            base_version: (currentVersionIndex != null) ? currentVersionIndex + 1 : undefined
         };
 
         // Bulle assistant « live » qui se remplit au fil du STREAM (SSE), façon Claude Design.
