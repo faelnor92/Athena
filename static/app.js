@@ -2071,6 +2071,70 @@ function _clearStreamBubble() {
     _streamBubble = null;
 }
 
+/* ===== Compteur de tokens TEMPS RÉEL (entrants/sortants) — réutilisé chat / code / design =====
+ * Affiche ↓ in (prompt) · ↑ out (réponse) · Σ total du run. Pendant le stream, `out` est ESTIMÉ
+ * (≈4 caractères/token) puis RÉCONCILIÉ sur le chiffre exact dès l'event `usage` (1 par tour LLM,
+ * pas de flood). Visible en permanence pour que l'utilisateur suive sa dépense. */
+const _tokMeter = { inTok: 0, outTok: 0, estOut: 0, model: "default", active: false };
+// Cumul GLOBAL (toutes surfaces, durée de la session) → barre du haut. Amorcé depuis le serveur
+// dans loadCockpitData (valeur persistante), puis incrémenté EN LIVE à chaque event `usage`.
+const _globalTok = { inTok: 0, outTok: 0, total: 0 };
+function globalTokRender() {
+    const elIn = document.getElementById("stat-tokens-in");
+    const elOut = document.getElementById("stat-tokens-out");
+    const elTot = document.getElementById("stat-tokens");
+    const total = _globalTok.total || (_globalTok.inTok + _globalTok.outTok);
+    if (elIn) elIn.textContent = "↓" + (_globalTok.inTok || 0).toLocaleString();
+    if (elOut) elOut.textContent = "↑" + (_globalTok.outTok || 0).toLocaleString();
+    if (elTot) elTot.textContent = (total || 0).toLocaleString();
+}
+function _tokMeterEl() {
+    let el = document.getElementById("token-meter");
+    if (!el) {
+        el = document.createElement("div");
+        el.id = "token-meter";
+        el.style.cssText = "position:fixed;bottom:14px;right:14px;z-index:9999;display:none;"
+            + "background:rgba(15,20,30,.92);color:#bfe3ff;border:1px solid rgba(120,200,255,.28);"
+            + "border-radius:10px;padding:6px 11px;font:12px/1.45 ui-monospace,SFMono-Regular,monospace;"
+            + "box-shadow:0 4px 16px rgba(0,0,0,.45);backdrop-filter:blur(6px);white-space:nowrap";
+        document.body.appendChild(el);
+    }
+    return el;
+}
+function tokenMeterReset(model) {
+    _tokMeter.inTok = 0; _tokMeter.outTok = 0; _tokMeter.estOut = 0;
+    _tokMeter.model = model || "default"; _tokMeter.active = true;
+    tokenMeterRender();
+}
+function tokenMeterAddUsage(p, c, model) {
+    _tokMeter.inTok += (p || 0);
+    _tokMeter.outTok += (c || 0);
+    _tokMeter.estOut = 0;                 // l'exact remplace l'estimation provisoire du stream
+    if (model) _tokMeter.model = model;
+    _tokMeter.active = true;
+    tokenMeterRender();
+    // Le cumul global monte EN LIVE (pas seulement au rafraîchissement serveur de fin de run).
+    _globalTok.inTok += (p || 0);
+    _globalTok.outTok += (c || 0);
+    _globalTok.total += (p || 0) + (c || 0);
+    globalTokRender();
+}
+function tokenMeterAddEstimate(chars) {
+    _tokMeter.estOut += Math.max(0, Math.round((chars || 0) / 4));
+    _tokMeter.active = true;
+    tokenMeterRender();
+}
+function tokenMeterRender() {
+    const el = _tokMeterEl();
+    el.style.display = _tokMeter.active ? "block" : "none";
+    const out = _tokMeter.outTok + _tokMeter.estOut;
+    const total = _tokMeter.inTok + out;
+    const prov = _tokMeter.estOut ? "~" : "";
+    el.innerHTML = `<span title="tokens entrants (prompt envoyé au LLM)">↓&nbsp;${_tokMeter.inTok.toLocaleString()}</span>`
+        + `&nbsp;&nbsp;<span title="tokens sortants (réponse générée)">↑&nbsp;${prov}${out.toLocaleString()}</span>`
+        + `&nbsp;&nbsp;<b title="total du run (entrants + sortants)">Σ&nbsp;${prov}${total.toLocaleString()}</b>`;
+}
+
 async function playAgentSteps(steps, immediate = false) {
     // Rafraîchit les vues impactées par les outils utilisés (liste, agenda…) — sinon l'UI
     // reste figée et on croit à tort que l'action de l'agent n'a rien écrit.
@@ -2246,8 +2310,14 @@ async function playAgentSteps(steps, immediate = false) {
                     logToOrchestrator(`💭 ${step.agent} : ${(step.content || "").slice(0, 120)}`, "system");
                 }
 
+                else if (step.type === "usage") {
+                    // Conso EXACTE du tour (in/out) → compteur temps réel, réconcilie l'estimation.
+                    tokenMeterAddUsage(step.prompt_tokens, step.completion_tokens, step.model);
+                }
+
                 else if (step.type === "message_delta") {
                     // Affichage LIVE token-par-token (façon Design) dans une bulle provisoire.
+                    tokenMeterAddEstimate((step.content || "").length);   // estimation 'out' provisoire
                     const sb = _ensureStreamBubble(step.agent || "Athena");
                     sb.raw += (step.content || "");
                     const cEl = sb.el.querySelector(".message-content");
@@ -3134,6 +3204,7 @@ chatForm.addEventListener("submit", async (e) => {
                     try { payload = JSON.parse(dataStr); } catch (e) { continue; }
                     if (ev === "run") {
                         activeRunId = payload.run_id;
+                        tokenMeterReset();   // nouveau run → compteur in/out remis à zéro
                         // Mémorise le run en cours : si la page est rechargée, on pourra
                         // se reconnecter au run d'arrière-plan via /api/chat/reconnect.
                         try { localStorage.setItem("athena_active_run", activeRunId); } catch (e) {}
@@ -7357,15 +7428,19 @@ if (btnOfficeRotate) {
 // =========================================================================
 
 // Télémétrie & Rafraîchissement
-const _btnResetTelemetry = document.getElementById("btn-reset-telemetry");
-if (_btnResetTelemetry) _btnResetTelemetry.addEventListener("click", async () => {
-    if (!confirm("Remettre à zéro les compteurs (requêtes, outils, tokens, coût) ?")) return;
+async function resetTelemetry() {
+    if (!confirm("Remettre à zéro le cumul global (requêtes, outils, tokens in/out, coût) ?\nCette action est persistante.")) return;
     try {
         await apiFetch("/api/telemetry/reset", { method: "POST" });
+        _globalTok.inTok = 0; _globalTok.outTok = 0; _globalTok.total = 0; globalTokRender();
         if (typeof loadCockpitData === "function") loadCockpitData();
-        logToTerminal("Compteurs du cockpit remis à zéro.", "system");
-    } catch (e) { logToTerminal("Réinitialisation : " + e, "error"); }
-});
+        if (typeof logToTerminal === "function") logToTerminal("Cumul global remis à zéro.", "system");
+    } catch (e) { if (typeof logToTerminal === "function") logToTerminal("Réinitialisation : " + e, "error"); }
+}
+const _btnResetTelemetry = document.getElementById("btn-reset-telemetry");
+if (_btnResetTelemetry) _btnResetTelemetry.addEventListener("click", resetTelemetry);
+const _btnResetTelemetryTop = document.getElementById("btn-reset-telemetry-top");
+if (_btnResetTelemetryTop) _btnResetTelemetryTop.addEventListener("click", resetTelemetry);
 
 async function loadCockpitData() {
     try {
@@ -7376,7 +7451,11 @@ async function loadCockpitData() {
         // Mettre à jour les statistiques
         document.getElementById("stat-queries").innerText = data.total_queries || 0;
         document.getElementById("stat-tools").innerText = data.tool_calls || 0;
-        document.getElementById("stat-tokens").innerText = data.total_tokens ? data.total_tokens.toLocaleString() : 0;
+        // Cumul GLOBAL in/out (autoritatif, persistant côté serveur) → amorce le cumul de session.
+        _globalTok.inTok = data.total_prompt_tokens || 0;
+        _globalTok.outTok = data.total_completion_tokens || 0;
+        _globalTok.total = data.total_tokens || (_globalTok.inTok + _globalTok.outTok);
+        globalTokRender();
         
         // Afficher le coût exact calculé par le serveur
         const costVal = data.total_cost !== undefined ? data.total_cost.toFixed(4) : ((data.total_tokens || 0) * 0.000015).toFixed(4);
@@ -9091,6 +9170,14 @@ async function loadMyLlm() {
     try {
         const d = await (await apiFetch("/api/me/llm")).json();
         model.value = d.model || "";
+        // Pickers modèles spécialisés (design/code) peuplés depuis /api/config/models (= mêmes
+        // modèles ACCESSIBLES que les agents : endpoint custom + providers dont la clé est posée).
+        const dm = document.getElementById("myllm-design-model");
+        const cm = document.getElementById("myllm-code-model");
+        if (dm) dm.dataset.current = d.design_model || "";
+        if (cm) cm.dataset.current = d.code_model || "";
+        const _pickerHost = (dm && dm.closest(".settings-panel, .modal, body")) || document.body;
+        try { await _populateModelPickers(_pickerHost); } catch (_) {}
         const map = {
             "myllm-openai": "OPENAI_API_KEY", "myllm-anthropic": "ANTHROPIC_API_KEY",
             "myllm-gemini": "GEMINI_API_KEY", "myllm-custom-base": "CUSTOM_LLM_API_BASE",
@@ -9120,7 +9207,12 @@ if (_btnSaveMyLlm) _btnSaveMyLlm.addEventListener("click", async () => {
     }
     const r = await apiFetch("/api/me/llm", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: val("myllm-model"), keys }),
+        body: JSON.stringify({
+            model: val("myllm-model"),
+            design_model: val("myllm-design-model"),
+            code_model: val("myllm-code-model"),
+            keys,
+        }),
     });
     st.textContent = r.ok ? "✅ Config LLM enregistrée." : "❌ Échec.";
     if (r.ok) { ["myllm-openai","myllm-anthropic","myllm-gemini","myllm-custom-key"].forEach(i => document.getElementById(i).value = ""); loadMyLlm(); }

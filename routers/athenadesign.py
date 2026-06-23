@@ -717,8 +717,12 @@ def _persist_design_version(user: str, ctx: dict, result: dict) -> dict:
         if _pt or _ct:
             from core.state import TELEMETRY, get_model_cost
             TELEMETRY["total_tokens"] += _pt + _ct
+            TELEMETRY["total_prompt_tokens"] += _pt
+            TELEMETRY["total_completion_tokens"] += _ct
             TELEMETRY["total_cost"] += get_model_cost(ctx["model_name"] or "default", _pt, _ct)
             TELEMETRY["total_queries"] += 1
+            from core.state import save_telemetry as _save_tel
+            _save_tel()
     except Exception:
         pass
     write_db(user, ctx["db"])

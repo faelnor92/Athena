@@ -27,6 +27,9 @@ async def get_my_llm():
     """Config LLM de l'utilisateur courant (clés masquées). Champs vides = repli sur la base."""
     cfg = user_config.get_all()
     out = {"model": cfg.get("LLM_MODEL", "") or "", "using_base": not any(cfg.get(k) for k in _LLM_KEYS + ["LLM_MODEL"])}
+    # Modèles SPÉCIALISÉS (optionnels) : vide = la feature suit le modèle du chat (LLM_MODEL).
+    out["design_model"] = cfg.get("DESIGN_MODEL", "") or ""
+    out["code_model"] = cfg.get("CODE_MODEL", "") or ""
     for k in _LLM_KEYS:
         out[k] = _mask(cfg.get(k, ""))
     return out
@@ -34,6 +37,8 @@ async def get_my_llm():
 
 class MyLlmRequest(BaseModel):
     model: str | None = None
+    design_model: str | None = None  # modèle dédié AthenaDesign (vide = suit le chat)
+    code_model: str | None = None    # modèle dédié console code (vide = suit le chat)
     keys: dict = None  # {OPENAI_API_KEY: "...", ...} ; valeur masquée/vide = inchangée
 
 
@@ -44,6 +49,10 @@ async def set_my_llm(req: MyLlmRequest):
     updates = {}
     if req.model is not None:
         updates["LLM_MODEL"] = req.model.strip()
+    if req.design_model is not None:
+        updates["DESIGN_MODEL"] = req.design_model.strip()
+    if req.code_model is not None:
+        updates["CODE_MODEL"] = req.code_model.strip()
     for k, v in (req.keys or {}).items():
         if k not in _LLM_KEYS:
             continue

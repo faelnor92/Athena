@@ -97,9 +97,20 @@ class _CompletionMixin:
         """Appel LLM en streaming : diffuse les tokens via on_delta et reconstruit
         un objet réponse compatible avec la boucle (content + tool_calls)."""
         completion_kwargs["stream"] = True
+        # Demande l'usage RÉEL en fin de stream (OpenAI-compatible / vLLM). Sans ça, le streaming
+        # ne renvoie aucun token consommé → compteur de coût faux (on retombait sur une estimation
+        # grossière). Inoffensif si l'endpoint l'ignore.
+        try:
+            _so = dict(completion_kwargs.get("stream_options") or {})
+            _so["include_usage"] = True
+            completion_kwargs["stream_options"] = _so
+        except Exception:
+            pass
         content_parts = []
         tool_acc = {}   # index -> {id, name, arguments}
         finish_reason = None
+        usage_prompt = 0
+        usage_completion = 0
 
         stream_obj = _completion(**completion_kwargs)
         # Compat : si l'objet renvoyé est déjà une réponse complète (provider sans
@@ -115,6 +126,12 @@ class _CompletionMixin:
             return stream_obj
 
         for chunk in stream_obj:
+            # Le chunk d'usage final (include_usage) a souvent choices=[] → on le lit AVANT le
+            # garde-fou ci-dessous, sinon il serait ignoré et l'usage perdu.
+            _cu = getattr(chunk, "usage", None)
+            if _cu:
+                usage_prompt = getattr(_cu, "prompt_tokens", 0) or usage_prompt
+                usage_completion = getattr(_cu, "completion_tokens", 0) or usage_completion
             try:
                 choice = chunk.choices[0]
             except (AttributeError, IndexError):
@@ -172,8 +189,10 @@ class _CompletionMixin:
                 return d
 
         class _Usage:
-            prompt_tokens = 0
-            completion_tokens = 0
+            def __init__(self, p, c):
+                self.prompt_tokens = p
+                self.completion_tokens = c
+                self.total_tokens = (p or 0) + (c or 0)
 
         class _Choice:
             def __init__(self):
@@ -183,7 +202,7 @@ class _CompletionMixin:
         class _Resp:
             def __init__(self):
                 self.choices = [_Choice()]
-                self.usage = _Usage()
+                self.usage = _Usage(usage_prompt, usage_completion)
 
         return _Resp()
 
@@ -266,8 +285,19 @@ class _CompletionMixin:
             v = _ucfg.get(name)
             return (str(v).strip() if v else os.environ.get(name, "").strip())
 
-        # Modèle préféré de l'utilisateur (optionnel) : remplace le modèle par défaut.
-        if _ucfg.get("LLM_MODEL"):
+        # Priorité de modèle :
+        #  1) modèle FORCÉ pour le run (code/design) → prime sur tout (feature ≠ chat) ;
+        #  2) sinon, modèle préféré global de l'utilisateur (LLM_MODEL) ;
+        #  3) sinon, le modèle passé en argument (agent/défaut).
+        _fm = None
+        try:
+            from core.state import _forced_model
+            _fm = (_forced_model.get() or "").strip() or None
+        except Exception:
+            _fm = None
+        if _fm:
+            model = _fm
+        elif _ucfg.get("LLM_MODEL"):
             model = str(_ucfg["LLM_MODEL"]).strip()
 
         # Plafond de tokens : override ponctuel (ex. génération de design longue) sinon défaut env.

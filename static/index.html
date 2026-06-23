@@ -149,14 +149,19 @@
                 
                 <!-- Telemetry Badges -->
                 <div class="telemetry-badges">
-                    <div class="badge-item tokens-badge" title="Tokens Consommés">
+                    <div class="badge-item tokens-badge" title="Tokens cumulés — ↓ entrants (prompt) · ↑ sortants (réponse) · Σ total">
                         <span class="badge-icon">⚡</span>
-                        <span id="stat-tokens">0</span>
+                        <span id="stat-tokens-in" title="cumul entrants (prompt)" style="opacity:.85">↓0</span>
+                        <span style="opacity:.4">·</span>
+                        <span id="stat-tokens-out" title="cumul sortants (réponse)" style="opacity:.85">↑0</span>
+                        <span style="opacity:.4">·</span>
+                        <span id="stat-tokens" title="cumul total">0</span>
                     </div>
                     <div class="badge-item cost-badge" title="Estimation du Coût Réel">
                         <span class="badge-icon">💎</span>
                         <span id="stat-cost">0.00 €</span>
                     </div>
+                    <button type="button" id="btn-reset-telemetry-top" class="badge-item" title="Réinitialiser le cumul global (persistant)" style="cursor:pointer;border:none;background:transparent;color:inherit;opacity:.6">↺</button>
                     <!-- Hidden elements mapping to old stats to preserve loadCockpitData outputs -->
                     <span id="stat-queries" style="display:none;">0</span>
                     <span id="stat-tools" style="display:none;">0</span>
@@ -1673,6 +1678,8 @@
                     <h5 style="color: var(--accent-cyan); margin: 8px 0;">🤖 Mon modèle & mes clés LLM</h5>
                     <p class="section-desc">Optionnel : utilise <strong>ton propre</strong> modèle / tes clés API. Laissé vide = on garde la config de base du serveur.</p>
                     <div class="form-group"><label>Modèle préféré (vide = défaut)</label><input id="myllm-model" type="text" placeholder="ex: gpt-4o, claude-..., qwen3"></div>
+                    <div class="form-group"><label>🎨 Modèle AthenaDesign <span style="opacity:.6">(vide = suit le chat)</span></label><select id="myllm-design-model" data-model-picker="1"><option value="">— Suit le modèle du chat —</option></select></div>
+                    <div class="form-group"><label>🧩 Modèle console Code <span style="opacity:.6">(vide = suit le chat)</span></label><select id="myllm-code-model" data-model-picker="1"><option value="">— Suit le modèle du chat —</option></select></div>
                     <div class="form-group"><label>Clé OpenAI</label><input id="myllm-openai" type="password" placeholder="laisser vide = inchangé / base"></div>
                     <div class="form-group"><label>Clé Anthropic</label><input id="myllm-anthropic" type="password" placeholder="laisser vide = inchangé / base"></div>
                     <div class="form-group"><label>Clé Gemini</label><input id="myllm-gemini" type="password" placeholder="laisser vide = inchangé / base"></div>

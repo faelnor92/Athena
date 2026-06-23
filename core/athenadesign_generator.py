@@ -1156,7 +1156,17 @@ def _generate_via_athena(prompt: str, history: list, model_name: str = "",
     sans vision). Synchrone (à appeler en thread)."""
     from core.state import swarm as _sw
     images = images or []
-    model = (model_name or "").strip() or _athena_default_model()
+    # Modèle Design : choix UI explicite > DESIGN_MODEL (réglage par-user) > modèle du chat /
+    # défaut orchestrateur. `_explicit` = un modèle dédié a été choisi → on le FORCE (sinon
+    # l'override global LLM_MODEL dans _complete l'écraserait) ; vide = la feature suit le chat.
+    _design_pref = ""
+    try:
+        from core import user_config
+        _design_pref = (user_config.get_all().get("DESIGN_MODEL") or "").strip()
+    except Exception:
+        _design_pref = ""
+    _explicit = (model_name or "").strip() or _design_pref
+    model = _explicit or _athena_default_model()
 
     note = ""
     user_content = prompt
@@ -1183,8 +1193,15 @@ def _generate_via_athena(prompt: str, history: list, model_name: str = "",
     # Budget de sortie ÉLEVÉ : un design (HTML/React complet) dépasse vite 4000 tokens → sinon
     # le code est TRONQUÉ (balise/JSX coupés → aperçu cassé). + auto-continuation en filet.
     _mt = int(os.getenv("ATHENADESIGN_MAX_TOKENS", "8192") or 8192)
-    resp = _sw._complete(model, messages, tools_schema=None, allow_continuation=True,
-                         allow_fallback=True, max_tokens=_mt, on_delta=on_delta)
+    # FORCE le modèle Design dédié pour ce run (prime sur LLM_MODEL) ; sinon laisse le chat décider.
+    from core.state import _forced_model
+    _tok = _forced_model.set(model) if _explicit else None
+    try:
+        resp = _sw._complete(model, messages, tools_schema=None, allow_continuation=True,
+                             allow_fallback=True, max_tokens=_mt, on_delta=on_delta)
+    finally:
+        if _tok is not None:
+            _forced_model.reset(_tok)
     text = (resp.choices[0].message.content or "")
     _u = getattr(resp, "usage", None)
     return _attach_usage(parse_artifact_response(text),

@@ -14,8 +14,37 @@ TELEMETRY = {
     "total_queries": 0,
     "tool_calls": 0,
     "total_tokens": 0,
+    "total_prompt_tokens": 0,      # cumul ENTRANTS (prompt) — pour le compteur in/out global
+    "total_completion_tokens": 0,  # cumul SORTANTS (réponse)
     "total_cost": 0.0
 }
+
+
+def save_telemetry() -> None:
+    """Persiste le cumul global (tokens/coût/requêtes) → survit aux redémarrages. Stocké dans
+    shared_store (SQLite WAL, partagé multi-worker). Best-effort : ne casse jamais un run."""
+    try:
+        from core import shared_store
+        shared_store.set("telemetry", "global", dict(TELEMETRY))
+    except Exception:
+        pass
+
+
+def load_telemetry() -> None:
+    """Recharge le cumul persistant au démarrage (n'écrase que les clés connues)."""
+    try:
+        from core import shared_store
+        saved = shared_store.get("telemetry", "global", None)
+        if isinstance(saved, dict):
+            for _k in TELEMETRY:
+                if _k in saved and isinstance(saved[_k], (int, float)):
+                    TELEMETRY[_k] = saved[_k]
+    except Exception:
+        pass
+
+
+# Cumul restauré dès l'import (le module est chargé tôt) — shared_store est une feuille (stdlib).
+load_telemetry()
 
 CODER_CWD = None
 
@@ -173,10 +202,26 @@ _current_role = contextvars.ContextVar("current_role", default=None)
 # serveur depuis l'en-tête X-Athena-Lang, propagée au thread swarm. Sert à faire RÉPONDRE
 # les agents dans la langue de l'utilisateur (cf. préambule système). None → fr par défaut.
 _current_lang = contextvars.ContextVar("current_lang", default=None)
+# Modèle FORCÉ pour le run courant (ex. console code = CODE_MODEL, AthenaDesign = DESIGN_MODEL).
+# Quand il est posé, il PRIME sur l'override global LLM_MODEL dans _complete → permet à une
+# feature (code/design) d'utiliser un modèle distinct du chat sans toucher la config globale.
+_forced_model = contextvars.ContextVar("forced_model", default=None)
 # Noms de langue (dans la langue cible) pour la directive de réponse du préambule système.
 LANG_NAMES = {
     "fr": "français", "en": "English", "es": "español", "it": "italiano",
     "de": "Deutsch", "zh": "中文（简体）", "ja": "日本語",
+}
+# Directive de langue RÉDIGÉE DANS LA LANGUE CIBLE : une consigne dans la langue de
+# sortie « tire » la réponse bien plus fort que la langue du prompt de base (anti-dérive).
+# Toujours émise (français inclus), pour ne jamais dépendre de la langue implicite du prompt.
+LANG_DIRECTIVE = {
+    "fr": "Réponds toujours en français, sauf si l'utilisateur demande explicitement une autre langue. Les noms d'outils, de fichiers et le code restent inchangés.",
+    "en": "Always respond in English, unless the user explicitly asks for another language. Tool names, file names and code stay unchanged.",
+    "es": "Responde siempre en español, salvo que el usuario pida explícitamente otro idioma. Los nombres de herramientas, de archivos y el código permanecen sin cambios.",
+    "it": "Rispondi sempre in italiano, a meno che l'utente non chieda esplicitamente un'altra lingua. I nomi degli strumenti, dei file e il codice restano invariati.",
+    "de": "Antworte immer auf Deutsch, sofern der Nutzer nicht ausdrücklich eine andere Sprache verlangt. Tool-Namen, Dateinamen und Code bleiben unverändert.",
+    "zh": "始终用简体中文回复，除非用户明确要求使用其他语言。工具名称、文件名和代码保持不变。",
+    "ja": "ユーザーが明示的に他の言語を要求しない限り、常に日本語で回答してください。ツール名、ファイル名、コードは変更しないでください。",
 }
 
 def _scope_cid(client_id: str) -> str:

@@ -148,6 +148,8 @@ def _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_ch
         final_response = "Tâche traitée en arrière-plan sans réponse formulée."
 
     total_tokens_in_turn = 0
+    total_prompt_in_turn = 0
+    total_completion_in_turn = 0
     total_cost_in_turn = 0.0
     for step in steps:
         if step.get("type") == "tool_call":
@@ -155,13 +157,21 @@ def _chat_finalize(sess, req, run_id, run_started, new_chain, steps, original_ch
         elif step.get("type") == "usage":
             p_tok = step.get("prompt_tokens", 0)
             c_tok = step.get("completion_tokens", 0)
+            total_prompt_in_turn += p_tok
+            total_completion_in_turn += c_tok
             total_tokens_in_turn += p_tok + c_tok
             total_cost_in_turn += get_model_cost(step.get("model", "default"), p_tok, c_tok)
     if total_tokens_in_turn == 0:
-        total_tokens_in_turn = (len(req.message) + len(final_response)) // 4 + 800
+        total_prompt_in_turn = len(req.message) // 4 + 800
+        total_completion_in_turn = len(final_response) // 4
+        total_tokens_in_turn = total_prompt_in_turn + total_completion_in_turn
         total_cost_in_turn = get_model_cost("default", total_tokens_in_turn, 0)
     TELEMETRY["total_tokens"] += total_tokens_in_turn
+    TELEMETRY["total_prompt_tokens"] += total_prompt_in_turn
+    TELEMETRY["total_completion_tokens"] += total_completion_in_turn
     TELEMETRY["total_cost"] += total_cost_in_turn
+    from core.state import save_telemetry as _save_tel
+    _save_tel()
 
     run_agent = sess.active_agent.name if sess.active_agent else _orch_name()
     run_store.save(
@@ -1065,6 +1075,18 @@ async def terminal_coder(req: TerminalRequest):
     _tp_allow = [t.strip() for t in os.getenv("CODER_CONSOLE_ALLOW_TOOLS", "").split(",") if t.strip()]
     _tp_deny = [t.strip() for t in os.getenv("CODER_CONSOLE_DENY_TOOLS", "").split(",") if t.strip()]
     _tp_token = _tool_policy.set_policy(allow=_tp_allow or None, deny=_tp_deny or None) if (_tp_allow or _tp_deny) else None
+    # MODÈLE dédié au CODE (CODE_MODEL, par-user) : forcé pour CE run → prime sur LLM_MODEL
+    # (le chat peut tourner sur Mistral pendant que la console code sur un modèle « coder »).
+    # Vide = la console suit le modèle du chat. Le ContextVar est copié dans asyncio.to_thread.
+    from core.state import _forced_model as _fm_var
+    _fm_token = None
+    try:
+        from core import user_config as _ucfg_mod
+        _code_model = (_ucfg_mod.get_all().get("CODE_MODEL") or "").strip()
+        if _code_model:
+            _fm_token = _fm_var.set(_code_model)
+    except Exception:
+        _fm_token = None
     # Tâche de code multi-fichiers : budget de tours généreux (cf. Aider/Hermes ≈ 60-90).
     max_turns = int(os.getenv("CODER_CONSOLE_MAX_TURNS", "60") or 60)
     # REPO-MAP : on donne à l'agent la carte du projet (arbo + symboles) pour qu'il ne code
@@ -1185,6 +1207,8 @@ async def terminal_coder(req: TerminalRequest):
             _ssh_hosts.reset_active(_ssh_token)
         if _tp_token is not None:
             _tool_policy.reset_policy(_tp_token)
+        if _fm_token is not None:
+            _fm_var.reset(_fm_token)
 
 # Endpoints mémoire / connaissances / agenda / listes : extraits en routeurs
 # dédiés (Single Responsibility). Voir routers/{memory,agenda,lists}.py.
