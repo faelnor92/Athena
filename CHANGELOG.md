@@ -1,5 +1,39 @@
 # Historique des Versions (Changelog)
 
+## [0.28.0] - 2026-06-23
+### Feat — modèles par-feature, tokens in/out temps réel, console Code en streaming
+- **Modèle dédié Design & Code** : nouvelles clés par-utilisateur `DESIGN_MODEL` / `CODE_MODEL`
+  (Réglages → Mon modèle & clés LLM, sélecteurs peuplés via `/api/config/models` → uniquement
+  les modèles ACCESSIBLES : endpoint custom + fournisseurs dont la clé est posée). Déblocage de
+  fond : `_complete` applique la priorité **modèle forcé (ContextVar `_forced_model`) > `LLM_MODEL`
+  > modèle passé** → une feature peut tourner sur un modèle différent du chat (ex. Mistral pour le
+  chat, qwen-coder pour le code/design) sans toucher la config globale. AthenaDesign force le
+  modèle Design résolu ; la console code force `CODE_MODEL`.
+- **Compteur de tokens en TEMPS RÉEL (entrants/sortants)** : `_complete_streaming` demande
+  `stream_options.include_usage` et capte le vrai usage in/out en streaming (auparavant perdu → 0).
+  Compteur **par-onglet** (chat, design, code) `↓ in · ↑ out · Σ total` : estimation pendant le
+  stream, réconciliée sur l'exact à chaque event `usage`. **Cumul global** in/out dans la barre du
+  haut, **PERSISTANT** (`shared_store`, survit aux redémarrages) + bouton de réinitialisation.
+  TELEMETRY suit désormais `total_prompt_tokens` / `total_completion_tokens`.
+- **Console Code en STREAMING (SSE)** : nouvel endpoint `POST /api/terminal/coder/stream` diffuse
+  les étapes (activation, outils, sortie terminal, plan, conso tokens) au fil de l'eau ; le run
+  tourne dans un thread à contexte copié (survit à la déconnexion). `/api/terminal/coder` (réponse
+  bloc) conservé pour compat. Rendu par le même chemin terminal → coloration conservée.
+
+### Fix — AthenaDesign
+- **Itération depuis la version SÉLECTIONNÉE** : une modification repartait toujours de la dernière
+  version, même après être revenu sur une version antérieure. Le front transmet désormais
+  `base_version` (1-indexée) ; `_design_base_code` part de cette version (repli : dernière → racine).
+- **Designs plus modernes** : DESIGN RULES réécrites (barre de qualité, whitespace/échelle 8pt, typo
+  fluide `clamp()`, palette neutre + 1 accent, profondeur, bento grids, micro-interactions sobres).
+- **Auto-correction des écrans blancs (CSS)** : le bridge d'aperçu détecte un rendu vide (body masqué
+  ou sans contenu) + capture `unhandledrejection` ; le prompt d'autofix web couvre JS **et** CSS.
+
+### Prompt système
+- Règles système + blocs mails/documents resserrés (règle anti-fabrication canonique, redites
+  supprimées). **`LANG_DIRECTIVE`** : directive de langue rédigée DANS la langue cible et toujours
+  émise (français inclus) → fin de la dérive de langue selon la langue du prompt de base.
+
 ## [0.27.0] - 2026-06-22
 ### Feat — streaming AthenaDesign, bus d'événements + HITL audité
 - **Génération AthenaDesign en STREAMING** (SSE) : nouvel endpoint `POST /api/athenadesign/chat/stream`

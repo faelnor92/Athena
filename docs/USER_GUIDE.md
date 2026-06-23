@@ -6,6 +6,15 @@ Bienvenue ! Si vous lisez ce guide, c'est que vous venez d'installer **Athena**,
 
 ---
 
+## ✨ Nouveautés de la version 0.28.0
+
+- **Modèle dédié au Design et au Code** : dans **Réglages → Mon modèle & clés LLM**, choisissez un modèle spécifique pour **AthenaDesign** (🎨) et pour la **console Code** (🧩), différent de celui du chat (ex. un modèle « coder » pour le code, un autre pour la conversation). Les listes ne proposent que les modèles **réellement accessibles** (votre endpoint + les fournisseurs dont la clé est renseignée).
+- **Compteur de tokens en temps réel** : la consommation **entrante (↓) et sortante (↑)** s'affiche en direct pendant la génération (chat, design, code). Un **cumul global** figure dans la barre du haut — **persistant** (conservé entre les redémarrages) avec un bouton **↺** pour le remettre à zéro.
+- **Console Code en direct** : les étapes de l'agent et la consommation s'affichent **au fil de l'eau** (streaming), comme le chat, sans attendre la fin.
+- **AthenaDesign amélioré** : une modification repart désormais de la **version que vous regardez** (et non plus systématiquement de la dernière) ; designs plus **modernes** ; l'auto-correction détecte aussi les **écrans blancs** dus au CSS.
+
+---
+
 ## 1. 🌟 Premier Lancement et Connexion
 
 Une fois Athena installé et démarré sur votre machine, l'interface graphique (UI) n'est accessible que via votre navigateur web.

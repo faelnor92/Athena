@@ -6,6 +6,15 @@ Benvenuto! Se stai leggendo questa guida, è perché hai appena installato **Ath
 
 ---
 
+## ✨ Novità della versione 0.28.0
+
+- **Modello dedicato per Design e Codice**: in **Impostazioni → Il mio modello e chiavi LLM**, scegli un modello specifico per **AthenaDesign** (🎨) e per la **console Codice** (🧩), diverso da quello della chat (es. un modello «coder» per il codice e un altro per la conversazione). Gli elenchi mostrano solo i modelli **realmente accessibili** (il tuo endpoint + i provider la cui chiave è impostata).
+- **Contatore di token in tempo reale**: il consumo **in entrata (↓) e in uscita (↑)** è mostrato in diretta durante la generazione (chat, design, codice). Un **totale globale** è nella barra in alto — **persistente** (mantenuto tra i riavvii) con un pulsante **↺** per azzerarlo.
+- **Console Codice in diretta**: i passaggi dell'agente e il consumo vengono trasmessi **in tempo reale** (streaming), come la chat, senza attendere la fine.
+- **Miglioramenti di AthenaDesign**: una modifica parte ora dalla **versione che stai visualizzando** (non più sempre dall'ultima); design più **moderni**; l'autocorrezione rileva anche le **schermate bianche** dovute al CSS.
+
+---
+
 ## 1. 🌟 Primo Avvio e Connessione
 
 Una volta installato e avviato Athena sulla tua macchina, l'interfaccia grafica (UI) è accessibile solo tramite il tuo browser web.
