@@ -6,6 +6,15 @@
 
 ---
 
+## ✨ Novedades de la versión 0.28.0
+
+- **Modelo dedicado para Diseño y Código**: en **Ajustes → Mi modelo y claves LLM**, elige un modelo específico para **AthenaDesign** (🎨) y para la **consola de Código** (🧩), distinto del modelo del chat (p. ej. un modelo «coder» para el código y otro para la conversación). Las listas solo muestran los modelos **realmente accesibles** (tu endpoint + los proveedores cuya clave esté configurada).
+- **Contador de tokens en tiempo real**: el consumo **entrante (↓) y saliente (↑)** se muestra en directo durante la generación (chat, diseño, código). Un **total global** aparece en la barra superior — **persistente** (se conserva entre reinicios) con un botón **↺** para ponerlo a cero.
+- **Consola de Código en directo**: los pasos del agente y el consumo se transmiten **en tiempo real** (streaming), como el chat, sin esperar al final.
+- **Mejoras en AthenaDesign**: una modificación parte ahora de la **versión que estás viendo** (ya no siempre de la última); diseños más **modernos**; la autocorrección también detecta las **pantallas en blanco** debidas al CSS.
+
+---
+
 ## 1. 🌟 Primer Inicio y Conexión
 
 Una vez Athena instalado e iniciado en tu máquina, la interfaz gráfica (UI) solo es accesible a través de tu navegador web.

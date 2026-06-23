@@ -6,6 +6,15 @@ Welcome! If you're reading this guide, you've just installed **Athena**, your mu
 
 ---
 
+## ✨ What's new in version 0.28.0
+
+- **Dedicated model for Design and Code**: in **Settings → My LLM model & keys**, pick a specific model for **AthenaDesign** (🎨) and for the **Code console** (🧩), different from the chat model (e.g. a "coder" model for code, another for conversation). The lists only show models that are **actually reachable** (your endpoint + providers whose key is set).
+- **Real-time token counter**: **incoming (↓) and outgoing (↑)** usage is shown live during generation (chat, design, code). A **global total** sits in the top bar — **persistent** (kept across restarts) with a **↺** button to reset it.
+- **Live Code console**: the agent's steps and token usage stream **in real time**, like the chat, without waiting for completion.
+- **AthenaDesign improvements**: an edit now starts from the **version you are viewing** (no longer always the latest); more **modern** designs; auto-fix also detects **blank screens** caused by CSS.
+
+---
+
 ## 1. 🌟 First Launch and Login
 
 Once Athena is installed and started on your machine, the graphical interface (UI) is only accessible through your web browser.

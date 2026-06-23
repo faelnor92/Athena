@@ -1460,9 +1460,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 prompt: aiPrompt,
                 provider: aiProviderSelect.value,
                 api_key: apiKeyInput.value,
-                model_name: modelNameInput.value
+                model_name: modelNameInput.value,
+                base_version: (currentVersionIndex != null) ? currentVersionIndex + 1 : undefined
             };
-            
+
             const chatResp = await fetch("/api/athenadesign/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1901,6 +1902,27 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener('error', e => {
         sendLog('stderr', e.message + ' (' + e.filename + ':' + e.lineno + ':' + e.colno + ')');
     });
+    // Promesses rejetées non gérées (souvent à l'origine d'un rendu cassé sans erreur visible).
+    window.addEventListener('unhandledrejection', e => {
+        var r = e && e.reason; sendLog('stderr', 'Promesse rejetée: ' + ((r && (r.message || r)) || 'inconnue'));
+    });
+    // DÉTECTION D'ÉCRAN BLANC (souvent dû au CSS, sans erreur JS) : après le rendu (délai pour
+    // React/Babel/Mermaid asynchrones), si le <body> est masqué OU sans aucun texte ni visuel,
+    // on signale → l'utilisateur peut lancer l'auto-correction.
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            try {
+                var b = document.body; if (!b) return;
+                var txt = (b.innerText || '').trim();
+                var hasVisual = !!b.querySelector('img,svg,canvas,video,picture,iframe,input,button,select,textarea,[style*="background-image"]');
+                var cs = getComputedStyle(b);
+                var hidden = cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') === 0;
+                if (hidden || (txt.length === 0 && !hasVisual)) {
+                    sendLog('stderr', 'Écran blanc : le rendu est vide (probable problème CSS — body/conteneur masqué via display:none, visibility:hidden, opacity:0, hauteur nulle, ou contenu positionné hors écran). Vérifie le CSS de html/body et des conteneurs principaux.');
+                }
+            } catch (_) {}
+        }, 900);
+    });
 })();
 </script>
 `;
@@ -2144,9 +2166,45 @@ document.addEventListener("DOMContentLoaded", () => {
         appendMessage("system", text);
     }
 
-    // Affiche la consommation de tokens d'une génération (statut + message discret).
+    // ===== Compteur de tokens TEMPS RÉEL (entrants/sortants) pour AthenaDesign =====
+    // Pendant le stream, 'out' est estimé (≈4 car./token) ; réconcilié sur l'exact au 'done'.
+    const _dMeter = { inTok: 0, outTok: 0, estOut: 0, active: false };
+    function _dMeterEl() {
+        let el = document.getElementById("design-token-meter");
+        if (!el) {
+            el = document.createElement("div");
+            el.id = "design-token-meter";
+            el.style.cssText = "position:fixed;bottom:14px;right:14px;z-index:9999;display:none;"
+                + "background:rgba(15,20,30,.92);color:#bfe3ff;border:1px solid rgba(120,200,255,.28);"
+                + "border-radius:10px;padding:6px 11px;font:12px/1.45 ui-monospace,monospace;"
+                + "box-shadow:0 4px 16px rgba(0,0,0,.45);white-space:nowrap";
+            document.body.appendChild(el);
+        }
+        return el;
+    }
+    function _dMeterRender() {
+        const el = _dMeterEl();
+        el.style.display = _dMeter.active ? "block" : "none";
+        const out = _dMeter.outTok + _dMeter.estOut;
+        const total = _dMeter.inTok + out;
+        const prov = _dMeter.estOut ? "~" : "";
+        el.innerHTML = `<span title="tokens entrants">↓&nbsp;${_dMeter.inTok.toLocaleString()}</span>`
+            + `&nbsp;&nbsp;<span title="tokens sortants">↑&nbsp;${prov}${out.toLocaleString()}</span>`
+            + `&nbsp;&nbsp;<b title="total">Σ&nbsp;${prov}${total.toLocaleString()}</b>`;
+    }
+    function tokenMeterReset() { _dMeter.inTok = 0; _dMeter.outTok = 0; _dMeter.estOut = 0; _dMeter.active = true; _dMeterRender(); }
+    function tokenMeterEstimate(chars) { _dMeter.estOut += Math.max(0, Math.round((chars || 0) / 4)); _dMeter.active = true; _dMeterRender(); }
+    function tokenMeterExact(u) {
+        if (!u) return;
+        _dMeter.inTok = u.prompt_tokens || _dMeter.inTok;
+        _dMeter.outTok = u.completion_tokens || _dMeter.outTok;
+        _dMeter.estOut = 0; _dMeter.active = true; _dMeterRender();
+    }
+
+    // Affiche la consommation de tokens d'une génération (statut + message discret + compteur live).
     function showGenerationUsage(version) {
         const u = version && version.usage;
+        tokenMeterExact(u);
         if (u && (u.total_tokens || u.prompt_tokens || u.completion_tokens)) {
             const tot = u.total_tokens || ((u.prompt_tokens || 0) + (u.completion_tokens || 0));
             if (appStatus) appStatus.textContent = `Prêt · ${tot} tokens`;
@@ -2346,6 +2404,7 @@ document.addEventListener("DOMContentLoaded", () => {
         appStatus.textContent = "Génération...";
         appStatus.className = "status-badge generating";
         promptInput.disabled = true;
+        tokenMeterReset();   // nouveau run de design → compteur in/out remis à zéro
         
         const payload = {
             project_id: currentProjectId,
@@ -2353,7 +2412,10 @@ document.addEventListener("DOMContentLoaded", () => {
             provider: aiProviderSelect.value,
             api_key: apiKeyInput.value,
             model_name: modelNameInput.value,
-            attachments: pendingAttachments.slice()
+            attachments: pendingAttachments.slice(),
+            // Version SÉLECTIONNÉE comme base d'itération (1-indexée) : la modif part de CELLE
+            // qu'on regarde, pas systématiquement de la dernière.
+            base_version: (currentVersionIndex != null) ? currentVersionIndex + 1 : undefined
         };
 
         // Bulle assistant « live » qui se remplit au fil du STREAM (SSE), façon Claude Design.
@@ -2391,7 +2453,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     let d; try { d = JSON.parse(dataStr); } catch (_) { continue; }
                     if (ev === "done") finalData = d;
                     else if (ev === "error") errData = d;
-                    else if (d.token != null) { acc += d.token; setLive(acc + "▌"); }
+                    else if (d.token != null) { acc += d.token; setLive(acc + "▌"); tokenMeterEstimate(String(d.token).length); }
                 }
             }
             if (errData) throw new Error(errData.error || "génération");

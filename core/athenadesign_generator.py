@@ -63,14 +63,19 @@ markdown), starting with the diagram type, e.g. `flowchart TD`, `sequenceDiagram
 `classDiagram`, `erDiagram`, `stateDiagram-v2`, `gantt`, `mindmap`. The page renders it.
 
 DESIGN RULES:
-1. VISUAL DIVERSITY & THEME ADAPTATION: Do NOT always produce the same dark-mode glassmorphic style. Be highly creative and tailor the visual design entirely to the topic, industry, and tone of the request:
-   - Corporate/Professional: clean, light-mode layouts, generous whitespace, structured grid systems, trustworthy colors (indigo, slate, sky, emerald).
-   - Creative/Portfolio: bold typography, unique asymmetric layouts, high-contrast, neobrutalism, or artistic flat styles.
-   - Minimalist/Editorial: gorgeous large serif or clean sans-serif headings, subtle borders, black-and-white accents with one primary brand color (e.g. amber, teal).
-   - Tech/Futuristic: modern dark mode, neon glow accents, cyber-gradients.
-   Select matching Google Fonts (e.g., Playfair Display, Montserrat, Outfit, Inter, Space Grotesk, Syne) to match the selected aesthetic.
-2. VISUAL EXCELLENCE: Never use plain basic colors (red, blue, green). Use curated palettes with harmonious hues.
-3. INTERACTIVITY & MICRO-ANIMATIONS: Implement responsive state changes (hover scales, shadow shifts, active press states, smooth list transition keyframes) so the interface feels alive and reactive.
+0. QUALITY BAR — aim for the polish of Linear, Stripe, Vercel, Apple and the best Awwwards/Dribbble work of 2024-2025. The result must look like a senior product designer shipped it, NOT a generic Bootstrap/template page. If it could be mistaken for a default framework demo, it is NOT good enough.
+1. MODERN DESIGN LANGUAGE (apply by default, adapt to the topic):
+   - GENEROUS WHITESPACE on a consistent spacing scale (4/8/12/16/24/32/48/64/96px). Let the design breathe; never cram.
+   - BOLD, FLUID TYPOGRAPHY: large confident headings via `clamp()` (e.g. `font-size: clamp(2.5rem, 6vw, 5rem)`), tight `line-height` and slightly negative `letter-spacing` on headlines, comfortable 1.6 body line-height. Strong hierarchy (a clear hero headline, then sub-levels). Pair tasteful Google Fonts (e.g. Inter/Geist/Outfit/Space Grotesk for UI; Playfair Display/Fraunces for editorial accents).
+   - COHESIVE PALETTE: neutral foundation (true grays or warm/cool tinted grays) + ONE confident accent (and at most one secondary). Use subtle GRADIENTS / aurora-mesh / soft radial glows for hero backgrounds, not flat slabs of primary color.
+   - DEPTH & MATERIAL: layered soft shadows (multi-step, low-opacity), 1px hairline borders, consistent border-radius (e.g. 12-20px), and tasteful glassmorphism ONLY where it fits. Avoid heavy drop shadows and clip-art gradients.
+   - MODERN LAYOUT PATTERNS where relevant: bento grids, asymmetric/editorial compositions, sticky or floating glass nav, full-bleed hero, card grids with CSS Grid `auto-fit/minmax`, feature sections with alternating media.
+2. THEME ADAPTATION — tailor the aesthetic to the topic/industry/tone (don't default to the same dark glassmorphic look every time):
+   - Corporate/SaaS: clean light mode, structured grid, trustworthy accent (indigo/sky/emerald/violet), crisp cards.
+   - Creative/Portfolio: bold oversized type, asymmetry, high contrast, neobrutalism or expressive flat art.
+   - Editorial/Minimal: elegant serif/sans headings, hairline borders, mostly monochrome + one accent.
+   - Tech/Futuristic: refined dark mode, neon/duotone glow accents, subtle grid/cyber gradients (kept tasteful, not garish).
+3. POLISH & MICRO-INTERACTIONS: smooth `transition`s on interactive elements (hover lift/scale, shadow & color shifts, active press states), entrance/scroll reveal animations via CSS keyframes or IntersectionObserver, focus-visible states for accessibility. Never use plain primary red/blue/green — use curated, harmonious hues. Motion must feel subtle and intentional (ease-out, ~150-300ms), never gratuitous.
 4. SELF-CONTAINED HTML: a web artifact is ONE standalone .html file. If you use a library, you MUST load it from a CDN in the file. In particular, if you use Lucide icons (<i data-lucide="...">), you MUST add `<script src="https://unpkg.com/lucide@latest"></script>` AND call `lucide.createIcons()` after the DOM is ready — otherwise icons stay invisible. Same for Chart.js / FontAwesome. If unsure, prefer inline SVG or emoji. Never reference a library you did not load.
 5. PYTHON CODE: generate useful data, charts (Matplotlib/Plotly, clean modern styling, no grey background) or PowerPoint via python-pptx saved to the current directory. End charts with plt.show()/fig.show() to render a preview.
 6. POWERPOINT — SIMPLE, ROBUST & READABLE (critical). python-pptx is NOT HTML/CSS: fancy custom
@@ -1156,7 +1161,17 @@ def _generate_via_athena(prompt: str, history: list, model_name: str = "",
     sans vision). Synchrone (à appeler en thread)."""
     from core.state import swarm as _sw
     images = images or []
-    model = (model_name or "").strip() or _athena_default_model()
+    # Modèle Design : choix UI explicite > DESIGN_MODEL (réglage par-user) > modèle du chat /
+    # défaut orchestrateur. `_explicit` = un modèle dédié a été choisi → on le FORCE (sinon
+    # l'override global LLM_MODEL dans _complete l'écraserait) ; vide = la feature suit le chat.
+    _design_pref = ""
+    try:
+        from core import user_config
+        _design_pref = (user_config.get_all().get("DESIGN_MODEL") or "").strip()
+    except Exception:
+        _design_pref = ""
+    _explicit = (model_name or "").strip() or _design_pref
+    model = _explicit or _athena_default_model()
 
     note = ""
     user_content = prompt
@@ -1183,8 +1198,15 @@ def _generate_via_athena(prompt: str, history: list, model_name: str = "",
     # Budget de sortie ÉLEVÉ : un design (HTML/React complet) dépasse vite 4000 tokens → sinon
     # le code est TRONQUÉ (balise/JSX coupés → aperçu cassé). + auto-continuation en filet.
     _mt = int(os.getenv("ATHENADESIGN_MAX_TOKENS", "8192") or 8192)
-    resp = _sw._complete(model, messages, tools_schema=None, allow_continuation=True,
-                         allow_fallback=True, max_tokens=_mt, on_delta=on_delta)
+    # FORCE le modèle Design dédié pour ce run (prime sur LLM_MODEL) ; sinon laisse le chat décider.
+    from core.state import _forced_model
+    _tok = _forced_model.set(model) if _explicit else None
+    try:
+        resp = _sw._complete(model, messages, tools_schema=None, allow_continuation=True,
+                             allow_fallback=True, max_tokens=_mt, on_delta=on_delta)
+    finally:
+        if _tok is not None:
+            _forced_model.reset(_tok)
     text = (resp.choices[0].message.content or "")
     _u = getattr(resp, "usage", None)
     return _attach_usage(parse_artifact_response(text),

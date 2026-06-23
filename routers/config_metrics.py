@@ -4,15 +4,18 @@ import requests
 from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException, UploadFile, File
 
-from core.state import TELEMETRY
+from core.state import TELEMETRY, save_telemetry
 
 router = APIRouter(tags=["Config Metrics & UI"])
 
 @router.post("/api/telemetry/reset")
 async def reset_telemetry() -> Dict[str, Any]:
-    """Remet à zéro les compteurs du cockpit (requêtes, outils, tokens, coût)."""
+    """Remet à zéro les compteurs du cockpit (requêtes, outils, tokens, coût) — y compris le
+    cumul PERSISTANT (shared_store)."""
     global TELEMETRY
-    TELEMETRY.update({"total_queries": 0, "tool_calls": 0, "total_tokens": 0, "total_cost": 0.0})
+    TELEMETRY.update({"total_queries": 0, "tool_calls": 0, "total_tokens": 0,
+                      "total_prompt_tokens": 0, "total_completion_tokens": 0, "total_cost": 0.0})
+    save_telemetry()
     return {"status": "success", **TELEMETRY}
 
 
@@ -69,6 +72,8 @@ async def get_telemetry() -> Dict[str, Any]:
             "total_queries": TELEMETRY.get("total_queries", 0),
             "tool_calls": TELEMETRY.get("tool_calls", 0),
             "total_tokens": TELEMETRY.get("total_tokens", 0),
+            "total_prompt_tokens": TELEMETRY.get("total_prompt_tokens", 0),
+            "total_completion_tokens": TELEMETRY.get("total_completion_tokens", 0),
             "total_cost": TELEMETRY.get("total_cost", 0.0),
             "services": {
                 "home_assistant": {
