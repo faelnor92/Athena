@@ -634,8 +634,8 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     def _has_key(_k):
                         return bool(str(_ucfg2.get(_k) or "").strip() or os.getenv(_k, "").strip())
                     _transport_force = set()
-                    if _has_key("NAVITIA_API_KEY") or _has_key("NAVITIA_KEY") or _has_key("TRANSITLAND_API_KEY"):
-                        _transport_force |= {"get_next_departures", "get_transport_disruptions", "get_journey"}
+                    # Transit (Transitous : gratuit, sans clé, France + monde) → toujours dispo → toujours exposé.
+                    _transport_force |= {"get_next_departures", "get_transport_disruptions", "get_journey"}
                     if _has_key("TOMTOM_API_KEY"):
                         _transport_force |= {"get_driving_route", "get_traffic_incidents"}
                     for _n in _transport_force:
