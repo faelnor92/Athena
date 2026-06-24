@@ -1125,6 +1125,65 @@ def _describe_images(images: list) -> str:
     return "\n\n".join(out)
 
 
+# ===== Mode ÉDITION (SEARCH/REPLACE façon Aider) : en itération, le modèle n'émet que les
+# CHANGEMENTS, appliqués au code de base côté serveur → économie massive de tokens en sortie.
+_EDIT_RE = re.compile(
+    r"(?:===\s*FILE:\s*(?P<path>[^\n=]+?)\s*===\s*\n)?"
+    r"<{5,9}\s*SEARCH\s*\n(?P<search>.*?)\n?={5,9}\s*\n(?P<replace>.*?)\n?>{5,9}\s*REPLACE",
+    re.DOTALL)
+
+
+def edit_mode_enabled() -> bool:
+    return os.getenv("ATHENADESIGN_EDIT_MODE", "true").lower() in ("true", "1", "yes")
+
+
+def _has_edit_blocks(text: str) -> bool:
+    return bool(re.search(r"<{5,9}\s*SEARCH\s*\n", text or ""))
+
+
+def _apply_one(content: str, search: str, replace: str):
+    """Applique un remplacement. Exact d'abord ; sinon tolérant aux espaces de fin de ligne."""
+    if search and search in content:
+        return content.replace(search, replace, 1), True
+    def _norm(s):
+        return "\n".join(line.rstrip() for line in (s or "").splitlines())
+    nc, ns = _norm(content), _norm(search)
+    if ns and ns in nc:
+        return nc.replace(ns, replace, 1), True
+    return content, False
+
+
+def _apply_edit_blocks(base_code: str, text: str):
+    """Applique les blocs SEARCH/REPLACE de `text` sur `base_code`. Renvoie (nouveau_code,
+    nb_appliqués, nb_échecs). Gère le mono-fichier ET le multi-fichiers (`=== FILE: ===`)."""
+    blocks = [(m.group("path"), m.group("search"), m.group("replace")) for m in _EDIT_RE.finditer(text or "")]
+    if not blocks:
+        return base_code, 0, 0
+    applied = failed = 0
+    if "=== FILE:" in (base_code or ""):
+        _, files = _parse_multifile_blocks(base_code)
+        fmap = {f["path"]: f["content"] for f in files}
+        entry = next((p for p in fmap if p.lower().endswith("index.html")),
+                     (files[0]["path"] if files else ""))
+        for path, search, replace in blocks:
+            tgt = (path or "").strip() or entry
+            if tgt not in fmap:
+                tgt = next((p for p in fmap if p.endswith(tgt) or tgt.endswith(p)), entry)
+            if tgt in fmap:
+                new, ok = _apply_one(fmap[tgt], search, replace)
+                fmap[tgt] = new
+                applied += int(ok); failed += int(not ok)
+            else:
+                failed += 1
+        new_blob = "\n\n".join(f"=== FILE: {p} ===\n{c}" for p, c in fmap.items())
+        return new_blob, applied, failed
+    code = base_code
+    for _path, search, replace in blocks:
+        code, ok = _apply_one(code, search, replace)
+        applied += int(ok); failed += int(not ok)
+    return code, applied, failed
+
+
 def _build_system(design_system: str = "", context_text: str = "", note: str = "",
                   base_code: str = "") -> str:
     """Assemble le prompt système : règles AthenaDesign + charte (design system) + CODE
@@ -1133,7 +1192,27 @@ def _build_system(design_system: str = "", context_text: str = "", note: str = "
     if (design_system or "").strip():
         parts.append("=== DESIGN SYSTEM (charte à RESPECTER impérativement : couleurs, "
                      "typographie, composants, ton) ===\n" + design_system.strip())
-    if (base_code or "").strip():
+    if (base_code or "").strip() and edit_mode_enabled():
+        parts.append(
+            "=== CODE ACTUEL DU PROJET (à MODIFIER) ===\n"
+            "Applique UNIQUEMENT la modification demandée, en touchant le STRICT MINIMUM (conserve "
+            "structure, contenu, design et fonctionnalités existants).\n"
+            "⚡ FORMAT D'ÉDITION OBLIGATOIRE — N'ÉCRIS PAS le fichier en entier (gaspillage). Pour "
+            "CHAQUE changement, émets un bloc de remplacement EXACT :\n"
+            "<<<<<<< SEARCH\n"
+            "(les lignes EXACTES à remplacer, copiées telles quelles depuis le code ci-dessous — "
+            "mêmes espaces et indentation)\n"
+            "=======\n"
+            "(les nouvelles lignes)\n"
+            ">>>>>>> REPLACE\n"
+            "Émets PLUSIEURS blocs si plusieurs endroits changent. Le bloc SEARCH doit correspondre "
+            "EXACTEMENT à une portion du code actuel (sinon il sera rejeté). Pour un projet "
+            "MULTI-FICHIERS, précède chaque bloc de `=== FILE: chemin ===`. N'émets RIEN d'autre "
+            "que ces blocs (+ une courte phrase d'explication avant, et les blocs <suggestions>/"
+            "<tweaks> après). EXCEPTION : si l'utilisateur demande de REPARTIR DE ZÉRO ou une refonte "
+            "complète, produis alors le fichier complet normalement (sans blocs SEARCH/REPLACE).\n\n"
+            "--- CODE ACTUEL ---\n" + base_code.strip())
+    elif (base_code or "").strip():
         parts.append(
             "=== CODE ACTUEL DU PROJET (point de départ OBLIGATOIRE) ===\n"
             "Voici le code EXISTANT de la page du projet. Sauf demande explicite de repartir "
@@ -1209,8 +1288,28 @@ def _generate_via_athena(prompt: str, history: list, model_name: str = "",
             _forced_model.reset(_tok)
     text = (resp.choices[0].message.content or "")
     _u = getattr(resp, "usage", None)
-    return _attach_usage(parse_artifact_response(text),
-                         getattr(_u, "prompt_tokens", 0), getattr(_u, "completion_tokens", 0))
+    _pt, _ct = getattr(_u, "prompt_tokens", 0), getattr(_u, "completion_tokens", 0)
+    # MODE ÉDITION : en itération, si le modèle a renvoyé des blocs SEARCH/REPLACE, on les applique
+    # au code de base (au lieu d'une réécriture complète → économie de tokens). Repli sûr : si les
+    # blocs sont inapplicables, on ne casse pas le design (code de base inchangé + avertissement) ;
+    # si AUCUN bloc (refonte complète demandée), parsing normal.
+    if base_code and edit_mode_enabled() and _has_edit_blocks(text):
+        applied_blob, n_app, n_fail = _apply_edit_blocks(base_code, text)
+        if n_app > 0 and n_fail == 0:
+            res = parse_artifact_response(applied_blob)   # type/code/files/tweaks ← code appliqué
+            pre = re.split(r"<{5,9}\s*SEARCH", text)[0].strip()
+            if pre:
+                res["explanation"] = pre[:1200]
+            _sug = re.search(r"<suggestions>(.*?)</suggestions>", text, re.DOTALL | re.IGNORECASE)
+            if _sug:
+                res["suggestions"] = [s.strip().lstrip("-*• ").strip()
+                                      for s in _sug.group(1).strip().splitlines() if s.strip()]
+            return _attach_usage(res, _pt, _ct)
+        res = parse_artifact_response(base_code)
+        res["explanation"] = ("⚠️ Modification non appliquée : le passage à remplacer n'a pas été "
+                              "trouvé tel quel dans le code. Reformule, ou demande une refonte complète.")
+        return _attach_usage(res, _pt, _ct)
+    return _attach_usage(parse_artifact_response(text), _pt, _ct)
 
 
 def _attach_usage(result: dict, prompt_tokens, completion_tokens) -> dict:
