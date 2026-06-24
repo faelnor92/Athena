@@ -1,6 +1,5 @@
 """Trafic ROUTIER (voiture) en temps réel : temps de trajet avec embouteillages + incidents.
 
-Le transit public (Navitia, cf. transport_tools) ne couvre pas la route → provider dédié.
 Utilise **TomTom** (routing traffic-aware + incidents), clé gratuite : https://developer.tomtom.com/
 → `TOMTOM_API_KEY`. Lecture seule ; réponse = donnée non fiable ; dégradation propre sans clé.
 """

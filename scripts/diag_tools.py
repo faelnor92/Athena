@@ -29,8 +29,7 @@ if os.path.exists(_env):
 from core.swarm.engine import AVAILABLE_TOOLS  # noqa: E402
 import core.tool_router as tr                  # noqa: E402
 
-WATCH = ["get_driving_route", "get_traffic_incidents", "get_next_departures",
-         "get_journey", "get_transport_disruptions", "get_weather"]
+WATCH = ["get_driving_route", "get_traffic_incidents", "get_weather"]
 
 print("═══ 1) Les outils sont-ils CHARGÉS (code à jour + restart) ? ═══")
 for name in WATCH:

@@ -69,14 +69,6 @@ def get_recommendations(focus: str = "") -> str:
     except Exception:
         pass
 
-    # Perturbations transport (zone configurée).
-    try:
-        from tools.transport_tools import get_disruptions
-        d = (get_disruptions("") or "").strip()
-        if d and "Aucune perturbation" not in d and "Précise" not in d and "clé" not in d.lower():
-            parts.append("- Transport : " + " / ".join(d.splitlines()[1:4]))
-    except Exception:
-        pass
 
     # Profil & préférences durables (personnalisation).
     try:

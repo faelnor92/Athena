@@ -3406,12 +3406,7 @@ const BEHAVIOR_SCHEMA = [
         { key: "WEATHER_CITY", label: "Ville (météo)", help: "Ville par défaut pour la météo et le briefing (ex. Strasbourg). Vide = déduite des coordonnées ci-dessous si renseignées.", type: "text", def: "" },
         { key: "WEATHER_LAT", label: "Latitude (météo hyperlocale)", help: "Position précise pour une météo au quartier près (ex. 48.5839). Vide = on utilise la ville.", type: "text", def: "" },
         { key: "WEATHER_LON", label: "Longitude (météo hyperlocale)", help: "Position précise (ex. 7.7455). À renseigner avec la latitude.", type: "text", def: "" },
-        { key: "TRANSPORT_PROVIDER", label: "Fournisseur transports en commun", help: "Transitous = GRATUIT, sans clé, France + international (départs ET itinéraires) — recommandé. Navitia/Transitland = alternatives (clé requise).", type: "select", options: [["transitous", "Transitous (gratuit, sans clé) ⭐"], ["auto", "Auto (= Transitous)"], ["navitia", "Navitia (clé, France)"], ["transitland", "Transitland (clé, mondial)"]], def: "transitous" },
-        { key: "TRANSITOUS_USER_AGENT", label: "Contact Transitous (politique d'usage)", help: "Transitous demande un User-Agent avec un contact (nom appli + email/URL). Vide = valeur par défaut.", type: "text", def: "" },
-        { key: "NAVITIA_API_KEY", label: "Clé Navitia (optionnel — France)", help: "Alternative payante (Navitia n'a plus d'offre gratuite). Horaires/retards/itinéraires France.", type: "password", def: "" },
-        { key: "NAVITIA_API_BASE", label: "Endpoint Navitia (optionnel)", help: "Vide = api.navitia.io. À changer pour l'API SNCF (même format) ou un Navitia auto-hébergé.", type: "text", def: "" },
-        { key: "TRANSITLAND_API_KEY", label: "Clé Transitland (optionnel — mondial)", help: "Alternative (lente). Clé gratuite sur transit.land.", type: "password", def: "" },
-        { key: "TOMTOM_API_KEY", label: "Clé TomTom (trafic routier)", help: "Pour le temps de trajet voiture avec embouteillages et les incidents. Clé gratuite sur developer.tomtom.com.", type: "password", def: "" },
+        { key: "TOMTOM_API_KEY", label: "Clé TomTom (trafic routier)", help: "Pour le temps de trajet voiture avec embouteillages et les incidents. Clé gratuite sur developer.tomtom.com. (Le transit en commun n'est pas couvert : aucune source gratuite fiable.)", type: "password", def: "" },
         { key: "OCR_MODEL", label: "Modèle OCR (extraction de texte)", help: "Modèle pour transcrire le texte des images/PDF scannés. Vide = le modèle de vision ci-dessus.", type: "model", def: "", emptyLabel: "⭐ Modèle de vision (défaut)" },
     ]},
 ];

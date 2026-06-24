@@ -42,8 +42,7 @@ _TOOL_GROUPS = {
     "vision": {"analyze_image", "capture_screen", "ocr_image", "ocr_document"},
     "routines": {"create_routine", "list_routines"},
     "proxmox": {"proxmox_status", "proxmox_vm_action", "proxmox_vm_exec", "proxmox_vm_logs"},
-    "transport": {"get_next_departures", "get_transport_disruptions", "get_journey",
-                  "get_driving_route", "get_traffic_incidents"},
+    "transport": {"get_driving_route", "get_traffic_incidents"},
 }
 _TOOL_GROUP_KEYWORDS = {
     "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",
@@ -94,15 +93,10 @@ _TOOL_GROUP_KEYWORDS = {
     "routines": ["routine", "routines", "chaque matin", "tous les matins", "chaque jour",
                  "tous les jours", "chaque semaine", "rappel récurrent", "automatise", "périodique",
                  "programme une tâche", "planifie tous les", "récurrent"],
-    "transport": ["train", "trains", "ter", "tgv", "sncf", "gare", "tram", "tramway", "bus",
-                  "métro", "metro", "cts", "transport", "transports", "horaire", "horaires",
-                  "départ", "depart", "prochain départ", "retard", "retards", "perturbation",
-                  "perturbations", "trafic", "itinéraire", "itineraire", "ligne", "correspondance",
-                  "arrêt", "arret", "station", "navitia",
-                  # trafic ROUTIER (voiture)
-                  "voiture", "route", "autoroute", "embouteillage", "embouteillages", "bouchon",
-                  "bouchons", "circulation", "temps de trajet", "en combien de temps", "accident",
-                  "travaux", "péage", "peage", "gps", "conduire", "rouler"],
+    "transport": ["voiture", "route", "autoroute", "trajet", "temps de trajet", "en combien de temps",
+                  "embouteillage", "embouteillages", "bouchon", "bouchons", "circulation", "trafic",
+                  "accident de la route", "travaux", "péage", "peage", "gps", "conduire", "rouler",
+                  "itinéraire", "itineraire", "km", "kilomètres"],
 }
 # Index inversé nom→groupe (un outil n'est dans qu'un seul groupe).
 _TOOL_DOMAIN = {name: grp for grp, names in _TOOL_GROUPS.items() for name in names}

@@ -1,0 +1,134 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.13, pytest-9.1.1, pluggy-1.6.0 -- /home/legrill@ad.unistra.fr/Bureau/test_orchestrator/.venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/legrill@ad.unistra.fr/Bureau/test_orchestrator
+plugins: asyncio-1.4.0, anyio-4.13.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 4 items / 2 deselected / 2 selected
+
+tests/test_cli_features.py::test_engine_interactive_approval_approved DEBUG ENGINE tool_calls: [<test_cli_features.test_engine_interactive_approval_approved.<locals>._TC object at 0x7f9adc165be0>]
+DEBUG ENGINE message: <test_cli_features.test_engine_interactive_approval_approved.<locals>._Msg1 object at 0x7f9adc165d30>
+[[93mCodeur[0m exécute [96msensitive_tool[0m avec {}]
+
+[91m⛔ ACTION SENSIBLE DÉTECTÉE[0m
+L'agent souhaite exécuter l'outil : [1msensitive_tool[0m
+Arguments : {}
+[92m✓ Action approuvée.[0m
+
+[92mCodeur:[0m done
+PASSED
+tests/test_cli_features.py::test_engine_interactive_approval_denied SENSITIVE_TOOLS env: sensitive_tool
+sensitive_tool_names(): {'sensitive_tool'}
+is_sensitive(sensitive_tool): True
+DEBUG fake_complete appelé: 1
+DEBUG fake_complete messages: [{'role': 'system', 'content': 'Tu es Chronos, la mémoire à long terme de l\'assistant. À partir de l\'échange, EXTRAIS uniquement les FAITS DURABLES et réutilisables : identité et préférences de l\'utilisateur, personnes/lieux/appareils/serveurs et leurs RELATIONS. IGNORE tout ce qui est éphémère (météo, heure, contenu d\'une tâche ponctuelle, politesses). Réponds en JSON STRICT, rien d\'autre :\n{"facts":[{"s":"sujet","r":"relation","o":"objet"}]}\nChaque fait court et atomique (ex. {"s":"serveur de dev","r":"est hébergé sur","o":"Dell R430"}). Si rien de durable : {"facts":[]}.'}, {'role': 'user', 'content': 'UTILISATEUR: run sensitive action\nCodeur: done'}]
+DEBUG _Resp1 choices: [<test_cli_features.test_engine_interactive_approval_denied.<locals>._Choice1 object at 0x7f9ad7f08ad0>]
+DEBUG _Resp1 choices[0].message: <test_cli_features.test_engine_interactive_approval_denied.<locals>._Msg1 object at 0x7f9ad7f08980>
+DEBUG _Resp1 choices[0].message.tool_calls: [<test_cli_features.test_engine_interactive_approval_denied.<locals>._TC object at 0x7f9ad7f086e0>]
+DEBUG fake_complete appelé: 2
+DEBUG fake_complete messages: [{'role': 'system', 'content': "code\n\n=== RÈGLES SYSTÈME ===\n- N'invente jamais un résultat d'outil ni le fait d'avoir agi : si un outil échoue ou ne renvoie rien, dis-le tel quel.\n- Concis et orienté action : agis via les outils plutôt que de longues explications.\n- Donnée réelle non possédée avec certitude (météo, web, domotique, heure, prix…) : appelle l'outil et attends son résultat, n'invente pas. Appelle via le mécanisme natif, pas en JSON/texte dans ta réponse.\n\n🧰 OUTILS DISPONIBLES (détails dans le schéma ; ne dis JAMAIS « je ne peux pas » pour ce qu'un de ces outils permet — appelle-le) : sensitive_tool, validate_email, parse_calendar_events, parse_time_range, extract_french_law_citations, filter_events_by_day_of_week, analyze_image, create_routine, list_routines, self_update, open_context, close_context, list_contexts, create_goal, list_goals, update_goal_status, add_goal_step, complete_goal_step, set_goal_priority, configure_monitoring, list_recent_events, save_new_skill, load_playbook\n\n\n=== PROTOCOLE DE PENSÉE ET RAISONNEMENT OBLIGATOIRE ===\nTu as l'obligation absolue de structurer ta réflexion avant chaque action, appel d'outil ou réponse.\nCette étape de réflexion préalable doit TOUJOURS être rédigée au tout début de ta réponse et entourée des balises `<thought>` et `</thought>`.\nPour optimiser les performances et économiser les tokens, sois extrêmement concis et direct dans tes pensées (maximum 2 à 3 lignes ou 50 mots par bloc de réflexion), sauf en cas de planification technique complexe requise.\nDans ce bloc de pensée, tu dois :\n1. Analyser précisément la demande de l'utilisateur (besoin, contraintes, contexte).\n2. Identifier les fichiers concernés et les outils requis.\n3. Planifier tes actions étape par étape (ex: lire un fichier, modifier une partie, valider).\n4. Anticiper les erreurs potentielles, les cas limites et l'impact sur le reste du codebase.\nExemple de format attendu :\n<thought>\n- Objectif principal : ...\n- Analyse du contexte : ...\n- Plan détaillé : ...\n</thought>\nNe commence JAMAIS directement à appeler un outil ou à formuler une réponse finale sans avoir écrit ton bloc `<thought>` au préalable.\n[ENVIRONNEMENT] Hôte : Linux (x86_64). Le code et les commandes shell s'exécutent dans une SANDBOX Docker LINUX isolée (shell bash, réseau coupé) : utilise des commandes Linux/bash, pas celles de l'hôte.\n\n\n=== PLAYBOOKS DISPONIBLES (savoir-faire procédural) ===\nSi l'un d'eux correspond à la tâche demandée, CHARGE-le AVANT d'agir via `load_playbook('<nom>')`, puis suis ses étapes.\n- deployer-site-statique — Déployer un site web statique sur un serveur via SSH + nginx (build, copie, conf, reload)\n\n\n⚠️ INSTRUCTIONS SUR LES MENTIONS @AGENT :\nL'utilisateur peut cibler un ou plusieurs agents dans son message en écrivant `@NomDeLAgent` ou `@NomAmical` (ex: `@Auteur` ou `@Emilie`, `@CommunityManager` ou `@Lucas` ou `@CM`, `@Traducteur` ou `@Sofia`, `@Codeur` ou `@Robert`, `@Correcteur` ou `@Marc`, `@Athena`).\nSi tu vois une mention `@` ciblant un AUTRE agent dans le message ou dans la suite d'instructions de l'utilisateur, tu as l'obligation absolue d'effectuer ton propre travail (ex: traduire si tu es la traductrice Sofia, rédiger si tu es l'auteur Émilie), PUIS de transférer immédiatement la main à cet autre agent via ta fonction de transfert appropriée pour qu'il exécute sa partie du travail.\n"}, {'role': 'user', 'content': 'run sensitive action'}, {'role': 'system', 'content': "\n=== CONNAISSANCES PERTINENTES RETROUVÉES EN MÉMOIRE (RAG ARRIÈRE-PLAN) ===\n- [retour_experience]: - Tâche: Gestion agenda et limites d'accès système.\n- A marché: Retour précis sur les événements et explication claire des restrictions réseau.\n- A échoué/limites: Erreur de calcul/calendrier (confusion jour de la semaine et date pour le 18 juin).\n- À retenir pour la prochaine fois: Vérifier systématiquement la correspondance jour/date avant de conclure.\n- [retour_experience]: - Tâche: Modification d'un rendez-vous calendrier suite à une demande utilisateur.\n- A marché: Exécution finale des outils de suppression et création d'événement.\n- A échoué/limites: Boucles d'hésitation et réponses redondantes avant l'action réelle.\n- À retenir pour la prochaine fois: Exécuter la tâche directement sans justifier chaque étape intermédiaire.\n========================================================================\n"}]
+[92mCodeur:[0m done
+MESSAGES DANS ECHEC : [{'role': 'user', 'content': 'run sensitive action'}, {'role': 'assistant', 'content': 'done', 'name': 'Codeur'}]
+FAILED
+
+=================================== FAILURES ===================================
+___________________ test_engine_interactive_approval_denied ____________________
+
+    def test_engine_interactive_approval_denied():
+        tool_called = False
+    
+        def sensitive_tool():
+            """Outil sensible."""
+            nonlocal tool_called
+            tool_called = True
+            return "success_val"
+    
+        class _F:
+            name = "sensitive_tool"
+            arguments = "{}"
+        class _TC:
+            id = "call_sensitive"
+            type = "function"
+            function = _F()
+        class _Msg1:
+            content = ""
+            tool_calls = [_TC()]
+            def model_dump(self, exclude_none=True):
+                return {
+                    "role": "assistant",
+                    "tool_calls": [{"id": "call_sensitive", "type": "function", "function": {"name": "sensitive_tool", "arguments": "{}"}}]
+                }
+        class _Msg2:
+            content = "done"
+            tool_calls = None
+            def model_dump(self, exclude_none=True):
+                return {"role": "assistant", "content": "done"}
+    
+        class _Choice1:
+            message = _Msg1()
+            finish_reason = "tool_calls"
+        class _Choice2:
+            message = _Msg2()
+            finish_reason = "stop"
+    
+        class _Usage:
+            prompt_tokens = 1
+            completion_tokens = 1
+    
+        class _Resp1:
+            choices = [_Choice1()]
+            usage = _Usage()
+        class _Resp2:
+            choices = [_Choice2()]
+            usage = _Usage()
+    
+        call_count = 0
+        def fake_complete(**kw):
+            nonlocal call_count
+            call_count += 1
+            print(f"DEBUG fake_complete appelé: {call_count}")
+            print("DEBUG fake_complete messages:", kw.get("messages"))
+            if call_count == 1:
+                res = _Resp1()
+                print("DEBUG _Resp1 choices:", res.choices)
+                print("DEBUG _Resp1 choices[0].message:", res.choices[0].message)
+                print("DEBUG _Resp1 choices[0].message.tool_calls:", getattr(res.choices[0].message, "tool_calls", None))
+                return res
+            return _Resp2()
+    
+        original_completion = swarm_mod.completion
+        swarm_mod.completion = fake_complete
+        chan_token = channels.current_channel.set("cli")
+    
+        try:
+            s = Swarm()
+            ag = Agent(name="Codeur", system_prompt="code", model="gpt-4o")
+            ag.tools = [sensitive_tool]
+            s.agents = {"Codeur": ag}
+    
+            with mock.patch("builtins.input", return_value="n"), \
+                 mock.patch.dict(os.environ, {"SENSITIVE_TOOLS": "sensitive_tool"}):
+                from core import approvals
+                print("SENSITIVE_TOOLS env:", os.environ.get("SENSITIVE_TOOLS"))
+                print("sensitive_tool_names():", approvals.sensitive_tool_names())
+                print("is_sensitive(sensitive_tool):", approvals.is_sensitive(sensitive_tool))
+                _, messages, _ = s.run(ag, [{"role": "user", "content": "run sensitive action"}], max_turns=2)
+                print("MESSAGES DANS ECHEC :", messages)
+    
+            assert not tool_called, "L'outil sensible ne doit pas s'exécuter car refusé"
+            tool_outputs = [m for m in messages if m.get("role") == "tool"]
+>           assert len(tool_outputs) > 0
+E           assert 0 > 0
+E            +  where 0 = len([])
+
+tests/test_cli_features.py:174: AssertionError
+=============================== warnings summary ===============================
+tests/test_cli_features.py::test_engine_interactive_approval_approved
+  /home/legrill@ad.unistra.fr/Bureau/test_orchestrator/.venv/lib/python3.13/site-packages/chromadb/api/collection_configuration.py:327: DeprecationWarning: legacy embedding function config: Failed to register embedding function: _HttpEmbeddingFunction.name() missing 1 required positional argument: 'self'
+    return json.dumps(create_collection_configuration_to_json(config, metadata))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_cli_features.py::test_engine_interactive_approval_denied - assert 0 > 0
+ +  where 0 = len([])
+============= 1 failed, 1 passed, 2 deselected, 1 warning in 3.04s =============

@@ -75,7 +75,6 @@ import tools.context_tools
 import tools.goal_tools
 import tools.event_tools
 import tools.email_tools
-import tools.transport_tools
 import tools.ocr_tools
 import tools.reco_tools
 import tools.traffic_tools
@@ -240,9 +239,6 @@ AVAILABLE_TOOLS = {
     "archive_emails": tools.email_tools.archive_emails,
     "clean_inbox": tools.email_tools.clean_inbox,
     "list_mail_folders": tools.email_tools.list_mail_folders,
-    "get_next_departures": tools.transport_tools.get_next_departures,
-    "get_transport_disruptions": tools.transport_tools.get_disruptions,
-    "get_journey": tools.transport_tools.get_journey,
     "get_driving_route": tools.traffic_tools.get_driving_route,
     "get_traffic_incidents": tools.traffic_tools.get_traffic_incidents,
     "ocr_image": tools.ocr_tools.ocr_image,
@@ -634,8 +630,8 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     def _has_key(_k):
                         return bool(str(_ucfg2.get(_k) or "").strip() or os.getenv(_k, "").strip())
                     _transport_force = set()
-                    # Transit (Transitous : gratuit, sans clé, France + monde) → toujours dispo → toujours exposé.
-                    _transport_force |= {"get_next_departures", "get_transport_disruptions", "get_journey"}
+                    # Trafic ROUTIER (TomTom) exposé si la clé est configurée. (Le transit en commun
+                    # a été retiré : aucune source gratuite fiable, surtout pour les trains SNCF.)
                     if _has_key("TOMTOM_API_KEY"):
                         _transport_force |= {"get_driving_route", "get_traffic_incidents"}
                     for _n in _transport_force:
@@ -981,10 +977,10 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             if _tool_names:
                 system_prompt += (
                     "- Toute donnée réelle non possédée avec certitude (météo, web, domotique, heure, "
-                    "prix, TEMPS DE TRAJET / itinéraire / trafic routier, horaires & retards de "
-                    "transport) vient d'un appel d'outil (get_driving_route, get_next_departures, "
-                    "get_weather…), JAMAIS d'une valeur inventée ni « de tête ». Ne cite jamais un site "
-                    "tiers (ViaMichelin, Mappy, Waze…) comme source : tu ne peux pas les consulter.\n"
+                    "prix, TEMPS DE TRAJET / itinéraire / trafic routier) vient d'un appel d'outil "
+                    "(get_driving_route, get_weather…), JAMAIS d'une valeur inventée ni « de tête ». "
+                    "Ne cite jamais un site tiers (ViaMichelin, Mappy, Waze…) comme source : tu ne "
+                    "peux pas les consulter.\n"
                 )
             # État partagé du run (context_variables) : visible par l'agent (lecture), tenu à
             # jour par les outils. Rendu compact ; les valeurs trop longues sont tronquées.
