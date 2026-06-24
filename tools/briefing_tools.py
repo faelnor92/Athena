@@ -1,7 +1,5 @@
 import os
 import json
-import requests
-import urllib.parse
 from datetime import datetime
 from tools.agenda_tools import load_agenda
 from tools.list_tools import get_list_items

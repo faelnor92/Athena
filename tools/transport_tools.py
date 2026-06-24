@@ -53,19 +53,26 @@ def _get(path: str, params: dict = None):
         return None, f"API transport : échec ({e})."
 
 
-def _find_stop(query: str):
-    """Résout un nom d'arrêt → (stop_area_id, libellé, region). None si introuvable."""
-    data, err = _get("places", {"q": query, "type[]": "stop_area", "count": 1})
+def _resolve_place(query: str, stop_area_only: bool = False):
+    """Résout un lieu (arrêt, adresse, ville, POI) → {id, label, region, coord}. None si introuvable.
+
+    stop_area_only=True restreint aux ARRÊTS (nécessaire pour les départs, qui exigent un
+    stop_area). Sinon, tous types acceptés (utile pour itinéraires depuis une adresse et pour
+    résoudre la région d'une ville)."""
+    params = {"q": query, "count": 1}
+    if stop_area_only:
+        params["type[]"] = "stop_area"
+    data, err = _get("places", params)
     if err or not data:
         return None, err
     places = data.get("places") or []
     if not places:
-        return None, f"Arrêt « {query} » introuvable."
+        return None, f"Lieu « {query} » introuvable."
     p = places[0]
-    sa = p.get("stop_area") or {}
-    coord = sa.get("coord") or {}
+    # La coordonnée vit sous l'objet du type embarqué (stop_area / address / poi / admin…).
+    emb = p.get("embedded_type") or ""
+    coord = ((p.get(emb) or {}).get("coord")) or {}
     region = None
-    # Résout la région Navitia depuis les coordonnées (nécessaire pour /departures).
     try:
         lon, lat = coord.get("lon"), coord.get("lat")
         if lon and lat:
@@ -75,7 +82,7 @@ def _find_stop(query: str):
                 region = regs[0]
     except Exception:
         pass
-    return {"id": p.get("id"), "label": p.get("name") or query, "region": region}, None
+    return {"id": p.get("id"), "label": p.get("name") or query, "region": region, "coord": coord}, None
 
 
 def _delay_minutes(base: str, real: str) -> int:
@@ -95,7 +102,7 @@ def get_next_departures(stop: str, limit: int = 8) -> str:
     limit : nombre de départs à afficher (défaut 8).
     Renvoie ligne, direction, heure théorique et, si publié, le RETARD réel ou « supprimé ».
     """
-    info, err = _find_stop(stop)
+    info, err = _resolve_place(stop, stop_area_only=True)
     if err:
         return f"🚏 {err}"
     region = info.get("region")
@@ -125,9 +132,6 @@ def get_next_departures(stop: str, limit: int = 8) -> str:
                 status = f" ⚠️ +{dm} min"
             elif dm == 0:
                 status = " ✅ à l'heure"
-        # Suppression éventuelle signalée par une perturbation liée.
-        if any((di.get("links") or [])) and di.get("trip_short_name") == "":
-            pass
         lines.append(f"• {hhmm} — {line} → {direction}{status}")
     return "\n".join(lines)
 
@@ -147,7 +151,7 @@ def get_disruptions(area: str = "") -> str:
             q = ""
     if not q:
         return "🚧 Précise un réseau/une ville (ex. « perturbations à Strasbourg »)."
-    info, err = _find_stop(q)
+    info, err = _resolve_place(q)
     region = info.get("region") if info and not err else None
     path = f"coverage/{region}/disruptions" if region else "disruptions"
     data, err = _get(path, {"count": 15})
@@ -177,8 +181,8 @@ def get_journey(origin: str, destination: str) -> str:
     """
     if not (origin or "").strip() or not (destination or "").strip():
         return "🧭 Indique un point de départ ET une destination."
-    o, e1 = _find_stop(origin)
-    d, e2 = _find_stop(destination)
+    o, e1 = _resolve_place(origin)
+    d, e2 = _resolve_place(destination)
     if e1 or not o:
         return f"🧭 Départ : {e1 or 'introuvable'}"
     if e2 or not d:
