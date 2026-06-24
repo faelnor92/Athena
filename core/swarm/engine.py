@@ -620,6 +620,32 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                                 _force_expose.add(_n)   # configuré → jamais masqué par le filtre
                 except Exception:
                     pass
+                # Transport (Navitia) & Trafic routier (TomTom) : exposés SI la clé correspondante
+                # est configurée → « temps en voiture entre X et Y », « prochain tram… » marchent à
+                # COUP SÛR, sans dépendre du routage sémantique (qui rate les paraphrases du type
+                # « combien de temps entre… »). Capacité configurée = jamais invisible.
+                try:
+                    _ucfg2 = {}
+                    try:
+                        from core import user_config as _uc2
+                        _ucfg2 = _uc2.get_all() or {}
+                    except Exception:
+                        _ucfg2 = {}
+                    def _has_key(_k):
+                        return bool(str(_ucfg2.get(_k) or "").strip() or os.getenv(_k, "").strip())
+                    _transport_force = set()
+                    if _has_key("NAVITIA_API_KEY") or _has_key("NAVITIA_KEY"):
+                        _transport_force |= {"get_next_departures", "get_transport_disruptions", "get_journey"}
+                    if _has_key("TOMTOM_API_KEY"):
+                        _transport_force |= {"get_driving_route", "get_traffic_incidents"}
+                    for _n in _transport_force:
+                        if _n in AVAILABLE_TOOLS:
+                            if _n not in existing:
+                                effective_tools.append(AVAILABLE_TOOLS[_n])
+                                existing.add(_n)
+                            _force_expose.add(_n)   # configuré → jamais masqué par le filtre
+                except Exception:
+                    pass
                 # SSH (exécution distante) : donné à l'orchestrateur SI au moins un hôte est
                 # configuré (env ou registre) → « connecte-toi à <serveur> » marche sans passer
                 # par la console Codeur. Le filtre par domaine ne l'expose que si pertinent.
