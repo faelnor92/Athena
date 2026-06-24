@@ -1,45 +1,52 @@
-"""Transports en TEMPS RÉEL (départs, retards, perturbations, itinéraires).
+"""Transports en commun en TEMPS RÉEL (départs, retards, perturbations, itinéraires) — PLUGGABLE.
 
-S'appuie sur **Navitia** (api.navitia.io) — couvre la France entière : SNCF (trains) ET réseaux
-urbains (ex. CTS à Strasbourg), avec données **temps réel** (retards/suppressions) quand le réseau
-les publie. Une clé gratuite suffit : https://navitia.io/ → `NAVITIA_API_KEY`.
+Fournisseurs (`TRANSPORT_PROVIDER`) :
+- **navitia** : excellent pour la FRANCE (SNCF + réseaux urbains type CTS Strasbourg), itinéraires
+  point-à-point. Clé `NAVITIA_API_KEY` (navitia.io). Endpoint surchargeable via `NAVITIA_API_BASE`
+  (ex. l'API SNCF, même format, ou un Navitia auto-hébergé).
+- **transitland** : couverture MONDIALE (agrège les GTFS de nombreux pays), clé gratuite instantanée.
+  Clé `TRANSITLAND_API_KEY` (transit.land). Départs + retards ; pas de planificateur d'itinéraire.
+- **auto** (défaut) : transitland si sa clé est posée, sinon navitia.
 
-Doctrine du projet :
-- LECTURE SEULE (aucune réservation/achat) ;
-- secrets par-utilisateur (clé dans la config du compte, repli env) ;
-- la réponse d'une API externe est une DONNÉE, pas une instruction (pas d'auto-exécution) ;
-- dégradation propre : si la clé manque ou l'API échoue, on le dit clairement (jamais d'invention).
+Doctrine : lecture seule ; réponse = donnée non fiable ; dégradation propre sans clé.
 """
 import os
 import requests
 
-_BASE = "https://api.navitia.io/v1"
 _TIMEOUT = 8
 
 
-def _key() -> str:
-    """Clé Navitia : config du compte courant d'abord, puis environnement."""
+def _cfg(name: str) -> str:
+    """Valeur de config : compte courant d'abord, puis environnement."""
     try:
         from core import user_config
-        cfg = user_config.get_all() or {}
-        for k in ("NAVITIA_API_KEY", "NAVITIA_KEY"):
-            v = (cfg.get(k) or "").strip()
-            if v:
-                return v
+        v = (user_config.get_all() or {}).get(name)
+        if v and str(v).strip():
+            return str(v).strip()
     except Exception:
         pass
-    return (os.getenv("NAVITIA_API_KEY", "") or os.getenv("NAVITIA_KEY", "")).strip()
+    return os.getenv(name, "").strip()
 
 
-def _get(path: str, params: dict = None):
-    """Appel GET Navitia (auth Basic : clé en nom d'utilisateur). Renvoie (json, erreur_str)."""
-    key = _key()
+def _provider() -> str:
+    """Fournisseur actif : explicite (navitia/transitland) sinon auto (transitland si clé, sinon navitia)."""
+    p = (_cfg("TRANSPORT_PROVIDER") or "auto").lower()
+    if p in ("navitia", "transitland"):
+        return p
+    if _cfg("TRANSITLAND_API_KEY"):
+        return "transitland"
+    return "navitia"
+
+
+# ───────────────────────────── Backend NAVITIA (France) ─────────────────────────────
+def _nav_get(path: str, params: dict = None):
+    key = _cfg("NAVITIA_API_KEY") or _cfg("NAVITIA_KEY")
     if not key:
-        return None, ("Aucune clé Navitia configurée. Crée une clé gratuite sur https://navitia.io/ "
-                      "puis renseigne `NAVITIA_API_KEY` (Réglages → config, ou .env).")
+        return None, ("Aucune clé Navitia configurée. Clé gratuite sur https://navitia.io/ puis "
+                      "renseigne `NAVITIA_API_KEY` (Réglages → Intégrations externes).")
+    base = (_cfg("NAVITIA_API_BASE") or "https://api.navitia.io/v1").rstrip("/")
     try:
-        r = requests.get(f"{_BASE}/{path.lstrip('/')}", params=params or {},
-                         auth=(key, ""), timeout=_TIMEOUT)
+        r = requests.get(f"{base}/{path.lstrip('/')}", params=params or {}, auth=(key, ""), timeout=_TIMEOUT)
         if r.status_code == 401:
             return None, "Clé Navitia refusée (401) — vérifie `NAVITIA_API_KEY`."
         if r.status_code == 404:
@@ -53,30 +60,25 @@ def _get(path: str, params: dict = None):
         return None, f"API transport : échec ({e})."
 
 
-def _resolve_place(query: str, stop_area_only: bool = False):
-    """Résout un lieu (arrêt, adresse, ville, POI) → {id, label, region, coord}. None si introuvable.
-
-    stop_area_only=True restreint aux ARRÊTS (nécessaire pour les départs, qui exigent un
-    stop_area). Sinon, tous types acceptés (utile pour itinéraires depuis une adresse et pour
-    résoudre la région d'une ville)."""
+def _nav_resolve_place(query: str, stop_area_only: bool = False):
+    """Résout un lieu (arrêt, adresse, ville, POI) → {id, label, region, coord}. None si introuvable."""
     params = {"q": query, "count": 1}
     if stop_area_only:
         params["type[]"] = "stop_area"
-    data, err = _get("places", params)
+    data, err = _nav_get("places", params)
     if err or not data:
         return None, err
     places = data.get("places") or []
     if not places:
         return None, f"Lieu « {query} » introuvable."
     p = places[0]
-    # La coordonnée vit sous l'objet du type embarqué (stop_area / address / poi / admin…).
     emb = p.get("embedded_type") or ""
     coord = ((p.get(emb) or {}).get("coord")) or {}
     region = None
     try:
         lon, lat = coord.get("lon"), coord.get("lat")
         if lon and lat:
-            rdata, _ = _get(f"coord/{lon};{lat}")
+            rdata, _ = _nav_get(f"coord/{lon};{lat}")
             regs = (rdata or {}).get("regions") or []
             if regs:
                 region = regs[0]
@@ -85,8 +87,8 @@ def _resolve_place(query: str, stop_area_only: bool = False):
     return {"id": p.get("id"), "label": p.get("name") or query, "region": region, "coord": coord}, None
 
 
-def _delay_minutes(base: str, real: str) -> int:
-    """Retard en minutes entre l'heure théorique (base) et temps réel (format YYYYMMDDTHHMMSS)."""
+def _hms_to_min(base: str, real: str) -> int:
+    """Retard en minutes (format Navitia YYYYMMDDTHHMMSS)."""
     try:
         from datetime import datetime
         fmt = "%Y%m%dT%H%M%S"
@@ -95,22 +97,16 @@ def _delay_minutes(base: str, real: str) -> int:
         return 0
 
 
-def get_next_departures(stop: str, limit: int = 8) -> str:
-    """Prochains départs en TEMPS RÉEL à un arrêt, avec retards et suppressions.
-
-    stop : nom de l'arrêt/gare (ex. « Strasbourg Homme de Fer », « Gare de Strasbourg »).
-    limit : nombre de départs à afficher (défaut 8).
-    Renvoie ligne, direction, heure théorique et, si publié, le RETARD réel ou « supprimé ».
-    """
-    info, err = _resolve_place(stop, stop_area_only=True)
+def _nav_departures(stop: str, limit: int = 8) -> str:
+    info, err = _nav_resolve_place(stop, stop_area_only=True)
     if err:
         return f"🚏 {err}"
     region = info.get("region")
     if not region:
         return (f"🚏 Arrêt « {info['label']} » trouvé mais sa région Navitia n'a pu être résolue "
                 "(temps réel indisponible ici).")
-    data, err = _get(f"coverage/{region}/stop_areas/{info['id']}/departures",
-                     {"data_freshness": "realtime", "count": max(1, min(int(limit or 8), 20))})
+    data, err = _nav_get(f"coverage/{region}/stop_areas/{info['id']}/departures",
+                         {"data_freshness": "realtime", "count": max(1, min(int(limit or 8), 20))})
     if err:
         return f"🚏 {err}"
     deps = (data or {}).get("departures") or []
@@ -127,21 +123,13 @@ def get_next_departures(stop: str, limit: int = 8) -> str:
         hhmm = (real[9:11] + ":" + real[11:13]) if len(real) >= 13 else "?"
         status = ""
         if (st.get("data_freshness") == "realtime") and base and real:
-            dm = _delay_minutes(base, real)
-            if dm > 0:
-                status = f" ⚠️ +{dm} min"
-            elif dm == 0:
-                status = " ✅ à l'heure"
+            dm = _hms_to_min(base, real)
+            status = f" ⚠️ +{dm} min" if dm > 0 else (" ✅ à l'heure" if dm == 0 else "")
         lines.append(f"• {hhmm} — {line} → {direction}{status}")
     return "\n".join(lines)
 
 
-def get_disruptions(area: str = "") -> str:
-    """Perturbations/retards EN COURS (travaux, incidents, suppressions) sur un réseau ou une zone.
-
-    area : nom d'une ville/réseau/ligne (ex. « Strasbourg », « TER Grand Est »). Vide = essaie
-    la zone de l'utilisateur (ville configurée).
-    """
+def _nav_disruptions(area: str = "") -> str:
     q = (area or "").strip()
     if not q:
         try:
@@ -151,44 +139,32 @@ def get_disruptions(area: str = "") -> str:
             q = ""
     if not q:
         return "🚧 Précise un réseau/une ville (ex. « perturbations à Strasbourg »)."
-    info, err = _resolve_place(q)
+    info, err = _nav_resolve_place(q)
     region = info.get("region") if info and not err else None
-    path = f"coverage/{region}/disruptions" if region else "disruptions"
-    data, err = _get(path, {"count": 15})
+    data, err = _nav_get(f"coverage/{region}/disruptions" if region else "disruptions", {"count": 15})
     if err:
         return f"🚧 {err}"
-    diss = (data or {}).get("disruptions") or []
-    active = [d for d in diss if (d.get("status") == "active")]
+    active = [d for d in ((data or {}).get("disruptions") or []) if d.get("status") == "active"]
     if not active:
         return f"🚧 Aucune perturbation active signalée pour « {q} »."
+    import re as _re
     lines = [f"🚧 **Perturbations en cours — {q}** :"]
     for d in active[:10]:
         sev = ((d.get("severity") or {}).get("name") or "").strip()
         msgs = d.get("messages") or []
-        txt = ""
-        if msgs:
-            # Le texte peut contenir du HTML : on retire les balises pour rester lisible.
-            import re as _re
-            txt = _re.sub(r"<[^>]+>", " ", msgs[0].get("text") or "").strip()
+        txt = _re.sub(r"<[^>]+>", " ", (msgs[0].get("text") if msgs else "") or "").strip()
         lines.append(f"• {('[' + sev + '] ') if sev else ''}{txt[:240] or '(détail non fourni)'}")
     return "\n".join(lines)
 
 
-def get_journey(origin: str, destination: str) -> str:
-    """Itinéraire en transports en commun avec horaires et perturbations TEMPS RÉEL.
-
-    origin / destination : adresses ou arrêts (ex. « Place Kléber, Strasbourg » → « Gare de Strasbourg »).
-    """
-    if not (origin or "").strip() or not (destination or "").strip():
-        return "🧭 Indique un point de départ ET une destination."
-    o, e1 = _resolve_place(origin)
-    d, e2 = _resolve_place(destination)
+def _nav_journey(origin: str, destination: str) -> str:
+    o, e1 = _nav_resolve_place(origin)
+    d, e2 = _nav_resolve_place(destination)
     if e1 or not o:
         return f"🧭 Départ : {e1 or 'introuvable'}"
     if e2 or not d:
         return f"🧭 Destination : {e2 or 'introuvable'}"
-    data, err = _get("journeys", {"from": o["id"], "to": d["id"],
-                                  "data_freshness": "realtime", "count": 2})
+    data, err = _nav_get("journeys", {"from": o["id"], "to": d["id"], "data_freshness": "realtime", "count": 2})
     if err:
         return f"🧭 {err}"
     journeys = (data or {}).get("journeys") or []
@@ -202,12 +178,122 @@ def get_journey(origin: str, destination: str) -> str:
         nb = j.get("nb_transfers", 0)
         dep_s = f"{dep[:2]}:{dep[2:]}" if len(dep) == 4 else "?"
         arr_s = f"{arr[:2]}:{arr[2:]}" if len(arr) == 4 else "?"
-        modes = []
-        for s in (j.get("sections") or []):
-            di = s.get("display_informations") or {}
-            code = (di.get("code") or di.get("commercial_mode") or "").strip()
-            if code:
-                modes.append(code)
+        modes = [c for c in ((s.get("display_informations") or {}).get("code", "")
+                             for s in (j.get("sections") or [])) if c]
         status = " ⚠️ perturbé" if j.get("status") in ("SIGNIFICANT_DELAYS", "NO_SERVICE", "REDUCED_SERVICE") else ""
         out.append(f"• {dep_s} → {arr_s} ({dur} min, {nb} corresp.){(' via ' + ' / '.join(modes)) if modes else ''}{status}")
     return "\n".join(out)
+
+
+# ─────────────────────────── Backend TRANSITLAND (mondial) ───────────────────────────
+def _tl_get(path: str, params: dict = None):
+    key = _cfg("TRANSITLAND_API_KEY")
+    if not key:
+        return None, ("Aucune clé Transitland configurée. Clé gratuite instantanée sur "
+                      "https://www.transit.land/ puis renseigne `TRANSITLAND_API_KEY`.")
+    base = (_cfg("TRANSITLAND_API_BASE") or "https://transit.land/api/v2/rest").rstrip("/")
+    p = dict(params or {})
+    p["apikey"] = key
+    try:
+        r = requests.get(f"{base}/{path.lstrip('/')}", params=p, timeout=_TIMEOUT)
+        if r.status_code in (401, 403):
+            return None, "Clé Transitland refusée (401/403) — vérifie `TRANSITLAND_API_KEY`."
+        if r.status_code != 200:
+            return None, f"API Transitland indisponible (HTTP {r.status_code})."
+        return r.json(), None
+    except requests.Timeout:
+        return None, "API Transitland : délai dépassé."
+    except Exception as e:  # noqa: BLE001
+        return None, f"API Transitland : échec ({e})."
+
+
+def _tl_find_stop(query: str):
+    data, err = _tl_get("stops", {"search": query, "limit": 1})
+    if err:
+        return None, err
+    stops = (data or {}).get("stops") or []
+    if not stops:
+        return None, f"Arrêt « {query} » introuvable."
+    s = stops[0]
+    return {"id": s.get("onestop_id"), "label": s.get("stop_name") or query}, None
+
+
+def _hms_diff_min(a: str, b: str) -> int:
+    def _s(t):
+        parts = (t or "").split(":")
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + (int(parts[2]) if len(parts) > 2 else 0)
+    try:
+        return (_s(b) - _s(a)) // 60
+    except Exception:
+        return 0
+
+
+def _tl_departures(stop: str, limit: int = 8) -> str:
+    info, err = _tl_find_stop(stop)
+    if err:
+        return f"🚏 {err}"
+    data, err = _tl_get(f"stops/{info['id']}/departures", {"limit": max(1, min(int(limit or 8), 20))})
+    if err:
+        return f"🚏 {err}"
+    stops = (data or {}).get("stops") or []
+    deps = (stops[0].get("departures") if stops else []) or []
+    if not deps:
+        return f"🚏 Aucun départ prochain à « {info['label']} »."
+    lines = [f"🚏 **Prochains départs — {info['label']}** (temps réel) :"]
+    for d in deps:
+        dep = d.get("departure") or {}
+        trip = d.get("trip") or {}
+        route = trip.get("route") or {}
+        line = (route.get("route_short_name") or route.get("route_long_name") or "?")
+        head = (trip.get("trip_headsign") or "").strip()
+        sched = dep.get("scheduled") or ""
+        est = dep.get("estimated") or ""
+        hhmm = (est or sched)[:5] or "?"
+        delay = dep.get("delay")
+        if delay is None and sched and est:
+            delay = _hms_diff_min(sched, est) * 60
+        status = ""
+        if isinstance(delay, (int, float)):
+            dm = int(delay // 60)
+            status = f" ⚠️ +{dm} min" if dm > 0 else (" ✅ à l'heure" if est else "")
+        lines.append(f"• {hhmm} — {line} → {head}{status}")
+    return "\n".join(lines)
+
+
+def _tl_disruptions(area: str = "") -> str:
+    return ("🚧 Les perturbations détaillées ne sont pas exposées par Transitland — mais les RETARDS "
+            "apparaissent directement dans les prochains départs (heure réelle vs théorique). Pour une "
+            "liste de perturbations, utilise TRANSPORT_PROVIDER=navitia (France).")
+
+
+# ───────────────────────────── Outils publics (dispatch) ─────────────────────────────
+def get_next_departures(stop: str, limit: int = 8) -> str:
+    """Prochains départs en TEMPS RÉEL à un arrêt/gare, avec retards et suppressions.
+
+    stop : nom de l'arrêt/gare (ex. « Strasbourg Homme de Fer », « Gare de Strasbourg »).
+    limit : nombre de départs (défaut 8). Fonctionne en France (Navitia) et à l'étranger (Transitland).
+    """
+    return _tl_departures(stop, limit) if _provider() == "transitland" else _nav_departures(stop, limit)
+
+
+def get_disruptions(area: str = "") -> str:
+    """Perturbations/retards EN COURS sur un réseau ou une zone (travaux, incidents, suppressions).
+
+    area : ville/réseau/ligne (ex. « Strasbourg »). Vide = zone de l'utilisateur.
+    """
+    return _tl_disruptions(area) if _provider() == "transitland" else _nav_disruptions(area)
+
+
+def get_journey(origin: str, destination: str) -> str:
+    """Itinéraire en transports en commun entre deux lieux, avec horaires et perturbations temps réel.
+
+    origin / destination : adresses ou arrêts. NB : nécessite Navitia (la planification point-à-point
+    n'est pas fournie par Transitland).
+    """
+    if not (origin or "").strip() or not (destination or "").strip():
+        return "🧭 Indique un point de départ ET une destination."
+    if _provider() == "transitland":
+        return ("🧭 La planification d'itinéraire point-à-point n'est pas disponible via Transitland "
+                "(données d'arrêts/passages seulement). Utilise get_next_departures, ou configure "
+                "TRANSPORT_PROVIDER=navitia pour les itinéraires complets.")
+    return _nav_journey(origin, destination)
