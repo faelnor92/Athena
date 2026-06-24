@@ -955,7 +955,10 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             if _tool_names:
                 system_prompt += (
                     "- Toute donnée réelle non possédée avec certitude (météo, web, domotique, heure, "
-                    "prix…) vient d'un appel d'outil, jamais d'une valeur inventée.\n"
+                    "prix, TEMPS DE TRAJET / itinéraire / trafic routier, horaires & retards de "
+                    "transport) vient d'un appel d'outil (get_driving_route, get_next_departures, "
+                    "get_weather…), JAMAIS d'une valeur inventée ni « de tête ». Ne cite jamais un site "
+                    "tiers (ViaMichelin, Mappy, Waze…) comme source : tu ne peux pas les consulter.\n"
                 )
             # État partagé du run (context_variables) : visible par l'agent (lecture), tenu à
             # jour par les outils. Rendu compact ; les valeurs trop longues sont tronquées.
