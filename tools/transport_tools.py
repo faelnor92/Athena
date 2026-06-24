@@ -186,6 +186,15 @@ def _nav_journey(origin: str, destination: str) -> str:
 
 
 # ─────────────────────────── Backend TRANSITLAND (mondial) ───────────────────────────
+def _tl_timeout() -> int:
+    # Transitland (free tier) est SENSIBLEMENT plus lent que Navitia, surtout /departures
+    # (interroge le temps réel sur les flux GTFS-RT) → timeout plus large, configurable.
+    try:
+        return int(os.getenv("TRANSITLAND_TIMEOUT", "20") or 20)
+    except ValueError:
+        return 20
+
+
 def _tl_get(path: str, params: dict = None):
     key = _cfg("TRANSITLAND_API_KEY")
     if not key:
@@ -195,7 +204,7 @@ def _tl_get(path: str, params: dict = None):
     p = dict(params or {})
     p["apikey"] = key
     try:
-        r = requests.get(f"{base}/{path.lstrip('/')}", params=p, timeout=_TIMEOUT)
+        r = requests.get(f"{base}/{path.lstrip('/')}", params=p, timeout=_tl_timeout())
         if r.status_code in (401, 403):
             return None, "Clé Transitland refusée (401/403) — vérifie `TRANSITLAND_API_KEY`."
         if r.status_code != 200:
