@@ -817,6 +817,7 @@ class TerminalRequest(BaseModel):
     agent: str = "Codeur"
     project_id: Optional[str] = None  # projet ciblé par la CONSOLE (None = projet courant)
     host_id: Optional[str] = None     # hôte SSH ciblé (None = défaut .env / local)
+    model_name: Optional[str] = None  # modèle LLM choisi dans la console (prime sur CODE_MODEL)
 
 def _coder_console_work(req: TerminalRequest, run_id: str) -> dict:
     """Corps SYNCHRONE de la console codeur (bash direct OU run LLM). Conçu pour tourner dans un
@@ -1083,14 +1084,16 @@ def _coder_console_work(req: TerminalRequest, run_id: str) -> dict:
     _tp_allow = [t.strip() for t in os.getenv("CODER_CONSOLE_ALLOW_TOOLS", "").split(",") if t.strip()]
     _tp_deny = [t.strip() for t in os.getenv("CODER_CONSOLE_DENY_TOOLS", "").split(",") if t.strip()]
     _tp_token = _tool_policy.set_policy(allow=_tp_allow or None, deny=_tp_deny or None) if (_tp_allow or _tp_deny) else None
-    # MODÈLE dédié au CODE (CODE_MODEL, par-user) : forcé pour CE run → prime sur LLM_MODEL
-    # (le chat peut tourner sur Mistral pendant que la console code sur un modèle « coder »).
-    # Vide = la console suit le modèle du chat. Le ContextVar est copié dans asyncio.to_thread.
+    # MODÈLE de la console : sélecteur de la barre (req.model_name) > réglage CODE_MODEL (par-user)
+    # > modèle du chat. Forcé pour CE run (prime sur LLM_MODEL) ; le chat peut rester sur Mistral
+    # pendant que la console code sur un modèle « coder ». ContextVar copié dans asyncio.to_thread.
     from core.state import _forced_model as _fm_var
     _fm_token = None
     try:
-        from core import user_config as _ucfg_mod
-        _code_model = (_ucfg_mod.get_all().get("CODE_MODEL") or "").strip()
+        _code_model = (req.model_name or "").strip()
+        if not _code_model:
+            from core import user_config as _ucfg_mod
+            _code_model = (_ucfg_mod.get_all().get("CODE_MODEL") or "").strip()
         if _code_model:
             _fm_token = _fm_var.set(_code_model)
     except Exception:

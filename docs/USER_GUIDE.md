@@ -6,6 +6,12 @@ Bienvenue ! Si vous lisez ce guide, c'est que vous venez d'installer **Athena**,
 
 ---
 
+## ✨ Nouveautés de la version 0.30.0
+
+- **Choix du modèle dans la console Code** : un menu **« 🤖 Modèle »** apparaît dans la barre du terminal — choisis le LLM du code à la volée (ex. un modèle « coder »), comme dans AthenaDesign. Vide = ton réglage par défaut.
+
+---
+
 ## ✨ Nouveautés de la version 0.29.0
 
 - **Transports en temps réel** : horaires, **retards** et perturbations (train, tram, bus) + itinéraires — « prochain tram à Homme de Fer ? », « mon TER a-t-il du retard ? ». (clé Navitia gratuite à renseigner dans Réglages)

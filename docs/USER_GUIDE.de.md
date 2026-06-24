@@ -6,6 +6,12 @@ Willkommen! Wenn Sie dieses Handbuch lesen, haben Sie soeben **Athena** installi
 
 ---
 
+## ✨ Neu in Version 0.30.0
+
+- **Modellwahl in der Code-Konsole**: ein Menü **„🤖 Modell"** in der Terminalleiste, um das Code-LLM spontan zu wählen (z. B. ein „Coder"-Modell), wie in AthenaDesign. Leer = Standard.
+
+---
+
 ## ✨ Neu in Version 0.29.0
 
 - **Öffentlicher Verkehr in Echtzeit**: Fahrpläne, **Verspätungen** und Störungen (Zug, Tram, Bus) + Routen — „nächste Tram an Homme de Fer?", „hat mein Zug Verspätung?". (kostenloser Navitia-Schlüssel in den Einstellungen)
