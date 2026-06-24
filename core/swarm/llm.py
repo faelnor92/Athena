@@ -125,7 +125,16 @@ class _CompletionMixin:
                     pass
             return stream_obj
 
+        try:
+            from core.run_context import is_cancelled_current as _is_cancelled
+        except Exception:
+            _is_cancelled = lambda: False
         for chunk in stream_obj:
+            # Annulation TEMPS RÉEL : si l'utilisateur a stoppé le run, on arrête le streaming ici
+            # (on conserve ce qui a déjà été généré) → on cesse de consommer des tokens.
+            if _is_cancelled():
+                finish_reason = "cancelled"
+                break
             # Le chunk d'usage final (include_usage) a souvent choices=[] → on le lit AVANT le
             # garde-fou ci-dessous, sinon il serait ignoré et l'usage perdu.
             _cu = getattr(chunk, "usage", None)

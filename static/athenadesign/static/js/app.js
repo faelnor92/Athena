@@ -2428,6 +2428,21 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // Annulation de la génération : AbortController (stoppe la lecture) + cancel serveur (stoppe
+    // le LLM, arrête de consommer des tokens). Le run_id arrive via l'event SSE `run`.
+    const btnStop = document.getElementById("btn-stop");
+    const btnSend = document.getElementById("btn-send");
+    let _designAbort = null, _designRunId = null;
+    function _setGenerating(on) {
+        if (btnStop) btnStop.style.display = on ? "" : "none";
+        if (btnSend) btnSend.style.display = on ? "none" : "";
+    }
+    if (btnStop) btnStop.addEventListener("click", () => {
+        if (_designRunId) { try { fetch(`/api/runs/${_designRunId}/cancel`, { method: "POST" }); } catch (_) {} }
+        if (_designAbort) { try { _designAbort.abort(); } catch (_) {} }
+        if (appStatus) appStatus.textContent = "Arrêt…";
+    });
+
     chatForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const promptText = promptInput.value.trim();
@@ -2440,6 +2455,9 @@ document.addEventListener("DOMContentLoaded", () => {
         appStatus.className = "status-badge generating";
         promptInput.disabled = true;
         tokenMeterReset();   // nouveau run de design → compteur in/out remis à zéro
+        _designAbort = new AbortController();
+        _designRunId = null;
+        _setGenerating(true);
         
         const payload = {
             project_id: currentProjectId,
@@ -2463,7 +2481,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const resp = await fetch("/api/athenadesign/chat/stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: _designAbort ? _designAbort.signal : undefined
             });
             clearAttachments();
             if (!resp.ok || !resp.body) throw new Error("Server error");
@@ -2486,10 +2505,16 @@ document.addEventListener("DOMContentLoaded", () => {
                     });
                     if (!dataStr) continue;
                     let d; try { d = JSON.parse(dataStr); } catch (_) { continue; }
-                    if (ev === "done") finalData = d;
+                    if (ev === "run") _designRunId = d.run_id || null;
+                    else if (ev === "done") finalData = d;
                     else if (ev === "error") errData = d;
                     else if (d.token != null) { acc += d.token; setLive(acc + "▌"); tokenMeterEstimate(String(d.token).length); }
                 }
+            }
+            if (errData && errData.cancelled) {
+                setLive(acc ? acc : "⏹️ Génération interrompue.");
+                appStatus.textContent = "Interrompu"; appStatus.className = "status-badge";
+                return;
             }
             if (errData) throw new Error(errData.error || "génération");
             const data = finalData;
@@ -2509,12 +2534,20 @@ document.addEventListener("DOMContentLoaded", () => {
             appStatus.className = "status-badge success";
             await loadProjects();
         } catch (err) {
-            console.error(err);
-            if (liveContent) liveContent.innerHTML = formatMessageMarkdown("⚠️ Une erreur est survenue lors de la communication.");
-            else appendSystemMessage("⚠️ Une erreur est survenue lors de la communication.");
-            appStatus.textContent = "Erreur";
-            appStatus.className = "status-badge";
+            if (err && err.name === "AbortError") {
+                // Annulation côté client : pas une erreur.
+                setLive(acc ? acc : "⏹️ Génération interrompue.");
+                appStatus.textContent = "Interrompu"; appStatus.className = "status-badge";
+            } else {
+                console.error(err);
+                if (liveContent) liveContent.innerHTML = formatMessageMarkdown("⚠️ Une erreur est survenue lors de la communication.");
+                else appendSystemMessage("⚠️ Une erreur est survenue lors de la communication.");
+                appStatus.textContent = "Erreur";
+                appStatus.className = "status-badge";
+            }
         } finally {
+            _setGenerating(false);
+            _designAbort = null; _designRunId = null;
             promptInput.disabled = false;
             promptInput.focus();
         }

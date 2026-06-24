@@ -785,11 +785,21 @@ async def chat_stream(request: Request, payload: dict = Body(...)):
             yield _sse("done", {"project_id": ctx["project_id"], "version": version})
         return StreamingResponse(_one(), media_type="text/event-stream")
 
+    # Run ANNULABLE : run_id enregistré → /api/runs/{id}/cancel l'arrête (vérifié par chunk dans
+    # _complete_streaming). Le client reçoit le run_id via l'event `run` et peut le stopper.
+    from core.run_context import registry as _run_registry, current_run_id as _current_run_id
+    from core.tracing import run_store as _run_store
+    run_id = _run_store.new_run_id()
+    _run_registry.start(run_id)
+
     async def event_gen():
         q: "_queue.Queue" = _queue.Queue()
         out = {}
 
         def worker():
+            # current_run_id n'est PAS propagé au thread → on le pose ici pour que l'annulation
+            # (is_cancelled_current, vérifiée dans _complete_streaming) cible bien CE run.
+            _current_run_id.set(run_id)
             try:
                 out["res"] = generator._generate_via_athena(
                     ctx["prompt"], ctx["project"]["history"], model_name=ctx["model_name"],
@@ -803,17 +813,23 @@ async def chat_stream(request: Request, payload: dict = Body(...)):
 
         threading.Thread(target=worker, name="athenadesign-stream", daemon=True).start()
         loop = asyncio.get_event_loop()
-        while True:
-            kind, data = await loop.run_in_executor(None, q.get)
-            if kind == "token":
-                yield _sse("", {"token": data})
+        try:
+            yield _sse("run", {"run_id": run_id, "project_id": ctx["project_id"]})
+            while True:
+                kind, data = await loop.run_in_executor(None, q.get)
+                if kind == "token":
+                    yield _sse("", {"token": data})
+                else:
+                    break
+            if _run_registry.is_cancelled(run_id) and "res" not in out:
+                yield _sse("error", {"error": "Génération interrompue.", "cancelled": True})
+            elif "res" in out:
+                version = _persist_design_version(user, ctx, out["res"])
+                yield _sse("done", {"project_id": ctx["project_id"], "version": version})
             else:
-                break
-        if "res" in out:
-            version = _persist_design_version(user, ctx, out["res"])
-            yield _sse("done", {"project_id": ctx["project_id"], "version": version})
-        else:
-            yield _sse("error", {"error": out.get("err", "échec de génération")})
+                yield _sse("error", {"error": out.get("err", "échec de génération")})
+        finally:
+            _run_registry.finish(run_id)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
