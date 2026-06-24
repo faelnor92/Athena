@@ -76,6 +76,7 @@ import tools.goal_tools
 import tools.event_tools
 import tools.email_tools
 import tools.transport_tools
+import tools.ocr_tools
 import tools.nextcloud_tools
 import tools.proxmox_tools
 import tools.document_editor
@@ -239,6 +240,8 @@ AVAILABLE_TOOLS = {
     "get_next_departures": tools.transport_tools.get_next_departures,
     "get_transport_disruptions": tools.transport_tools.get_disruptions,
     "get_journey": tools.transport_tools.get_journey,
+    "ocr_image": tools.ocr_tools.ocr_image,
+    "ocr_document": tools.ocr_tools.ocr_document,
     "document_open": tools.document_editor.document_open,
     "document_read": tools.document_editor.document_read,
     "document_revise": tools.document_editor.document_revise,

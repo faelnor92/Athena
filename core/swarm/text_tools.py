@@ -39,7 +39,7 @@ _TOOL_GROUPS = {
                   "document_autorevise", "document_check_coherence", "document_translate", "document_check_repetitions"},
     "skills": {"delete_skill"},  # save_new_skill : hors groupe → jamais filtré (créer un outil à tout moment)
     "computer": {"computer_use_action"},
-    "vision": {"analyze_image", "capture_screen"},
+    "vision": {"analyze_image", "capture_screen", "ocr_image", "ocr_document"},
     "routines": {"create_routine", "list_routines"},
     "proxmox": {"proxmox_status", "proxmox_vm_action", "proxmox_vm_exec", "proxmox_vm_logs"},
     "transport": {"get_next_departures", "get_transport_disruptions", "get_journey"},
@@ -85,7 +85,11 @@ _TOOL_GROUP_KEYWORDS = {
     "computer": ["souris", "clic", "navigateur", "navigue", "site web", "clique sur"],
     "vision": ["image", "photo", "capture", "capture d'écran", "screenshot", "écran", "ecran",
                "vois-tu", "que vois", "regarde l'image", "regarde cette image", "lis l'image",
-               "analyse l'image", "analyse cette image", "sur l'image", "cette image", "visuel"],
+               "analyse l'image", "analyse cette image", "sur l'image", "cette image", "visuel",
+               # OCR : extraction de texte d'une image/PDF scanné
+               "ocr", "scan", "scanné", "scanne", "numérisé", "extrais le texte", "extrait le texte",
+               "lis le document", "lis ce document", "transcris", "transcription", "texte de l'image",
+               "facture", "reçu", "recu", "ticket", "carte d'identité", "document scanné"],
     "routines": ["routine", "routines", "chaque matin", "tous les matins", "chaque jour",
                  "tous les jours", "chaque semaine", "rappel récurrent", "automatise", "périodique",
                  "programme une tâche", "planifie tous les", "récurrent"],
