@@ -6,6 +6,17 @@ Bienvenue ! Si vous lisez ce guide, c'est que vous venez d'installer **Athena**,
 
 ---
 
+## ✨ Nouveautés de la version 0.29.0
+
+- **Transports en temps réel** : horaires, **retards** et perturbations (train, tram, bus) + itinéraires — « prochain tram à Homme de Fer ? », « mon TER a-t-il du retard ? ». (clé Navitia gratuite à renseigner dans Réglages)
+- **OCR** : extraction fidèle du **texte d'une image ou d'un PDF** (même scanné) — « lis cette facture ».
+- **Météo hyperlocale** : météo précise par coordonnées (pas seulement la ville). Renseigne ta latitude/longitude dans Réglages pour la précision au quartier.
+- **Recommandations contextuelles** : « qu'est-ce que tu me conseilles ? » → Athena croise météo, agenda, tâches, perturbations et tes préférences.
+- **Trafic routier** : temps de trajet en **voiture avec embouteillages** + incidents — « combien de temps jusqu'au travail ? ». (clé TomTom gratuite à renseigner)
+- **Tout se configure dans l'interface** : nouvelle section « Intégrations externes » dans Réglages (clés Navitia/TomTom, météo, modèle OCR).
+
+---
+
 ## ✨ Nouveautés de la version 0.28.0
 
 - **Modèle dédié au Design et au Code** : dans **Réglages → Mon modèle & clés LLM**, choisissez un modèle spécifique pour **AthenaDesign** (🎨) et pour la **console Code** (🧩), différent de celui du chat (ex. un modèle « coder » pour le code, un autre pour la conversation). Les listes ne proposent que les modèles **réellement accessibles** (votre endpoint + les fournisseurs dont la clé est renseignée).

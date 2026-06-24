@@ -6,6 +6,17 @@ Welcome! If you're reading this guide, you've just installed **Athena**, your mu
 
 ---
 
+## ✨ What's new in version 0.29.0
+
+- **Real-time public transport**: schedules, **delays** and disruptions (train, tram, bus) + journeys — "next tram at Homme de Fer?", "is my train delayed?". (free Navitia key to set in Settings)
+- **OCR**: faithful **text extraction from an image or PDF** (even scanned) — "read this invoice".
+- **Hyperlocal weather**: precise weather by coordinates (not just the city). Set your latitude/longitude in Settings for street-level accuracy.
+- **Contextual recommendations**: "what do you suggest?" → Athena combines weather, calendar, tasks, disruptions and your preferences.
+- **Road traffic**: **driving time with traffic jams** + incidents — "how long to work?". (free TomTom key to set)
+- **Everything configurable in the UI**: new "External integrations" section in Settings (Navitia/TomTom keys, weather, OCR model).
+
+---
+
 ## ✨ What's new in version 0.28.0
 
 - **Dedicated model for Design and Code**: in **Settings → My LLM model & keys**, pick a specific model for **AthenaDesign** (🎨) and for the **Code console** (🧩), different from the chat model (e.g. a "coder" model for code, another for conversation). The lists only show models that are **actually reachable** (your endpoint + providers whose key is set).

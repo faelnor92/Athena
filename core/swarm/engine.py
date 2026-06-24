@@ -75,6 +75,10 @@ import tools.context_tools
 import tools.goal_tools
 import tools.event_tools
 import tools.email_tools
+import tools.transport_tools
+import tools.ocr_tools
+import tools.reco_tools
+import tools.traffic_tools
 import tools.nextcloud_tools
 import tools.proxmox_tools
 import tools.document_editor
@@ -220,6 +224,7 @@ AVAILABLE_TOOLS = {
     "generate_artistic_image": tools.image_generator.generate_artistic_image,
     "generate_artistic_video": tools.image_generator.generate_artistic_video,
     "get_daily_briefing": tools.briefing_tools.get_daily_briefing,
+    "get_recommendations": tools.reco_tools.get_recommendations,
     "get_time": tools.basic_tools.get_time,
     "get_weather": tools.basic_tools.get_weather,
     "transcribe_and_summarize_meeting": tools.meeting_summarizer.transcribe_and_summarize_meeting,
@@ -235,6 +240,13 @@ AVAILABLE_TOOLS = {
     "archive_emails": tools.email_tools.archive_emails,
     "clean_inbox": tools.email_tools.clean_inbox,
     "list_mail_folders": tools.email_tools.list_mail_folders,
+    "get_next_departures": tools.transport_tools.get_next_departures,
+    "get_transport_disruptions": tools.transport_tools.get_disruptions,
+    "get_journey": tools.transport_tools.get_journey,
+    "get_driving_route": tools.traffic_tools.get_driving_route,
+    "get_traffic_incidents": tools.traffic_tools.get_traffic_incidents,
+    "ocr_image": tools.ocr_tools.ocr_image,
+    "ocr_document": tools.ocr_tools.ocr_document,
     "document_open": tools.document_editor.document_open,
     "document_read": tools.document_editor.document_read,
     "document_revise": tools.document_editor.document_revise,

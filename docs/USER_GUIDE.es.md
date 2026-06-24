@@ -6,6 +6,17 @@
 
 ---
 
+## ✨ Novedades de la versión 0.29.0
+
+- **Transporte público en tiempo real**: horarios, **retrasos** e incidencias (tren, tranvía, bus) + itinerarios — «¿próximo tranvía en Homme de Fer?», «¿mi tren lleva retraso?». (clave Navitia gratuita a configurar en Ajustes)
+- **OCR**: extracción fiel del **texto de una imagen o un PDF** (incluso escaneado) — «lee esta factura».
+- **Meteo hiperlocal**: tiempo preciso por coordenadas (no solo la ciudad). Indica tu latitud/longitud en Ajustes para precisión a nivel de calle.
+- **Recomendaciones contextuales**: «¿qué me aconsejas?» → Athena combina tiempo, agenda, tareas, incidencias y tus preferencias.
+- **Tráfico por carretera**: **tiempo de trayecto en coche con atascos** + incidentes — «¿cuánto hay hasta el trabajo?». (clave TomTom gratuita)
+- **Todo configurable en la interfaz**: nueva sección «Integraciones externas» en Ajustes (claves Navitia/TomTom, meteo, modelo OCR).
+
+---
+
 ## ✨ Novedades de la versión 0.28.0
 
 - **Modelo dedicado para Diseño y Código**: en **Ajustes → Mi modelo y claves LLM**, elige un modelo específico para **AthenaDesign** (🎨) y para la **consola de Código** (🧩), distinto del modelo del chat (p. ej. un modelo «coder» para el código y otro para la conversación). Las listas solo muestran los modelos **realmente accesibles** (tu endpoint + los proveedores cuya clave esté configurada).
