@@ -24,44 +24,106 @@ def get_time(timezone: str = "Europe/Paris") -> str:
     readable_date = f"{day_str} {now.day:02d} {month_str} {now.year}, {now.hour:02d}:{now.minute:02d}"
     return f"Il est actuellement {readable_date} (fuseau horaire : {timezone})."
 
-def get_weather(city: str) -> str:
-    """
-    Récupère la météo EXTÉRIEURE actuelle pour une ville donnée via wttr.in.
-    IMPORTANT : 
-    - Si l'utilisateur ne précise pas la ville, déduis-la de ses informations mémorisées (utilise search_memory si besoin).
-    - Pour la température intérieure d'une pièce de la maison (ex: salon, chambre), 
-      utilise plutôt l'outil `get_ha_state` avec le bon capteur domotique (ex: sensor.temperature_salon).
-    """
-    if not city or city.strip() == "":
-        return "Erreur : Tu dois préciser une ville. Cherche dans ta mémoire la ville de l'utilisateur ou demande-lui."
+# Codes météo WMO (Open-Meteo) → description FR (concise).
+_WMO = {
+    0: "ciel dégagé", 1: "plutôt dégagé", 2: "partiellement nuageux", 3: "couvert",
+    45: "brouillard", 48: "brouillard givrant",
+    51: "bruine faible", 53: "bruine", 55: "bruine dense",
+    56: "bruine verglaçante", 57: "bruine verglaçante dense",
+    61: "pluie faible", 63: "pluie", 65: "pluie forte",
+    66: "pluie verglaçante", 67: "pluie verglaçante forte",
+    71: "neige faible", 73: "neige", 75: "neige forte", 77: "grains de neige",
+    80: "averses faibles", 81: "averses", 82: "averses violentes",
+    85: "averses de neige", 86: "fortes averses de neige",
+    95: "orage", 96: "orage avec grêle", 99: "orage avec forte grêle",
+}
+
+
+def _geocode(city: str):
+    """Ville → (lat, lon, libellé) via le géocodage Open-Meteo (gratuit, sans clé). None sinon."""
     try:
-        encoded_city = urllib.parse.quote(city)
-        url = f"https://wttr.in/{encoded_city}?format=j1&lang=fr"
-        r = requests.get(url, timeout=8)
-        if r.status_code == 200:
-            data = r.json()
-            curr = data['current_condition'][0]
-            desc = curr.get('lang_fr', [{'value': curr['weatherDesc'][0]['value']}])[0]['value']
-            temp = curr['temp_C']
-            feels = curr['FeelsLikeC']
-            hum = curr['humidity']
-            wind = curr['windspeedKmph']
-            
-            res = f"Météo actuelle à {city.capitalize()} : {desc}, {temp}°C (ressenti {feels}°C), Humidité {hum}%, Vent {wind} km/h.\n\n"
-            res += "Prévisions pour les prochains jours :\n"
-            for day in data.get('weather', []):
-                d = day.get('date', '')
-                tmin = day.get('mintempC', '?')
-                tmax = day.get('maxtempC', '?')
-                try:
-                    # Prendre la prévision de 12h00 (index 4 si par tranches de 3h)
-                    mid_desc = day['hourly'][4].get('lang_fr', [{'value': day['hourly'][4]['weatherDesc'][0]['value']}])[0]['value']
-                except Exception:
-                    mid_desc = "Indisponible"
-                res += f"- {d} : {mid_desc}, min {tmin}°C / max {tmax}°C\n"
-                
-            return res.strip()
-        else:
-            return f"Météo indisponible pour {city} (erreur {r.status_code})."
-    except Exception as e:
-        return f"Erreur lors de la récupération de la météo pour {city} : {str(e)}"
+        r = requests.get("https://geocoding-api.open-meteo.com/v1/search",
+                         params={"name": city, "count": 1, "language": "fr", "format": "json"},
+                         timeout=8)
+        res = (r.json() or {}).get("results") if r.status_code == 200 else None
+        if res:
+            g = res[0]
+            label = g.get("name", city)
+            if g.get("admin1"):
+                label += f" ({g['admin1']})"
+            return float(g["latitude"]), float(g["longitude"]), label
+    except Exception:
+        pass
+    return None
+
+
+def _resolve_coords(city: str):
+    """Coordonnées hyperlocales : ville passée → géocodage ; sinon WEATHER_LAT/LON de la config
+    (position précise du compte) ; sinon géocodage de la ville configurée. Renvoie (lat,lon,label)."""
+    if (city or "").strip():
+        g = _geocode(city.strip())
+        return g or (None, None, city)
+    # Pas de ville → position précise du compte (hyperlocal), sinon ville configurée.
+    cfg = {}
+    try:
+        from core import user_config
+        cfg = user_config.get_all() or {}
+    except Exception:
+        cfg = {}
+    import os as _os
+    lat = (str(cfg.get("WEATHER_LAT") or "").strip() or _os.getenv("WEATHER_LAT", "").strip())
+    lon = (str(cfg.get("WEATHER_LON") or "").strip() or _os.getenv("WEATHER_LON", "").strip())
+    if lat and lon:
+        try:
+            return float(lat), float(lon), (str(cfg.get("WEATHER_CITY") or "").strip() or "ma position")
+        except ValueError:
+            pass
+    try:
+        from tools.briefing_tools import _resolve_city
+        c = _resolve_city()
+        if c:
+            g = _geocode(c)
+            if g:
+                return g
+    except Exception:
+        pass
+    return (None, None, "")
+
+
+def get_weather(city: str = "") -> str:
+    """
+    Météo EXTÉRIEURE actuelle + prévisions, HYPERLOCALE (par coordonnées, via Open-Meteo).
+    - Ville passée → géocodée précisément. Vide → position du compte (WEATHER_LAT/LON) ou ville
+      configurée. Pour la position exacte (quartier), renseigne WEATHER_LAT/WEATHER_LON.
+    - Température INTÉRIEURE d'une pièce → utilise `get_ha_state` (capteur domotique), pas cet outil.
+    """
+    lat, lon, label = _resolve_coords(city)
+    if lat is None:
+        return ("Erreur : aucune localisation. Précise une ville, ou configure WEATHER_LAT/WEATHER_LON "
+                "(position précise) ou WEATHER_CITY dans le compte.")
+    try:
+        r = requests.get("https://api.open-meteo.com/v1/forecast", params={
+            "latitude": lat, "longitude": lon, "timezone": "auto", "forecast_days": 4,
+            "current": "temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code",
+            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+        }, timeout=8)
+        if r.status_code != 200:
+            return f"Météo indisponible pour {label} (erreur {r.status_code})."
+        data = r.json()
+        cur = data.get("current", {})
+        desc = _WMO.get(int(cur.get("weather_code", -1)), "conditions inconnues")
+        res = (f"Météo actuelle à {label} : {desc}, {cur.get('temperature_2m','?')}°C "
+               f"(ressenti {cur.get('apparent_temperature','?')}°C), humidité {cur.get('relative_humidity_2m','?')}%, "
+               f"vent {cur.get('wind_speed_10m','?')} km/h.\n\nPrévisions :\n")
+        daily = data.get("daily", {})
+        days = daily.get("time", []) or []
+        for i, d in enumerate(days):
+            dd = _WMO.get(int((daily.get("weather_code") or [None])[i] or -1), "?")
+            tmin = (daily.get("temperature_2m_min") or [None])[i]
+            tmax = (daily.get("temperature_2m_max") or [None])[i]
+            pp = (daily.get("precipitation_probability_max") or [None])[i]
+            rain = f", pluie {pp}%" if pp is not None else ""
+            res += f"- {d} : {dd}, min {tmin}°C / max {tmax}°C{rain}\n"
+        return res.strip()
+    except Exception as e:  # noqa: BLE001
+        return f"Erreur lors de la récupération de la météo pour {label} : {e}"

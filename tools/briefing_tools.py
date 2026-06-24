@@ -41,23 +41,22 @@ def get_daily_briefing(city: str = "") -> str:
     # 1. METEO — ville fournie par le modèle, sinon config du compte (pas de Paris codé en dur).
     if not (city or "").strip():
         city = _resolve_city()
-    if not (city or "").strip():
-        briefing += ("🌡️ **Météo** : ville non configurée. Précise ta ville ou enregistre-la "
-                     "(Réglages → profil, ou demande-moi de la mémoriser).\n\n")
-        # On poursuit le reste du briefing (agenda, tâches, infra) sans bloquer.
-        city = None
-    if city:
-        print(f"☀️ [Briefing] Récupération de la météo pour : {city}")
-        try:
-            encoded_city = urllib.parse.quote(city)
-            url = f"https://wttr.in/{encoded_city}?format=%C:+%t+(ressenti+%f),+Humidité+%h,+Vent+%w"
-            r = requests.get(url, timeout=5)
-            if r.status_code == 200:
-                briefing += f"🌡️ **Météo à {city.capitalize()}** :\n> {r.text.strip()}\n\n"
-            else:
-                briefing += f"🌡️ **Météo à {city.capitalize()}** : Indisponible temporairement.\n\n"
-        except Exception as e:
-            briefing += f"🌡️ **Météo à {city.capitalize()}** : Échec de la récupération ({str(e)}).\n\n"
+    # Météo HYPERLOCALE (Open-Meteo, par coordonnées) — marche même sans ville si WEATHER_LAT/LON
+    # est configuré. On prend la ligne « conditions actuelles » + la prévision du jour, compact.
+    print(f"☀️ [Briefing] Récupération de la météo (ville={city or 'auto'})")
+    try:
+        from tools.basic_tools import get_weather
+        w = (get_weather(city or "") or "").strip()
+        if w.lower().startswith("erreur") or "indisponible" in w.lower():
+            briefing += ("🌡️ **Météo** : indisponible (configure ta ville ou WEATHER_LAT/WEATHER_LON).\n\n")
+        else:
+            lines = w.splitlines()
+            current = lines[0] if lines else w
+            # 1ʳᵉ ligne de prévision (aujourd'hui) si présente.
+            forecast = next((l for l in lines if l.strip().startswith("- ")), "")
+            briefing += f"🌡️ **{current}**\n" + (f"> {forecast.strip()[2:]}\n\n" if forecast else "\n")
+    except Exception as e:  # noqa: BLE001
+        briefing += f"🌡️ **Météo** : échec de la récupération ({e}).\n\n"
         
     # 2. AGENDA DU JOUR (agenda de l'utilisateur courant)
     today_events = []
