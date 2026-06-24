@@ -42,6 +42,7 @@ _TOOL_GROUPS = {
     "vision": {"analyze_image", "capture_screen"},
     "routines": {"create_routine", "list_routines"},
     "proxmox": {"proxmox_status", "proxmox_vm_action", "proxmox_vm_exec", "proxmox_vm_logs"},
+    "transport": {"get_next_departures", "get_transport_disruptions", "get_journey"},
 }
 _TOOL_GROUP_KEYWORDS = {
     "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",
@@ -88,6 +89,11 @@ _TOOL_GROUP_KEYWORDS = {
     "routines": ["routine", "routines", "chaque matin", "tous les matins", "chaque jour",
                  "tous les jours", "chaque semaine", "rappel récurrent", "automatise", "périodique",
                  "programme une tâche", "planifie tous les", "récurrent"],
+    "transport": ["train", "trains", "ter", "tgv", "sncf", "gare", "tram", "tramway", "bus",
+                  "métro", "metro", "cts", "transport", "transports", "horaire", "horaires",
+                  "départ", "depart", "prochain départ", "retard", "retards", "perturbation",
+                  "perturbations", "trafic", "itinéraire", "itineraire", "ligne", "correspondance",
+                  "arrêt", "arret", "station", "navitia"],
 }
 # Index inversé nom→groupe (un outil n'est dans qu'un seul groupe).
 _TOOL_DOMAIN = {name: grp for grp, names in _TOOL_GROUPS.items() for name in names}

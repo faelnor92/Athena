@@ -75,6 +75,7 @@ import tools.context_tools
 import tools.goal_tools
 import tools.event_tools
 import tools.email_tools
+import tools.transport_tools
 import tools.nextcloud_tools
 import tools.proxmox_tools
 import tools.document_editor
@@ -235,6 +236,9 @@ AVAILABLE_TOOLS = {
     "archive_emails": tools.email_tools.archive_emails,
     "clean_inbox": tools.email_tools.clean_inbox,
     "list_mail_folders": tools.email_tools.list_mail_folders,
+    "get_next_departures": tools.transport_tools.get_next_departures,
+    "get_transport_disruptions": tools.transport_tools.get_disruptions,
+    "get_journey": tools.transport_tools.get_journey,
     "document_open": tools.document_editor.document_open,
     "document_read": tools.document_editor.document_read,
     "document_revise": tools.document_editor.document_revise,
