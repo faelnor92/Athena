@@ -50,7 +50,7 @@ def _fmt_min(seconds) -> str:
 
 
 def get_driving_route(origin: str, destination: str) -> str:
-    """Temps de trajet EN VOITURE avec trafic temps réel (et retard dû aux embouteillages).
+    """Durée et distance d'un trajet EN VOITURE entre deux lieux — « combien de temps / quelle distance pour aller de A à B en voiture » — avec trafic temps réel et retards dus aux embouteillages.
 
     origin / destination : adresses ou lieux (ex. « Strasbourg » → « Aéroport d'Entzheim »).
     Renvoie distance, durée actuelle (trafic inclus), retard vs circulation fluide et arrivée estimée.
