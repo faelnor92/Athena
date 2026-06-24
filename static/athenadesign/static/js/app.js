@@ -2174,9 +2174,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!el) {
             el = document.createElement("div");
             el.id = "design-token-meter";
-            el.style.cssText = "position:fixed;bottom:14px;right:14px;z-index:9999;display:none;"
+            el.style.cssText = "position:fixed;top:12px;right:12px;z-index:9999;display:none;pointer-events:none;"
                 + "background:rgba(15,20,30,.92);color:#bfe3ff;border:1px solid rgba(120,200,255,.28);"
-                + "border-radius:10px;padding:6px 11px;font:12px/1.45 ui-monospace,monospace;"
+                + "border-radius:10px;padding:5px 10px;font:11px/1.4 ui-monospace,monospace;"
                 + "box-shadow:0 4px 16px rgba(0,0,0,.45);white-space:nowrap";
             document.body.appendChild(el);
         }

@@ -527,6 +527,11 @@ function selectActiveTab(tab, view, extraAction = null) {
         if (typeof fitTerminal === "function") setTimeout(fitTerminal, 150);
     }
 
+    // Compteur de tokens par-run : visible seulement sur le chat (office) et la console code.
+    if (typeof tokenMeterSetTabVisible === "function") {
+        tokenMeterSetTabVisible(view === viewOffice || view === viewFiles || view === viewConsole);
+    }
+
     if (extraAction) extraAction();
 }
 
@@ -2075,7 +2080,7 @@ function _clearStreamBubble() {
  * Affiche ↓ in (prompt) · ↑ out (réponse) · Σ total du run. Pendant le stream, `out` est ESTIMÉ
  * (≈4 caractères/token) puis RÉCONCILIÉ sur le chiffre exact dès l'event `usage` (1 par tour LLM,
  * pas de flood). Visible en permanence pour que l'utilisateur suive sa dépense. */
-const _tokMeter = { inTok: 0, outTok: 0, estOut: 0, model: "default", active: false };
+const _tokMeter = { inTok: 0, outTok: 0, estOut: 0, model: "default", active: false, tabOk: true };
 // Cumul GLOBAL (toutes surfaces, durée de la session) → barre du haut. Amorcé depuis le serveur
 // dans loadCockpitData (valeur persistante), puis incrémenté EN LIVE à chaque event `usage`.
 const _globalTok = { inTok: 0, outTok: 0, total: 0 };
@@ -2093,9 +2098,11 @@ function _tokMeterEl() {
     if (!el) {
         el = document.createElement("div");
         el.id = "token-meter";
-        el.style.cssText = "position:fixed;bottom:14px;right:14px;z-index:9999;display:none;"
+        // Sous la barre du haut (70px), à droite → ne recouvre PAS l'input du chat (en bas).
+        // pointer-events:none → purement informatif, n'intercepte jamais un clic.
+        el.style.cssText = "position:fixed;top:78px;right:18px;z-index:9999;display:none;pointer-events:none;"
             + "background:rgba(15,20,30,.92);color:#bfe3ff;border:1px solid rgba(120,200,255,.28);"
-            + "border-radius:10px;padding:6px 11px;font:12px/1.45 ui-monospace,SFMono-Regular,monospace;"
+            + "border-radius:10px;padding:5px 10px;font:11px/1.4 ui-monospace,SFMono-Regular,monospace;"
             + "box-shadow:0 4px 16px rgba(0,0,0,.45);backdrop-filter:blur(6px);white-space:nowrap";
         document.body.appendChild(el);
     }
@@ -2124,9 +2131,15 @@ function tokenMeterAddEstimate(chars) {
     _tokMeter.active = true;
     tokenMeterRender();
 }
+// Le meter par-run ne concerne QUE les surfaces qui consomment des tokens (chat + console code) :
+// on le masque sur les autres onglets (agenda, mémoire, cockpit…).
+function tokenMeterSetTabVisible(ok) {
+    _tokMeter.tabOk = !!ok;
+    tokenMeterRender();
+}
 function tokenMeterRender() {
     const el = _tokMeterEl();
-    el.style.display = _tokMeter.active ? "block" : "none";
+    el.style.display = (_tokMeter.active && _tokMeter.tabOk) ? "block" : "none";
     const out = _tokMeter.outTok + _tokMeter.estOut;
     const total = _tokMeter.inTok + out;
     const prov = _tokMeter.estOut ? "~" : "";
