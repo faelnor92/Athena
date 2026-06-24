@@ -6,6 +6,14 @@ Welcome! If you're reading this guide, you've just installed **Athena**, your mu
 
 ---
 
+## ✨ What's new in version 0.31.0
+
+- **AthenaDesign — faster, cheaper edits**: changing a design no longer rewrites all its code (only the changes are applied) → big token savings. New **⏹️ Stop** button to cancel a running generation. Pick the **model** right in the Design tab.
+- **Reliable road traffic**: driving time with traffic jams (TomTom) is now computed via the dedicated tool, not guessed. (free TomTom key in Settings)
+- *Public transit: not available — no reliable free source, especially for SNCF trains.*
+
+---
+
 ## ✨ What's new in version 0.30.0
 
 - **Pick the model in the Code console**: a **"🤖 Model"** menu in the terminal bar lets you choose the code LLM on the fly (e.g. a "coder" model), like in AthenaDesign. Empty = your default.

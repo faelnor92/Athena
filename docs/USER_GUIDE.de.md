@@ -6,6 +6,14 @@ Willkommen! Wenn Sie dieses Handbuch lesen, haben Sie soeben **Athena** installi
 
 ---
 
+## ✨ Neu in Version 0.31.0
+
+- **AthenaDesign — schnellere, günstigere Änderungen**: Eine Design-Änderung schreibt nicht mehr den gesamten Code neu (nur die Änderungen werden angewendet) → große Token-Ersparnis. Neuer **⏹️ Stopp**-Knopf, um eine Generierung abzubrechen. Modellwahl direkt im Design-Tab.
+- **Zuverlässiger Straßenverkehr**: Die Fahrzeit mit Stau (TomTom) wird jetzt über das dedizierte Tool berechnet, nicht „aus dem Kopf". (kostenloser TomTom-Schlüssel in den Einstellungen)
+- *Öffentlicher Nahverkehr: nicht verfügbar — keine zuverlässige kostenlose Quelle, besonders für SNCF-Züge.*
+
+---
+
 ## ✨ Neu in Version 0.30.0
 
 - **Modellwahl in der Code-Konsole**: ein Menü **„🤖 Modell"** in der Terminalleiste, um das Code-LLM spontan zu wählen (z. B. ein „Coder"-Modell), wie in AthenaDesign. Leer = Standard.

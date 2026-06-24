@@ -1,5 +1,27 @@
 # Historique des Versions (Changelog)
 
+## [0.31.0] - 2026-06-24
+### Feat — AthenaDesign
+- **Édition INCRÉMENTALE (SEARCH/REPLACE)** : en itération, le modèle n'émet plus tout le fichier
+  mais seulement les CHANGEMENTS (façon Aider), appliqués au code de base côté serveur → énorme
+  économie de tokens en sortie. Repli sûr (si un bloc est inapplicable, le design n'est pas cassé).
+  Désactivable via `ATHENADESIGN_EDIT_MODE=false`.
+- **Bouton STOP** : possibilité d'ARRÊTER une génération en cours (annulation temps réel vérifiée
+  par chunk dans `_complete_streaming` → cesse de consommer des tokens). Bénéficie aussi au chat.
+- **Sélecteur de modèle dans l'iframe Design** : liste peuplée via `/api/config/models` (modèles
+  ACCESSIBLES uniquement), comme la console Code et les agents.
+
+### Feat — Trafic routier (voiture, TomTom)
+- `get_driving_route` / `get_traffic_incidents` désormais APPELÉS de façon fiable : outils
+  **toujours exposés** quand `TOMTOM_API_KEY` est configurée (comme Proxmox/email) + préambule
+  **anti-fabrication renforcé** (plus d'estimation « de tête » ni de citation de sites tiers).
+- Scripts de diagnostic : `scripts/test_tomtom.py` (clé), `scripts/diag_tools.py` (routage/embedder,
+  bascule auto sur le venv).
+
+### Note — Transports en commun
+- Évalués (Navitia, SNCF, Transitland, Transitous/MOTIS) puis **retirés** : aucune source gratuite
+  fiable, en particulier pour les trains SNCF (données verrouillées). Le trafic VOITURE reste dispo.
+
 ## [0.30.0] - 2026-06-24
 ### Feat
 - **Choix du modèle DANS la console Code** : nouveau menu « 🤖 Modèle » dans la barre du terminal

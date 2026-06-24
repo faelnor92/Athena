@@ -6,6 +6,14 @@ Benvenuto! Se stai leggendo questa guida, è perché hai appena installato **Ath
 
 ---
 
+## ✨ Novità della versione 0.31.0
+
+- **AthenaDesign — modifiche più rapide ed economiche**: modificare un design non riscrive più tutto il codice (si applicano solo le modifiche) → grande risparmio di token. Nuovo pulsante **⏹️ Stop** per interrompere una generazione. Scegli il **modello** direttamente nella scheda Design.
+- **Traffico stradale affidabile**: il tempo di percorrenza in **auto** con ingorghi (TomTom) è ora calcolato dallo strumento dedicato, non «a memoria». (chiave TomTom gratuita nelle Impostazioni)
+- *Trasporto pubblico: non disponibile — nessuna fonte gratuita affidabile, in particolare per i treni SNCF.*
+
+---
+
 ## ✨ Novità della versione 0.30.0
 
 - **Scelta del modello nella console Codice**: un menu **«🤖 Modello»** nella barra del terminale per scegliere al volo il LLM del codice (es. un modello «coder»), come in AthenaDesign. Vuoto = predefinito.

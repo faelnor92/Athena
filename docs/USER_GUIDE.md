@@ -6,6 +6,14 @@ Bienvenue ! Si vous lisez ce guide, c'est que vous venez d'installer **Athena**,
 
 ---
 
+## ✨ Nouveautés de la version 0.31.0
+
+- **AthenaDesign — modifications plus rapides et moins coûteuses** : modifier un design ne réécrit plus tout son code (seuls les changements sont appliqués) → grosse économie de tokens. Nouveau bouton **⏹️ Stop** pour arrêter une génération en cours. Choix du **modèle** directement dans l'onglet Design.
+- **Trafic routier fiable** : le temps de trajet en **voiture** avec embouteillages (TomTom) est désormais calculé via l'outil dédié, plus « de tête ». (clé TomTom gratuite dans les Réglages)
+- *Transports en commun : non disponibles — aucune source gratuite fiable, notamment pour les trains SNCF.*
+
+---
+
 ## ✨ Nouveautés de la version 0.30.0
 
 - **Choix du modèle dans la console Code** : un menu **« 🤖 Modèle »** apparaît dans la barre du terminal — choisis le LLM du code à la volée (ex. un modèle « coder »), comme dans AthenaDesign. Vide = ton réglage par défaut.

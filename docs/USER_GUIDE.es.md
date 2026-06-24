@@ -6,6 +6,14 @@
 
 ---
 
+## ✨ Novedades de la versión 0.31.0
+
+- **AthenaDesign — ediciones más rápidas y económicas**: modificar un diseño ya no reescribe todo su código (solo se aplican los cambios) → gran ahorro de tokens. Nuevo botón **⏹️ Parar** para detener una generación. Elige el **modelo** directamente en la pestaña Diseño.
+- **Tráfico por carretera fiable**: el tiempo de trayecto en **coche** con atascos (TomTom) se calcula ahora con la herramienta dedicada, no «a ojo». (clave TomTom gratuita en Ajustes)
+- *Transporte público: no disponible — ninguna fuente gratuita fiable, sobre todo para los trenes SNCF.*
+
+---
+
 ## ✨ Novedades de la versión 0.30.0
 
 - **Elegir el modelo en la consola de Código**: un menú **«🤖 Modelo»** en la barra del terminal permite elegir el LLM del código al vuelo (p. ej. un modelo «coder»), como en AthenaDesign. Vacío = tu valor por defecto.
