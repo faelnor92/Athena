@@ -77,6 +77,7 @@ import tools.event_tools
 import tools.email_tools
 import tools.transport_tools
 import tools.ocr_tools
+import tools.reco_tools
 import tools.nextcloud_tools
 import tools.proxmox_tools
 import tools.document_editor
@@ -222,6 +223,7 @@ AVAILABLE_TOOLS = {
     "generate_artistic_image": tools.image_generator.generate_artistic_image,
     "generate_artistic_video": tools.image_generator.generate_artistic_video,
     "get_daily_briefing": tools.briefing_tools.get_daily_briefing,
+    "get_recommendations": tools.reco_tools.get_recommendations,
     "get_time": tools.basic_tools.get_time,
     "get_weather": tools.basic_tools.get_weather,
     "transcribe_and_summarize_meeting": tools.meeting_summarizer.transcribe_and_summarize_meeting,
