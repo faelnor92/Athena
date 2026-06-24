@@ -10,6 +10,14 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+
+# Re-exécute avec le PYTHON DU VENV du projet si on tourne sur le python système (sinon
+# ModuleNotFoundError: litellm). Athena s'exécute dans un venv qui a les dépendances.
+for _cand in (".venv/bin/python", "venv/bin/python", ".venv/bin/python3", "venv/bin/python3"):
+    _vp = os.path.join(ROOT, _cand)
+    if os.path.exists(_vp) and os.path.realpath(_vp) != os.path.realpath(sys.executable):
+        os.execv(_vp, [_vp, os.path.abspath(__file__)] + sys.argv[1:])
+
 _env = os.path.join(ROOT, ".env")
 if os.path.exists(_env):
     for _l in open(_env, encoding="utf-8"):
