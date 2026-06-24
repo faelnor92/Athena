@@ -65,7 +65,37 @@ document.addEventListener("DOMContentLoaded", () => {
     const modelGroup = document.getElementById("model-group");
     const apiKeyInput = document.getElementById("api-key");
     const modelNameInput = document.getElementById("model-name");
-    
+    const designModelSelect = document.getElementById("design-model-select");
+
+    // Peuple le sélecteur de modèle (mode Athena) depuis /api/config/models → uniquement les
+    // modèles ACCESSIBLES (endpoint custom + providers dont la clé est posée), comme les agents
+    // et la console Code. Vide = modèle d'Athena par défaut.
+    async function populateDesignModels() {
+        if (!designModelSelect) return;
+        let data = {};
+        try { const r = await fetch("/api/config/models"); if (r.ok) data = await r.json(); } catch (e) { return; }
+        const cur = designModelSelect.value || "";
+        let opts = `<option value="">— Modèle d'Athena (défaut) —</option>`;
+        Object.keys(data).forEach(provider => {
+            const items = (data[provider] || []).map(m => {
+                const label = m.includes("/") ? m.split("/").slice(1).join("/") : m;
+                const sel = (String(m) === String(cur)) ? " selected" : "";
+                return `<option value="${String(m).replace(/"/g, "&quot;")}"${sel}>${label}</option>`;
+            }).join("");
+            if (items) opts += `<optgroup label="${provider}">${items}</optgroup>`;
+        });
+        designModelSelect.innerHTML = opts;
+    }
+    populateDesignModels();
+
+    // Modèle à envoyer : en mode Athena, celui choisi dans la liste (vide = défaut serveur) ;
+    // pour un provider externe, le champ texte libre.
+    function _designModelName() {
+        return (aiProviderSelect.value === "athena")
+            ? ((designModelSelect && designModelSelect.value) || "")
+            : modelNameInput.value;
+    }
+
     const projectsList = document.getElementById("projects-list");
     const btnNewProject = document.getElementById("btn-new-project");
     const currentProjectTitle = document.getElementById("current-project-title");
@@ -729,13 +759,18 @@ document.addEventListener("DOMContentLoaded", () => {
         const provider = aiProviderSelect.value;
         // 'athena' = API LLM intégrée d'Athena (clés/endpoint côté serveur) → comme 'mock',
         // aucun champ clé/modèle à saisir.
+        const dmg = document.getElementById("design-model-group");
         if (provider === "mock" || provider === "athena") {
             apiKeyGroup.style.display = "none";
             modelGroup.style.display = "none";
+            // En mode Athena, on choisit le modèle dans la liste (modèles accessibles) ;
+            // en mode démo, aucun modèle à choisir.
+            if (dmg) dmg.style.display = (provider === "athena") ? "block" : "none";
         } else {
             apiKeyGroup.style.display = "block";
             modelGroup.style.display = "block";
-            
+            if (dmg) dmg.style.display = "none";   // provider externe → champ texte + clé
+
             // Suggest default models
             if (provider === "gemini") {
                 modelNameInput.placeholder = "Ex: gemini-2.5-flash";
@@ -1460,7 +1495,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 prompt: aiPrompt,
                 provider: aiProviderSelect.value,
                 api_key: apiKeyInput.value,
-                model_name: modelNameInput.value,
+                model_name: _designModelName(),
                 base_version: (currentVersionIndex != null) ? currentVersionIndex + 1 : undefined
             };
 
@@ -2050,7 +2085,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     error_message: errorMessage,
                     provider: aiProviderSelect.value,
                     api_key: apiKeyInput.value,
-                    model_name: modelNameInput.value
+                    model_name: _designModelName()
                 })
             });
             const data = await resp.json();
@@ -2411,7 +2446,7 @@ document.addEventListener("DOMContentLoaded", () => {
             prompt: promptText,
             provider: aiProviderSelect.value,
             api_key: apiKeyInput.value,
-            model_name: modelNameInput.value,
+            model_name: _designModelName(),
             attachments: pendingAttachments.slice(),
             // Version SÉLECTIONNÉE comme base d'itération (1-indexée) : la modif part de CELLE
             // qu'on regarde, pas systématiquement de la dernière.
