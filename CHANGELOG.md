@@ -1,5 +1,31 @@
 # Historique des Versions (Changelog)
 
+## [0.29.0] - 2026-06-24
+### Feat — nouvelles intégrations « assistant du quotidien »
+- **Transports en temps réel** (Navitia) : `get_next_departures` (prochains départs avec RETARD
+  réel calculé), `get_transport_disruptions` (perturbations/incidents en cours),
+  `get_journey` (itinéraire transports en commun, horaires + perturbations temps réel). Couvre
+  SNCF et réseaux urbains (ex. CTS Strasbourg) ; résolution de lieu générale (arrêt/adresse/ville).
+  Clé `NAVITIA_API_KEY` (gratuite).
+- **OCR** : `ocr_image` / `ocr_document` (image, PDF texte via pypdf, PDF scanné via rendu+vision
+  si PyMuPDF présent) — transcription fidèle via le modèle vision, modèle configurable `OCR_MODEL`.
+- **Météo HYPERLOCALE** (Open-Meteo, sans clé) : `get_weather` par coordonnées (géocodage de la
+  ville, ou `WEATHER_LAT`/`WEATHER_LON` pour la précision au quartier) + prévisions 4 jours ;
+  briefing matinal branché dessus.
+- **Recommandations contextuelles** : `get_recommendations` assemble le contexte réel (heure,
+  météo, agenda, tâches/courses, perturbations transport, profil/mémoire) et l'agent en tire 2-4
+  suggestions concrètes — sans rien inventer.
+- **Trafic routier** (TomTom) : `get_driving_route` (temps de trajet voiture avec embouteillages,
+  retard vs fluide, arrivée estimée) et `get_traffic_incidents`. Clé `TOMTOM_API_KEY` (gratuite).
+- **Tout configurable dans l'UI** : section « Intégrations externes » (Réglages → Comportement) pour
+  météo/Navitia/TomTom/OCR ; clés API masquées automatiquement, écriture `.env` à chaud.
+
+### Fix
+- **Compteur de tokens temps réel** : repositionné en haut-droite (ne recouvre plus la saisie du
+  chat), `pointer-events:none`, et masqué hors des onglets qui consomment des tokens (chat + Code).
+- **Transport** : résolution de lieu généralisée (perturbations par ville, itinéraires depuis une
+  adresse) ; retrait de code mort ; nettoyage d'imports.
+
 ## [0.28.0] - 2026-06-23
 ### Feat — modèles par-feature, tokens in/out temps réel, console Code en streaming
 - **Modèle dédié Design & Code** : nouvelles clés par-utilisateur `DESIGN_MODEL` / `CODE_MODEL`
