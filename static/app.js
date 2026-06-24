@@ -3396,6 +3396,14 @@ const BEHAVIOR_SCHEMA = [
         { key: "PRESENCE_ENTITY", label: "Pièce courante (Home Assistant)", help: "Entité HA indiquant la pièce où tu es (pour « follow-me »). Vide = désactivé.", type: "text", def: "" },
         { key: "N8N_WORKFLOWS", label: "Workflows n8n autorisés", help: "JSON {\"nom\": \"url du webhook\"} des automatisations qu'Athena peut déclencher.", type: "text", def: "" },
     ]},
+    { section: "Intégrations externes (météo · transports · trafic · OCR)", icon: "🌍", fields: [
+        { key: "WEATHER_CITY", label: "Ville (météo)", help: "Ville par défaut pour la météo et le briefing (ex. Strasbourg). Vide = déduite des coordonnées ci-dessous si renseignées.", type: "text", def: "" },
+        { key: "WEATHER_LAT", label: "Latitude (météo hyperlocale)", help: "Position précise pour une météo au quartier près (ex. 48.5839). Vide = on utilise la ville.", type: "text", def: "" },
+        { key: "WEATHER_LON", label: "Longitude (météo hyperlocale)", help: "Position précise (ex. 7.7455). À renseigner avec la latitude.", type: "text", def: "" },
+        { key: "NAVITIA_API_KEY", label: "Clé Navitia (transports en commun)", help: "Pour les horaires/retards/itinéraires train & tram/bus en temps réel. Clé gratuite sur navitia.io.", type: "password", def: "" },
+        { key: "TOMTOM_API_KEY", label: "Clé TomTom (trafic routier)", help: "Pour le temps de trajet voiture avec embouteillages et les incidents. Clé gratuite sur developer.tomtom.com.", type: "password", def: "" },
+        { key: "OCR_MODEL", label: "Modèle OCR (extraction de texte)", help: "Modèle pour transcrire le texte des images/PDF scannés. Vide = le modèle de vision ci-dessus.", type: "model", def: "", emptyLabel: "⭐ Modèle de vision (défaut)" },
+    ]},
 ];
 
 function _behaviorFieldControl(f, env) {
