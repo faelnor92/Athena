@@ -863,6 +863,12 @@ if (tabFiles) {
             mountCodeSpace();
             loadProjects();
             loadWorkspaceFiles();
+            // Peuple le sélecteur de modèle de la console (modèles accessibles, comme les agents).
+            const _mc = document.getElementById("terminal-model-select");
+            if (_mc) {
+                _mc.dataset.current = _mc.value || "";
+                try { _populateModelPickers(viewFiles); } catch (_) {}
+            }
         });
     });
 }
@@ -7131,6 +7137,8 @@ async function executeTerminalCommand() {
     const hostSelect = document.getElementById("terminal-host-select");
     const hostId = hostSelect ? (hostSelect.value || null) : null;
     const _hostLabel = (hostSelect && hostId) ? hostSelect.options[hostSelect.selectedIndex].text : "local";
+    const modelSelect = document.getElementById("terminal-model-select");
+    const modelName = modelSelect ? (modelSelect.value || "") : "";
     logToTerminal(`$ athena-${selectedAgent.toLowerCase()} [${_hostLabel}] > ${command}`, "transition");
 
     // Mode console actif : les étapes (plan, messages, sortie) se rendent DANS le terminal coloré.
@@ -7139,7 +7147,7 @@ async function executeTerminalCommand() {
         const response = await apiFetch("/api/terminal/coder/stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command: command, agent: selectedAgent, project_id: projectId, host_id: hostId })
+            body: JSON.stringify({ command: command, agent: selectedAgent, project_id: projectId, host_id: hostId, model_name: modelName })
         });
 
         if (!response.ok || !response.body) {

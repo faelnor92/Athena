@@ -503,6 +503,9 @@
                             <select id="terminal-host-select" title="Hôte SSH ciblé (registre multi-hôtes ; admin)" style="background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; height: 28px; max-width: 160px;">
                                 <option value="">💻 Local</option>
                             </select>
+                            <select id="terminal-model-select" data-model-picker="1" title="Modèle LLM pour la console Code (vide = réglage CODE_MODEL ou modèle du chat)" style="background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; height: 28px; max-width: 170px;">
+                                <option value="">🤖 Modèle : défaut</option>
+                            </select>
                             <button id="btn-add-ssh-host" class="btn-icon" title="Ajouter un hôte SSH" style="padding:2px 6px; font-size:0.72rem; height:28px;">➕ SSH</button>
                             <span class="terminal-prompt-symbol" style="color: #4CAF50; font-weight: bold; margin-left: 4px;">$</span>
                             <input type="text" id="terminal-coder-input" placeholder="Refactorer un fichier, exécuter bash..." autocomplete="off" style="flex: 1; min-width: 0;">
