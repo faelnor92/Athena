@@ -6,6 +6,12 @@
 
 ---
 
+## ✨ Novedades de la versión 0.30.0
+
+- **Elegir el modelo en la consola de Código**: un menú **«🤖 Modelo»** en la barra del terminal permite elegir el LLM del código al vuelo (p. ej. un modelo «coder»), como en AthenaDesign. Vacío = tu valor por defecto.
+
+---
+
 ## ✨ Novedades de la versión 0.29.0
 
 - **Transporte público en tiempo real**: horarios, **retrasos** e incidencias (tren, tranvía, bus) + itinerarios — «¿próximo tranvía en Homme de Fer?», «¿mi tren lleva retraso?». (clave Navitia gratuita a configurar en Ajustes)

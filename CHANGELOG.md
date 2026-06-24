@@ -1,5 +1,13 @@
 # Historique des Versions (Changelog)
 
+## [0.30.0] - 2026-06-24
+### Feat
+- **Choix du modèle DANS la console Code** : nouveau menu « 🤖 Modèle » dans la barre du terminal
+  (peuplé via `/api/config/models` → uniquement les modèles accessibles), comme le sélecteur déjà
+  présent dans l'iframe AthenaDesign. On choisit le modèle là où on l'utilise, sans passer par les
+  Réglages. Priorité : sélecteur de la barre > `CODE_MODEL` (défaut persistant par-utilisateur) >
+  modèle du chat. Le réglage `CODE_MODEL` reste disponible comme défaut.
+
 ## [0.29.0] - 2026-06-24
 ### Feat — nouvelles intégrations « assistant du quotidien »
 - **Transports en temps réel** (Navitia) : `get_next_departures` (prochains départs avec RETARD

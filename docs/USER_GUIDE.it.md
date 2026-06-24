@@ -6,6 +6,12 @@ Benvenuto! Se stai leggendo questa guida, è perché hai appena installato **Ath
 
 ---
 
+## ✨ Novità della versione 0.30.0
+
+- **Scelta del modello nella console Codice**: un menu **«🤖 Modello»** nella barra del terminale per scegliere al volo il LLM del codice (es. un modello «coder»), come in AthenaDesign. Vuoto = predefinito.
+
+---
+
 ## ✨ Novità della versione 0.29.0
 
 - **Trasporto pubblico in tempo reale**: orari, **ritardi** e perturbazioni (treno, tram, bus) + itinerari — «prossimo tram a Homme de Fer?», «il mio treno è in ritardo?». (chiave Navitia gratuita da configurare in Impostazioni)

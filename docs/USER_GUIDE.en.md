@@ -6,6 +6,12 @@ Welcome! If you're reading this guide, you've just installed **Athena**, your mu
 
 ---
 
+## ✨ What's new in version 0.30.0
+
+- **Pick the model in the Code console**: a **"🤖 Model"** menu in the terminal bar lets you choose the code LLM on the fly (e.g. a "coder" model), like in AthenaDesign. Empty = your default.
+
+---
+
 ## ✨ What's new in version 0.29.0
 
 - **Real-time public transport**: schedules, **delays** and disruptions (train, tram, bus) + journeys — "next tram at Homme de Fer?", "is my train delayed?". (free Navitia key to set in Settings)
