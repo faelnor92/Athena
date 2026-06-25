@@ -270,6 +270,7 @@ AVAILABLE_TOOLS = {
     "edit_file": tools.code_edit.edit_file,
     "apply_patch": tools.code_edit.apply_patch,
     "run_checks": tools.dev_tools.run_checks,
+    "run_tests": tools.dev_tools.run_tests,
     "git_status": tools.git_tools.git_status,
     "git_diff": tools.git_tools.git_diff,
     "git_log": tools.git_tools.git_log,
@@ -444,6 +445,13 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
         # d'exécutions réelles d'une même signature (outil|args) et on pousse à conclure.
         _call_counts = {}     # signature -> nb d'exécutions réelles dans ce run
         _repeat_limit = int(os.getenv("SWARM_REPEAT_LIMIT", "2") or 2)  # 0 = désactivé
+        # Plafond SOUPLE par-OUTIL pour la vérif ad hoc : le modèle tâtonne parfois en relançant
+        # des scripts de vérif TOUS DIFFÉRENTS (donc le disjoncteur exact ne les attrape pas).
+        # Au-delà de N appels d'un même outil de vérif dans le run, on cesse de l'exécuter et on
+        # pousse à conclure (ou à utiliser run_tests). 0 = désactivé.
+        _verify_counts = {}
+        _verify_soft_limit = int(os.getenv("SWARM_VERIFY_SOFT_LIMIT", "6") or 6)
+        _VERIFY_TOOLS = {"execute_bash_command", "execute_python_code", "execute_python"}
         # Filtrage d'outils par pertinence (économie de tokens) : décidé UNE fois par run
         # (stabilise aussi le préfixe du prompt → aide le prefix-caching de l'endpoint).
         _tool_filter_enabled = os.getenv("TOOL_FILTER_ENABLED", "true").lower() in ("true", "1", "yes")
@@ -1002,6 +1010,13 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     "Jamais de chemins absolus (/tmp/…, refusés) ni de code « en mémoire » — écris les fichiers. "
                     "Pour Git, utilise git_status/git_diff/git_log/git_commit (pas « git » via le shell de la sandbox).\n"
                 )
+                if "run_tests" in _tool_names:
+                    system_prompt += (
+                        "- VÉRIFICATION : pour valider tes corrections, appelle **run_tests** (UNE fois, "
+                        "il détecte et lance les tests du projet). N'écris JAMAIS toi-même un script de "
+                        "test ou de vérification regex, et ne relance pas pytest « à la main » via bash. "
+                        "Si run_tests est ✅ vert, la tâche est finie : conclus, ne re-vérifie pas en boucle.\n"
+                    )
             if "make_plan" in _tool_names:
                 system_prompt += (
                     "- Tâche en PLUSIEURS ÉTAPES : commence par `make_plan` (liste courte, étapes concrètes), "
@@ -1811,6 +1826,13 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         is_repeat = True
                     else:
                         _call_counts[_sig] = _call_counts.get(_sig, 0) + 1
+                # Plafond SOUPLE par-outil : la vérif ad hoc (scripts tous différents) échappe au
+                # disjoncteur exact → au-delà de N appels d'un outil de vérif, on cesse d'exécuter.
+                if (not is_repeat and func is not None and not arg_error and not blocked
+                        and _verify_soft_limit > 0 and func_name in _VERIFY_TOOLS):
+                    _verify_counts[func_name] = _verify_counts.get(func_name, 0) + 1
+                    if _verify_counts[func_name] > _verify_soft_limit:
+                        is_repeat = True
                 prepared.append((tool_call, func_name, args, func, blocked, call_args, arg_error, is_repeat))
 
             def _run_tool(fn, a):
@@ -1906,7 +1928,12 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             #    de l'essaim : handoffs/transferts gérés dans l'ordre).
             for i, (tool_call, func_name, args, func, blocked, call_args, arg_error, is_repeat) in enumerate(prepared):
                 if func is None:
-                    err_msg = f"Erreur: Outil {func_name} introuvable ou non autorisé."
+                    # Liste les outils RÉELLEMENT disponibles → le modèle arrête d'inventer un nom
+                    # (ex. « run_security_tests ») et appelle un outil existant (ex. run_tests).
+                    _avail = sorted({getattr(f, "__name__", "") for f in effective_tools} - {""})
+                    err_msg = (f"Erreur: l'outil '{func_name}' n'existe pas — n'invente PAS d'outil. "
+                               f"Outils disponibles : {', '.join(_avail[:40])}"
+                               + (" …" if len(_avail) > 40 else "") + ".")
                     messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": err_msg})
                     steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": err_msg})
                     continue
@@ -2014,12 +2041,18 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         continue
 
                 if is_repeat:
-                    # Appel identique déjà exécuté : on ne relance pas, on rappelle au modèle
-                    # d'utiliser le résultat précédent ou de conclure (anti-boucle qwen3).
-                    nudge = (
-                        f"⚠️ Tu as DÉJÀ appelé `{func_name}` avec ces mêmes arguments dans cette "
-                        "tâche et le résultat n'a pas changé. NE rappelle PLUS cet outil : utilise "
-                        "le résultat précédent, ou donne ta réponse finale à l'utilisateur maintenant.")
+                    # Appel identique déjà exécuté OU vérif ad hoc trop répétée : on ne relance pas,
+                    # on pousse à conclure (anti-boucle qwen3).
+                    if func_name in _VERIFY_TOOLS and _verify_counts.get(func_name, 0) > _verify_soft_limit:
+                        nudge = (
+                            f"⚠️ Tu as lancé `{func_name}` de nombreuses fois pour vérifier. ARRÊTE de "
+                            "réécrire des vérifications ad hoc : appelle **run_tests** UNE fois ; si c'est "
+                            "vert, donne ta réponse finale. Sinon, conclus avec ce que tu sais.")
+                    else:
+                        nudge = (
+                            f"⚠️ Tu as DÉJÀ appelé `{func_name}` avec ces mêmes arguments dans cette "
+                            "tâche et le résultat n'a pas changé. NE rappelle PLUS cet outil : utilise "
+                            "le résultat précédent, ou donne ta réponse finale à l'utilisateur maintenant.")
                     print(f"[\033[93mSWARM\033[0m] appel répété ignoré : {func_name}")
                     messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": func_name, "content": nudge})
                     steps.append({"type": "tool_output", "agent": current_agent.name, "tool": func_name, "output": nudge})

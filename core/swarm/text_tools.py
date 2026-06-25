@@ -20,7 +20,7 @@ import os
 _TOOL_GROUPS = {
     "code": {
         "execute_python_code", "execute_bash_command", "read_file", "write_file",
-        "edit_file", "apply_patch", "run_checks", "search_code", "find_definition",
+        "edit_file", "apply_patch", "run_checks", "run_tests", "search_code", "find_definition",
         "find_references", "file_outline", "git_status", "git_diff", "git_log",
         "git_create_branch", "git_commit", "git_create_worktree", "git_list_worktrees",
         "git_remove_worktree", "run_rigid_pipeline", "list_ssh_hosts",

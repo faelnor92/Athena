@@ -50,4 +50,11 @@ def detect_check_command(cwd: str) -> str:
     for marker in ("pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini", "tests", "test"):
         if os.path.exists(os.path.join(cwd, marker)):
             return "pytest -q"
+    # Fichiers de test à la racine (test_*.py / *_test.py) sans dossier tests/ dédié.
+    try:
+        import glob as _glob
+        if (_glob.glob(os.path.join(cwd, "test_*.py")) or _glob.glob(os.path.join(cwd, "*_test.py"))):
+            return "pytest -q"
+    except Exception:
+        pass
     return ""

@@ -104,3 +104,23 @@ def run_checks(command: str, timeout: int = 120) -> str:
     verdict = "✅ PASS" if rc == 0 else f"❌ FAIL (code {rc})"
     return (f"{verdict} — `{command}` [{where}]\n"
             f"{'—' * 40}\n{focused}")
+
+
+def run_tests() -> str:
+    """Lance les TESTS du projet actif et renvoie un verdict PASS/FAIL. La commande est
+    DÉTECTÉE automatiquement (pytest, npm test…) — tu n'as RIEN à passer.
+
+    À utiliser pour VÉRIFIER après une correction. N'écris JAMAIS toi-même un script de test ou
+    de vérification regex ad hoc, et ne lance pas pytest « à la main » via bash : appelle run_tests.
+    """
+    try:
+        from core.state import get_workspace_dir
+        from core import code_autofix
+        cmd = code_autofix.detect_check_command(get_workspace_dir())
+    except Exception as e:  # noqa: BLE001
+        return f"Impossible de déterminer la commande de test : {e}"
+    if not cmd:
+        return ("Aucune commande de test détectée (ni pytest/tests/ ni package.json). Si un fichier "
+                "de test existe, lance-le explicitement via run_checks (ex. run_checks('pytest -q'))."
+                " N'invente pas de script de vérification.")
+    return run_checks(cmd)
