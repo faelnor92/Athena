@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## [0.32.2] - 2026-06-25
+### Fix — Alertes de départ
+- **« Quand partir » pour DEMAIN (ou une date)** : `get_departure_alerts(when=…)` accepte désormais
+  `today` / `tomorrow` / `AAAA-MM-JJ` — avant, seuls les RDV d'AUJOURD'HUI étaient pris en compte
+  (une question sur un RDV de demain ne renvoyait rien → le modèle improvisait).
+- **Domicile visible par le modèle** : `HOME_ADDRESS` (repli `WEATHER_CITY`) est injecté dans la
+  conscience situationnelle → Athena n'invente plus un lieu de départ (« Strasbourg ») et peut citer
+  ton domicile si on le demande. Le calcul reste fait par l'outil (trafic réel), pas « de tête ».
+- Docstring de l'outil renforcée : « appelle-le quand on demande l'heure de départ, n'invente pas ».
+
 ## [0.32.1] - 2026-06-25
 ### Polish — Jarvis / Réglages
 - **Alertes de départ sur les vrais agendas** : le LIEU des rendez-vous est désormais lu ET écrit

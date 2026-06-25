@@ -50,6 +50,23 @@ def situational_block(session_key: str) -> str:
     except Exception:
         pass
 
+    # Domicile (HOME_ADDRESS) : pour ne PAS inventer un lieu de départ et savoir le citer si on le
+    # demande. Le calcul d'heure de départ reste fait par l'outil get_departure_alerts.
+    try:
+        import os
+        home = ""
+        try:
+            from core import user_config
+            cfg = user_config.get_all() or {}
+            home = (cfg.get("HOME_ADDRESS") or cfg.get("WEATHER_CITY") or "").strip()
+        except Exception:
+            home = ""
+        home = home or os.getenv("HOME_ADDRESS", "").strip() or os.getenv("WEATHER_CITY", "").strip()
+        if home:
+            parts.append(f"Domicile de l'utilisateur (lieu de départ) : {home}.")
+    except Exception:
+        pass
+
     if not parts:
         return ""
     body = "\n".join(f"- {p}" for p in parts)

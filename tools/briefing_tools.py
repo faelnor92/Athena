@@ -54,33 +54,45 @@ def _departure_buffer_min() -> int:
         return 10
 
 
-def get_departure_alerts() -> str:
-    """Pour chaque RENDEZ-VOUS du jour AYANT UN LIEU, calcule l'HEURE DE DÉPART à partir du trajet
-    voiture en temps réel (trafic inclus) depuis ton domicile + une marge → « pars à 14h15 pour ton
-    RDV de 15h ». Renvoie une liste de lignes, ou "" si rien (pas de clé TomTom, pas de domicile,
-    aucun RDV à venir avec lieu). Idéal en briefing matinal."""
+def get_departure_alerts(when: str = "today") -> str:
+    """À QUELLE HEURE PARTIR : pour chaque RENDEZ-VOUS AYANT UN LIEU, calcule l'HEURE DE DÉPART à
+    partir du trajet voiture en temps réel (trafic inclus) depuis le DOMICILE (config HOME_ADDRESS)
+    + une marge → « pars à 14h15 pour ton RDV de 15h ». APPELLE cet outil quand on te demande quand
+    partir / l'heure de départ d'un rendez-vous — n'invente PAS le lieu de départ ni les durées.
+
+    when : "today" (défaut), "tomorrow"/"demain", ou une date "AAAA-MM-JJ".
+    Renvoie une liste de lignes, ou "" si rien (pas de clé TomTom, pas de domicile configuré, ou
+    aucun RDV avec lieu ce jour-là)."""
     from tools.traffic_tools import driving_minutes
     home = _resolve_home()
     if not home:
         return ""
-    today = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now()
+    # Date cible : "today" (défaut), "tomorrow"/"demain", ou une date "AAAA-MM-JJ".
+    w = (when or "today").strip().lower()
+    if w in ("tomorrow", "demain"):
+        target = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+    elif w in ("today", "aujourd'hui", "aujourdhui", ""):
+        target = now.strftime("%Y-%m-%d")
+    else:
+        target = w  # supposé AAAA-MM-JJ
+    is_today = (target == now.strftime("%Y-%m-%d"))
     try:
         events = [e for e in load_agenda()
-                  if e.get("datetime", "").startswith(today) and (e.get("location") or "").strip()]
+                  if e.get("datetime", "").startswith(target) and (e.get("location") or "").strip()]
     except Exception:
         return ""
     if not events:
         return ""
     buf = _departure_buffer_min()
-    now = datetime.now()
     out = []
     for e in sorted(events, key=lambda x: x["datetime"]):
         try:
             start = datetime.strptime(e["datetime"], "%Y-%m-%d %H:%M")
         except Exception:
             continue
-        if start < now:
-            continue  # RDV déjà passé
+        if is_today and start < now:
+            continue  # RDV déjà passé (seulement pertinent pour aujourd'hui)
         res = driving_minutes(home, e["location"])
         if not res:
             continue
