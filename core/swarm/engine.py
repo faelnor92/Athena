@@ -291,6 +291,14 @@ AVAILABLE_TOOLS = {
     "todo_write": tools.todo_tools.todo_write,    # liste de tâches de session (planification multi-étapes)
     "get_current_room": tools.presence.get_current_room,
     "trigger_workflow": tools.n8n_tools.trigger_workflow,
+    "list_n8n_workflows": tools.n8n_tools.list_n8n_workflows,
+    "get_n8n_workflow": tools.n8n_tools.get_n8n_workflow,
+    "get_n8n_executions": tools.n8n_tools.get_n8n_executions,
+    "run_n8n_workflow": tools.n8n_tools.run_n8n_workflow,
+    "set_n8n_workflow_active": tools.n8n_tools.set_n8n_workflow_active,
+    "create_n8n_workflow": tools.n8n_tools.create_n8n_workflow,
+    "update_n8n_workflow": tools.n8n_tools.update_n8n_workflow,
+    "delete_n8n_workflow": tools.n8n_tools.delete_n8n_workflow,
     "computer_use_action": tools.computer_use.computer_use_action,
     "analyze_image": tools.vision_tools.analyze_image,
     "capture_screen": tools.vision_tools.capture_screen,
@@ -620,6 +628,21 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                                     effective_tools.append(AVAILABLE_TOOLS[_n])
                                     existing.add(_n)
                                 _force_expose.add(_n)   # configuré → jamais masqué par le filtre
+                except Exception:
+                    pass
+                # n8n (automatisation) : si l'API est configurée → outils d'orchestration toujours
+                # dispo (découverte/run/exécutions + gestion en HITL). Mutations = sensibles.
+                try:
+                    from core import n8n as _n8n
+                    if _is_orch and _n8n.is_configured():
+                        for _n in ("list_n8n_workflows", "get_n8n_workflow", "get_n8n_executions",
+                                   "run_n8n_workflow", "set_n8n_workflow_active", "create_n8n_workflow",
+                                   "update_n8n_workflow", "delete_n8n_workflow", "trigger_workflow"):
+                            if _n in AVAILABLE_TOOLS:
+                                if _n not in existing:
+                                    effective_tools.append(AVAILABLE_TOOLS[_n])
+                                    existing.add(_n)
+                                _force_expose.add(_n)
                 except Exception:
                     pass
                 # Mails (LECTURE IMAP + BROUILLONS, jamais d'envoi) : donnés à l'orchestrateur
@@ -1128,6 +1151,25 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     "- ROUTINES : pour une tâche RÉCURRENTE (briefing du matin, rappel périodique), tu "
                     "peux créer une routine planifiée avec `create_routine(...)` (l'utilisateur confirme) "
                     "au lieu de lui demander d'aller dans les réglages.\n")
+            if "list_n8n_workflows" in _tool_names:
+                system_prompt += (
+                    "- AUTOMATISATION n8n : découvre avec `list_n8n_workflows`, déclenche avec "
+                    "`run_n8n_workflow(nom)` (ou `trigger_workflow` pour un webhook déclaré), vérifie "
+                    "avec `get_n8n_executions`. Gestion (activer/créer/éditer/supprimer) = validée.\n")
+            if "create_n8n_workflow" in _tool_names:
+                system_prompt += (
+                    "- CRÉER UN WORKFLOW n8n : `create_n8n_workflow(json)` attend un JSON n8n COMPLET et "
+                    "VALIDE. Structure minimale :\n"
+                    '  {\"name\": str, \"nodes\": [ {\"name\": str, \"type\": \"n8n-nodes-base.<type>\", '
+                    '\"typeVersion\": 1, \"position\": [x,y], \"parameters\": {…}} ], '
+                    '\"connections\": { \"<NomNoeudSource>\": {\"main\": [[ {\"node\":\"<NomCible>\", '
+                    '\"type\":\"main\",\"index\":0} ]]} }, \"settings\": {}}\n'
+                    "  Types courants : `n8n-nodes-base.webhook` (déclencheur ; parameters.path=\"mon-hook\", "
+                    "httpMethod), `n8n-nodes-base.httpRequest` (parameters.url, method), "
+                    "`n8n-nodes-base.set`, `n8n-nodes-base.code`, `n8n-nodes-base.if`. Chaque nœud a un "
+                    "`name` UNIQUE ; les `connections` relient les nœuds par leur NOM. Le workflow est créé "
+                    "INACTIF. ⚠️ Ce JSON est complexe : si tu n'es pas sûr de le produire valide, DIS-LE et "
+                    "recommande un MODÈLE COSTAUD plutôt que d'envoyer un JSON approximatif.\n")
             if "create_goal" in _tool_names:
                 system_prompt += (
                     "- OBJECTIFS : pour un BUT DURABLE de l'utilisateur (pas une tâche immédiate), "

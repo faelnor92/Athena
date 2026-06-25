@@ -3399,7 +3399,10 @@ const BEHAVIOR_SCHEMA = [
     ]},
     { section: "Domotique & automatisation", icon: "🏠", fields: [
         { key: "PRESENCE_ENTITY", label: "Pièce courante (Home Assistant)", help: "Entité HA indiquant la pièce où tu es (pour « follow-me »). Vide = désactivé.", type: "text", def: "" },
-        { key: "N8N_WORKFLOWS", label: "Workflows n8n autorisés", help: "JSON {\"nom\": \"url du webhook\"} des automatisations qu'Athena peut déclencher.", type: "text", def: "" },
+        { key: "N8N_API_URL", label: "n8n — URL de l'instance", help: "Racine de ton n8n (ex. https://n8n.local), SANS /api/v1. Active la découverte/gestion des workflows par l'API.", type: "text", def: "" },
+        { key: "N8N_API_KEY", label: "n8n — Clé API", help: "n8n → Settings → n8n API → Create API key. Donne à Athena l'accès à tes workflows (mutations soumises à validation). Hôte privé : ajoute-le à NET_GUARD_ALLOW_HOSTS.", type: "password", def: "" },
+        { key: "N8N_VERIFY_TLS", label: "n8n — Vérifier le certificat TLS", help: "Décoche seulement si ton n8n est en HTTPS auto-signé.", type: "toggle", def: "true" },
+        { key: "N8N_WORKFLOWS", label: "Workflows webhook autorisés (sans API)", help: "Optionnel si l'API est configurée. JSON {\"nom\": \"url du webhook\"} pour déclencher des workflows par trigger_workflow.", type: "text", def: "" },
     ]},
     { section: "Intégrations externes (météo · trafic · domicile)", icon: "🌍", fields: [
         { key: "WEATHER_CITY", label: "Ville (météo)", help: "Ville par défaut pour la météo et le briefing (ex. Strasbourg). Vide = déduite des coordonnées ci-dessous si renseignées.", type: "text", def: "" },

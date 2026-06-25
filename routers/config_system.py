@@ -462,6 +462,7 @@ async def get_config_env() -> Dict[str, str]:
             "VISION_MODEL", "COMPUTER_USE",
             "EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "EMBEDDING_API_BASE", "EMBEDDING_API_KEY",
             "PRESENCE_ENTITY", "N8N_WORKFLOWS",
+            "N8N_API_URL", "N8N_API_KEY", "N8N_VERIFY_TLS", "N8N_TIMEOUT",
             "WEATHER_CITY", "WEATHER_LAT", "WEATHER_LON",
             "TOMTOM_API_KEY", "OCR_MODEL",
             "HOME_ADDRESS", "DEPARTURE_BUFFER_MIN",
