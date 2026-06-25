@@ -1,5 +1,15 @@
 # Historique des Versions (Changelog)
 
+## [0.32.1] - 2026-06-25
+### Polish — Jarvis / Réglages
+- **Alertes de départ sur les vrais agendas** : le LIEU des rendez-vous est désormais lu ET écrit
+  sur les calendriers synchronisés (Google `location`, CalDAV/ICS `LOCATION`) → les alertes de départ
+  fonctionnent pour les RDV importés, pas seulement ceux créés à la main, et le lieu survit aux re-syncs.
+- **Réglages enrichis** : champs « Adresse du domicile (départ) » et « Marge avant départ » ; nouvelle
+  section **Proactivité & Codeur** (interrupteurs suggestions de routines / revue auto du code, plafond
+  anti-boucle de vérification). Clés persistées via l'UI.
+- Correctif : ligne `LOCATION` ICS calculée hors f-string (compat Python < 3.12).
+
 ## [0.32.0] - 2026-06-25
 ### Feat — Jarvis / Proactivité
 - **Alertes de départ contextuelles** : pour chaque rendez-vous du jour AYANT UN LIEU, le briefing
