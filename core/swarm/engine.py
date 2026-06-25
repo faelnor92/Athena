@@ -653,7 +653,8 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     # Trafic ROUTIER (TomTom) — orchestrateur seulement, si la clé est configurée.
                     # (Transit en commun retiré : aucune source gratuite fiable.)
                     if _is_orch and _has_key("TOMTOM_API_KEY"):
-                        _transport_force |= {"get_driving_route", "get_traffic_incidents"}
+                        _transport_force |= {"get_driving_route", "get_traffic_incidents",
+                                             "get_departure_alerts"}
                     for _n in _transport_force:
                         if _n in AVAILABLE_TOOLS:
                             if _n not in existing:
@@ -1017,6 +1018,13 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     "Ne cite jamais un site tiers (ViaMichelin, Mappy, Waze…) comme source : tu ne "
                     "peux pas les consulter.\n"
                 )
+                if "get_departure_alerts" in _tool_names:
+                    system_prompt += (
+                        "- « À quelle heure partir » : utilise **get_departure_alerts** (`when` = today/"
+                        "tomorrow/date). Il lit le LIEU réel du rendez-vous dans l'agenda et calcule "
+                        "depuis le domicile — n'ASSUME PAS la destination (ne dis pas « Strasbourg » par "
+                        "défaut) et ne mélange pas deux lieux. Si le RDV n'a pas de lieu, demande-le.\n"
+                    )
             # État partagé du run (context_variables) : visible par l'agent (lecture), tenu à
             # jour par les outils. Rendu compact ; les valeurs trop longues sont tronquées.
             if context_variables:
