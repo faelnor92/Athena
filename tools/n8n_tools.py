@@ -462,8 +462,9 @@ def create_n8n_workflow_from_spec(name: str, nodes: str, edges: str = "",
     nodes : JSON liste de nœuds — [{"name":"Webhook","type":"webhook","params":{...}},
             {"name":"HTTP","type":"httpRequest","params":{"method":"POST","url":"…"}}]. Le `type` peut
             être court ("httpRequest", "set", "if", "telegram"…) ou complet ("n8n-nodes-base.httpRequest").
-    edges : JSON liste de liens [["Webhook","HTTP"], …] (sortie main d'un nœud → entrée du suivant,
-            par NOM). Pour le branchement multi-sorties (IF/Switch), utilise plutôt create_n8n_workflow.
+    edges : JSON liste de liens [["Webhook","HTTP"], …] (par NOM de nœud). BRANCHEMENT : ajoute un 3e
+            élément = index de SORTIE du nœud source — IF → [["IF","SiVrai"], ["IF","SiFaux",1]] ;
+            Switch → 0,1,2… selon les sorties.
     Note : les nœuds avec identifiants (Telegram, e-mail, BDD…) nécessitent d'attacher la CREDENTIAL
     correspondante dans n8n après création."""
     try:
@@ -487,16 +488,27 @@ def create_n8n_workflow_from_spec(name: str, nodes: str, edges: str = "",
         ft = _full_type(n["type"])
         short = ft.split(".")[-1]
         tv = n.get("typeVersion") or _NODE_TV.get(short, 1)
-        built.append(_node(nm, ft, n.get("params") or {}, [240 + i * 220, 300], tv))
+        node = _node(nm, ft, n.get("params") or {}, [240 + i * 220, 300], tv)
+        if isinstance(n.get("credentials"), dict):
+            node["credentials"] = n["credentials"]  # ex. {"telegramApi": {"id":"…","name":"…"}}
+        built.append(node)
     conns = {}
     for e in es:
         if not isinstance(e, (list, tuple)) or len(e) < 2:
             continue
         a, b = str(e[0]), str(e[1])
+        # 3e élément optionnel = index de SORTIE du nœud source (branchement) :
+        # IF → 0 = vrai, 1 = faux ; Switch → 0,1,2… selon les sorties. Défaut 0.
+        try:
+            out_idx = int(e[2]) if len(e) >= 3 else 0
+        except Exception:
+            out_idx = 0
         if a not in names or b not in names:
             return f"Lien invalide (nœud inconnu) : {e}. Nœuds définis : {', '.join(sorted(names))}."
-        conns.setdefault(a, {"main": [[]]})
-        conns[a]["main"][0].append({"node": b, "type": "main", "index": 0})
+        main = conns.setdefault(a, {"main": []})["main"]
+        while len(main) <= out_idx:
+            main.append([])
+        main[out_idx].append({"node": b, "type": "main", "index": 0})
     wf = {"name": (name or "Workflow").strip(), "nodes": built, "connections": conns, "settings": {}}
     data, err = _api("POST", "/workflows", json_body=wf)
     if err:
@@ -558,3 +570,92 @@ _TEMPLATES["webhook_to_telegram"] = (
 _TEMPLATES["webhook_to_email"] = (
     _tmpl_email, "Webhook → e-mail (attache la credential SMTP/Email dans n8n).",
     ["to", "from?", "subject?", "path?", "text?"])
+
+
+# ============================================================================
+# #2 Détail d'exécution (debug) + #1 Credentials (HITL).
+# ============================================================================
+def get_n8n_execution(execution_id: str) -> str:
+    """Détail d'UNE exécution n8n (id obtenu via get_n8n_executions) : statut + ERREUR précise du
+    nœud en cas d'échec → pour diagnostiquer/corriger. Lecture seule."""
+    data, err = _api("GET", f"/executions/{execution_id}", params={"includeData": "true"})
+    if err:
+        return err
+    if not isinstance(data, dict):
+        return "Exécution introuvable."
+    fin = data.get("finished")
+    status = data.get("status") or ("success" if fin else "en cours/inconnu")
+    out = [f"🧾 Exécution {data.get('id')} — workflow {data.get('workflowId')} — {status}",
+           f"- démarrée : {(data.get('startedAt') or '')[:19]} · arrêtée : {(data.get('stoppedAt') or '')[:19]}"]
+    rd = (data.get("data") or {}).get("resultData") or {}
+    errors = []
+    eo = rd.get("error")
+    if eo:
+        node = eo.get("node")
+        node = node.get("name") if isinstance(node, dict) else node
+        errors.append((node or "?", eo.get("message") or eo.get("description") or str(eo)))
+    for nm, runs in (rd.get("runData") or {}).items():
+        for run in (runs or []):
+            e = (run or {}).get("error")
+            if e:
+                errors.append((nm, e.get("message") or str(e)))
+                break
+    if errors:
+        for nm, msg in errors[:5]:
+            out.append(f"- ❌ « {nm} » : {str(msg)[:300]}")
+    else:
+        out.append("- ✅ aucune erreur détectée.")
+    return "\n".join(out)
+
+
+def get_n8n_credential_schema(cred_type: str) -> str:
+    """Champs attendus pour créer une credential n8n d'un type (ex. telegramApi, smtp, httpHeaderAuth,
+    openAiApi, httpBasicAuth). À consulter AVANT create_n8n_credential. Lecture seule."""
+    if not (cred_type or "").strip():
+        return "Indique un type de credential (ex. telegramApi, smtp, httpHeaderAuth)."
+    data, err = _api("GET", f"/credentials/schema/{cred_type.strip()}")
+    if err:
+        return (err + "\n(Vérifie le nom EXACT du type : telegramApi, smtp, httpHeaderAuth, "
+                "httpBasicAuth, openAiApi, slackApi, postgres…)")
+    props = (data or {}).get("properties") if isinstance(data, dict) else None
+    fields = ", ".join(props.keys()) if isinstance(props, dict) else (json.dumps(data)[:300])
+    req = (data or {}).get("required") if isinstance(data, dict) else None
+    extra = f" — requis : {', '.join(req)}" if req else ""
+    return f"Credential « {cred_type} » — champs : {fields}{extra}"
+
+
+def create_n8n_credential(name: str, cred_type: str, data_json: str, user_confirmed: bool = False) -> str:
+    """CRÉE une credential n8n (jeton Telegram, SMTP, clé API…) à référencer ensuite dans des nœuds.
+    SENSIBLE (validation HITL). Consulte get_n8n_credential_schema pour les champs.
+    data_json = JSON des champs (ex. {"accessToken":"123:abc"} pour telegramApi).
+    ⚠️ Le secret n'est NI stocké NI journalisé par Athena : il est transmis directement à TON n8n."""
+    if not (name or "").strip() or not (cred_type or "").strip():
+        return "name et cred_type (ex. telegramApi) sont requis."
+    try:
+        d = json.loads(data_json) if isinstance(data_json, str) else data_json
+        if not isinstance(d, dict):
+            return "data_json doit être un OBJET JSON des champs de la credential."
+    except Exception as e:
+        return f"data_json JSON invalide : {e}"
+    res, err = _api("POST", "/credentials", json_body={"name": name.strip(),
+                                                       "type": cred_type.strip(), "data": d})
+    if err:
+        return "Création de credential refusée par n8n : " + err
+    cid = (res or {}).get("id") if isinstance(res, dict) else None
+    return (f"✅ Credential « {name} » (type {cred_type}) créée (id {cid}). "
+            f"Pour l'utiliser : dans un nœud, ajoute \"credentials\": {{\"{cred_type}\": "
+            f"{{\"id\": \"{cid}\", \"name\": \"{name}\"}}}} (le spec accepte un champ `credentials`).")
+
+
+def delete_n8n_credential(credential_id: str, user_confirmed: bool = False) -> str:
+    """SUPPRIME une credential n8n par son id. SENSIBLE (validation HITL)."""
+    if not (credential_id or "").strip():
+        return "Indique l'id de la credential à supprimer."
+    _res, err = _api("DELETE", f"/credentials/{credential_id.strip()}")
+    if err:
+        return "Suppression refusée par n8n : " + err
+    return f"🗑️ Credential {credential_id} supprimée."
+
+
+for _f in (create_n8n_credential, delete_n8n_credential):
+    _f._requires_approval = True

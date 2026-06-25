@@ -48,7 +48,8 @@ _TOOL_GROUPS = {
             "run_n8n_workflow", "set_n8n_workflow_active", "create_n8n_workflow",
             "update_n8n_workflow", "delete_n8n_workflow", "list_n8n_templates",
             "create_n8n_workflow_from_template", "create_n8n_workflow_from_spec",
-            "export_n8n_workflow"},
+            "export_n8n_workflow", "get_n8n_execution", "get_n8n_credential_schema",
+            "create_n8n_credential", "delete_n8n_credential"},
 }
 _TOOL_GROUP_KEYWORDS = {
     "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",
