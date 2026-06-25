@@ -1,5 +1,41 @@
 # Historique des Versions (Changelog)
 
+## [0.32.0] - 2026-06-25
+### Feat — Jarvis / Proactivité
+- **Alertes de départ contextuelles** : pour chaque rendez-vous du jour AYANT UN LIEU, le briefing
+  calcule l'HEURE DE DÉPART à partir du trajet voiture en temps réel (TomTom) + une marge → « pars
+  à 18:26 pour ton RDV de 19:11 (~35 min, +8 de trafic) ». Champ `location` ajouté aux événements ;
+  config `HOME_ADDRESS` (repli `WEATHER_CITY`) + `DEPARTURE_BUFFER_MIN`. Dégradation propre sans clé.
+- **Vigie intelligente + auto-remédiation** : la Vigie corrèle l'événement avec les événements
+  récents (diagnostic de cause commune) et, si `auto_investigate` est ON, investigue en lecture seule
+  puis DÉCLENCHE directement la remédiation (`proxmox_vm_action`…) via le HITL existant (validation
+  Telegram d'un clic) — au lieu de seulement la décrire. `auto_investigate` OFF = alerte seule.
+- **Proactivité émergente** : `suggest_routines` observe les requêtes récurrentes à heure régulière
+  (minage d'habitudes non-LLM) et PROPOSE des routines (« tu demandes la météo ~8h → routine 8h ? »),
+  créées via `create_routine` (validation HITL). Gate `HABIT_MINING`.
+
+### Feat — Codeur (vers « mieux qu'opencode »)
+- **Mémoire de PROJET persistante** : `.athena/PROJECT_MEMORY.md` dans le workspace — conventions,
+  commande de test, décisions, pièges — ré-injectée à chaque session (« Athena connaît ton code »).
+  Outil `remember_project_note` + auto-capture de la commande de test.
+- **Boucle de revue auto** : après le code-test-fix, relecture sécurité/qualité des fichiers édités
+  (1 round correctif borné) ; outil `request_code_review` que le Codeur peut déclencher lui-même
+  (et déléguer à un agent d'audit s'il existe). Gate `CODE_REVIEW`.
+- **Anti-patinage / anti-boucle de vérification** : outil `run_tests` (détecte + lance pytest/npm),
+  message d'outil inconnu listant les outils réels, plafond GLOBAL des tentatives de vérification
+  (`SWARM_VERIFY_SOFT_LIMIT`) → conclusion forcée si le lanceur de tests est indisponible.
+- `edit_file` préféré à `write_file` sur un fichier existant ; agents sans liste d'outils figée
+  (`tools: "*"` comme Athena) + filet moteur garantissant les outils de workflow code.
+
+### Feat — AthenaDesign
+- **Identité visuelle forte sans charte** : en première génération sans design system, le modèle est
+  poussé à s'engager sur une esthétique distinctive (ambiance, palette signature, typo à caractère,
+  parti-pris mémorable) plutôt qu'un rendu générique « template ».
+
+### Notes
+- Outillage de mesure du sous-système code : `scripts/bench_coder.py` (`--hard`, `--security`,
+  `--brutal`) — corrige un vrai bug / des failles et vérifie par exécution réelle.
+
 ## [0.31.0] - 2026-06-24
 ### Feat — AthenaDesign
 - **Édition INCRÉMENTALE (SEARCH/REPLACE)** : en itération, le modèle n'émet plus tout le fichier

@@ -6,6 +6,16 @@ Welcome! If you're reading this guide, you've just installed **Athena**, your mu
 
 ---
 
+## ✨ What's new in version 0.32.0
+
+- **Briefing with departure times**: for each appointment with a location, Athena computes when to leave based on live traffic ("leave at 6:26pm for your 7pm meeting"). Set your home address (Settings) and a location on your events.
+- **Smarter Watch (Vigie)**: on an incident (e.g. a stopped VM), it correlates events, proposes a fix and can run it after your one-tap approval (Telegram).
+- **Routine suggestions**: Athena spots your habits (e.g. weather every morning) and offers to create an automatic routine.
+- **More reliable coding**: the Coder reviews its own work (security/quality), keeps a per-project memory across sessions, and avoids looping.
+- **More personality in Design**: with no design charter given, AthenaDesign commits to a real visual identity.
+
+---
+
 ## ✨ What's new in version 0.31.0
 
 - **AthenaDesign — faster, cheaper edits**: changing a design no longer rewrites all its code (only the changes are applied) → big token savings. New **⏹️ Stop** button to cancel a running generation. Pick the **model** right in the Design tab.

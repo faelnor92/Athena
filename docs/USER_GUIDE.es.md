@@ -6,6 +6,16 @@
 
 ---
 
+## ✨ Novedades de la versión 0.32.0
+
+- **Resumen con horas de salida**: para cada cita con ubicación, Athena calcula cuándo salir según el tráfico en tiempo real («sal a las 18:26 para tu cita de las 19:00»). Configura tu dirección (Ajustes) y una ubicación en tus eventos.
+- **Vigía más inteligente**: ante un incidente (p. ej. una VM detenida), correlaciona eventos, propone una solución y puede ejecutarla tras tu aprobación con un toque (Telegram).
+- **Sugerencias de rutinas**: Athena detecta tus hábitos (p. ej. el tiempo cada mañana) y propone crear una rutina automática.
+- **Código más fiable**: el Programador se autorrevisa (seguridad/calidad), guarda una memoria del proyecto entre sesiones y evita dar vueltas.
+- **Más personalidad en Design**: sin pauta de diseño indicada, AthenaDesign apuesta por una identidad visual real.
+
+---
+
 ## ✨ Novedades de la versión 0.31.0
 
 - **AthenaDesign — ediciones más rápidas y económicas**: modificar un diseño ya no reescribe todo su código (solo se aplican los cambios) → gran ahorro de tokens. Nuevo botón **⏹️ Parar** para detener una generación. Elige el **modelo** directamente en la pestaña Diseño.

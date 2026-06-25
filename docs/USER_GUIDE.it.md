@@ -6,6 +6,16 @@ Benvenuto! Se stai leggendo questa guida, è perché hai appena installato **Ath
 
 ---
 
+## ✨ Novità della versione 0.32.0
+
+- **Briefing con orari di partenza**: per ogni appuntamento con un luogo, Athena calcola quando partire in base al traffico in tempo reale («parti alle 18:26 per il tuo appuntamento delle 19:00»). Imposta il tuo indirizzo (Impostazioni) e un luogo sugli eventi.
+- **Sentinella più intelligente**: a un incidente (es. una VM ferma), correla gli eventi, propone una correzione e può eseguirla dopo la tua approvazione con un tocco (Telegram).
+- **Suggerimenti di routine**: Athena individua le tue abitudini (es. il meteo ogni mattina) e propone di creare una routine automatica.
+- **Codice più affidabile**: il Programmatore si rilegge (sicurezza/qualità), mantiene una memoria del progetto tra le sessioni ed evita di girare a vuoto.
+- **Più personalità in Design**: senza una linea grafica indicata, AthenaDesign osa una vera identità visiva.
+
+---
+
 ## ✨ Novità della versione 0.31.0
 
 - **AthenaDesign — modifiche più rapide ed economiche**: modificare un design non riscrive più tutto il codice (si applicano solo le modifiche) → grande risparmio di token. Nuovo pulsante **⏹️ Stop** per interrompere una generazione. Scegli il **modello** direttamente nella scheda Design.

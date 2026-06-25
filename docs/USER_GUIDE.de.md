@@ -6,6 +6,16 @@ Willkommen! Wenn Sie dieses Handbuch lesen, haben Sie soeben **Athena** installi
 
 ---
 
+## ✨ Neu in Version 0.32.0
+
+- **Briefing mit Abfahrtszeiten**: Für jeden Termin mit Ort berechnet Athena anhand des Echtzeit-Verkehrs, wann du losfahren sollst („fahr um 18:26 zu deinem Termin um 19:00“). Hinterlege deine Adresse (Einstellungen) und einen Ort bei deinen Terminen.
+- **Klügere Wache (Vigie)**: Bei einem Vorfall (z. B. gestoppte VM) korreliert sie Ereignisse, schlägt eine Lösung vor und kann sie nach deiner Freigabe per Tipp (Telegram) ausführen.
+- **Routine-Vorschläge**: Athena erkennt deine Gewohnheiten (z. B. Wetter jeden Morgen) und schlägt vor, eine automatische Routine anzulegen.
+- **Zuverlässigeres Coden**: Der Coder prüft seine Arbeit selbst (Sicherheit/Qualität), behält ein projektbezogenes Gedächtnis über Sitzungen hinweg und vermeidet Endlosschleifen.
+- **Mehr Persönlichkeit im Design**: Ohne vorgegebenes Design-Regelwerk wagt AthenaDesign eine echte visuelle Identität.
+
+---
+
 ## ✨ Neu in Version 0.31.0
 
 - **AthenaDesign — schnellere, günstigere Änderungen**: Eine Design-Änderung schreibt nicht mehr den gesamten Code neu (nur die Änderungen werden angewendet) → große Token-Ersparnis. Neuer **⏹️ Stopp**-Knopf, um eine Generierung abzubrechen. Modellwahl direkt im Design-Tab.
