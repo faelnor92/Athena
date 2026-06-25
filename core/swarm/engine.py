@@ -447,13 +447,15 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
         # d'exécutions réelles d'une même signature (outil|args) et on pousse à conclure.
         _call_counts = {}     # signature -> nb d'exécutions réelles dans ce run
         _repeat_limit = int(os.getenv("SWARM_REPEAT_LIMIT", "2") or 2)  # 0 = désactivé
-        # Plafond SOUPLE par-OUTIL pour la vérif ad hoc : le modèle tâtonne parfois en relançant
-        # des scripts de vérif TOUS DIFFÉRENTS (donc le disjoncteur exact ne les attrape pas).
-        # Au-delà de N appels d'un même outil de vérif dans le run, on cesse de l'exécuter et on
-        # pousse à conclure (ou à utiliser run_tests). 0 = désactivé.
-        _verify_counts = {}
-        _verify_soft_limit = int(os.getenv("SWARM_VERIFY_SOFT_LIMIT", "6") or 6)
-        _VERIFY_TOOLS = {"execute_bash_command", "execute_python_code", "execute_python"}
+        # Plafond DUR sur le TOTAL des tentatives de VÉRIFICATION du run (run_tests, run_checks,
+        # bash/python ad hoc). Un modèle faible, surtout si le lanceur de tests est indispo (pytest
+        # non installé), s'acharne à vérifier en boucle (run_tests×N, pytest, unittest, cat…) sans
+        # converger. Au-delà du seuil GLOBAL, on cesse d'exécuter ces outils et on FORCE la
+        # conclusion avec le travail déjà fait. 0 = désactivé.
+        _verify_counts = {}   # clé "_total" = nb total d'appels d'outils de vérif dans le run
+        _verify_soft_limit = int(os.getenv("SWARM_VERIFY_SOFT_LIMIT", "8") or 8)
+        _VERIFY_TOOLS = {"execute_bash_command", "execute_python_code", "execute_python",
+                         "run_tests", "run_checks"}
         # Filtrage d'outils par pertinence (économie de tokens) : décidé UNE fois par run
         # (stabilise aussi le préfixe du prompt → aide le prefix-caching de l'endpoint).
         _tool_filter_enabled = os.getenv("TOOL_FILTER_ENABLED", "true").lower() in ("true", "1", "yes")
@@ -1033,7 +1035,10 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     system_prompt += (
                         "- VÉRIFICATION : pour valider tes corrections, appelle **run_tests** (UNE fois, "
                         "il détecte et lance les tests du projet). N'écris JAMAIS toi-même un script de "
-                        "test ou de vérification regex, et ne relance pas pytest « à la main » via bash.\n"
+                        "test ou de vérification regex, et ne relance pas pytest « à la main » via bash. "
+                        "Si run_tests échoue à s'exécuter (lanceur indisponible) après 1-2 essais, NE "
+                        "boucle PAS : conclus avec tes corrections. La vérification est un PLUS, pas une "
+                        "fin en soi — mieux vaut conclure que tourner en rond.\n"
                     )
                 if "request_code_review" in _tool_names:
                     system_prompt += (
@@ -1869,12 +1874,14 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         is_repeat = True
                     else:
                         _call_counts[_sig] = _call_counts.get(_sig, 0) + 1
-                # Plafond SOUPLE par-outil : la vérif ad hoc (scripts tous différents) échappe au
-                # disjoncteur exact → au-delà de N appels d'un outil de vérif, on cesse d'exécuter.
+                # Plafond DUR sur le TOTAL des vérifs (run_tests/run_checks/bash/python) : la vérif
+                # ad hoc (commandes toutes différentes, ou run_tests zéro-arg qui échappe parfois au
+                # disjoncteur exact) → au-delà du seuil GLOBAL, on cesse d'exécuter et on force à
+                # conclure (évite l'acharnement quand le lanceur de tests est indispo).
                 if (not is_repeat and func is not None and not arg_error and not blocked
                         and _verify_soft_limit > 0 and func_name in _VERIFY_TOOLS):
-                    _verify_counts[func_name] = _verify_counts.get(func_name, 0) + 1
-                    if _verify_counts[func_name] > _verify_soft_limit:
+                    _verify_counts["_total"] = _verify_counts.get("_total", 0) + 1
+                    if _verify_counts["_total"] > _verify_soft_limit:
                         is_repeat = True
                 prepared.append((tool_call, func_name, args, func, blocked, call_args, arg_error, is_repeat))
 
@@ -2086,11 +2093,12 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 if is_repeat:
                     # Appel identique déjà exécuté OU vérif ad hoc trop répétée : on ne relance pas,
                     # on pousse à conclure (anti-boucle qwen3).
-                    if func_name in _VERIFY_TOOLS and _verify_counts.get(func_name, 0) > _verify_soft_limit:
+                    if func_name in _VERIFY_TOOLS and _verify_counts.get("_total", 0) > _verify_soft_limit:
                         nudge = (
-                            f"⚠️ Tu as lancé `{func_name}` de nombreuses fois pour vérifier. ARRÊTE de "
-                            "réécrire des vérifications ad hoc : appelle **run_tests** UNE fois ; si c'est "
-                            "vert, donne ta réponse finale. Sinon, conclus avec ce que tu sais.")
+                            "⛔ STOP VÉRIFICATION : tu as déjà BEAUCOUP tenté de vérifier dans cette tâche "
+                            "(le lanceur de tests est peut-être indisponible — ex. pytest non installé). "
+                            "N'insiste PLUS : donne MAINTENANT ta réponse finale avec les corrections déjà "
+                            "appliquées, en listant ce que tu as changé. Ne relance aucun test/commande.")
                     else:
                         nudge = (
                             f"⚠️ Tu as DÉJÀ appelé `{func_name}` avec ces mêmes arguments dans cette "
