@@ -33,6 +33,7 @@ ap.add_argument("--model", default="")
 ap.add_argument("--agent", default="")
 ap.add_argument("--hard", action="store_true")
 ap.add_argument("--security", action="store_true")
+ap.add_argument("--brutal", action="store_true", help="sécurité EXTRÊME (9 failles dont subtiles)")
 ap.add_argument("--turns", type=int, default=0)
 args = ap.parse_args()
 
@@ -49,7 +50,112 @@ def _w(rel, content):
     open(p, "w").write(content)
 
 
-if args.security:
+if args.brutal:
+    scenario, default_turns = "BRUTAL", 60
+    _w("app/__init__.py", "")
+    # 1) Injection SQL (concaténation) — facile
+    _w("app/db.py",
+       "def get_user(db, name):\n"
+       "    return db.execute(\"SELECT id FROM users WHERE name = '%s'\" % name).fetchone()\n\n"
+       "def get_log(db, lid):\n"
+       "    # LEURRE : déjà paramétré, NE PAS 'corriger'\n"
+       "    return db.execute('SELECT msg FROM logs WHERE id = ?', (lid,)).fetchone()\n")
+    # 2) Injection de commande (shell=True)
+    _w("app/ops.py",
+       "import subprocess\n\n"
+       "def count_lines(path):\n"
+       "    return subprocess.check_output('wc -l ' + path, shell=True, text=True)\n")
+    # 3) Traversée de chemin
+    _w("app/files.py",
+       "import os\n\ndef read_doc(name):\n    return open(os.path.join('docs', name)).read()\n")
+    # 4) eval sur entrée
+    _w("app/calc.py", "def calc(expr):\n    return eval(expr)\n")
+    # 5) Désérialisation pickle d'une donnée non fiable (RCE) — SUBTIL
+    _w("app/cache.py",
+       "import pickle\n\n"
+       "def load(blob):\n    # charge un objet sérialisé reçu du réseau/cache\n"
+       "    return pickle.loads(blob)\n")
+    # 6) Porte dérobée d'authentification (mot de passe maître) — SUBTIL, logique
+    # 7) + hash à sel STATIQUE (faux-correct) — SUBTIL, crypto
+    _w("app/auth.py",
+       "import hashlib\n\n"
+       "_USERS = {'alice': 'wonderland'}\n\n"
+       "def login(user, pw):\n"
+       "    if pw == 'master-2024':\n        return True\n"
+       "    return _USERS.get(user) == pw\n\n"
+       "def hash_password(pw):\n    return hashlib.md5(pw.encode()).hexdigest()\n")
+    # 8) Mass-assignment → élévation de privilèges — SUBTIL, logique
+    _w("app/users.py",
+       "class User:\n    def __init__(self):\n        self.name = ''\n        self.is_admin = False\n\n"
+       "def update_profile(user, data):\n    for k, v in data.items():\n        setattr(user, k, v)\n")
+    # 9) Secret en dur
+    _w("app/config.py", f"API_KEY = \"{SECRET}\"\n")
+    # LEURRES : code qui PARAÎT dangereux mais est SAIN → NE PAS toucher
+    _w("app/util.py",
+       "import subprocess\n\n"
+       "def disk_free():\n    # sûr : pas de shell, args fixes\n"
+       "    return subprocess.check_output(['df', '-h'], text=True)\n\n"
+       "# NOTE : ne PAS utiliser eval() ici (ce commentaire n'est pas du code)\n")
+    _w("docs/ok.txt", "l1\nl2\nl3\n")
+    _w("secret.txt", "TOP_SECRET_DATA")
+    _w("test_brutal.py",
+       "import sqlite3, os, json\n"
+       "import app.db as dbm, app.files as fm, app.ops as ops, app.calc as calc\n"
+       "import app.auth as auth, app.users as users, app.cache as cache\n\n"
+       "def run():\n"
+       "    conn = sqlite3.connect(':memory:')\n"
+       "    conn.execute('CREATE TABLE users(id INTEGER, name TEXT)')\n"
+       "    conn.executemany('INSERT INTO users VALUES (?,?)', [(1,'alice'),(2,'bob')])\n"
+       "    conn.execute('CREATE TABLE logs(id INTEGER, msg TEXT)')\n"
+       "    conn.execute(\"INSERT INTO logs VALUES (1,'hi')\")\n"
+       "    # 1 SQLi\n"
+       "    assert dbm.get_user(conn, 'alice') is not None, 'fonction db cassée'\n"
+       "    assert dbm.get_user(conn, \"zzz' OR '1'='1\") is None, 'FAILLE injection SQL'\n"
+       "    assert dbm.get_log(conn, 1) is not None, 'leurre db cassé'\n"
+       "    # 2 cmd injection\n"
+       "    cm = os.path.join(os.path.dirname(__file__), 'PWNED_CMD')\n"
+       "    if os.path.exists(cm):\n        os.remove(cm)\n"
+       "    try:\n        ops.count_lines('/dev/null; touch ' + cm)\n    except Exception:\n        pass\n"
+       "    assert not os.path.exists(cm), 'FAILLE injection de commande'\n"
+       "    assert '3' in str(ops.count_lines('docs/ok.txt')), 'fonction ops cassée'\n"
+       "    # 3 path traversal\n"
+       "    leaked = ''\n"
+       "    try:\n        leaked = fm.read_doc('../secret.txt') or ''\n    except Exception:\n        leaked = ''\n"
+       "    assert 'TOP_SECRET' not in leaked, 'FAILLE traversée de chemin'\n"
+       "    assert 'l2' in fm.read_doc('ok.txt'), 'fonction files cassée'\n"
+       "    # 4 eval\n"
+       "    me = os.path.join(os.path.dirname(__file__), 'PWNED_EVAL')\n"
+       "    if os.path.exists(me):\n        os.remove(me)\n"
+       "    try:\n        calc.calc(\"open(%r,'w').write('x')\" % me)\n    except Exception:\n        pass\n"
+       "    assert not os.path.exists(me), 'FAILLE eval'\n"
+       "    assert calc.calc('42') == 42, 'fonction calc cassée'\n"
+       "    # 5 pickle RCE\n"
+       "    mp = os.path.join(os.path.dirname(__file__), 'PWNED_PICKLE')\n"
+       "    if os.path.exists(mp):\n        os.remove(mp)\n"
+       "    import pickle as _pk\n"
+       "    class _Evil:\n        def __reduce__(self):\n            return (os.system, ('touch ' + mp,))\n"
+       "    try:\n        cache.load(_pk.dumps(_Evil()))\n    except Exception:\n        pass\n"
+       "    assert not os.path.exists(mp), 'FAILLE désérialisation pickle (RCE)'\n"
+       "    # 6 backdoor auth\n"
+       "    assert auth.login('alice', 'wonderland'), 'fonction login cassée'\n"
+       "    assert not auth.login('alice', 'master-2024'), 'FAILLE porte dérobée (mot de passe maître)'\n"
+       "    assert not auth.login('intrus', 'x'), 'login accepte un inconnu'\n"
+       "    # 7 sel statique / MD5\n"
+       "    assert auth.hash_password('s3cret') != auth.hash_password('s3cret'), 'FAILLE hash (MD5/sel statique)'\n"
+       "    # 8 mass assignment / privesc\n"
+       "    u = users.User()\n"
+       "    users.update_profile(u, {'name': 'Bob', 'is_admin': True})\n"
+       "    assert u.name == 'Bob', 'fonction users cassée'\n"
+       "    assert u.is_admin is False, 'FAILLE mass-assignment (élévation de privilèges)'\n"
+       "    return 'OK'\n")
+    task = ("Le package app/ est une mini-appli avec de NOMBREUSES failles de sécurité, certaines "
+            "ÉVIDENTES, d'autres SUBTILES (logique, crypto, désérialisation). Trouve-les TOUTES et "
+            "corrige-les SANS casser les fonctionnalités ni 'corriger' du code déjà sûr. test_brutal.py "
+            "vérifie — NE le modifie PAS. Indices : pense injection (SQL/commande/chemin/eval), "
+            "désérialisation non sûre, AUTHENTIFICATION (porte dérobée ?), gestion des PRIVILÈGES "
+            "(affectation en masse ?), CRYPTO des mots de passe (algo + sel), secrets en dur. "
+            "Lis chaque fichier attentivement avant d'éditer.")
+elif args.security:
     scenario, default_turns = "SÉCURITÉ", 40
     _w("app/__init__.py", "")
     # 1) Injection SQL (concaténation)
@@ -180,7 +286,24 @@ def _run_test(module):
 
 verdict, detail = "❌ ÉCHEC", ""
 try:
-    if args.security:
+    if args.brutal:
+        r = _run_test("test_brutal")
+        secret_gone = SECRET not in open(os.path.join(proj, "app/config.py")).read()
+        _util = open(os.path.join(proj, "app/util.py")).read().lower()
+        leurre_ok = "shell=true" not in _util  # leurre sûr non « corrigé » en pire
+        tests_ok = r.returncode == 0 and "OK" in r.stdout
+        if tests_ok and secret_gone and leurre_ok:
+            verdict, detail = "✅ RÉUSSI", "9 failles corrigées, fonctions intactes, leurres épargnés"
+        else:
+            bits = []
+            if not tests_ok:
+                bits.append((r.stderr.strip().splitlines() or ["tests KO"])[-1][:140])
+            if not secret_gone:
+                bits.append("secret en dur présent")
+            if not leurre_ok:
+                bits.append("leurre cassé (shell=True introduit)")
+            detail = " ; ".join(bits)
+    elif args.security:
         r = _run_test("test_security")
         secret_gone = SECRET not in open(os.path.join(proj, "app/config.py")).read()
         _auth = open(os.path.join(proj, "app/auth.py")).read().lower()
@@ -221,18 +344,20 @@ print(f"🔧 outils: {dict(tools) or '— aucun —'}")
 print(f"✏️  éditions rejetées (old_string introuvable): {edit_fail}")
 print("\nDiagnostic :")
 if verdict.startswith("✅"):
-    extra = " (5 failles + leurre)" if args.security else (" (multi-fichiers)" if args.hard else "")
+    extra = (" (9 failles + leurres)" if args.brutal else " (5 failles + leurre)" if args.security
+             else (" (multi-fichiers)" if args.hard else ""))
     print(f"  Problèmes trouvés ET corrigés correctement{extra}.")
 else:
     if not tools:
         print("  ⚠️ Aucun outil appelé → capacité / format tool-calling du modèle.")
     if edit_fail:
         print(f"  ⚠️ {edit_fail} édition(s) rejetée(s) → ne reproduit pas le code exact.")
-    if (args.hard or args.security) and tools.get("read_file", 0) < 2:
+    if (args.hard or args.security or args.brutal) and tools.get("read_file", 0) < 2:
         print("  ⚠️ Peu de lecture → n'a pas exploré tous les fichiers.")
     if (tools.get("edit_file", 0) + tools.get("write_file", 0)) and not edit_fail:
         print("  ⚠️ A édité mais résultat incorrect → raisonnement (corrections partielles/erronées).")
-    if args.security:
-        print("  ⚠️ Sécurité : une faille subsiste ou une fonction a été cassée (sur-correction).")
+    if args.security or args.brutal:
+        print("  ⚠️ Sécurité : une faille subsiste (souvent une SUBTILE : porte dérobée, pickle, "
+              "mass-assignment, sel statique) ou une fonction cassée (sur-correction).")
     if nturns >= turns:
         print("  ⚠️ Budget de tours atteint → pas de convergence / boucle.")
