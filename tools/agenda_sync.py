@@ -62,7 +62,12 @@ def parse_ics_data(ics_content: str) -> List[Dict[str, Any]]:
         # 2. Description
         desc_match = re.search(r"DESCRIPTION:(.*)", vevent)
         event["description"] = desc_match.group(1).strip().replace("\\n", "\n").replace("\\", "") if desc_match else ""
-        
+
+        # 2bis. Lieu (LOCATION) → permet l'alerte de départ du briefing.
+        loc_match = re.search(r"LOCATION:(.*)", vevent)
+        event["location"] = (loc_match.group(1).strip().replace("\\,", ",").replace("\\", "")
+                             if loc_match else "")
+
         # 3. Date de début (DTSTART). IMPORTANT : accepter N'IMPORTE QUEL paramètre avant le ':'
         #    (DTSTART;TZID=Europe/Paris:..., DTSTART;VALUE=DATE:...). L'ancien regex ne gérait
         #    que ':' ou ';VALUE=DATE:' → il SAUTAIT tout événement horodaté avec un fuseau
@@ -270,6 +275,7 @@ def sync_google_calendar() -> List[Dict[str, Any]]:
                     "datetime": dt_str,
                     "duration_minutes": duration,
                     "description": item.get("description", ""),
+                    "location": item.get("location", ""),   # → alerte de départ du briefing
                     "reminded_15m": False,
                     "reminded_now": False,
                     "source": "google"
@@ -281,7 +287,8 @@ def sync_google_calendar() -> List[Dict[str, Any]]:
         
     return events
 
-def add_google_calendar_event(title: str, datetime_str: str, duration_minutes: int, description: str) -> bool:
+def add_google_calendar_event(title: str, datetime_str: str, duration_minutes: int, description: str,
+                              location: str = "") -> bool:
     """ Ajoute un événement sur Google Calendar """
     token, calendar_id = get_google_calendar_client()
     if not token:
@@ -307,6 +314,8 @@ def add_google_calendar_event(title: str, datetime_str: str, duration_minutes: i
             "start": {"dateTime": start_iso, "timeZone": _tz},
             "end": {"dateTime": end_iso, "timeZone": _tz}
         }
+        if (location or "").strip():
+            body["location"] = location.strip()
         
         r = requests.post(url, headers=headers, json=body, timeout=10)
         return r.status_code in [200, 201]
@@ -391,7 +400,8 @@ def sync_caldav_calendar() -> List[Dict[str, Any]]:
         
     return events
 
-def add_caldav_calendar_event(title: str, datetime_str: str, duration_minutes: int, description: str) -> bool:
+def add_caldav_calendar_event(title: str, datetime_str: str, duration_minutes: int, description: str,
+                              location: str = "") -> bool:
     """ Crée un nouvel événement sur le calendrier CalDAV via HTTP PUT """
     url = os.getenv("CALDAV_URL")
     user = os.getenv("CALDAV_USERNAME")
@@ -421,6 +431,8 @@ def add_caldav_calendar_event(title: str, datetime_str: str, duration_minutes: i
             start_str = dt.strftime("%Y%m%dT%H%M00Z")
             end_str = dt_end.strftime("%Y%m%dT%H%M00Z")
         stamp = datetime.now(__import__("datetime").timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        # Ligne LOCATION calculée hors f-string (backslash interdit dans une f-string < 3.12).
+        loc_line = ("\nLOCATION:" + location.strip()) if (location or "").strip() else ""
 
         # Construire un fichier ICS valide minimaliste (heures en UTC).
         ics_data = f"""BEGIN:VCALENDAR
@@ -432,7 +444,7 @@ DTSTAMP:{stamp}
 DTSTART:{start_str}
 DTEND:{end_str}
 SUMMARY:{title}
-DESCRIPTION:{description}
+DESCRIPTION:{description}{loc_line}
 END:VEVENT
 END:VCALENDAR"""
 

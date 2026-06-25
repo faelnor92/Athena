@@ -204,12 +204,12 @@ def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60
     _caldav_ok = bool(os.getenv("CALDAV_URL") and os.getenv("CALDAV_USERNAME") and os.getenv("CALDAV_PASSWORD"))
 
     def _write_google():
-        if agenda_sync.add_google_calendar_event(title, iso_str, int(duration_minutes), description):
+        if agenda_sync.add_google_calendar_event(title, iso_str, int(duration_minutes), description, location):
             return "google"
         return None
 
     def _write_caldav():
-        if agenda_sync.add_caldav_calendar_event(title, iso_str, int(duration_minutes), description):
+        if agenda_sync.add_caldav_calendar_event(title, iso_str, int(duration_minutes), description, location):
             return "caldav"
         return None
 

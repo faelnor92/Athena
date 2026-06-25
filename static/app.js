@@ -3407,6 +3407,8 @@ const BEHAVIOR_SCHEMA = [
         { key: "WEATHER_LAT", label: "Latitude (météo hyperlocale)", help: "Position précise pour une météo au quartier près (ex. 48.5839). Vide = on utilise la ville.", type: "text", def: "" },
         { key: "WEATHER_LON", label: "Longitude (météo hyperlocale)", help: "Position précise (ex. 7.7455). À renseigner avec la latitude.", type: "text", def: "" },
         { key: "TOMTOM_API_KEY", label: "Clé TomTom (trafic routier)", help: "Pour le temps de trajet voiture avec embouteillages et les incidents. Clé gratuite sur developer.tomtom.com. (Le transit en commun n'est pas couvert : aucune source gratuite fiable.)", type: "password", def: "" },
+        { key: "HOME_ADDRESS", label: "Adresse du domicile (départ)", help: "Point de départ pour les ALERTES DE DÉPART du briefing (« pars à 18h26 pour ton RDV de 19h »). Adresse ou ville. Vide = on retombe sur la ville météo. Nécessite la clé TomTom + un lieu sur tes rendez-vous.", type: "text", def: "" },
+        { key: "DEPARTURE_BUFFER_MIN", label: "Marge avant départ (min)", help: "Minutes ajoutées au trajet (préparation, stationnement) pour calculer l'heure de départ. Défaut : 10.", type: "text", def: "" },
         { key: "OCR_MODEL", label: "Modèle OCR (extraction de texte)", help: "Modèle pour transcrire le texte des images/PDF scannés. Vide = le modèle de vision ci-dessus.", type: "model", def: "", emptyLabel: "⭐ Modèle de vision (défaut)" },
     ]},
 ];
