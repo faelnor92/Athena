@@ -124,15 +124,40 @@ def _run_vigie(rec: dict):
             f"sévérité = {rec.get('severity')}\n{rec.get('message')}")
     if rec.get("data"):
         desc += f"\ndonnées : {rec.get('data')}"
-    invest = ("Tu PEUX investiguer brièvement avec tes outils (lecture seule de préférence)."
-              if cfg.get("auto_investigate") else
-              "N'exécute pas d'outils : contente-toi d'analyser et d'alerter.")
+
+    # CORRÉLATION : événements récents (≠ courant, dernière heure) → la Vigie peut diagnostiquer une
+    # cause commune (« VM down APRÈS un pic RAM nœud ») au lieu d'analyser l'événement isolé.
+    correlation = ""
+    try:
+        cur_id = rec.get("id")
+        recent = [e for e in events.recent()
+                  if e.get("id") != cur_id and (time.time() - e.get("ts", 0)) < 3600]
+        if recent:
+            correlation = "\nÉvénements récents (corrélation possible) :\n" + "\n".join(
+                f"- [{e.get('severity', '?')}] {e.get('type')} / {e.get('source')} : "
+                f"{(e.get('message') or '')[:100]}" for e in recent[:6]) + "\n"
+    except Exception:  # noqa: BLE001
+        correlation = ""
+
+    if cfg.get("auto_investigate"):
+        # Vigie INTELLIGENTE : investigue (lecture seule) puis DÉCLENCHE la remédiation via HITL.
+        invest = (
+            "Tu PEUX et DOIS investiguer brièvement EN LECTURE SEULE (ex. proxmox_status, lire un "
+            "log) pour CONFIRMER la cause avant d'agir. Puis, SI une remédiation STANDARD et "
+            "RÉVERSIBLE s'applique (redémarrer une VM tombée, relancer un service), APPELLE "
+            "DIRECTEMENT l'outil correspondant (proxmox_vm_action…) — il sera soumis à TA VALIDATION "
+            "(HITL, approbation d'un clic) AVANT toute exécution. NE te contente PAS de décrire "
+            "l'action : déclenche-la pour qu'on puisse l'approuver. Une seule remédiation à la fois.")
+    else:
+        invest = ("N'exécute AUCUN outil : analyse et alerte seulement, et propose le correctif en "
+                  "TEXTE (l'auto-remédiation est désactivée).")
+
     prompt = (
         "[ÉVÉNEMENT SYSTÈME — mode proactif Vigie] Un événement de supervision vient d'arriver :\n"
-        f"{desc}\n\n"
-        "En 2-3 phrases : explique ce qui se passe et l'impact réel, puis—si pertinent—PROPOSE "
-        "une action corrective (elle sera soumise à validation avant toute exécution sensible). "
-        f"{invest} Sois bref, concret, pas d'alarmisme inutile."
+        f"{desc}\n{correlation}\n"
+        "Diagnostique la CAUSE PROBABLE (corrèle avec les événements récents ci-dessus si pertinent) "
+        "et l'impact réel, en 2-3 phrases. "
+        f"{invest} Sois bref, concret, sans alarmisme inutile."
     )
 
     rid = run_store.new_run_id()
