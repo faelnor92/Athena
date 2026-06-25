@@ -134,3 +134,33 @@ def get_traffic_incidents(area: str) -> str:
         return "🚧 Incidents : délai dépassé."
     except Exception as e:  # noqa: BLE001
         return f"🚧 Incidents : échec ({e})."
+
+
+def driving_minutes(origin: str, destination: str):
+    """Durée d'un trajet voiture (trafic inclus) en MINUTES, exploitable programmatiquement.
+    Renvoie (minutes:int, retard_min:int) ou None si indisponible (pas de clé, lieu introuvable,
+    erreur réseau). Usage interne : alertes de départ du briefing."""
+    key = _key()
+    if not key or not (origin or "").strip() or not (destination or "").strip():
+        return None
+    o = _geocode(origin, key)
+    d = _geocode(destination, key)
+    if not o or not d:
+        return None
+    try:
+        loc = f"{o[0]},{o[1]}:{d[0]},{d[1]}"
+        url = f"https://api.tomtom.com/routing/1/calculateRoute/{loc}/json"
+        r = requests.get(url, params={"key": key, "traffic": "true", "travelMode": "car"},
+                         timeout=_TIMEOUT)
+        if r.status_code != 200:
+            return None
+        routes = (r.json() or {}).get("routes") or []
+        if not routes:
+            return None
+        s = routes[0].get("summary") or {}
+        sec = int(s.get("travelTimeInSeconds", 0) or 0)
+        if sec <= 0:
+            return None
+        return (round(sec / 60), round(int(s.get("trafficDelayInSeconds", 0) or 0) / 60))
+    except Exception:  # noqa: BLE001
+        return None

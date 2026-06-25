@@ -223,6 +223,7 @@ AVAILABLE_TOOLS = {
     "generate_artistic_image": tools.image_generator.generate_artistic_image,
     "generate_artistic_video": tools.image_generator.generate_artistic_video,
     "get_daily_briefing": tools.briefing_tools.get_daily_briefing,
+    "get_departure_alerts": tools.briefing_tools.get_departure_alerts,
     "get_recommendations": tools.reco_tools.get_recommendations,
     "get_time": tools.basic_tools.get_time,
     "get_weather": tools.basic_tools.get_weather,

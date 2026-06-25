@@ -165,7 +165,8 @@ def sync_all_external_calendars() -> int:
 
 
 @_per_user
-def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60, description: str = "") -> str:
+def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60, description: str = "",
+                       location: str = "") -> str:
     """
     Ajoute un événement ou rendez-vous dans l'agenda de l'utilisateur (local et externe).
 
@@ -174,6 +175,8 @@ def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60
         datetime_str (str): La date et heure au format AAAA-MM-JJ HH:MM.
         duration_minutes (int): Durée estimée en minutes (défaut: 60).
         description (str): Détails ou notes complémentaires.
+        location (str): LIEU du rendez-vous (adresse ou ville). Renseigne-le dès que tu le connais :
+            il permet l'ALERTE DE DÉPART du briefing (« pars à 14h15, trajet 35 min + trafic »).
 
     Returns:
         str: Message de confirmation de l'ajout.
@@ -234,6 +237,7 @@ def add_calendar_event(title: str, datetime_str: str, duration_minutes: int = 60
         "datetime": iso_str,
         "duration_minutes": int(duration_minutes),
         "description": description,
+        "location": (location or "").strip(),
         "reminded_15m": False,
         "reminded_now": False,
         "source": source,

@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from tools.agenda_tools import load_agenda
 from tools.list_tools import get_list_items
 
@@ -21,6 +21,78 @@ def _resolve_city() -> str:
         if v:
             return v
     return ""
+
+
+def _resolve_home() -> str:
+    """Adresse de DÉPART (domicile) pour les alertes de départ : HOME_ADDRESS de la config du
+    compte, puis l'env, sinon la ville météo en repli."""
+    try:
+        from core import user_config
+        cfg = user_config.get_all() or {}
+        for k in ("HOME_ADDRESS", "HOME", "DOMICILE"):
+            v = (cfg.get(k) or "").strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    v = os.getenv("HOME_ADDRESS", "").strip()
+    return v or _resolve_city()
+
+
+def _departure_buffer_min() -> int:
+    """Marge (min) ajoutée au trajet : temps pour se préparer/se garer. Défaut 10."""
+    try:
+        from core import user_config
+        v = (user_config.get_all() or {}).get("DEPARTURE_BUFFER_MIN")
+        if v:
+            return max(0, int(v))
+    except Exception:
+        pass
+    try:
+        return max(0, int(os.getenv("DEPARTURE_BUFFER_MIN", "10")))
+    except Exception:
+        return 10
+
+
+def get_departure_alerts() -> str:
+    """Pour chaque RENDEZ-VOUS du jour AYANT UN LIEU, calcule l'HEURE DE DÉPART à partir du trajet
+    voiture en temps réel (trafic inclus) depuis ton domicile + une marge → « pars à 14h15 pour ton
+    RDV de 15h ». Renvoie une liste de lignes, ou "" si rien (pas de clé TomTom, pas de domicile,
+    aucun RDV à venir avec lieu). Idéal en briefing matinal."""
+    from tools.traffic_tools import driving_minutes
+    home = _resolve_home()
+    if not home:
+        return ""
+    today = datetime.now().strftime("%Y-%m-%d")
+    try:
+        events = [e for e in load_agenda()
+                  if e.get("datetime", "").startswith(today) and (e.get("location") or "").strip()]
+    except Exception:
+        return ""
+    if not events:
+        return ""
+    buf = _departure_buffer_min()
+    now = datetime.now()
+    out = []
+    for e in sorted(events, key=lambda x: x["datetime"]):
+        try:
+            start = datetime.strptime(e["datetime"], "%Y-%m-%d %H:%M")
+        except Exception:
+            continue
+        if start < now:
+            continue  # RDV déjà passé
+        res = driving_minutes(home, e["location"])
+        if not res:
+            continue
+        mins, delay = res
+        leave = start - timedelta(minutes=mins + buf)
+        line = (f"- 🚗 **{leave.strftime('%H:%M')}** : pars pour « {e['title']} » "
+                f"à {e['location']} (trajet ~{mins} min")
+        if delay >= 2:
+            line += f", +{delay} min de trafic"
+        line += f" → RDV {start.strftime('%H:%M')})"
+        out.append(line)
+    return "\n".join(out)
 
 
 def get_daily_briefing(city: str = "") -> str:
@@ -72,9 +144,17 @@ def get_daily_briefing(city: str = "") -> str:
             briefing += f"- **{time_part}** : {e['title']} ({e['duration_minutes']} min){desc}\n"
     else:
         briefing += "- *Aucun événement planifié pour aujourd'hui. Profitez de votre journée libre !* 🎉\n"
-        
+
     briefing += "\n"
-    
+
+    # 2bis. HEURES DE DÉPART (trafic temps réel) — pour les RDV du jour ayant un lieu.
+    try:
+        dep = get_departure_alerts()
+        if dep:
+            briefing += "🚗 **Heures de départ (trafic temps réel)** :\n" + dep + "\n\n"
+    except Exception as e:  # noqa: BLE001
+        print(f"🚗 [Briefing Erreur Départs] {e}")
+
     # 3. LISTE DE TACHES & COURSES PENDANTES
     todos = [t for t in get_list_items("taches") if not t.get("completed", False)]
     shopping = [s for s in get_list_items("courses") if not s.get("completed", False)]
