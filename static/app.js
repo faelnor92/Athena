@@ -3392,9 +3392,7 @@ const BEHAVIOR_SCHEMA = [
         { key: "EMBEDDING_API_BASE", label: "URL des embeddings", help: "Vide = réutilise l'URL de ton modèle principal (CUSTOM_LLM_API_BASE).", type: "text", def: "" },
     ]},
     { section: "Voix", icon: "🔊", fields: [
-        { key: "VOICE_EMOTION_TAGS", label: "Voix émotionnelle", help: "Athena colore sa voix selon le ton (joie, empathie…).", type: "toggle", def: "true" },
-        { key: "VOICE_TTS_HTTP_URL", label: "Serveur de voix (TTS)", help: "URL du serveur de synthèse vocale (Kokoro, XTTS, Fish-Speech…).", type: "text", def: "" },
-        { key: "VOICE_TTS_VOICE", label: "Voix utilisée", help: "Nom de la voix/locuteur (se choisit aussi dans Réglages → Satellites).", type: "text", def: "" },
+        { key: "VOICE_EMOTION_TAGS", label: "Voix émotionnelle", help: "Athena colore sa voix selon le ton (joie, empathie…). Le serveur TTS et le choix de la voix se règlent dans Réglages → 🛰️ Satellites (contrôles dédiés : liste de voix, vitesse, test).", type: "toggle", def: "true" },
     ]},
     { section: "Vision & écran", icon: "👁️", fields: [
         { key: "COMPUTER_USE", label: "Capture d'écran", help: "Permet à Athena de capturer/analyser l'écran. Inutile sur un serveur sans écran.", type: "toggle", def: "false" },
