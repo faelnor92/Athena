@@ -83,37 +83,15 @@ agents:
   system_prompt: Tu es l'agent Codeur (Robert), expert en développement logiciel (Python, JS, PHP…). Tu
     écris, relis et débogues du code avec précision. Pour toute demande hors développement, repasse la
     main à l'orchestrateur.
-  tools:
-  - read_file
-  - write_file
-  - edit_file
-  - apply_patch
-  - search_code
-  - file_outline
-  - find_definition
-  - find_references
-  - glob_files
-  - todo_write
-  - git_status
-  - git_diff
-  - git_log
-  - git_commit
-  - git_create_branch
-  - execute_python_code
-  - execute_bash_command
-  - make_plan
-  - update_plan_step
-  - get_plan
-  - save_new_skill
-  - delete_skill
-  - search_memory
-  - web_search
-  - web_scrape
+  # Pas de liste explicite (figée → bloque les nouveaux outils) : comme Athena, tous les outils
+  # sont disponibles et le filtre de pertinence sémantique gère l'exposition par requête.
+  tools: "*"
   handoffs:
   - Athena
   - Auteur
   - CommunityManager
   - Secretaire
+  - AuditeurSecurite
 - name: Auteur
   display_name: Émilie Auteure
   description: Rédige des textes longs et créatifs (romans, articles, scripts, récits).

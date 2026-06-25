@@ -964,9 +964,24 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             # chaque tour. Règle : stable → bloc système caché ; volatile → hors du préfixe caché.
             volatile_context = ""
 
+            # Outils de WORKFLOW CODE : pour TOUT agent capable d'éditer du code, on garantit la
+            # présence de run_checks/run_tests/request_code_review/remember_project_note MÊME si la
+            # liste explicite de l'agent (agents.yaml, souvent gitignoré/ancien) ne les contient pas.
+            # Sinon le Codeur ne peut ni vérifier, ni se relire, ni mémoriser (bug observé au banc).
+            _eff_names = {getattr(f, "__name__", "") for f in effective_tools}
+            if _eff_names & {"edit_file", "write_file", "apply_patch"}:
+                for _cn in ("run_checks", "run_tests", "request_code_review", "remember_project_note"):
+                    if _cn not in _eff_names and _cn in AVAILABLE_TOOLS:
+                        effective_tools.append(AVAILABLE_TOOLS[_cn])
+                        _eff_names.add(_cn)
+                        _force_expose.add(_cn)
+
             # Préambule SYSTÈME (non éditable par l'utilisateur, contrairement au prompt de
             # l'agent ci-dessus) : garanties de comportement, adaptées aux OUTILS de l'agent.
+            # Basé sur les outils RÉELLEMENT exposés (config ∪ force-exposés) → les nudges reflètent
+            # ce que l'agent peut vraiment appeler.
             _tool_names = {getattr(f, "__name__", "") for f in getattr(current_agent, "tools", [])}
+            _tool_names |= _eff_names
             system_prompt += (
                 "\n\n=== RÈGLES SYSTÈME ===\n"
                 "- N'affirme jamais avoir agi ni n'invente un résultat : appelle l'outil via le mécanisme "
