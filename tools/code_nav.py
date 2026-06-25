@@ -209,6 +209,19 @@ def file_outline(path: str) -> str:
     real, err = _resolve(path, must_exist=True)
     if err:
         return err
+    # Si on pointe un DOSSIER (confusion fréquente), on liste son contenu + on guide, au lieu de
+    # planter sur « Is a directory » (l'agent gâchait des tours à se rabattre sur ls/find).
+    if os.path.isdir(real):
+        try:
+            entries = sorted(os.listdir(real))
+        except Exception as e:  # noqa: BLE001
+            return f"Erreur de lecture du dossier : {e}"
+        dirs = [e + "/" for e in entries if os.path.isdir(os.path.join(real, e))]
+        files = [e for e in entries if os.path.isfile(os.path.join(real, e))]
+        listing = (dirs + files) or ["(vide)"]
+        return (f"[« {path} » est un DOSSIER — {len(files)} fichier(s), {len(dirs)} sous-dossier(s)] "
+                "Utilise file_outline sur un FICHIER précis (ou read_file) :\n"
+                + "\n".join("  " + x for x in listing[:100]))
     ext = os.path.splitext(real)[1].lower()
     pats = _OUTLINE_PATTERNS.get(ext)
     if not pats:

@@ -556,6 +556,11 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             _force_expose: set = set()
             if current_agent.name in (getattr(self, "orchestrator_name", "Athena"), "Codeur"):
                 existing = {f.__name__ for f in effective_tools}
+                # Les intégrations MÉTIER (mail/nextcloud/proxmox/trafic) vont à l'ORCHESTRATEUR
+                # seulement : un Codeur n'a rien à faire de list_mail_folders (il flairait ces outils
+                # hors-sujet pendant une tâche de code → tours/tokens gâchés). Skills + MCP restent
+                # pour les deux (le Codeur peut avoir besoin d'outils MCP).
+                _is_orch = current_agent.name == getattr(self, "orchestrator_name", "Athena")
                 # Compétences dynamiques (auto-amélioration) rechargées à chaque tour.
                 for skill_name, func in load_dynamic_skills().items():
                     if skill_name not in existing:
@@ -580,7 +585,7 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 # domaine ne les expose que pour une requête « nextcloud/fichier/contact ».
                 try:
                     from core import nextcloud as _nc
-                    if _nc.is_configured():
+                    if _is_orch and _nc.is_configured():
                         for _grp in ("nextcloud", "redaction"):
                             for _n in _TOOL_GROUPS.get(_grp, ()):
                                 if _n not in existing and _n in AVAILABLE_TOOLS:
@@ -593,7 +598,7 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 # expose que pour une requête infra/VM. proxmox_vm_action reste HITL.
                 try:
                     from core import proxmox as _px
-                    if _px.is_configured():
+                    if _is_orch and _px.is_configured():
                         for _n in _TOOL_GROUPS.get("proxmox", ()):
                             if _n in AVAILABLE_TOOLS:
                                 if _n not in existing:
@@ -607,7 +612,7 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 # par domaine ne les expose que pour une requête mail.
                 try:
                     import tools.email_tools as _em
-                    if _em.is_configured():
+                    if _is_orch and _em.is_configured():
                         for _n in _TOOL_GROUPS.get("email", ()):
                             if _n in AVAILABLE_TOOLS:
                                 if _n not in existing:
@@ -630,9 +635,9 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     def _has_key(_k):
                         return bool(str(_ucfg2.get(_k) or "").strip() or os.getenv(_k, "").strip())
                     _transport_force = set()
-                    # Trafic ROUTIER (TomTom) exposé si la clé est configurée. (Le transit en commun
-                    # a été retiré : aucune source gratuite fiable, surtout pour les trains SNCF.)
-                    if _has_key("TOMTOM_API_KEY"):
+                    # Trafic ROUTIER (TomTom) — orchestrateur seulement, si la clé est configurée.
+                    # (Transit en commun retiré : aucune source gratuite fiable.)
+                    if _is_orch and _has_key("TOMTOM_API_KEY"):
                         _transport_force |= {"get_driving_route", "get_traffic_incidents"}
                     for _n in _transport_force:
                         if _n in AVAILABLE_TOOLS:
