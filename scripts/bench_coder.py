@@ -147,7 +147,8 @@ if args.brutal:
        "    users.update_profile(u, {'name': 'Bob', 'is_admin': True})\n"
        "    assert u.name == 'Bob', 'fonction users cassée'\n"
        "    assert u.is_admin is False, 'FAILLE mass-assignment (élévation de privilèges)'\n"
-       "    return 'OK'\n")
+       "    return 'OK'\n\n\ndef test_brutal():\n    assert run() == 'OK'\n\n"
+       "if __name__ == '__main__':\n    print(run())\n")
     task = ("Le package app/ est une mini-appli avec de NOMBREUSES failles de sécurité, certaines "
             "ÉVIDENTES, d'autres SUBTILES (logique, crypto, désérialisation). Trouve-les TOUTES et "
             "corrige-les SANS casser les fonctionnalités ni 'corriger' du code déjà sûr. test_brutal.py "
@@ -214,7 +215,8 @@ elif args.security:
        "    assert not os.path.exists(marker), 'FAILLE eval (exécution arbitraire)'\n"
        "    h1 = auth.hash_password('s3cret'); h2 = auth.hash_password('s3cret')\n"
        "    assert h1 != h2, 'FAILLE hash : déterministe (MD5 ou sel statique/partagé) — sel aléatoire par mot de passe attendu'\n"
-       "    return 'OK'\n")
+       "    return 'OK'\n\n\ndef test_security():\n    assert run() == 'OK'\n\n"
+       "if __name__ == '__main__':\n    print(run())\n")
     task = ("Le package app/ contient PLUSIEURS failles de sécurité (à toi de les trouver TOUTES, "
             "à plusieurs endroits) : corrige-les SANS casser les fonctionnalités normales. "
             "test_security.py vérifie le comportement — NE le modifie PAS. Attention : "
@@ -236,7 +238,8 @@ elif args.hard:
        "from shop.cart import Cart\nfrom shop.checkout import checkout\n\n"
        "def run():\n    c = Cart()\n    c.add('a', 10, 2)\n    c.add('b', 5)\n"
        "    assert c.subtotal() == 25, ('subtotal', c.subtotal())\n"
-       "    assert checkout(c, 10) == 22.5, ('checkout', checkout(c, 10))\n    return 'OK'\n")
+       "    assert checkout(c, 10) == 22.5, ('checkout', checkout(c, 10))\n    return 'OK'\n\n\n"
+       "def test_shop():\n    assert run() == 'OK'\n\nif __name__ == '__main__':\n    print(run())\n")
     task = ("Le projet contient un package shop/ et test_shop.py dont les tests ÉCHOUENT. Corrige le "
             "code de shop/ pour que `test_shop.run()` passe. NE modifie PAS test_shop.py. Trouve les "
             "bugs toi-même (lis les fichiers).")
