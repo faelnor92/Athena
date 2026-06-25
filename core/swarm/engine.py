@@ -68,6 +68,7 @@ import tools.n8n_tools
 import tools.computer_use
 import tools.vision_tools
 import tools.routine_tools
+import tools.habit_tools
 import tools.pipeline_tools
 import tools.playbooks
 import tools.claude_code_tool
@@ -295,6 +296,7 @@ AVAILABLE_TOOLS = {
     "capture_screen": tools.vision_tools.capture_screen,
     "create_routine": tools.routine_tools.create_routine,
     "list_routines": tools.routine_tools.list_routines,
+    "suggest_routines": tools.habit_tools.suggest_routines,
     "run_rigid_pipeline": tools.pipeline_tools.run_rigid_pipeline,
     "claude_code": tools.claude_code_tool.claude_code,  # plugin : délègue le code à Claude Code
     "open_context": tools.context_tools.open_context,    # pile de contextes (« fil d'Ariane »)

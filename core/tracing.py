@@ -181,12 +181,20 @@ class RunStore:
         except Exception:
             return 0.0
 
-    def list(self, limit: int = 50, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        query = "SELECT run_id, created_at, agent, status, user_message, duration_ms, total_tokens, total_cost, error FROM runs"
+    def list(self, limit: int = 50, status: Optional[str] = None,
+             user: Optional[str] = None) -> List[Dict[str, Any]]:
+        query = ("SELECT run_id, created_at, agent, status, user_message, duration_ms, "
+                 "total_tokens, total_cost, error, user FROM runs")
+        conds: list = []
         params: list = []
         if status:
-            query += " WHERE status = ?"
+            conds.append("status = ?")
             params.append(status)
+        if user:
+            conds.append("user = ?")
+            params.append(user)
+        if conds:
+            query += " WHERE " + " AND ".join(conds)
         query += " ORDER BY created_at DESC LIMIT ?"
         params.append(int(limit))
         with self._lock, self._connect() as conn:
