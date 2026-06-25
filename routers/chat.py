@@ -1180,6 +1180,37 @@ def _coder_console_work(req: TerminalRequest, run_id: str) -> dict:
             import logging
             logging.getLogger("athena.server").exception("Code-Test-Fix échoué")
 
+        # REVUE AUTO (sécurité + qualité) : après le code-test-fix, on relit les fichiers ÉDITÉS ;
+        # si findings, UN round correctif (puis stop — pas de boucle). Filet automatique en plus de
+        # l'outil request_code_review que le Codeur peut appeler lui-même.
+        try:
+            from core import code_review
+            if code_review.enabled():
+                _edited = [(_s.get("args") or {}).get("path") for _s in steps
+                           if _s.get("type") == "tool_call"
+                           and _s.get("tool") in ("write_file", "edit_file", "apply_patch")
+                           and (_s.get("args") or {}).get("path")]
+                if _edited:
+                    _findings = code_review.review_files(_edited)
+                    if _findings and _findings.strip().upper() != "RAS" and "indisponible" not in _findings.lower():
+                        _rev_step = {"type": "tool_output", "agent": coder_agent.name,
+                                     "tool": "code_review", "output": _findings}
+                        steps.append(_rev_step)
+                        try:
+                            run_context.publish_step(dict(_rev_step))
+                        except Exception:
+                            pass
+                        new_chain.append({"role": "user", "content":
+                            "🔎 Revue de sécurité/qualité de tes modifications — corrige ces points, "
+                            "puis relance les tests :\n" + _findings[:2000]})
+                        next_agent, new_chain, _s3 = swarm.run(
+                            coder_agent, new_chain, max_turns=max_turns, locked=True,
+                            context_variables=_ctx_vars)
+                        steps += _s3
+        except Exception:
+            import logging
+            logging.getLogger("athena.server").exception("Revue auto échouée")
+
         # S'assurer de rester sur l'orchestrateur au niveau de la session globale
         session.active_agent = _orch_agent()
 

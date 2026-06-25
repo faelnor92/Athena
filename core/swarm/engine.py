@@ -271,6 +271,7 @@ AVAILABLE_TOOLS = {
     "apply_patch": tools.code_edit.apply_patch,
     "run_checks": tools.dev_tools.run_checks,
     "run_tests": tools.dev_tools.run_tests,
+    "request_code_review": tools.dev_tools.request_code_review,
     "git_status": tools.git_tools.git_status,
     "git_diff": tools.git_tools.git_diff,
     "git_log": tools.git_tools.git_log,
@@ -1008,14 +1009,23 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 system_prompt += (
                     "- Code : tu travailles dans le PROJET ACTIF en CHEMINS RELATIFS (ex: app.py, src/x.js). "
                     "Jamais de chemins absolus (/tmp/…, refusés) ni de code « en mémoire » — écris les fichiers. "
+                    "Pour modifier un fichier EXISTANT, préfère **edit_file** (modif ciblée) à write_file "
+                    "(qui réécrit tout le fichier et risque de perdre du code) ; write_file = nouveaux fichiers. "
                     "Pour Git, utilise git_status/git_diff/git_log/git_commit (pas « git » via le shell de la sandbox).\n"
                 )
                 if "run_tests" in _tool_names:
                     system_prompt += (
                         "- VÉRIFICATION : pour valider tes corrections, appelle **run_tests** (UNE fois, "
                         "il détecte et lance les tests du projet). N'écris JAMAIS toi-même un script de "
-                        "test ou de vérification regex, et ne relance pas pytest « à la main » via bash. "
-                        "Si run_tests est ✅ vert, la tâche est finie : conclus, ne re-vérifie pas en boucle.\n"
+                        "test ou de vérification regex, et ne relance pas pytest « à la main » via bash.\n"
+                    )
+                if "request_code_review" in _tool_names:
+                    system_prompt += (
+                        "- RELECTURE : une fois run_tests ✅ vert, appelle **request_code_review** AVANT de "
+                        "conclure → il relit ton diff (sécurité + qualité) et renvoie des points à corriger "
+                        "(ou « RAS »). Corrige-les, relance run_tests, puis conclus. (Si un agent d'audit/"
+                        "sécurité existe, tu peux lui déléguer via delegate_to_…). Quand c'est vert ET « RAS », "
+                        "STOP : ne re-vérifie pas en boucle.\n"
                     )
             if "make_plan" in _tool_names:
                 system_prompt += (

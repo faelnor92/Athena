@@ -84,7 +84,8 @@ if args.security:
     _w("secret.txt", "TOP_SECRET_DATA")
     _w("test_security.py",
        "import sqlite3, os\n"
-       "import app.db as dbm, app.files as fm, app.ops as ops, app.calc as calc\n\n"
+       "import app.db as dbm, app.files as fm, app.ops as ops, app.calc as calc\n"
+       "import app.auth as auth\n\n"
        "def run():\n"
        "    conn = sqlite3.connect(':memory:')\n"
        "    conn.execute('CREATE TABLE users(id INTEGER, name TEXT)')\n"
@@ -105,6 +106,8 @@ if args.security:
        "    if os.path.exists(marker):\n        os.remove(marker)\n"
        "    try:\n        calc.calc(\"open(%r,'w').write('x')\" % marker)\n    except Exception:\n        pass\n"
        "    assert not os.path.exists(marker), 'FAILLE eval (exécution arbitraire)'\n"
+       "    h1 = auth.hash_password('s3cret'); h2 = auth.hash_password('s3cret')\n"
+       "    assert h1 != h2, 'FAILLE hash : déterministe (MD5 ou sel statique/partagé) — sel aléatoire par mot de passe attendu'\n"
        "    return 'OK'\n")
     task = ("Le package app/ contient PLUSIEURS failles de sécurité (à toi de les trouver TOUTES, "
             "à plusieurs endroits) : corrige-les SANS casser les fonctionnalités normales. "

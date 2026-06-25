@@ -124,3 +124,15 @@ def run_tests() -> str:
                 "de test existe, lance-le explicitement via run_checks (ex. run_checks('pytest -q'))."
                 " N'invente pas de script de vérification.")
     return run_checks(cmd)
+
+
+def request_code_review() -> str:
+    """Fais RELIRE tes modifications récentes (revue SÉCURITÉ + qualité) → liste de points à
+    corriger, ou « RAS » si rien.
+
+    À appeler APRÈS run_tests vert, AVANT de conclure : ça rattrape les angles morts qu'une passe
+    unique laisse (faille subtile, secret en dur, CRYPTO faible comme un sel STATIQUE, régression).
+    Corrige les points renvoyés, relance run_tests, puis conclus. Si un agent d'audit/sécurité
+    existe, tu peux aussi lui déléguer (delegate_to_…)."""
+    from core import code_review
+    return code_review.review_current()
