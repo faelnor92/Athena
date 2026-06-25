@@ -1878,7 +1878,9 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 # ad hoc (commandes toutes différentes, ou run_tests zéro-arg qui échappe parfois au
                 # disjoncteur exact) → au-delà du seuil GLOBAL, on cesse d'exécuter et on force à
                 # conclure (évite l'acharnement quand le lanceur de tests est indispo).
-                if (not is_repeat and func is not None and not arg_error and not blocked
+                # NB : on compte TOUTE tentative de vérif (même un exact-répété déjà bloqué) → sinon
+                # un modèle qui répète passe sous le plafond. Le total reflète l'effort de vérif réel.
+                if (func is not None and not arg_error and not blocked
                         and _verify_soft_limit > 0 and func_name in _VERIFY_TOOLS):
                     _verify_counts["_total"] = _verify_counts.get("_total", 0) + 1
                     if _verify_counts["_total"] > _verify_soft_limit:
