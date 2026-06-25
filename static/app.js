@@ -3346,7 +3346,6 @@ if (modalTabPricing && panePricing) {
 const BEHAVIOR_SCHEMA = [
     { section: "Exécution & garde-fous", icon: "⚙️", fields: [
         { key: "SANDBOX_MODE", label: "Sandbox d'exécution", help: "Où s'exécute le code/les commandes. « Docker » = isolé (recommandé). « Local » = sur la machine, sans isolation.", type: "select", options: [["docker", "Docker (isolé)"], ["off", "Local (NON isolé)"]], def: "docker" },
-        { key: "SELF_IMPROVE", label: "Auto-amélioration", help: "Athena tire des leçons de ses tâches pour s'améliorer au fil du temps.", type: "toggle", def: "true" },
         { key: "LLM_MAX_RETRIES", label: "Réessais en cas d'erreur LLM", help: "Nombre de tentatives si le modèle échoue (réseau, surcharge).", type: "number", def: "2" },
         { key: "SWARM_MAX_PARALLEL", label: "Tâches en parallèle (max)", help: "Combien d'outils/agents peuvent travailler en même temps.", type: "number", def: "4" },
         { key: "SWARM_MAX_SECONDS", label: "Temps max par requête", help: "Durée maximale d'une réponse, en secondes. 0 = illimité.", type: "number", def: "0" },
@@ -3370,7 +3369,8 @@ const BEHAVIOR_SCHEMA = [
         { key: "DELEGATION_ROUTER", label: "Aiguillage vers le bon agent", help: "Athena confie la tâche au spécialiste le plus adapté (Codeur, Auteur…).", type: "toggle", def: "true" },
         { key: "AUTO_CRITIC", label: "Auto-critique des réponses", help: "Athena relit et corrige sa réponse avant de te la donner (plus lent, plus fiable).", type: "toggle", def: "false" },
         { key: "USER_MODELING", label: "Profil utilisateur évolutif", help: "Athena retient tes préférences pour personnaliser ses réponses.", type: "toggle", def: "true" },
-        { key: "SELF_IMPROVE_SKILLS", label: "Création/réparation d'outils auto", help: "Athena peut se créer de nouveaux outils (avec validation) et réparer ceux qui cassent.", type: "toggle", def: "true" },
+        { key: "SELF_IMPROVE", label: "Apprentissage par l'expérience", help: "Athena tire des leçons de ses tâches passées pour s'améliorer au fil du temps.", type: "toggle", def: "true" },
+        { key: "SELF_IMPROVE_SKILLS", label: "Auto-création/réparation d'outils", help: "Athena peut se créer de nouveaux outils (avec validation) et réparer ceux qui cassent.", type: "toggle", def: "true" },
         { key: "TOOL_SCRIPTS", label: "Enchaînement d'outils par script", help: "Permet à Athena d'enchaîner plusieurs outils en un seul script (tâches complexes).", type: "toggle", def: "true" },
         { key: "FAST_MODEL", label: "Modèle rapide (micro-décisions)", help: "Petit modèle pour les décisions internes rapides. Vide = le modèle de l'agent.", type: "text", def: "" },
         { key: "FALLBACK_MODELS", label: "Modèles de secours", help: "Modèles essayés si le principal échoue (séparés par des virgules).", type: "text", def: "" },
@@ -3402,19 +3402,19 @@ const BEHAVIOR_SCHEMA = [
         { key: "PRESENCE_ENTITY", label: "Pièce courante (Home Assistant)", help: "Entité HA indiquant la pièce où tu es (pour « follow-me »). Vide = désactivé.", type: "text", def: "" },
         { key: "N8N_WORKFLOWS", label: "Workflows n8n autorisés", help: "JSON {\"nom\": \"url du webhook\"} des automatisations qu'Athena peut déclencher.", type: "text", def: "" },
     ]},
-    { section: "Intégrations externes (météo · transports · trafic · OCR)", icon: "🌍", fields: [
+    { section: "Intégrations externes (météo · trafic · domicile · OCR)", icon: "🌍", fields: [
         { key: "WEATHER_CITY", label: "Ville (météo)", help: "Ville par défaut pour la météo et le briefing (ex. Strasbourg). Vide = déduite des coordonnées ci-dessous si renseignées.", type: "text", def: "" },
         { key: "WEATHER_LAT", label: "Latitude (météo hyperlocale)", help: "Position précise pour une météo au quartier près (ex. 48.5839). Vide = on utilise la ville.", type: "text", def: "" },
         { key: "WEATHER_LON", label: "Longitude (météo hyperlocale)", help: "Position précise (ex. 7.7455). À renseigner avec la latitude.", type: "text", def: "" },
         { key: "TOMTOM_API_KEY", label: "Clé TomTom (trafic routier)", help: "Pour le temps de trajet voiture avec embouteillages et les incidents. Clé gratuite sur developer.tomtom.com. (Le transit en commun n'est pas couvert : aucune source gratuite fiable.)", type: "password", def: "" },
         { key: "HOME_ADDRESS", label: "Adresse du domicile (départ)", help: "Point de départ pour les ALERTES DE DÉPART du briefing (« pars à 18h26 pour ton RDV de 19h »). Adresse ou ville. Vide = on retombe sur la ville météo. Nécessite la clé TomTom + un lieu sur tes rendez-vous.", type: "text", def: "" },
-        { key: "DEPARTURE_BUFFER_MIN", label: "Marge avant départ (min)", help: "Minutes ajoutées au trajet (préparation, stationnement) pour calculer l'heure de départ. Défaut : 10.", type: "number", def: "" },
-        { key: "OCR_MODEL", label: "Modèle OCR (extraction de texte)", help: "Modèle pour transcrire le texte des images/PDF scannés. Vide = le modèle de vision ci-dessus.", type: "model", def: "", emptyLabel: "⭐ Modèle de vision (défaut)" },
+        { key: "DEPARTURE_BUFFER_MIN", label: "Marge avant départ (min)", help: "Minutes ajoutées au trajet (préparation, stationnement) pour calculer l'heure de départ.", type: "number", def: "10" },
+        { key: "OCR_MODEL", label: "Modèle OCR (extraction de texte)", help: "Modèle pour transcrire le texte des images/PDF scannés. Vide = le modèle de la section Vision.", type: "model", def: "", emptyLabel: "⭐ Modèle de vision (défaut)" },
     ]},
     { section: "Proactivité & Codeur", icon: "🔁", fields: [
         { key: "HABIT_MINING", label: "Suggestions de routines (habitudes)", help: "Athena observe tes requêtes récurrentes à heure régulière et propose de créer des routines (« tu demandes la météo chaque matin → routine 8h ? »).", type: "toggle", def: "true" },
         { key: "CODE_REVIEW", label: "Revue auto du code", help: "Après les tests, le Codeur relit ses modifications (sécurité + qualité) et corrige les points avant de conclure.", type: "toggle", def: "true" },
-        { key: "SWARM_VERIFY_SOFT_LIMIT", label: "Plafond de tentatives de vérification", help: "Nombre max de tentatives de test/vérif d'un agent dans une tâche avant conclusion forcée (anti-boucle). Défaut : 8.", type: "number", def: "" },
+        { key: "SWARM_VERIFY_SOFT_LIMIT", label: "Plafond de tentatives de vérification", help: "Nombre max de tentatives de test/vérif d'un agent dans une tâche avant conclusion forcée (anti-boucle).", type: "number", def: "8" },
     ]},
 ];
 
