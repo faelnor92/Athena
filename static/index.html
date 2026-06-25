@@ -1679,8 +1679,8 @@
 
                     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
                     <h5 style="color: var(--accent-cyan); margin: 8px 0;">🤖 Mon modèle & mes clés LLM</h5>
-                    <p class="section-desc">Optionnel : utilise <strong>ton propre</strong> modèle / tes clés API. Laissé vide = on garde la config de base du serveur.</p>
-                    <div class="form-group"><label>Modèle préféré (vide = défaut)</label><input id="myllm-model" type="text" placeholder="ex: gpt-4o, claude-..., qwen3"></div>
+                    <p class="section-desc">Optionnel : utilise <strong>ton propre</strong> modèle / tes clés API <strong>pour ton compte</strong>. Laissé vide = config de base du serveur. <em>Les modèles par fonction (vision, OCR, rédaction, rapide…) sont GLOBAUX : Réglages → Comportement → « Modèles par fonction ».</em></p>
+                    <div class="form-group"><label>💬 Modèle du chat <span style="opacity:.6">(vide = modèle serveur par défaut)</span></label><input id="myllm-model" type="text" placeholder="ex: gpt-4o, claude-..., qwen3"></div>
                     <div class="form-group"><label>🎨 Modèle AthenaDesign <span style="opacity:.6">(vide = suit le chat)</span></label><select id="myllm-design-model" data-model-picker="1"><option value="">— Suit le modèle du chat —</option></select></div>
                     <div class="form-group"><label>🧩 Modèle console Code <span style="opacity:.6">(vide = suit le chat)</span></label><select id="myllm-code-model" data-model-picker="1"><option value="">— Suit le modèle du chat —</option></select></div>
                     <div class="form-group"><label>Clé OpenAI</label><input id="myllm-openai" type="password" placeholder="laisser vide = inchangé / base"></div>
