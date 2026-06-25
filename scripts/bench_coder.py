@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Banc de test du sous-système CODE : fait corriger un vrai bug par le Codeur et mesure le
-résultat (outils appelés, éditions, tokens, tours, SUCCÈS vérifié). À lancer sur le serveur :
+"""Banc de test du sous-système CODE : fait corriger de vrais bugs par le Codeur et VÉRIFIE le
+résultat en exécutant le code. Mesure outils, éditions rejetées, tokens, tours, succès.
 
-    .venv/bin/python scripts/bench_coder.py
-    .venv/bin/python scripts/bench_coder.py --model custom/qwen-coder   # forcer un modèle
-    .venv/bin/python scripts/bench_coder.py --agent Codeur --turns 12
+    .venv/bin/python scripts/bench_coder.py                 # tâche SIMPLE (1 bug, 1 fichier)
+    .venv/bin/python scripts/bench_coder.py --hard          # tâche DURE (3 bugs, 3 fichiers, tests)
+    .venv/bin/python scripts/bench_coder.py --hard --model custom/<gros-coder>
+    .venv/bin/python scripts/bench_coder.py --agent Codeur --turns 20
 
-Tâche : un solver.py contient un bug (`total = n` au lieu de `+=`). On demande à l'agent de le
-corriger, puis on EXÉCUTE le code pour vérifier que solve([1,2,3]) == 6. Mesure où ça coince :
-édition (les edits s'appliquent-ils ?), raisonnement (trouve-t-il le bug ?), tours/tokens.
+--hard : un package shop/ avec 3 bugs RÉPARTIS (subtotal ignore les quantités ; remise traitée
+comme un montant absolu au lieu d'un % ; import manquant) + test_shop.py qui échoue. On ne dit PAS
+où sont les bugs → ça teste navigation multi-fichiers, raisonnement et éditions multiples.
 """
 import os
 import sys
 import tempfile
 import time
+import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -31,21 +33,51 @@ if os.path.exists(_env):
 
 import argparse
 ap = argparse.ArgumentParser()
-ap.add_argument("--model", default="", help="forcer un modèle (ex. custom/qwen-coder)")
-ap.add_argument("--agent", default="", help="agent à utiliser (défaut : Codeur sinon orchestrateur)")
-ap.add_argument("--turns", type=int, default=12)
+ap.add_argument("--model", default="")
+ap.add_argument("--agent", default="")
+ap.add_argument("--hard", action="store_true", help="tâche dure (multi-fichiers + tests)")
+ap.add_argument("--turns", type=int, default=0)
 args = ap.parse_args()
 
-# Projet temporaire = workspace actif ; sandbox off (on mesure édition+raisonnement, pas Docker).
 proj = tempfile.mkdtemp(prefix="bench_coder_")
 os.environ["ACTIVE_WORKSPACE_DIR"] = proj
 os.environ.setdefault("SANDBOX_MODE", "off")
-BUG = ("def solve(nums):\n"
-       "    total = 0\n"
-       "    for n in nums:\n"
-       "        total = n   # BUG: devrait accumuler\n"
-       "    return total\n")
-open(os.path.join(proj, "solver.py"), "w").write(BUG)
+
+
+def _w(rel, content):
+    p = os.path.join(proj, rel)
+    os.makedirs(os.path.dirname(p), exist_ok=True) if os.path.dirname(rel) else None
+    open(p, "w").write(content)
+
+
+if args.hard:
+    _w("shop/__init__.py", "")
+    _w("shop/cart.py",
+       "class Cart:\n    def __init__(self):\n        self.items = []\n"
+       "    def add(self, name, price, qty=1):\n        self.items.append((name, price, qty))\n"
+       "    def subtotal(self):\n        return sum(price for name, price, qty in self.items)\n")
+    _w("shop/discount.py",
+       "def apply_discount(amount, percent):\n    return amount - percent\n")
+    _w("shop/checkout.py",
+       "from shop.cart import Cart\n\n"
+       "def checkout(cart, percent=0):\n    return apply_discount(cart.subtotal(), percent)\n")
+    _w("test_shop.py",
+       "from shop.cart import Cart\nfrom shop.checkout import checkout\n\n"
+       "def run():\n    c = Cart()\n    c.add('a', 10, 2)\n    c.add('b', 5)\n"
+       "    assert c.subtotal() == 25, ('subtotal', c.subtotal())\n"
+       "    assert checkout(c, 10) == 22.5, ('checkout', checkout(c, 10))\n    return 'OK'\n")
+    task = ("Le projet contient un package shop/ et un fichier test_shop.py dont les tests ÉCHOUENT. "
+            "Corrige le code de shop/ pour que `test_shop.run()` passe sans erreur. NE modifie PAS "
+            "test_shop.py. Trouve les bugs toi-même (lis les fichiers).")
+    default_turns = 25
+else:
+    _w("solver.py",
+       "def solve(nums):\n    total = 0\n    for n in nums:\n        total = n   # BUG\n    return total\n")
+    task = ("Dans solver.py, solve(nums) est boguée : elle renvoie le dernier élément au lieu de la "
+            "SOMME. Corrige-la (édite le fichier, ne réécris pas tout).")
+    default_turns = 12
+
+turns = args.turns or default_turns
 
 from core.state import swarm, _forced_model  # noqa: E402
 
@@ -54,57 +86,61 @@ agent = swarm.agents.get(args.agent) if args.agent else (
 if not agent:
     print("❌ Aucun agent disponible."); sys.exit(1)
 
-task = ("Dans le fichier solver.py du projet, la fonction solve(nums) est boguée : elle renvoie le "
-        "dernier élément au lieu de la SOMME des nombres. Corrige-la (édite le fichier) pour qu'elle "
-        "renvoie la somme. Ne réécris pas tout, corrige juste la ligne fautive.")
-
-print(f"🧪 Banc Codeur — agent={agent.name} modèle={(args.model or agent.model)}  projet={proj}")
+print(f"🧪 Banc Codeur [{'DUR' if args.hard else 'simple'}] — agent={agent.name} "
+      f"modèle={(args.model or agent.model)} turns={turns}\n   projet={proj}")
 tok = _forced_model.set(args.model) if args.model else None
 t0 = time.time()
 try:
     _next, chain, steps = swarm.run(agent, [{"role": "user", "content": task}],
-                                    max_turns=args.turns, locked=True)
+                                    max_turns=turns, locked=True)
 finally:
     if tok is not None:
         _forced_model.reset(tok)
 dt = time.time() - t0
 
-# Analyse des steps
 from collections import Counter
 tools = Counter(s.get("tool") for s in steps if s.get("type") == "tool_call")
 edit_fail = sum(1 for s in steps if s.get("type") == "tool_output"
                 and "introuvable" in str(s.get("output", "")).lower())
 pin = sum(int(s.get("prompt_tokens", 0) or 0) for s in steps if s.get("type") == "usage")
 pout = sum(int(s.get("completion_tokens", 0) or 0) for s in steps if s.get("type") == "usage")
-turns = sum(1 for s in steps if s.get("type") == "usage")
+nturns = sum(1 for s in steps if s.get("type") == "usage")
 
-# Vérif RÉELLE : on exécute le code produit
+# Vérification RÉELLE
 verdict, detail = "❌ ÉCHEC", ""
 try:
-    ns = {}
-    exec(open(os.path.join(proj, "solver.py")).read(), ns)
-    got = ns["solve"]([1, 2, 3])
-    if got == 6:
-        verdict, detail = "✅ RÉUSSI", "solve([1,2,3]) == 6"
+    if args.hard:
+        r = subprocess.run([sys.executable, "-c",
+                            f"import sys; sys.path.insert(0, {proj!r}); import test_shop; print(test_shop.run())"],
+                           cwd=proj, capture_output=True, text=True, timeout=20)
+        if r.returncode == 0 and "OK" in r.stdout:
+            verdict, detail = "✅ RÉUSSI", "tous les tests passent"
+        else:
+            detail = (r.stderr.strip().splitlines() or [r.stdout.strip()])[-1][:160] if (r.stderr or r.stdout) else "tests KO"
     else:
-        detail = f"solve([1,2,3]) == {got} (attendu 6)"
+        ns = {}
+        exec(open(os.path.join(proj, "solver.py")).read(), ns)
+        got = ns["solve"]([1, 2, 3])
+        verdict, detail = ("✅ RÉUSSI", "solve([1,2,3])==6") if got == 6 else ("❌ ÉCHEC", f"renvoie {got}")
 except Exception as e:  # noqa: BLE001
     detail = f"code cassé : {e}"
 
 print("\n────────── RÉSULTAT ──────────")
 print(f"{verdict}  ({detail})")
-print(f"⏱  {dt:.1f}s · {turns} tours · tokens ↓{pin} ↑{pout}")
+print(f"⏱  {dt:.1f}s · {nturns} tours · tokens ↓{pin} ↑{pout}")
 print(f"🔧 outils: {dict(tools) or '— aucun —'}")
-print(f"✏️  éditions en échec (old_string introuvable): {edit_fail}")
+print(f"✏️  éditions rejetées (old_string introuvable): {edit_fail}")
 print("\nDiagnostic :")
 if verdict.startswith("✅"):
-    print("  Le modèle a trouvé le bug ET appliqué l'édition correctement.")
+    print("  Bugs trouvés ET corrigés correctement" + (" sur plusieurs fichiers." if args.hard else "."))
 else:
     if not tools:
-        print("  ⚠️ AUCUN outil appelé → le modèle n'agit pas (capacité/format tool-calling).")
-    elif edit_fail:
-        print("  ⚠️ Éditions rejetées (old_string introuvable) → le modèle ne reproduit pas le code exact.")
-    elif "write_file" in tools or "edit_file" in tools:
-        print("  ⚠️ A édité mais le résultat est faux → raisonnement (n'a pas bien corrigé).")
-    if turns >= args.turns:
-        print("  ⚠️ Budget de tours atteint → boucle / pas de convergence.")
+        print("  ⚠️ Aucun outil appelé → capacité / format tool-calling du modèle.")
+    if edit_fail:
+        print(f"  ⚠️ {edit_fail} édition(s) rejetée(s) → le modèle ne reproduit pas le code exact.")
+    if args.hard and tools.get("read_file", 0) < 2:
+        print("  ⚠️ Peu de lecture de fichiers → n'a pas exploré le multi-fichiers.")
+    if (tools.get("edit_file", 0) + tools.get("write_file", 0)) and not edit_fail:
+        print("  ⚠️ A édité mais résultat faux → raisonnement (bugs mal compris / partiellement corrigés).")
+    if nturns >= turns:
+        print("  ⚠️ Budget de tours atteint → pas de convergence / boucle.")
