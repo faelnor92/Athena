@@ -217,7 +217,7 @@ print(f"🔧 outils: {dict(tools) or '— aucun —'}")
 print(f"✏️  éditions rejetées (old_string introuvable): {edit_fail}")
 print("\nDiagnostic :")
 if verdict.startswith("✅"):
-    extra = " (3 failles)" if args.security else (" (multi-fichiers)" if args.hard else "")
+    extra = " (5 failles + leurre)" if args.security else (" (multi-fichiers)" if args.hard else "")
     print(f"  Problèmes trouvés ET corrigés correctement{extra}.")
 else:
     if not tools:
