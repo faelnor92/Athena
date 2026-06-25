@@ -1192,6 +1192,23 @@ def _build_system(design_system: str = "", context_text: str = "", note: str = "
     if (design_system or "").strip():
         parts.append("=== DESIGN SYSTEM (charte à RESPECTER impérativement : couleurs, "
                      "typographie, composants, ton) ===\n" + design_system.strip())
+    elif not (base_code or "").strip():
+        # Aucune charte ET première génération → le modèle joue trop souvent la sécurité (rendu
+        # générique/sans personnalité). On le FORCE à s'engager sur une esthétique distinctive.
+        parts.append(
+            "=== AUCUNE CHARTE FOURNIE → INVENTE UNE IDENTITÉ FORTE (ne joue PAS la sécurité) ===\n"
+            "Aucun design system n'est imposé : tu DOIS donc t'engager sur une direction esthétique "
+            "DISTINCTIVE et ASSUMÉE, surtout PAS un template neutre. Avant de coder, FIXE :\n"
+            "1) une AMBIANCE/personnalité précise adaptée au sujet (ex. éditorial chic, néobrutalisme, "
+            "tech sombre néon, pastel ludique, luxe minimaliste, rétro-print…) — choisis-en UNE et "
+            "engage-toi à fond ;\n"
+            "2) une PALETTE signature (fond + 1 accent FORT + neutres), pas du bleu/gris par défaut ;\n"
+            "3) un DUO TYPOGRAPHIQUE à caractère (un titre à forte personnalité via Google Fonts), pas "
+            "seulement Inter partout ;\n"
+            "4) UN parti-pris visuel MÉMORABLE (hero impactant, titres XXL, grille bento, motif/texture "
+            "ou détail graphique récurrent, micro-interactions soignées).\n"
+            "Objectif : qu'on devine une intention de designer au premier coup d'œil. Bannis le rendu "
+            "« Bootstrap/template ». OSE — tout en restant cohérent, lisible et responsive.")
     if (base_code or "").strip() and edit_mode_enabled():
         parts.append(
             "=== CODE ACTUEL DU PROJET (à MODIFIER) ===\n"
