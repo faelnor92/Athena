@@ -302,3 +302,128 @@ def delete_n8n_workflow(name_or_id: str, user_confirmed: bool = False) -> str:
 for _f in (run_n8n_workflow, set_n8n_workflow_active, create_n8n_workflow,
            update_n8n_workflow, delete_n8n_workflow):
     _f._requires_approval = True
+
+
+# ============================================================================
+# TEMPLATES de workflows — création FIABLE sans génération de JSON par l'IA.
+# Le modèle choisit un modèle + remplit des paramètres → JSON n8n valide garanti.
+# (Ciblent une version n8n récente ; un détail peut nécessiter un ajustement dans n8n.)
+# ============================================================================
+import uuid as _uuid
+
+
+def _node(name, ntype, params, pos, tv=1):
+    return {"id": _uuid.uuid4().hex, "name": name, "type": ntype,
+            "typeVersion": tv, "position": pos, "parameters": params}
+
+
+def _conn(src, dst):
+    return {src: {"main": [[{"node": dst, "type": "main", "index": 0}]]}}
+
+
+def _tmpl_webhook_to_http(name, p):
+    wh = _node("Webhook", "n8n-nodes-base.webhook",
+               {"httpMethod": "POST", "path": str(p["path"]).lstrip("/"), "responseMode": "onReceived"},
+               [240, 300], 1)
+    http = _node("HTTP Request", "n8n-nodes-base.httpRequest",
+                 {"method": (p.get("method") or "POST").upper(), "url": p["url"],
+                  "sendBody": True, "specifyBody": "json", "jsonBody": "={{ $json }}", "options": {}},
+                 [480, 300], 4)
+    return {"name": name, "nodes": [wh, http], "connections": _conn("Webhook", "HTTP Request"), "settings": {}}
+
+
+def _tmpl_schedule_to_http(name, p):
+    hrs = int(p.get("hours_interval") or 1)
+    sch = _node("Schedule", "n8n-nodes-base.scheduleTrigger",
+                {"rule": {"interval": [{"field": "hours", "hoursInterval": hrs}]}}, [240, 300], 1.1)
+    http = _node("HTTP Request", "n8n-nodes-base.httpRequest",
+                 {"method": (p.get("method") or "GET").upper(), "url": p["url"], "options": {}}, [480, 300], 4)
+    return {"name": name, "nodes": [sch, http], "connections": _conn("Schedule", "HTTP Request"), "settings": {}}
+
+
+def _tmpl_webhook_to_athena(name, p):
+    """n8n → Athena : un webhook pousse un événement sur /api/events (pont bidirectionnel)."""
+    token = p.get("event_token") or ""
+    if not token:
+        try:
+            from core import events
+            token = (events.config().get("ingest_token") or "")
+        except Exception:
+            token = ""
+    athena = (p.get("athena_url") or "").rstrip("/")
+    wh = _node("Webhook", "n8n-nodes-base.webhook",
+               {"httpMethod": "POST", "path": str(p.get("path") or "to-athena").lstrip("/"),
+                "responseMode": "onReceived"}, [240, 300], 1)
+    http = _node("HTTP Request → Athena", "n8n-nodes-base.httpRequest",
+                 {"method": "POST", "url": athena + "/api/events",
+                  "sendHeaders": True,
+                  "headerParameters": {"parameters": [{"name": "X-Event-Token", "value": token}]},
+                  "sendBody": True, "specifyBody": "json", "jsonBody": "={{ $json }}", "options": {}},
+                 [480, 300], 4)
+    return {"name": name, "nodes": [wh, http], "connections": _conn("Webhook", "HTTP Request → Athena"), "settings": {}}
+
+
+_TEMPLATES = {
+    "webhook_to_http": (_tmpl_webhook_to_http,
+                        "Reçoit un appel (webhook) et le relaie en POST JSON vers une API.",
+                        ["path", "url", "method?"]),
+    "schedule_to_http": (_tmpl_schedule_to_http,
+                         "Appelle une URL périodiquement (toutes les N heures).",
+                         ["url", "hours_interval?", "method?"]),
+    "webhook_to_athena_event": (_tmpl_webhook_to_athena,
+                                "Pont n8n→Athena : un webhook pousse un événement à la Vigie d'Athena "
+                                "(POST /api/events). Renseigne athena_url (+ event_token si connu).",
+                                ["athena_url", "path?", "event_token?"]),
+}
+
+
+def list_n8n_templates() -> str:
+    """Liste les TEMPLATES de workflows n8n prêts à l'emploi. Préfère-les à la génération de JSON :
+    tu n'as qu'à remplir des paramètres → workflow VALIDE garanti (fiable avec tout modèle)."""
+    out = ["🧩 Templates de workflows n8n (création fiable) :"]
+    for k, (_fn, desc, params) in _TEMPLATES.items():
+        out.append(f"- **{k}** — {desc}\n  params : {', '.join(params)} (un nom suivi de ? est optionnel)")
+    out.append("\nUtilise create_n8n_workflow_from_template(template, name, params_json).")
+    return "\n".join(out)
+
+
+def create_n8n_workflow_from_template(template: str, name: str, params: str = "",
+                                      user_confirmed: bool = False) -> str:
+    """CRÉE un workflow n8n à partir d'un TEMPLATE prêt à l'emploi (JSON valide garanti, sans
+    génération par l'IA). SENSIBLE (validation). Préféré à create_n8n_workflow pour les cas courants.
+
+    template : clé parmi list_n8n_templates (ex. "webhook_to_http").
+    name : nom du workflow à créer.
+    params : JSON des paramètres du template (ex. {"path":"mon-hook","url":"https://api…"}).
+    Le workflow est créé INACTIF."""
+    tk = (template or "").strip()
+    if tk not in _TEMPLATES:
+        return f"Template inconnu « {template} ». Disponibles : {', '.join(_TEMPLATES)}."
+    fn, _desc, plist = _TEMPLATES[tk]
+    try:
+        p = json.loads(params) if (params or "").strip() else {}
+        if not isinstance(p, dict):
+            return "params doit être un objet JSON (ex. {\"url\":\"https://…\"})."
+    except Exception as e:
+        return f"params JSON invalide : {e}"
+    required = [x for x in plist if not x.endswith("?")]
+    missing = [x for x in required if not str(p.get(x) or "").strip()]
+    if missing:
+        return f"Paramètres manquants pour « {tk} » : {', '.join(missing)}."
+    try:
+        wf = fn((name or tk).strip(), p)
+    except Exception as e:
+        return f"Échec de construction du template : {e}"
+    data, err = _api("POST", "/workflows", json_body=wf)
+    if err:
+        return "Création refusée par n8n : " + err
+    wid = (data or {}).get("id") if isinstance(data, dict) else None
+    hook = _webhook_url(wf)
+    msg = f"✅ Workflow « {wf.get('name')} » créé depuis le template « {tk} » (id {wid}), INACTIF."
+    if hook:
+        msg += f"\nWebhook : {hook}"
+    msg += "\nVérifie dans n8n puis active-le (set_n8n_workflow_active)."
+    return msg
+
+
+create_n8n_workflow_from_template._requires_approval = True

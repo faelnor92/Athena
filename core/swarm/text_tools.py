@@ -46,7 +46,8 @@ _TOOL_GROUPS = {
     "transport": {"get_driving_route", "get_traffic_incidents"},
     "n8n": {"trigger_workflow", "list_n8n_workflows", "get_n8n_workflow", "get_n8n_executions",
             "run_n8n_workflow", "set_n8n_workflow_active", "create_n8n_workflow",
-            "update_n8n_workflow", "delete_n8n_workflow"},
+            "update_n8n_workflow", "delete_n8n_workflow", "list_n8n_templates",
+            "create_n8n_workflow_from_template"},
 }
 _TOOL_GROUP_KEYWORDS = {
     "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",

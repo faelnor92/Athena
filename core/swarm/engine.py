@@ -299,6 +299,8 @@ AVAILABLE_TOOLS = {
     "create_n8n_workflow": tools.n8n_tools.create_n8n_workflow,
     "update_n8n_workflow": tools.n8n_tools.update_n8n_workflow,
     "delete_n8n_workflow": tools.n8n_tools.delete_n8n_workflow,
+    "list_n8n_templates": tools.n8n_tools.list_n8n_templates,
+    "create_n8n_workflow_from_template": tools.n8n_tools.create_n8n_workflow_from_template,
     "computer_use_action": tools.computer_use.computer_use_action,
     "analyze_image": tools.vision_tools.analyze_image,
     "capture_screen": tools.vision_tools.capture_screen,
@@ -637,7 +639,8 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     if _is_orch and _n8n.is_configured():
                         for _n in ("list_n8n_workflows", "get_n8n_workflow", "get_n8n_executions",
                                    "run_n8n_workflow", "set_n8n_workflow_active", "create_n8n_workflow",
-                                   "update_n8n_workflow", "delete_n8n_workflow", "trigger_workflow"):
+                                   "update_n8n_workflow", "delete_n8n_workflow", "trigger_workflow",
+                                   "list_n8n_templates", "create_n8n_workflow_from_template"):
                             if _n in AVAILABLE_TOOLS:
                                 if _n not in existing:
                                     effective_tools.append(AVAILABLE_TOOLS[_n])
@@ -1156,10 +1159,16 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     "- AUTOMATISATION n8n : découvre avec `list_n8n_workflows`, déclenche avec "
                     "`run_n8n_workflow(nom)` (ou `trigger_workflow` pour un webhook déclaré), vérifie "
                     "avec `get_n8n_executions`. Gestion (activer/créer/éditer/supprimer) = validée.\n")
+            if "create_n8n_workflow_from_template" in _tool_names:
+                system_prompt += (
+                    "- CRÉER UN WORKFLOW n8n — VOIE PRÉFÉRÉE : `list_n8n_templates` puis "
+                    "`create_n8n_workflow_from_template(template, nom, params_json)` → JSON VALIDE "
+                    "garanti (webhook→HTTP, planifié→HTTP, webhook→Athena). Utilise-la pour les cas "
+                    "courants AVANT de générer du JSON à la main.\n")
             if "create_n8n_workflow" in _tool_names:
                 system_prompt += (
-                    "- CRÉER UN WORKFLOW n8n : `create_n8n_workflow(json)` attend un JSON n8n COMPLET et "
-                    "VALIDE. Structure minimale :\n"
+                    "- CRÉER UN WORKFLOW n8n SUR MESURE (si aucun template ne convient) : "
+                    "`create_n8n_workflow(json)` attend un JSON n8n COMPLET et VALIDE. Structure minimale :\n"
                     '  {\"name\": str, \"nodes\": [ {\"name\": str, \"type\": \"n8n-nodes-base.<type>\", '
                     '\"typeVersion\": 1, \"position\": [x,y], \"parameters\": {…}} ], '
                     '\"connections\": { \"<NomNoeudSource>\": {\"main\": [[ {\"node\":\"<NomCible>\", '
