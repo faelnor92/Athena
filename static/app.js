@@ -3408,8 +3408,13 @@ const BEHAVIOR_SCHEMA = [
         { key: "WEATHER_LON", label: "Longitude (météo hyperlocale)", help: "Position précise (ex. 7.7455). À renseigner avec la latitude.", type: "text", def: "" },
         { key: "TOMTOM_API_KEY", label: "Clé TomTom (trafic routier)", help: "Pour le temps de trajet voiture avec embouteillages et les incidents. Clé gratuite sur developer.tomtom.com. (Le transit en commun n'est pas couvert : aucune source gratuite fiable.)", type: "password", def: "" },
         { key: "HOME_ADDRESS", label: "Adresse du domicile (départ)", help: "Point de départ pour les ALERTES DE DÉPART du briefing (« pars à 18h26 pour ton RDV de 19h »). Adresse ou ville. Vide = on retombe sur la ville météo. Nécessite la clé TomTom + un lieu sur tes rendez-vous.", type: "text", def: "" },
-        { key: "DEPARTURE_BUFFER_MIN", label: "Marge avant départ (min)", help: "Minutes ajoutées au trajet (préparation, stationnement) pour calculer l'heure de départ. Défaut : 10.", type: "text", def: "" },
+        { key: "DEPARTURE_BUFFER_MIN", label: "Marge avant départ (min)", help: "Minutes ajoutées au trajet (préparation, stationnement) pour calculer l'heure de départ. Défaut : 10.", type: "number", def: "" },
         { key: "OCR_MODEL", label: "Modèle OCR (extraction de texte)", help: "Modèle pour transcrire le texte des images/PDF scannés. Vide = le modèle de vision ci-dessus.", type: "model", def: "", emptyLabel: "⭐ Modèle de vision (défaut)" },
+    ]},
+    { section: "Proactivité & Codeur", icon: "🔁", fields: [
+        { key: "HABIT_MINING", label: "Suggestions de routines (habitudes)", help: "Athena observe tes requêtes récurrentes à heure régulière et propose de créer des routines (« tu demandes la météo chaque matin → routine 8h ? »).", type: "toggle", def: "true" },
+        { key: "CODE_REVIEW", label: "Revue auto du code", help: "Après les tests, le Codeur relit ses modifications (sécurité + qualité) et corrige les points avant de conclure.", type: "toggle", def: "true" },
+        { key: "SWARM_VERIFY_SOFT_LIMIT", label: "Plafond de tentatives de vérification", help: "Nombre max de tentatives de test/vérif d'un agent dans une tâche avant conclusion forcée (anti-boucle). Défaut : 8.", type: "number", def: "" },
     ]},
 ];
 
