@@ -272,6 +272,7 @@ AVAILABLE_TOOLS = {
     "run_checks": tools.dev_tools.run_checks,
     "run_tests": tools.dev_tools.run_tests,
     "request_code_review": tools.dev_tools.request_code_review,
+    "remember_project_note": tools.dev_tools.remember_project_note,
     "git_status": tools.git_tools.git_status,
     "git_diff": tools.git_tools.git_diff,
     "git_log": tools.git_tools.git_log,
@@ -1027,6 +1028,23 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         "sécurité existe, tu peux lui déléguer via delegate_to_…). Quand c'est vert ET « RAS », "
                         "STOP : ne re-vérifie pas en boucle.\n"
                     )
+                if "remember_project_note" in _tool_names:
+                    system_prompt += (
+                        "- MÉMOIRE : si tu DÉCOUVRES un fait durable sur ce projet (convention, commande de "
+                        "test/build, décision d'archi, piège récurrent, où se trouve quoi), enregistre-le avec "
+                        "**remember_project_note** → tu (et les prochaines sessions) le retrouverez "
+                        "automatiquement. Ne re-déduis pas ce qui est déjà en mémoire de projet ci-dessous.\n"
+                    )
+                # MÉMOIRE DE PROJET (apprise lors des sessions précédentes) : injectée pour que le
+                # Codeur « connaisse » déjà le projet (≠ agent sans mémoire). Bornée + per-run stable.
+                try:
+                    from core import project_memory as _pm
+                    _pmem = _pm.summary()
+                except Exception:
+                    _pmem = ""
+                if _pmem:
+                    system_prompt += ("\n=== MÉMOIRE DU PROJET (sessions précédentes — fie-toi-y, ne "
+                                      "la re-déduis pas) ===\n" + _pmem + "\n")
             if "make_plan" in _tool_names:
                 system_prompt += (
                     "- Tâche en PLUSIEURS ÉTAPES : commence par `make_plan` (liste courte, étapes concrètes), "

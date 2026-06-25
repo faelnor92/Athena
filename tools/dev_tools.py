@@ -136,3 +136,15 @@ def request_code_review() -> str:
     existe, tu peux aussi lui déléguer (delegate_to_…)."""
     from core import code_review
     return code_review.review_current()
+
+
+def remember_project_note(note: str) -> str:
+    """Mémorise un FAIT DURABLE sur CE projet → réutilisé AUTOMATIQUEMENT aux prochaines sessions
+    (la mémoire est ré-injectée dans ton contexte au début de chaque session de code).
+
+    À utiliser quand tu DÉCOUVRES quelque chose de non évident qui te ferait re-perdre du temps
+    plus tard : convention de code, décision d'architecture, COMMANDE de test/build, piège récurrent,
+    structure/où-se-trouve-quoi. Une note = un fait court. N'y mets JAMAIS de secret/clé.
+    """
+    from core import project_memory
+    return project_memory.remember(note)

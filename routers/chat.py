@@ -1160,6 +1160,13 @@ def _coder_console_work(req: TerminalRequest, run_id: str) -> dict:
             from tools.dev_tools import run_checks
             if code_autofix.enabled():
                 _cmd = code_autofix.detect_check_command(get_workspace_dir())
+                if _cmd:
+                    # Auto-capture : la prochaine session saura comment tester ce projet.
+                    try:
+                        from core import project_memory
+                        project_memory.remember(f"Commande de test/vérif du projet : {_cmd}")
+                    except Exception:
+                        pass
                 _att = 0
                 while _cmd and _att < code_autofix.max_attempts():
                     _checks = run_checks(_cmd)
