@@ -3372,11 +3372,16 @@ const BEHAVIOR_SCHEMA = [
         { key: "SELF_IMPROVE", label: "Apprentissage par l'expérience", help: "Athena tire des leçons de ses tâches passées pour s'améliorer au fil du temps.", type: "toggle", def: "true" },
         { key: "SELF_IMPROVE_SKILLS", label: "Auto-création/réparation d'outils", help: "Athena peut se créer de nouveaux outils (avec validation) et réparer ceux qui cassent.", type: "toggle", def: "true" },
         { key: "TOOL_SCRIPTS", label: "Enchaînement d'outils par script", help: "Permet à Athena d'enchaîner plusieurs outils en un seul script (tâches complexes).", type: "toggle", def: "true" },
-        { key: "FAST_MODEL", label: "Modèle rapide (micro-décisions)", help: "Petit modèle pour les décisions internes rapides. Vide = le modèle de l'agent.", type: "text", def: "" },
-        { key: "FALLBACK_MODELS", label: "Modèles de secours", help: "Modèles essayés si le principal échoue (séparés par des virgules).", type: "text", def: "" },
         { key: "PROMPT_CACHE", label: "Cache de prompt", help: "Réutilise le contexte pour aller plus vite / coûter moins (Anthropic).", type: "select", options: [["auto", "Auto"], ["on", "Forcé"], ["off", "Désactivé"]], def: "auto" },
         { key: "EXPERIENCE_MAX", label: "Souvenirs d'expérience gardés", help: "Nombre de retours d'expérience conservés pour l'auto-amélioration.", type: "number", def: "50" },
         { key: "DOC_MAX_CHUNKS", label: "Passages max par document", help: "Quand Athena analyse un long document, combien de passages au maximum.", type: "number", def: "60" },
+    ]},
+    { section: "Modèles par fonction — globaux (chat · 🎨 Design · 🧩 Code se règlent par compte dans « Mon modèle & clés LLM »)", icon: "🎛️", fields: [
+        { key: "VISION_MODEL", label: "Vision (analyse d'images)", help: "Modèle multimodal qui « voit » les images (ex. custom/chat-gemma).", type: "model", def: "custom/chat-gemma" },
+        { key: "OCR_MODEL", label: "OCR (texte des images/PDF)", help: "Transcrit le texte des images/PDF scannés. Vide = le modèle de vision ci-dessus.", type: "model", def: "", emptyLabel: "⭐ Modèle de vision (défaut)" },
+        { key: "DOCUMENT_MODEL", label: "Rédaction (réviser/traduire)", help: "Atelier d'écriture (romans). Vide = le modèle d'Athena. Ex. custom/gemma pour un rendu littéraire.", type: "model", def: "", emptyLabel: "⭐ Modèle d'Athena (défaut)" },
+        { key: "FAST_MODEL", label: "Rapide (micro-décisions internes)", help: "Petit modèle pour les décisions internes rapides. Vide = le modèle de l'agent.", type: "model", def: "", emptyLabel: "⭐ Modèle de l'agent (défaut)" },
+        { key: "FALLBACK_MODELS", label: "Secours (si le modèle principal échoue)", help: "Modèles essayés en repli, dans l'ordre, si le principal échoue (séparés par des virgules).", type: "text", def: "" },
     ]},
     { section: "Mémoire", icon: "🧠", fields: [
         { key: "MEMORY_MAX_MESSAGES", label: "Compaction de conversation", help: "Au-delà de N messages, la conversation est résumée pour rester rapide. 0 = jamais.", type: "number", def: "40" },
@@ -3391,25 +3396,20 @@ const BEHAVIOR_SCHEMA = [
         { key: "VOICE_TTS_HTTP_URL", label: "Serveur de voix (TTS)", help: "URL du serveur de synthèse vocale (Kokoro, XTTS, Fish-Speech…).", type: "text", def: "" },
         { key: "VOICE_TTS_VOICE", label: "Voix utilisée", help: "Nom de la voix/locuteur (se choisit aussi dans Réglages → Satellites).", type: "text", def: "" },
     ]},
-    { section: "Rédaction (romans)", icon: "✍️", fields: [
-        { key: "DOCUMENT_MODEL", label: "Modèle pour réviser/traduire", help: "Modèle utilisé par l'atelier d'écriture. Vide = le modèle d'Athena. Ex. custom/gemma pour un rendu plus littéraire.", type: "model", def: "", emptyLabel: "⭐ Modèle d'Athena (défaut)" },
-    ]},
-    { section: "Vision (images)", icon: "👁️", fields: [
-        { key: "VISION_MODEL", label: "Modèle d'analyse d'images", help: "Modèle multimodal qui « voit » les images (ex. custom/chat-gemma).", type: "model", def: "custom/chat-gemma" },
+    { section: "Vision & écran", icon: "👁️", fields: [
         { key: "COMPUTER_USE", label: "Capture d'écran", help: "Permet à Athena de capturer/analyser l'écran. Inutile sur un serveur sans écran.", type: "toggle", def: "false" },
     ]},
     { section: "Domotique & automatisation", icon: "🏠", fields: [
         { key: "PRESENCE_ENTITY", label: "Pièce courante (Home Assistant)", help: "Entité HA indiquant la pièce où tu es (pour « follow-me »). Vide = désactivé.", type: "text", def: "" },
         { key: "N8N_WORKFLOWS", label: "Workflows n8n autorisés", help: "JSON {\"nom\": \"url du webhook\"} des automatisations qu'Athena peut déclencher.", type: "text", def: "" },
     ]},
-    { section: "Intégrations externes (météo · trafic · domicile · OCR)", icon: "🌍", fields: [
+    { section: "Intégrations externes (météo · trafic · domicile)", icon: "🌍", fields: [
         { key: "WEATHER_CITY", label: "Ville (météo)", help: "Ville par défaut pour la météo et le briefing (ex. Strasbourg). Vide = déduite des coordonnées ci-dessous si renseignées.", type: "text", def: "" },
         { key: "WEATHER_LAT", label: "Latitude (météo hyperlocale)", help: "Position précise pour une météo au quartier près (ex. 48.5839). Vide = on utilise la ville.", type: "text", def: "" },
         { key: "WEATHER_LON", label: "Longitude (météo hyperlocale)", help: "Position précise (ex. 7.7455). À renseigner avec la latitude.", type: "text", def: "" },
         { key: "TOMTOM_API_KEY", label: "Clé TomTom (trafic routier)", help: "Pour le temps de trajet voiture avec embouteillages et les incidents. Clé gratuite sur developer.tomtom.com. (Le transit en commun n'est pas couvert : aucune source gratuite fiable.)", type: "password", def: "" },
         { key: "HOME_ADDRESS", label: "Adresse du domicile (départ)", help: "Point de départ pour les ALERTES DE DÉPART du briefing (« pars à 18h26 pour ton RDV de 19h »). Adresse ou ville. Vide = on retombe sur la ville météo. Nécessite la clé TomTom + un lieu sur tes rendez-vous.", type: "text", def: "" },
         { key: "DEPARTURE_BUFFER_MIN", label: "Marge avant départ (min)", help: "Minutes ajoutées au trajet (préparation, stationnement) pour calculer l'heure de départ.", type: "number", def: "10" },
-        { key: "OCR_MODEL", label: "Modèle OCR (extraction de texte)", help: "Modèle pour transcrire le texte des images/PDF scannés. Vide = le modèle de la section Vision.", type: "model", def: "", emptyLabel: "⭐ Modèle de vision (défaut)" },
     ]},
     { section: "Proactivité & Codeur", icon: "🔁", fields: [
         { key: "HABIT_MINING", label: "Suggestions de routines (habitudes)", help: "Athena observe tes requêtes récurrentes à heure régulière et propose de créer des routines (« tu demandes la météo chaque matin → routine 8h ? »).", type: "toggle", def: "true" },
