@@ -427,3 +427,134 @@ def create_n8n_workflow_from_template(template: str, name: str, params: str = ""
 
 
 create_n8n_workflow_from_template._requires_approval = True
+
+
+# ============================================================================
+# BLINDAGE : constructeur GÉNÉRIQUE (n'importe quel nœud/topologie) + export (clone/adapt).
+# La partie fragile (id, positions, typeVersion, câblage connections, enveloppe) est gérée
+# CÔTÉ SERVEUR → le modèle ne fournit que des nœuds {name,type,params} + des liens.
+# ============================================================================
+
+# typeVersion par défaut pour les nœuds n8n courants (nom court ou complet accepté).
+_NODE_TV = {
+    "webhook": 1, "scheduleTrigger": 1.1, "cron": 1, "manualTrigger": 1, "httpRequest": 4,
+    "respondToWebhook": 1, "set": 3.4, "code": 2, "function": 1, "if": 2, "switch": 3,
+    "merge": 3, "filter": 2, "noOp": 1, "splitInBatches": 3, "itemLists": 3, "wait": 1.1,
+    "emailSend": 2.1, "emailReadImap": 2, "telegram": 1.2, "slack": 2.2, "discord": 2,
+    "googleSheets": 4.4, "postgres": 2.5, "mySql": 2.4, "redis": 1, "mongoDb": 1.1,
+    "openAi": 1.6, "rssFeedRead": 1, "executeWorkflow": 1, "stickyNote": 1, "htmlExtract": 1,
+}
+
+
+def _full_type(t: str) -> str:
+    t = (t or "").strip()
+    if not t or "." in t:
+        return t
+    return "n8n-nodes-base." + t
+
+
+def create_n8n_workflow_from_spec(name: str, nodes: str, edges: str = "",
+                                  user_confirmed: bool = False) -> str:
+    """Construit un workflow n8n ARBITRAIRE à partir d'une spec SIMPLIFIÉE — couvre n'importe quel
+    type de nœud et n'importe quelle topologie. Le serveur assemble un JSON n8n VALIDE (id, positions,
+    typeVersion, connexions) : tu n'as PAS à gérer l'enveloppe fragile. SENSIBLE (HITL). Créé INACTIF.
+
+    nodes : JSON liste de nœuds — [{"name":"Webhook","type":"webhook","params":{...}},
+            {"name":"HTTP","type":"httpRequest","params":{"method":"POST","url":"…"}}]. Le `type` peut
+            être court ("httpRequest", "set", "if", "telegram"…) ou complet ("n8n-nodes-base.httpRequest").
+    edges : JSON liste de liens [["Webhook","HTTP"], …] (sortie main d'un nœud → entrée du suivant,
+            par NOM). Pour le branchement multi-sorties (IF/Switch), utilise plutôt create_n8n_workflow.
+    Note : les nœuds avec identifiants (Telegram, e-mail, BDD…) nécessitent d'attacher la CREDENTIAL
+    correspondante dans n8n après création."""
+    try:
+        ns = json.loads(nodes) if isinstance(nodes, str) else nodes
+    except Exception as e:
+        return f"nodes JSON invalide : {e}"
+    if not isinstance(ns, list) or not ns:
+        return "nodes doit être une LISTE non vide de {name, type, params}."
+    try:
+        es = json.loads(edges) if (edges or "").strip() else []
+    except Exception as e:
+        return f"edges JSON invalide : {e}"
+    built, names = [], set()
+    for i, n in enumerate(ns):
+        if not isinstance(n, dict) or not n.get("name") or not n.get("type"):
+            return "Chaque nœud doit avoir au moins { name, type }."
+        nm = str(n["name"]).strip()
+        if nm in names:
+            return f"Nom de nœud dupliqué : « {nm} » (les noms doivent être uniques)."
+        names.add(nm)
+        ft = _full_type(n["type"])
+        short = ft.split(".")[-1]
+        tv = n.get("typeVersion") or _NODE_TV.get(short, 1)
+        built.append(_node(nm, ft, n.get("params") or {}, [240 + i * 220, 300], tv))
+    conns = {}
+    for e in es:
+        if not isinstance(e, (list, tuple)) or len(e) < 2:
+            continue
+        a, b = str(e[0]), str(e[1])
+        if a not in names or b not in names:
+            return f"Lien invalide (nœud inconnu) : {e}. Nœuds définis : {', '.join(sorted(names))}."
+        conns.setdefault(a, {"main": [[]]})
+        conns[a]["main"][0].append({"node": b, "type": "main", "index": 0})
+    wf = {"name": (name or "Workflow").strip(), "nodes": built, "connections": conns, "settings": {}}
+    data, err = _api("POST", "/workflows", json_body=wf)
+    if err:
+        return ("Création refusée par n8n : " + err + "\n(Si ce sont les PARAMÈTRES d'un nœud qui "
+                "coincent, un modèle costaud aide à les renseigner correctement.)")
+    wid = (data or {}).get("id") if isinstance(data, dict) else None
+    hook = _webhook_url(wf)
+    return (f"✅ Workflow « {wf['name']} » créé depuis spec ({len(built)} nœud(s)), id {wid}, INACTIF."
+            + (f"\nWebhook : {hook}" if hook else "")
+            + "\nPense à attacher les credentials nécessaires dans n8n, puis active-le.")
+
+
+create_n8n_workflow_from_spec._requires_approval = True
+
+
+def export_n8n_workflow(name_or_id: str) -> str:
+    """Renvoie le JSON COMPLET d'un workflow n8n existant — pour le CLONER/ADAPTER puis recréer
+    (create_n8n_workflow) ou mettre à jour (update_n8n_workflow). Lecture seule."""
+    w, err = _resolve(name_or_id)
+    if err:
+        return err
+    data, err = _api("GET", f"/workflows/{w.get('id')}")
+    if err:
+        return err
+    full = data if isinstance(data, dict) else w
+    # On ne garde que les clés utiles à une recréation (n8n rejette certains champs en lecture).
+    slim = {k: full.get(k) for k in ("name", "nodes", "connections", "settings") if k in full}
+    dump = json.dumps(slim, ensure_ascii=False, indent=2)
+    if len(dump) > 6000:
+        dump = dump[:6000] + "\n… [tronqué — workflow volumineux]"
+    return f"JSON du workflow « {full.get('name')} » :\n```json\n{dump}\n```"
+
+
+def _tmpl_telegram(name, p):
+    msg = _node("Webhook", "n8n-nodes-base.webhook",
+                {"httpMethod": "POST", "path": str(p.get("path") or "tg").lstrip("/"),
+                 "responseMode": "onReceived"}, [240, 300], 1)
+    tg = _node("Telegram", "n8n-nodes-base.telegram",
+               {"resource": "message", "operation": "sendMessage",
+                "chatId": str(p.get("chat_id") or ""), "text": p.get("text") or "={{ $json.text }}"},
+               [480, 300], 1.2)
+    return {"name": name, "nodes": [msg, tg], "connections": _conn("Webhook", "Telegram"), "settings": {}}
+
+
+def _tmpl_email(name, p):
+    wh = _node("Webhook", "n8n-nodes-base.webhook",
+               {"httpMethod": "POST", "path": str(p.get("path") or "mail").lstrip("/"),
+                "responseMode": "onReceived"}, [240, 300], 1)
+    em = _node("Email", "n8n-nodes-base.emailSend",
+               {"fromEmail": p.get("from") or "", "toEmail": p["to"],
+                "subject": p.get("subject") or "Notification Athena", "text": p.get("text") or "={{ $json.text }}"},
+               [480, 300], 2.1)
+    return {"name": name, "nodes": [wh, em], "connections": _conn("Webhook", "Email"), "settings": {}}
+
+
+_TEMPLATES["webhook_to_telegram"] = (
+    _tmpl_telegram, "Webhook → message Telegram (attache la credential Telegram dans n8n).",
+    ["chat_id", "path?", "text?"])
+_TEMPLATES["webhook_to_email"] = (
+    _tmpl_email, "Webhook → e-mail (attache la credential SMTP/Email dans n8n).",
+    ["to", "from?", "subject?", "path?", "text?"])

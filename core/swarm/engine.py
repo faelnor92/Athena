@@ -301,6 +301,8 @@ AVAILABLE_TOOLS = {
     "delete_n8n_workflow": tools.n8n_tools.delete_n8n_workflow,
     "list_n8n_templates": tools.n8n_tools.list_n8n_templates,
     "create_n8n_workflow_from_template": tools.n8n_tools.create_n8n_workflow_from_template,
+    "create_n8n_workflow_from_spec": tools.n8n_tools.create_n8n_workflow_from_spec,
+    "export_n8n_workflow": tools.n8n_tools.export_n8n_workflow,
     "computer_use_action": tools.computer_use.computer_use_action,
     "analyze_image": tools.vision_tools.analyze_image,
     "capture_screen": tools.vision_tools.capture_screen,
@@ -640,7 +642,8 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         for _n in ("list_n8n_workflows", "get_n8n_workflow", "get_n8n_executions",
                                    "run_n8n_workflow", "set_n8n_workflow_active", "create_n8n_workflow",
                                    "update_n8n_workflow", "delete_n8n_workflow", "trigger_workflow",
-                                   "list_n8n_templates", "create_n8n_workflow_from_template"):
+                                   "list_n8n_templates", "create_n8n_workflow_from_template",
+                                   "create_n8n_workflow_from_spec", "export_n8n_workflow"):
                             if _n in AVAILABLE_TOOLS:
                                 if _n not in existing:
                                     effective_tools.append(AVAILABLE_TOOLS[_n])
@@ -1161,10 +1164,16 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     "avec `get_n8n_executions`. Gestion (activer/créer/éditer/supprimer) = validée.\n")
             if "create_n8n_workflow_from_template" in _tool_names:
                 system_prompt += (
-                    "- CRÉER UN WORKFLOW n8n — VOIE PRÉFÉRÉE : `list_n8n_templates` puis "
-                    "`create_n8n_workflow_from_template(template, nom, params_json)` → JSON VALIDE "
-                    "garanti (webhook→HTTP, planifié→HTTP, webhook→Athena). Utilise-la pour les cas "
-                    "courants AVANT de générer du JSON à la main.\n")
+                    "- CRÉER UN WORKFLOW n8n — ordre de préférence (du + fiable au + libre) :\n"
+                    "  1) `list_n8n_templates` + `create_n8n_workflow_from_template(...)` → cas courants, "
+                    "JSON valide GARANTI.\n"
+                    "  2) `create_n8n_workflow_from_spec(nom, nodes_json, edges_json)` → N'IMPORTE QUEL "
+                    "workflow : donne juste les nœuds {name, type court ex. 'httpRequest'/'set'/'if'/"
+                    "'telegram', params} + les liens [[\"A\",\"B\"]] ; le serveur assemble le JSON valide "
+                    "(id/positions/typeVersion/connexions). C'est la voie pour « tout faire ».\n"
+                    "  3) `export_n8n_workflow(nom)` pour CLONER/adapter un workflow existant.\n"
+                    "  Nœuds à credentials (Telegram, e-mail, BDD…) : créés OK, mais l'utilisateur doit "
+                    "attacher la credential dans n8n.\n")
             if "create_n8n_workflow" in _tool_names:
                 system_prompt += (
                     "- CRÉER UN WORKFLOW n8n SUR MESURE (si aucun template ne convient) : "
