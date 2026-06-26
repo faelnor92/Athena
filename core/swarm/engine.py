@@ -1022,12 +1022,22 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         _eff_names.add(_cn)
                         _force_expose.add(_cn)
 
+            # Outils GATED-OFF : ne PAS exposer un outil désactivé/indisponible, sinon le modèle le
+            # tente puis échoue (ex. `claude_code` : optionnel, CLI `claude` requis, OFF par défaut →
+            # depuis AGENTS_FULL_TOOLS, Athena le voyait et le tentait pour une tâche de code).
+            try:
+                from tools.claude_code_tool import enabled as _cc_enabled, available as _cc_avail
+                if not (_cc_enabled() and _cc_avail()):
+                    effective_tools = [f for f in effective_tools
+                                       if getattr(f, "__name__", "") != "claude_code"]
+            except Exception:
+                pass
+
             # Préambule SYSTÈME (non éditable par l'utilisateur, contrairement au prompt de
             # l'agent ci-dessus) : garanties de comportement, adaptées aux OUTILS de l'agent.
             # Basé sur les outils RÉELLEMENT exposés (config ∪ force-exposés) → les nudges reflètent
             # ce que l'agent peut vraiment appeler.
-            _tool_names = {getattr(f, "__name__", "") for f in getattr(current_agent, "tools", [])}
-            _tool_names |= _eff_names
+            _tool_names = {getattr(f, "__name__", "") for f in effective_tools}
             system_prompt += (
                 "\n\n=== RÈGLES SYSTÈME ===\n"
                 "- N'affirme jamais avoir agi ni n'invente un résultat : appelle l'outil via le mécanisme "
