@@ -1,5 +1,30 @@
 # Historique des Versions (Changelog)
 
+## [0.32.4] - 2026-06-26
+### Fix — Connexion / sécurité de l'UI
+- **Popup de login immédiate** : overlay affiché AVANT toute interaction (verrou synchrone +
+  script pré-rendu en `<head>`) → fini la fenêtre où l'on pouvait utiliser Athena avant de
+  s'authentifier. Crash corrigé (`show/hideLoginOverlay` accédaient à `btn-logout` absent).
+- **Bouton Déconnexion** ajouté au dock (était référencé mais absent du HTML).
+
+### Fix — Terminal de l'Espace Code
+- **Terminal interactif réactivé** (xterm + bash PTY via `/api/terminal/ws`) : `initXterm()`
+  n'était jamais appelé. On peut de nouveau taper ses commandes shell directement.
+- **xterm.js + diff vendorisés en LOCAL** (`static/vendor/`) → plus de dépendance au CDN jsdelivr
+  (souvent injoignable en homelab, ce qui rendait le terminal invisible).
+
+### Feat — n8n (finitions)
+- **Activation à la création** (`activate=True`), **tags** (création auto + affectation),
+  **test de connexion** (bouton Réglages → Domotique & automatisation + outil `n8n_test_connection`).
+
+### Feat — Divers
+- **Habitudes** : minage par **clustering d'embeddings** (regroupe les paraphrases) + repli lexical.
+- **LLM** : leviers **opt-in** de sortie structurée (guided decoding / json mode) pour fiabiliser le
+  tool-calling sur un endpoint compatible.
+
+### Chore
+- Retrait d'artefacts de test committés par erreur + `.gitignore` (scratch/).
+
 ## [0.32.3] - 2026-06-26
 ### Feat — Automatisation n8n (intégration complète)
 - **Pilotage de n8n via son API REST** : découverte des workflows, déclenchement, exécutions +
