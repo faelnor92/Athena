@@ -2,6 +2,10 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <!-- VERROU AUTH PRÉ-RENDU : si aucune session, on force l'overlay de login AVANT la 1re peinture
+         (sinon l'app s'affiche brièvement avant que app.js, en bas du body, ne l'affiche). -->
+    <script>try{if(!localStorage.getItem('athena_session_token'))document.documentElement.classList.add('needs-login');}catch(e){}</script>
+    <style>html.needs-login #login-overlay{display:flex!important}</style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>__APP_NAME__ - Dashboard Multi-Agent & Bureau Virtuel</title>
     <!-- PWA (installable sur mobile/desktop) -->

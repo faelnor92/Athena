@@ -174,6 +174,7 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 
 function showLoginOverlay() {
+    document.documentElement.classList.add("needs-login");
     const overlay = document.getElementById("login-overlay");
     if (overlay) {
         overlay.style.display = "flex";
@@ -238,6 +239,7 @@ async function submitRegister() {
 }
 
 function hideLoginOverlay() {
+    document.documentElement.classList.remove("needs-login");  // lève le verrou pré-rendu (CSS !important)
     const overlay = document.getElementById("login-overlay");
     if (overlay) {
         overlay.style.display = "none";
