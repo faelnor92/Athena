@@ -55,8 +55,15 @@ class _AgentsMixin:
                 welcome_message=agent_data.get("welcome_message"),
                 description=agent_data.get("description", "")
             )
-            # Ajouter les outils standards
+            # Ajouter les outils standards.
             agent_tools = agent_data.get("tools", [])
+            # PAR DÉFAUT : tous les agents ont accès à TOUS les outils — le filtre de pertinence
+            # sémantique décide quoi exposer par requête. Fini les listes EXPLICITES figées qui
+            # privent un agent d'une capacité (ex. Secrétaire sans agenda → « je ne peux pas créer
+            # de rappel »). L'identité d'un agent = son PROMPT/rôle, pas une liste d'outils.
+            # Pour revenir aux listes par agent : AGENTS_FULL_TOOLS=false.
+            if os.getenv("AGENTS_FULL_TOOLS", "true").lower() not in ("false", "0", "no"):
+                agent_tools = "*"
             if agent_tools == "*":
                 for tool in AVAILABLE_TOOLS.values():
                     agent.tools.append(tool)

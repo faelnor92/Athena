@@ -3388,6 +3388,7 @@ const BEHAVIOR_SCHEMA = [
         { key: "AUTO_CONTINUE", label: "Agir sans attendre « vas-y »", help: "Quand Athena annonce une action, elle l'exécute directement (sauf si elle te pose une question).", type: "toggle", def: "true" },
         { key: "AUTO_CONTINUE_MAX", label: "Relances auto max", help: "Nombre de relances automatiques par tour (anti-boucle).", type: "number", def: "2" },
         { key: "DELEGATION_ROUTER", label: "Aiguillage vers le bon agent", help: "Athena confie la tâche au spécialiste le plus adapté (Codeur, Auteur…).", type: "toggle", def: "true" },
+        { key: "AGENTS_FULL_TOOLS", label: "Tous les outils pour tous les agents", help: "Chaque agent accède à TOUS les outils (le filtre de pertinence gère l'exposition) → fini les listes figées qui privent un agent d'une capacité (ex. Secrétaire sans agenda). Désactive pour revenir aux listes d'outils par agent (agents.yaml).", type: "toggle", def: "true" },
         { key: "AUTO_CRITIC", label: "Auto-critique des réponses", help: "Athena relit et corrige sa réponse avant de te la donner (plus lent, plus fiable).", type: "toggle", def: "false" },
         { key: "USER_MODELING", label: "Profil utilisateur évolutif", help: "Athena retient tes préférences pour personnaliser ses réponses.", type: "toggle", def: "true" },
         { key: "SELF_IMPROVE", label: "Apprentissage par l'expérience", help: "Athena tire des leçons de ses tâches passées pour s'améliorer au fil du temps.", type: "toggle", def: "true" },
