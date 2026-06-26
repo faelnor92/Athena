@@ -463,6 +463,7 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
         _route_done = False   # routeur de délégation : décidé une seule fois par run
         _route_target = None  # spécialiste ciblé (nom) | "" (aucun) | None (non décidé)
         _auto_continue = 0    # relances auto sur « intention annoncée mais non exécutée »
+        _ac_last = ""         # contenu du dernier tour auto-continué (anti-boucle « réponse répétée »)
         _toolcall_fix = 0     # auto-correction : relances sur outil décrit en texte mais non appelé
         # Disjoncteur anti-répétition (model-agnostic) : un modèle faible (qwen3) rappelle
         # souvent le MÊME outil avec les MÊMES arguments sans progresser → on borne le nombre
@@ -1713,9 +1714,20 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             _has_real_tools = any(not f.__name__.startswith(("transfer_to_", "delegate_to_"))
                                   and f.__name__ not in ("query_agent", "debate_between_agents")
                                   for f in effective_tools)
+            # Anti-boucle « réponse répétée » : si la relance produit ~la même réponse que la
+            # précédente (le modèle re-répond au lieu d'AGIR, ex. il remontre du code), on cesse
+            # d'auto-continuer (sinon 1 + AUTO_CONTINUE_MAX réponses quasi-identiques).
+            _ac_repeat = False
+            if _ac_last and message.content:
+                try:
+                    import difflib
+                    _ac_repeat = difflib.SequenceMatcher(
+                        None, (message.content or "")[:1200], _ac_last[:1200]).ratio() > 0.85
+                except Exception:
+                    _ac_repeat = (message.content or "").strip() == _ac_last.strip()
             _will_autocontinue = bool(
                 message.content and not getattr(message, "tool_calls", None) and not _rescued_tcs
-                and _ac_on and _auto_continue < _ac_cap and _has_real_tools
+                and _ac_on and _auto_continue < _ac_cap and _has_real_tools and not _ac_repeat
                 and looks_like_announced_intent((message.content or "").strip()))
             if _will_autocontinue and messages and messages[-1].get("role") == "assistant":
                 # Tour purement intentionnel : conservé en contexte pour le modèle, mais
@@ -1840,6 +1852,7 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 # d'approbation), on s'arrête — c'est à l'utilisateur de décider.
                 if _will_autocontinue:
                     _auto_continue += 1
+                    _ac_last = message.content or ""   # mémorise pour détecter une relance répétée
                     print(f"[\033[96mSWARM\033[0m] auto-continuation ({_auto_continue}/{_ac_cap}) : "
                           "intention annoncée sans appel d'outil → relance.")
                     # Le tour annoncé est DÉJÀ dans `messages` (marqué _internal plus haut) ; on
