@@ -317,6 +317,11 @@ window.addEventListener("DOMContentLoaded", () => {
     if (btnLogout) {
         btnLogout.addEventListener("click", handleLogout);
     }
+    // VERROU IMMÉDIAT : sans session, on affiche l'overlay AVANT le check async (qui fait un
+    // aller-retour /api/login). Sinon l'UI reste interactive pendant ~1 round-trip → on pouvait
+    // parler à Athena avant de se connecter. checkAuthRequirements le cache ensuite si l'auth
+    // n'est pas requise (mode no-auth) ou si la session est valide.
+    if (!sessionToken) showLoginOverlay();
     checkAuthRequirements();
 });
 
