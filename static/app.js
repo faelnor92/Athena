@@ -3418,6 +3418,7 @@ const BEHAVIOR_SCHEMA = [
         { key: "N8N_API_URL", label: "n8n — URL de l'instance", help: "Racine de ton n8n (ex. https://n8n.local), SANS /api/v1. Active la découverte/gestion des workflows par l'API.", type: "text", def: "" },
         { key: "N8N_API_KEY", label: "n8n — Clé API", help: "n8n → Settings → n8n API → Create API key. Donne à Athena l'accès à tes workflows (mutations soumises à validation). Hôte privé : ajoute-le à NET_GUARD_ALLOW_HOSTS.", type: "password", def: "" },
         { key: "N8N_VERIFY_TLS", label: "n8n — Vérifier le certificat TLS", help: "Décoche seulement si ton n8n est en HTTPS auto-signé.", type: "toggle", def: "true" },
+        { key: "_n8n_test", label: "n8n — Connexion", help: "Vérifie que l'URL + la clé API répondent (enregistre d'abord tes réglages).", type: "action", action: "testN8n", actionLabel: "🔌 Tester la connexion" },
         { key: "N8N_WORKFLOWS", label: "Workflows webhook autorisés (sans API)", help: "Optionnel si l'API est configurée. JSON {\"nom\": \"url du webhook\"} pour déclencher des workflows par trigger_workflow.", type: "text", def: "" },
     ]},
     { section: "Intégrations externes (météo · trafic · domicile)", icon: "🌍", fields: [
@@ -3458,8 +3459,30 @@ function _behaviorFieldControl(f, env) {
         const ph = (env[f.key] && String(env[f.key]).includes("...")) ? "Défini (masqué) — vide = inchangé" : "Aucun";
         return `<input type="password" class="behavior-input ath-ctrl" data-key="${f.key}" data-type="password" placeholder="${ph}">`;
     }
+    if (f.type === "action") {
+        return `<button type="button" class="btn btn-secondary behavior-action" data-action="${f.action}" style="font-size:0.8rem;padding:6px 12px;height:30px;">${f.actionLabel || "Tester"}</button>`
+            + ` <span class="behavior-action-result" style="font-size:0.78rem;opacity:0.85;margin-left:6px;"></span>`;
+    }
     return `<input type="${f.type === "number" ? "number" : "text"}" class="behavior-input ath-ctrl" data-key="${f.key}" data-type="${f.type}" value="${String(cur).replace(/"/g, "&quot;")}">`;
 }
+
+// Boutons d'action des réglages (ex. tester la connexion n8n). Délégué = survit aux re-rendus.
+document.addEventListener("click", async (e) => {
+    const b = e.target.closest && e.target.closest(".behavior-action");
+    if (!b) return;
+    const res = b.parentElement.querySelector(".behavior-action-result");
+    const endpoints = { testN8n: "/api/config/n8n/test" };
+    const url = endpoints[b.dataset.action];
+    if (!url) return;
+    if (res) res.textContent = "⏳ test…";
+    try {
+        const r = await apiFetch(url);
+        const d = await r.json();
+        if (res) res.textContent = d.message || (d.ok ? "✅ OK" : "❌ échec");
+    } catch (err) {
+        if (res) res.textContent = "❌ " + err;
+    }
+});
 
 async function loadConfigBehaviorPane() {
     const container = document.getElementById("behavior-fields");

@@ -417,6 +417,17 @@ async def notify_test(req: NotifyTestRequest) -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/api/config/n8n/test")
+async def n8n_test() -> Dict[str, Any]:
+    """Teste la connexion à l'API n8n (URL + clé) configurée."""
+    try:
+        from tools.n8n_tools import n8n_test_connection
+        msg = n8n_test_connection()
+        return {"ok": msg.startswith("✅"), "message": msg}
+    except Exception as e:
+        return {"ok": False, "message": f"Erreur : {e}"}
+
+
 @router.get("/api/notify/channels")
 async def notify_channels() -> Dict[str, Any]:
     """Liste les canaux de messagerie actuellement configurés."""

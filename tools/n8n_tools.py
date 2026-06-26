@@ -388,14 +388,14 @@ def list_n8n_templates() -> str:
 
 
 def create_n8n_workflow_from_template(template: str, name: str, params: str = "",
-                                      user_confirmed: bool = False) -> str:
+                                      activate: bool = False, user_confirmed: bool = False) -> str:
     """CRÉE un workflow n8n à partir d'un TEMPLATE prêt à l'emploi (JSON valide garanti, sans
     génération par l'IA). SENSIBLE (validation). Préféré à create_n8n_workflow pour les cas courants.
 
     template : clé parmi list_n8n_templates (ex. "webhook_to_http").
     name : nom du workflow à créer.
     params : JSON des paramètres du template (ex. {"path":"mon-hook","url":"https://api…"}).
-    Le workflow est créé INACTIF."""
+    activate : True pour l'ACTIVER tout de suite (sinon créé INACTIF, plus sûr)."""
     tk = (template or "").strip()
     if tk not in _TEMPLATES:
         return f"Template inconnu « {template} ». Disponibles : {', '.join(_TEMPLATES)}."
@@ -419,10 +419,10 @@ def create_n8n_workflow_from_template(template: str, name: str, params: str = ""
         return "Création refusée par n8n : " + err
     wid = (data or {}).get("id") if isinstance(data, dict) else None
     hook = _webhook_url(wf)
-    msg = f"✅ Workflow « {wf.get('name')} » créé depuis le template « {tk} » (id {wid}), INACTIF."
+    state = _activate_id(wid) if activate else " INACTIF (active-le quand prêt)."
+    msg = f"✅ Workflow « {wf.get('name')} » créé depuis le template « {tk} » (id {wid})." + state
     if hook:
         msg += f"\nWebhook : {hook}"
-    msg += "\nVérifie dans n8n puis active-le (set_n8n_workflow_active)."
     return msg
 
 
@@ -454,7 +454,7 @@ def _full_type(t: str) -> str:
 
 
 def create_n8n_workflow_from_spec(name: str, nodes: str, edges: str = "",
-                                  user_confirmed: bool = False) -> str:
+                                  activate: bool = False, user_confirmed: bool = False) -> str:
     """Construit un workflow n8n ARBITRAIRE à partir d'une spec SIMPLIFIÉE — couvre n'importe quel
     type de nœud et n'importe quelle topologie. Le serveur assemble un JSON n8n VALIDE (id, positions,
     typeVersion, connexions) : tu n'as PAS à gérer l'enveloppe fragile. SENSIBLE (HITL). Créé INACTIF.
@@ -516,9 +516,10 @@ def create_n8n_workflow_from_spec(name: str, nodes: str, edges: str = "",
                 "coincent, un modèle costaud aide à les renseigner correctement.)")
     wid = (data or {}).get("id") if isinstance(data, dict) else None
     hook = _webhook_url(wf)
-    return (f"✅ Workflow « {wf['name']} » créé depuis spec ({len(built)} nœud(s)), id {wid}, INACTIF."
+    state = _activate_id(wid) if activate else " INACTIF."
+    return (f"✅ Workflow « {wf['name']} » créé depuis spec ({len(built)} nœud(s)), id {wid}." + state
             + (f"\nWebhook : {hook}" if hook else "")
-            + "\nPense à attacher les credentials nécessaires dans n8n, puis active-le.")
+            + "\nPense à attacher les credentials nécessaires dans n8n si besoin.")
 
 
 create_n8n_workflow_from_spec._requires_approval = True
@@ -659,3 +660,65 @@ def delete_n8n_credential(credential_id: str, user_confirmed: bool = False) -> s
 
 for _f in (create_n8n_credential, delete_n8n_credential):
     _f._requires_approval = True
+
+
+# ============================================================================
+# Finitions : activation à la création, tags (organisation).
+# ============================================================================
+def _activate_id(wid) -> str:
+    """Active un workflow par id (post-création) ; renvoie un suffixe de message."""
+    if not wid:
+        return " (id introuvable, activation ignorée)."
+    _d, err = _api("POST", f"/workflows/{wid}/activate")
+    return " 🟢 ACTIVÉ." if not err else f" INACTIF (activation auto échouée : {err})."
+
+
+def list_n8n_tags() -> str:
+    """Liste les TAGS (étiquettes) n8n servant à organiser les workflows. Lecture seule."""
+    data, err = _api("GET", "/tags")
+    if err:
+        return err
+    items = _items(data)
+    if not items:
+        return "Aucun tag n8n."
+    return "🏷️ Tags n8n : " + ", ".join(f"{t.get('name')} (id {t.get('id')})" for t in items)
+
+
+def set_n8n_workflow_tags(name_or_id: str, tags: str, user_confirmed: bool = False) -> str:
+    """Affecte des TAGS à un workflow (crée les tags manquants au passage). SENSIBLE (validation).
+    tags : noms séparés par des virgules (ex. "prod, crm")."""
+    w, err = _resolve(name_or_id)
+    if err:
+        return err
+    wanted = [t.strip() for t in (tags or "").split(",") if t.strip()]
+    if not wanted:
+        return "Donne au moins un tag (ex. \"prod, crm\")."
+    existing, err = _api("GET", "/tags")
+    if err:
+        return err
+    by_name = {(t.get("name") or "").lower(): t.get("id") for t in _items(existing)}
+    ids = []
+    for nm in wanted:
+        tid = by_name.get(nm.lower())
+        if not tid:
+            created, cerr = _api("POST", "/tags", json_body={"name": nm})
+            if cerr:
+                return f"Création du tag « {nm} » refusée : {cerr}"
+            tid = (created or {}).get("id")
+        if tid:
+            ids.append({"id": str(tid)})
+    _d, err = _api("PUT", f"/workflows/{w.get('id')}/tags", json_body=ids)
+    if err:
+        return "Affectation des tags refusée par n8n : " + err
+    return f"🏷️ Tags affectés à « {w.get('name')} » : {', '.join(wanted)}."
+
+
+set_n8n_workflow_tags._requires_approval = True
+
+
+def n8n_test_connection() -> str:
+    """Teste la connexion à l'API n8n (URL + clé) et renvoie le nombre de workflows. Lecture seule."""
+    data, err = _api("GET", "/workflows")
+    if err:
+        return "❌ " + err
+    return f"✅ Connexion n8n OK — {len(_items(data))} workflow(s) accessibles."

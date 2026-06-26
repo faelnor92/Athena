@@ -307,6 +307,9 @@ AVAILABLE_TOOLS = {
     "get_n8n_credential_schema": tools.n8n_tools.get_n8n_credential_schema,
     "create_n8n_credential": tools.n8n_tools.create_n8n_credential,
     "delete_n8n_credential": tools.n8n_tools.delete_n8n_credential,
+    "list_n8n_tags": tools.n8n_tools.list_n8n_tags,
+    "set_n8n_workflow_tags": tools.n8n_tools.set_n8n_workflow_tags,
+    "n8n_test_connection": tools.n8n_tools.n8n_test_connection,
     "computer_use_action": tools.computer_use.computer_use_action,
     "analyze_image": tools.vision_tools.analyze_image,
     "capture_screen": tools.vision_tools.capture_screen,
@@ -649,7 +652,8 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                                    "list_n8n_templates", "create_n8n_workflow_from_template",
                                    "create_n8n_workflow_from_spec", "export_n8n_workflow",
                                    "get_n8n_execution", "get_n8n_credential_schema",
-                                   "create_n8n_credential", "delete_n8n_credential"):
+                                   "create_n8n_credential", "delete_n8n_credential",
+                                   "list_n8n_tags", "set_n8n_workflow_tags", "n8n_test_connection"):
                             if _n in AVAILABLE_TOOLS:
                                 if _n not in existing:
                                     effective_tools.append(AVAILABLE_TOOLS[_n])
