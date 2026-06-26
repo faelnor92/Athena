@@ -178,8 +178,10 @@ function showLoginOverlay() {
     const overlay = document.getElementById("login-overlay");
     if (overlay) {
         overlay.style.display = "flex";
-        document.getElementById("btn-logout").style.display = "none";
-        document.getElementById("login-password").focus();
+        const _bl = document.getElementById("btn-logout");
+        if (_bl) _bl.style.display = "none";
+        const _lp = document.getElementById("login-password");
+        if (_lp) _lp.focus();
         // Affiche le bouton SSO uniquement si l'OIDC est configuré côté serveur.
         fetch("/api/auth/oidc/status").then(r => r.json()).then(d => {
             const b = document.getElementById("btn-sso-login");
@@ -244,7 +246,8 @@ function hideLoginOverlay() {
     if (overlay) {
         overlay.style.display = "none";
         if (sessionToken && sessionToken !== "no-auth-required") {
-            document.getElementById("btn-logout").style.display = "inline-block";
+            const _bl = document.getElementById("btn-logout");
+            if (_bl) _bl.style.display = "inline-block";
         }
     }
 }
