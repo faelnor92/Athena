@@ -394,6 +394,25 @@ class _CompletionMixin:
         if _to > 0:
             completion_kwargs["timeout"] = _to
 
+        # SORTIE STRUCTURÉE (opt-in) — fiabiliser le tool-calling sur un endpoint qui le supporte
+        # (vLLM/llama.cpp : « guided decoding » / grammaire ; OpenAI : json mode). DÉSACTIVÉ par
+        # défaut → aucun changement de comportement. À valider sur TON endpoint.
+        #  • LLM_EXTRA_BODY  = JSON fusionné dans extra_body (ex. {"guided_decoding_backend":"outlines"}).
+        #  • LLM_RESPONSE_FORMAT = "json_object" → response_format (⚠ incompatible avec `tools` sur la
+        #    plupart des backends : appliqué uniquement quand on n'envoie PAS de schéma d'outils).
+        try:
+            _eb = (_u("LLM_EXTRA_BODY") or "").strip()
+            if _eb:
+                import json as _json
+                _ebd = _json.loads(_eb)
+                if isinstance(_ebd, dict):
+                    completion_kwargs["extra_body"] = {**(completion_kwargs.get("extra_body") or {}), **_ebd}
+            _rf = (_u("LLM_RESPONSE_FORMAT") or "").strip().lower()
+            if _rf and not tools_schema:
+                completion_kwargs["response_format"] = {"type": _rf if _rf.startswith("json") else "json_object"}
+        except Exception as _e:
+            print(f"[LLM] sortie structurée (LLM_EXTRA_BODY/LLM_RESPONSE_FORMAT) ignorée : {_e}")
+
         # Garde-fou : retries avec backoff exponentiel sur erreur LLM transitoire.
         retries = int(os.getenv("LLM_MAX_RETRIES", "2"))
         last_err = None
