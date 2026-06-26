@@ -1823,6 +1823,14 @@ function setActiveAgentVisual(agentName) {
 
 // Faire voler une enveloppe/paquet d'un bureau à un autre lors d'une délégation/handoff.
 function animateHandoffMail(fromAgent, toAgent) {
+    if (!fromAgent || !toAgent || fromAgent === toAgent) return;
+    // Anti-doublon : un même trajet (from→to) peut être déclenché 2× de suite (ex. le tool_call
+    // `delegate_to_X` ET un step `handoff`). On ignore le rejeu dans une courte fenêtre. Le RETOUR
+    // (to→from) est un trajet différent → non filtré.
+    const _dk = fromAgent + "→" + toAgent, _now = Date.now();
+    window.__lastDeleg = window.__lastDeleg || {};
+    if (window.__lastDeleg[_dk] && (_now - window.__lastDeleg[_dk]) < 1500) return;
+    window.__lastDeleg[_dk] = _now;
     // Open Space 2.0 (isométrique) : animation native (paquet 📦 entre bureaux ws-<agent>).
     // L'ancien bureau utilisait desk-<agent> → ne marchait plus dans la nouvelle vue (lettre invisible).
     if (window.OpenSpace && typeof window.OpenSpace.delegate === "function") {
@@ -2262,6 +2270,8 @@ async function playAgentSteps(steps, immediate = false) {
                             if (targetBubble) {
                                 targetBubble.textContent = "A terminé son travail et renvoie ses résultats ! ✅";
                             }
+                            // RETOUR : le paquet 📦 revient du spécialiste vers l'orchestrateur.
+                            animateHandoffMail(targetAgentOut, step.agent);
                             logToOrchestrator(`[Coopération] ${targetAgentOut} a renvoyé ses résultats avec succès !`, "success");
                         }
                     }
