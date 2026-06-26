@@ -44,6 +44,12 @@ _TOOL_GROUPS = {
     "routines": {"create_routine", "list_routines"},
     "proxmox": {"proxmox_status", "proxmox_vm_action", "proxmox_vm_exec", "proxmox_vm_logs"},
     "transport": {"get_driving_route", "get_traffic_incidents"},
+    "n8n": {"trigger_workflow", "list_n8n_workflows", "get_n8n_workflow", "get_n8n_executions",
+            "run_n8n_workflow", "set_n8n_workflow_active", "create_n8n_workflow",
+            "update_n8n_workflow", "delete_n8n_workflow", "list_n8n_templates",
+            "create_n8n_workflow_from_template", "create_n8n_workflow_from_spec",
+            "export_n8n_workflow", "get_n8n_execution", "get_n8n_credential_schema",
+            "create_n8n_credential", "delete_n8n_credential"},
 }
 _TOOL_GROUP_KEYWORDS = {
     "code": ["code", "cod", "programme", "programm", "script", "python", "javascript", "bug",
@@ -59,6 +65,9 @@ _TOOL_GROUP_KEYWORDS = {
     "proxmox": ["proxmox", "vm", "machine virtuelle", "hyperviseur", "lxc", "conteneur",
                 "container", "cluster", "nœud", "noeud", "qemu", "pve", "vmid", "redémarre la vm",
                 "démarre la vm", "arrête la vm", "hôte", "host"],
+    "n8n": ["n8n", "workflow", "automatisation", "automatise", "automatiser", "webhook",
+            "scénario", "scenario", "no-code", "nocode", "zapier", "make.com", "intégration",
+            "déclencheur", "declencheur", "trigger", "pipeline"],
     "web": ["cherche", "recherche", "web", "internet", "google", "actualité", "actualite",
             "approfondi", "approfondie", "deep", "état de l'art", "etat de l'art", "compare", "comparer", "dossier",
             "news", "nouvelle", "site", "url", "http", "lien", "en ligne", "scrape"],
