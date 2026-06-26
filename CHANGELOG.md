@@ -1,5 +1,27 @@
 # Historique des Versions (Changelog)
 
+## [0.32.3] - 2026-06-26
+### Feat — Automatisation n8n (intégration complète)
+- **Pilotage de n8n via son API REST** : découverte des workflows, déclenchement, exécutions +
+  **debug** (`get_n8n_execution` → erreur exacte du nœud), activer/désactiver, créer/éditer/supprimer.
+  Toutes les MUTATIONS sont en **HITL** (validation) ; anti-SSRF (net_guard) ; clé API dédiée.
+- **Création fiable** : (1) **templates** prêts à l'emploi (webhook→HTTP/Telegram/e-mail/planifié,
+  pont n8n→Athena) ; (2) **constructeur générique** `create_n8n_workflow_from_spec` (n'importe quel
+  nœud/topologie, **branchement IF/Switch**, le serveur assemble un JSON valide) ; (3) JSON sur mesure
+  (`create_n8n_workflow`, structure injectée au prompt, + avertissement « modèle costaud » si besoin) ;
+  (4) **clone/adapt** via `export_n8n_workflow`.
+- **Credentials (HITL)** : `get_n8n_credential_schema`, `create_n8n_credential` (secret transmis
+  directement à ton n8n, NI stocké NI journalisé par Athena), `delete_n8n_credential` → un nœud
+  Telegram/e-mail/BDD/API devient pleinement fonctionnel depuis Athena.
+- Config : `N8N_API_URL`, `N8N_API_KEY`, `N8N_VERIFY_TLS` (Réglages → Domotique & automatisation).
+  L'ancien `trigger_workflow` (webhook par allowlist) reste disponible.
+
+### Polish — Réglages (UI)
+- Section unique **« Modèles par fonction »** (vision/OCR/rédaction/rapide/secours) — fini la dispersion.
+- **Doublon serveur TTS / voix supprimé** (source unique = onglet 🛰️ Satellites).
+- Auto-amélioration regroupée, défauts affichés, libellés alignés (Vigie « mode actif », etc.),
+  panneau « Mon modèle & clés LLM » clarifié (par-compte vs global).
+
 ## [0.32.2] - 2026-06-25
 ### Fix — Alertes de départ
 - **« Quand partir » pour DEMAIN (ou une date)** : `get_departure_alerts(when=…)` accepte désormais
