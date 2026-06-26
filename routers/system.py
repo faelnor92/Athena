@@ -63,7 +63,19 @@ async def check_system_update():
         req = urllib.request.Request(url, headers={'Cache-Control': 'no-cache'})
         with urllib.request.urlopen(req, timeout=5) as response:
             latest_version = response.read().decode('utf-8').strip()
-        has_update = (latest_version != current_version and latest_version != "")
+
+        # MAJ proposée UNIQUEMENT si la version distante est STRICTEMENT plus récente (semver).
+        # Avant : `latest != current` → affichait « MAJ dispo » dès que les chaînes différaient,
+        # même quand le local était ÉGAL ou EN AVANCE → le bouton restait après mise à jour.
+        def _vtuple(s):
+            import re
+            nums = re.findall(r"\d+", s or "")
+            return tuple(int(n) for n in nums[:4]) if nums else None
+        lt, ct = _vtuple(latest_version), _vtuple(current_version)
+        if lt is not None and ct is not None:
+            has_update = lt > ct
+        else:
+            has_update = bool(latest_version) and latest_version != current_version
         return {
             "update_available": has_update,
             "current_version": current_version,
