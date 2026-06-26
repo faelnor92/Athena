@@ -1821,11 +1821,16 @@ function setActiveAgentVisual(agentName) {
     if (topAgentLimit) topAgentLimit.innerText = `${agentsConfig.length}/8`;
 }
 
-// Faire voler une enveloppe de courrier physique d'un bureau à un autre
+// Faire voler une enveloppe/paquet d'un bureau à un autre lors d'une délégation/handoff.
 function animateHandoffMail(fromAgent, toAgent) {
+    // Open Space 2.0 (isométrique) : animation native (paquet 📦 entre bureaux ws-<agent>).
+    // L'ancien bureau utilisait desk-<agent> → ne marchait plus dans la nouvelle vue (lettre invisible).
+    if (window.OpenSpace && typeof window.OpenSpace.delegate === "function") {
+        try { window.OpenSpace.delegate(fromAgent, toAgent); return; } catch (e) { /* repli ci-dessous */ }
+    }
     const fromDesk = document.getElementById(`desk-${fromAgent}`);
     const toDesk = document.getElementById(`desk-${toAgent}`);
-    
+
     if (!fromDesk || !toDesk || viewOffice.style.display === "none") return;
     
     // Obtenir les coordonnées physiques absolues
