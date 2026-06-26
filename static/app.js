@@ -1061,6 +1061,12 @@ function mountCodeSpace() {
         zone.appendChild(term);
         zone.dataset.mounted = "1";
     }
+    // Active le VRAI terminal interactif (xterm + bash PTY via /api/terminal/ws) une fois la zone
+    // visible : l'utilisateur tape ses commandes shell directement dedans, et la sortie de la
+    // console IA (logToTerminal/plan/SSE) s'y affiche aussi (rendu unifié déjà prévu).
+    if (!termInstance && typeof initXterm === "function" && typeof Terminal !== "undefined") {
+        try { initXterm(); } catch (e) { console.warn("initXterm:", e); }
+    }
     loadSshHosts();
 }
 
@@ -6993,7 +6999,9 @@ function initXterm() {
     termFitAddon = new FitAddon.FitAddon();
     termInstance.loadAddon(termFitAddon);
     termInstance.open(container);
-    termFitAddon.fit();
+    try { termFitAddon.fit(); } catch (e) { /* conteneur pas encore dimensionné */ }
+    // Re-fit après le rendu (le conteneur peut ne pas avoir sa taille au 1er tick).
+    setTimeout(() => { try { termFitAddon && termFitAddon.fit(); } catch (e) {} }, 120);
 
     window.addEventListener("resize", () => {
         if (termFitAddon) {
