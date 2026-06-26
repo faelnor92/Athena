@@ -120,3 +120,7 @@ athenadesign_shared.json
 
 # Espace de travail rédaction (copies de travail .docx — runtime)
 redaction/
+
+# Artefacts de test / scratch (ne pas versionner)
+scratch/
+presentation_moderne.pptx
