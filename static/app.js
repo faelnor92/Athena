@@ -2219,7 +2219,11 @@ async function playAgentSteps(steps, immediate = false) {
                     if (targetAgent) {
                         // Activer le spécialiste visuellement pour montrer qu'il travaille
                         setActiveAgentVisual(targetAgent);
-                        
+                        // ANIMATION DÉLÉGATION : faire voler le paquet 📦 vers le spécialiste.
+                        // (delegate_to_/query_agent ne passent PAS par un step `handoff` → sans ça,
+                        // aucune animation lors d'une délégation, le cas le plus courant.)
+                        animateHandoffMail(step.agent, targetAgent);
+
                         // Modifier la bulle du spécialiste pour dire qu'il travaille sur sa tâche
                         const targetBubble = document.getElementById(`bubble-${targetAgent}`);
                         if (targetBubble) {
