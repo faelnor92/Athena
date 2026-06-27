@@ -1165,6 +1165,17 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     "corrections ou nettoyer répétitions/tics de style : rappelle "
                     "`document_autorevise(chemin, instruction=\"…\")`.\n"
                 )
+            if _is_orchestrator and ("query_agent" in _tool_names
+                                     or any(n.startswith(("delegate_to_", "transfer_to_")) for n in _tool_names)):
+                system_prompt += (
+                    "- DÉLÉGATION — RESTITUE LE RÉSULTAT : quand tu confies une tâche à un spécialiste "
+                    "(`query_agent`, `delegate_to_…`), sa réponse t'est renvoyée — tu DOIS la PRÉSENTER "
+                    "à l'utilisateur (copie/intègre le CODE ou le texte produit). Ne réponds JAMAIS de "
+                    "façon générique (« veux-tu autre chose ? », « dis-moi ce qui t'intéresse ») sans "
+                    "avoir livré le résultat. Si TOUTE la demande relève d'un spécialiste (ex. « donne-moi "
+                    "un code… » → Codeur), préfère **transfer_to_<agent>** : il répond DIRECTEMENT à "
+                    "l'utilisateur (pas de relais à risque). Ne consulte pas DEUX fois le même agent pour "
+                    "la même chose.\n")
             # Auto-amélioration : encourage la création PROACTIVE d'un outil quand il en manque un.
             if "save_new_skill" in _tool_names:
                 system_prompt += (
