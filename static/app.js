@@ -4191,7 +4191,7 @@ if (_btnSatGenkey) _btnSatGenkey.addEventListener("click", async () => {
         const r = await apiFetch("/api/config/satellites/genkey", { method: "POST" });
         const d = await r.json();
         document.getElementById("sat-key").value = d.key || "";
-        if (navigator.clipboard) navigator.clipboard.writeText(d.key || "");
+        _copyToClipboard(d.key || "");   // repli http-safe (navigator.clipboard absent hors HTTPS)
         if (st) st.textContent = "🔑 Clé générée et copiée — colle-la dans le YAML de l'ESP (api.encryption.key).";
     } catch (e) { if (st) st.textContent = "❌ " + e; }
 });
@@ -4357,8 +4357,32 @@ if (_btnSatYaml) _btnSatYaml.addEventListener("click", async () => {
 });
 
 function _copyToClipboard(text, btn) {
-    if (navigator.clipboard) navigator.clipboard.writeText(text);
-    if (btn) { const o = btn.textContent; btn.textContent = "✓"; setTimeout(() => { btn.textContent = o; }, 1500); }
+    function _flag(ok) {
+        if (!btn) return;
+        const o = btn.dataset.label || btn.textContent;
+        btn.dataset.label = o;
+        btn.textContent = ok ? "✅ Copié" : "⚠️ Sélectionne puis Ctrl+C";
+        setTimeout(() => { btn.textContent = o; }, 1800);
+    }
+    // En HTTP (contexte non sécurisé), navigator.clipboard est INDISPONIBLE → repli execCommand
+    // via un textarea temporaire (fonctionne hors HTTPS). C'était la cause du « bouton qui ne fait rien ».
+    function _fallback() {
+        try {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.style.position = "fixed"; ta.style.top = "-1000px"; ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            const ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+            _flag(ok);
+        } catch (e) { _flag(false); }
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => _flag(true)).catch(_fallback);
+    } else {
+        _fallback();
+    }
 }
 const _btnSatYamlCopy = document.getElementById("btn-sat-yaml-copy");
 if (_btnSatYamlCopy) _btnSatYamlCopy.addEventListener("click", () => _copyToClipboard(_lastSatYaml.text, _btnSatYamlCopy));
