@@ -490,9 +490,14 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     # --- Options radio (sans GPIO) : bluetooth_proxy + improv BLE ---
     radio_block = ""
     if bt_proxy:
-        radio_block += ("\n# --- Bluetooth proxy : relais BLE vers Home Assistant (portée + présence BLE\n"
-                        "#     pour le follow-me type ESPresense/Bermuda). N'utilise AUCUN GPIO. ---\n"
-                        "esp32_ble_tracker:\n  scan_parameters:\n    active: true\n"
+        # COEXISTENCE VOIX + BLE : un satellite vocal streame l'audio en continu ; un scan BLE
+        # ACTIF (bursts d'émission) lui vole la radio → coupures audio. On scanne donc en PASSIF
+        # basse-conso (interval long / fenêtre courte) : largement suffisant pour la présence
+        # (follow-me ESPresense/Bermuda) tout en laissant la radio à l'audio + WiFi.
+        radio_block += ("\n# --- Bluetooth proxy : relais BLE vers Home Assistant (présence/follow-me).\n"
+                        "#     Scan PASSIF basse-conso pour cohabiter avec la voix (anti-coupures). ---\n"
+                        "esp32_ble_tracker:\n  scan_parameters:\n    active: false\n"
+                        "    interval: 320ms\n    window: 30ms\n"
                         "bluetooth_proxy:\n  active: true\n")
     if improv:
         radio_block += ("\n# --- Improv BLE : configurer le WiFi par Bluetooth à la 1re install (sans GPIO).\n"
