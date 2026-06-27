@@ -393,13 +393,18 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     if led.get("enabled"):
         led_pin = (led.get("pin") or "GPIO48").strip()
         led_num = int(led.get("num") or 1)
+        multi = led_num > 1   # bandeau adressable → animations par LED ; sinon (LED unique) → pulses.
         led_block = (
             f"\nlight:\n  - platform: esp32_rmt_led_strip\n    id: status_led\n"
             f"    pin: {led_pin}\n    num_leds: {led_num}\n    rgb_order: GRB\n"
             f"    chipset: ws2812\n    name: \"LED statut\"\n    default_transition_length: 0s\n"
             "    effects:\n"
             "      - pulse:\n          name: \"Slow Pulse\"\n          transition_length: 250ms\n          update_interval: 250ms\n"
-            "      - pulse:\n          name: \"Fast Pulse\"\n          transition_length: 100ms\n          update_interval: 100ms\n")
+            "      - pulse:\n          name: \"Fast Pulse\"\n          transition_length: 100ms\n          update_interval: 100ms\n"
+            "      - addressable_scan:\n          name: \"Scan\"\n          move_interval: 120ms\n          scan_width: 1\n"
+            "      - addressable_rainbow:\n          name: \"Arc\"\n          speed: 12\n          width: 50\n"
+            "      - addressable_twinkle:\n          name: \"Twinkle\"\n          twinkle_probability: 12%\n          progress_interval: 60ms\n"
+            "      - addressable_flicker:\n          name: \"Flicker\"\n          intensity: 40%\n")
 
         def _on(color, effect=None):
             r, g, b = color
@@ -408,15 +413,30 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
                 s += f"        effect: \"{effect}\"\n"
             return "    - light.turn_on:\n" + s
 
+        def _on_eff(effect):   # effet seul (sans couleur imposée) — ex. arc-en-ciel.
+            return f"    - light.turn_on:\n        id: status_led\n        effect: \"{effect}\"\n"
+
         # Machine à états via les événements du voice_assistant + connexion à Athena.
-        led_feedback = (
-            "  on_client_disconnected:\n" + _on((100, 0, 0), "Slow Pulse") +      # rouge : Athena déconnectée
-            "  on_client_connected:\n    - light.turn_off: status_led\n" +         # prêt (au repos)
-            "  on_listening:\n" + _on((0, 0, 100)) +                               # bleu : à l'écoute
-            "  on_stt_vad_end:\n" + _on((60, 0, 100), "Fast Pulse") +             # violet : réflexion
-            "  on_tts_start:\n" + _on((0, 100, 60)) +                              # cyan : répond
-            "  on_end:\n    - light.turn_off: status_led\n" +                      # retour repos
-            "  on_error:\n" + _on((100, 0, 0), "Fast Pulse"))                      # rouge clignotant : erreur
+        if multi:
+            # Bandeau : animations adressables (point qui défile, arc-en-ciel, scintillement…).
+            led_feedback = (
+                "  on_client_disconnected:\n" + _on((100, 10, 0), "Scan") +        # rouge qui cherche
+                "  on_client_connected:\n    - light.turn_off: status_led\n" +     # prêt (repos)
+                "  on_listening:\n" + _on((0, 30, 100), "Scan") +                  # point bleu qui défile
+                "  on_stt_vad_end:\n" + _on_eff("Arc") +                           # arc-en-ciel : réflexion
+                "  on_tts_start:\n" + _on((0, 100, 50), "Twinkle") +               # scintillement vert : répond
+                "  on_end:\n    - light.turn_off: status_led\n" +                  # retour repos
+                "  on_error:\n" + _on((100, 0, 0), "Flicker"))                     # vacillement rouge : erreur
+        else:
+            # LED unique (ex. RGB embarquée) : couleurs unies + pulses.
+            led_feedback = (
+                "  on_client_disconnected:\n" + _on((100, 0, 0), "Slow Pulse") +   # rouge : Athena déconnectée
+                "  on_client_connected:\n    - light.turn_off: status_led\n" +     # prêt (au repos)
+                "  on_listening:\n" + _on((0, 0, 100)) +                           # bleu : à l'écoute
+                "  on_stt_vad_end:\n" + _on((60, 0, 100), "Fast Pulse") +          # violet : réflexion
+                "  on_tts_start:\n" + _on((0, 100, 60)) +                          # cyan : répond
+                "  on_end:\n    - light.turn_off: status_led\n" +                  # retour repos
+                "  on_error:\n" + _on((100, 0, 0), "Fast Pulse"))                  # rouge clignotant : erreur
 
     # Bloc d'activation (mains-libres) : wake word embarqué (microWakeWord, sur l'ESP)
     # ou serveur (openWakeWord, dans Athena ; l'ESP streame en continu).

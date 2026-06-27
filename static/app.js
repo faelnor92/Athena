@@ -4336,6 +4336,7 @@ if (_btnSatYaml) _btnSatYaml.addEventListener("click", async () => {
                 led: {
                     enabled: !!(document.getElementById("sat-led-enabled") || {}).checked,
                     pin: (document.getElementById("sat-led-pin") || {}).value || "GPIO48",
+                    num: parseInt((document.getElementById("sat-led-num") || {}).value, 10) || 1,
                 },
                 bt_proxy: !!(document.getElementById("sat-bt-proxy") || {}).checked,
                 improv: !!(document.getElementById("sat-improv") || {}).checked,
