@@ -455,13 +455,31 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
             "voice_assistant:\n  microphone: mic\n  speaker: spk\n  use_wake_word: false\n"
         )
     else:
-        ww = act.get("wake_word") or "hey_athena"
+        # microWakeWord n'accepte QUE des modèles PRÉ-ENTRAÎNÉS (pas un mot arbitraire) :
+        # un mot custom (« athena ») n'a PAS de modèle embarqué → repli okay_nabu + avertissement.
+        _MWW_BUILTIN = {"okay_nabu", "hey_jarvis", "hey_mycroft", "alexa"}
+        ww = (act.get("wake_word") or "").strip()
+        wwl = ww.lower()
+        if wwl in _MWW_BUILTIN or wwl.startswith("http"):
+            model_line = f"    - model: {ww}\n"
+            warn = ""
+        else:
+            model_line = "    - model: okay_nabu\n"
+            warn = (
+                "# ⚠ WAKE WORD EMBARQUÉ : microWakeWord ne connaît que des modèles PRÉ-ENTRAÎNÉS\n"
+                "#   (okay_nabu, hey_jarvis, hey_mycroft, alexa). "
+                f"« {ww or 'athena'} » n'existe PAS en embarqué.\n"
+                "#   → on met 'okay_nabu' par défaut. Pour un mot CUSTOM « athena » : choisis le mode\n"
+                "#   SERVEUR (Athena le détecte via STT), ou fournis l'URL d'un modèle entraîné\n"
+                "#   (model: https://…/athena.json).\n")
         voice_block = (
-            "# --- PSRAM requise pour le wake word embarqué (adapte au besoin) ---\n"
-            "psram:\n\n"
+            warn +
+            "# --- PSRAM requise pour le wake word embarqué (DevKitC-1 N8R8 = octale ;\n"
+            "#     passe en 'quad' si ta carte a de la PSRAM quad type N8R2) ---\n"
+            "psram:\n  mode: octal\n  speed: 80MHz\n\n"
             "# --- Wake word EMBARQUÉ (microWakeWord) : tourne sur l'ESP32-S3 ---\n"
             "micro_wake_word:\n"
-            f"  models:\n    - model: {ww}\n"
+            f"  models:\n{model_line}"
             "  on_wake_word_detected:\n    - voice_assistant.start\n\n"
             "# --- Assistant vocal géré par Athena ---\n"
             "voice_assistant:\n  microphone: mic\n  speaker: spk\n"
@@ -529,8 +547,13 @@ def generate_yaml(name: str, encryption_key: str = "", modules=None,
     if onewire_pin:
         wiring += f"#   Capteur 1-wire   : data→{onewire_pin} (+ résistance 4.7kΩ entre data et 3V3)\n"
     if led.get("enabled"):
-        wiring += (f"#   LED statut       : DIN→{led.get('pin') or 'GPIO48'} "
-                   f"(WS2812B ; GPIO48 = LED RGB EMBARQUÉE sur la devkit, rien à câbler)\n")
+        _lp = (led.get("pin") or "GPIO48").strip()
+        _ln = int(led.get("num") or 1)
+        if _lp.upper() == "GPIO48" and _ln <= 1:
+            wiring += "#   LED statut       : GPIO48 = LED RGB EMBARQUÉE sur la devkit (rien à câbler)\n"
+        else:
+            wiring += (f"#   Bandeau LED ({_ln}×) : 5V→5V · GND→GND · DIN→{_lp} "
+                       f"(WS2812B ; 330Ω en série sur DIN conseillée)\n")
     if vol.get("enabled"):
         wiring += (f"#   Boutons volume   : Vol+ →{(vol.get('up_pin') or 'GPIO47')} · "
                    f"Vol- →{(vol.get('down_pin') or 'GPIO21')} (vers GND, INPUT_PULLUP)\n")
