@@ -42,7 +42,8 @@ def _noop():
 
 
 def test_swarm_filters_denied_tool():
-    """Un outil refusé par la politique de session est retiré → 'introuvable ou non autorisé'."""
+    """Un outil refusé par la politique de session est retiré → traité comme inexistant
+    (message « n'existe pas » + liste des outils réellement disponibles)."""
     os.environ["SELF_IMPROVE"] = "false"
 
     class _F:
@@ -77,7 +78,10 @@ def test_swarm_filters_denied_tool():
     finally:
         tool_policy.reset_policy(tok)
     outs = " ".join(str(st.get("output", "")) for st in steps if st.get("type") == "tool_output")
-    assert "introuvable ou non autoris" in outs.lower(), outs
+    # L'outil refusé est retiré des outils effectifs → le moteur répond « n'existe pas »
+    # (même chemin qu'un outil inventé) et ne l'exécute jamais.
+    assert "n'existe pas" in outs.lower() or "introuvable ou non autoris" in outs.lower(), outs
+    assert "ok" not in [str(st.get("output")) for st in steps], "l'outil refusé ne doit pas s'exécuter"
 
 
 if __name__ == "__main__":

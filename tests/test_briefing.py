@@ -15,12 +15,11 @@ def test_get_daily_briefing():
     L.add_list_item("taches", "Acheter du pain")
     L.add_list_item("courses", "Lait")
 
-    # Mock requests.get to prevent real network requests to wttr.in
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.text = "Soleil: 22°C"
-    
-    with patch("requests.get", return_value=mock_resp):
+    # Mock get_weather (Open-Meteo) pour éviter tout appel réseau : le briefing prend la
+    # 1ʳᵉ ligne (conditions actuelles) + la 1ʳᵉ ligne de prévision « - … ».
+    weather = ("Météo actuelle à Strasbourg : Soleil: 22°C (ressenti 21°C).\n\nPrévisions :\n"
+               "- jeu. : ensoleillé, 15/24°C")
+    with patch("tools.basic_tools.get_weather", return_value=weather):
         briefing = get_daily_briefing(city="Strasbourg")
         
     assert "☀️ **BRIEFING DU JOUR" in briefing
