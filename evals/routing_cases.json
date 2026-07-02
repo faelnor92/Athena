@@ -1,0 +1,78 @@
+{
+  "_doc": "Evals de ROUTAGE D'OUTILS (déterministes, sans LLM ni embeddings : chemin keyword). Chaque cas : la requête doit exposer les outils de must_include et NE PAS exposer ceux de must_exclude (groupe non activé). Lancés en CI par tests/test_routing_evals.py — ajouter un cas ici suffit.",
+  "cases": [
+    {
+      "name": "domotique_fr",
+      "query": "Allume la lumière du salon s'il te plaît",
+      "must_include": ["call_ha_service", "get_ha_state"],
+      "must_exclude": ["read_inbox", "git_commit", "proxmox_status"]
+    },
+    {
+      "name": "code_fr",
+      "query": "Corrige le bug dans app.py puis lance les tests",
+      "must_include": ["edit_file", "run_tests", "read_file", "git_diff"],
+      "must_exclude": ["call_ha_service", "clean_inbox"]
+    },
+    {
+      "name": "code_en",
+      "query": "Fix the bug in main.py, refactor the function and commit",
+      "must_include": ["edit_file", "git_commit", "search_code"],
+      "must_exclude": ["add_calendar_event", "document_translate"]
+    },
+    {
+      "name": "email_fr",
+      "query": "Fais le ménage dans ma boîte mail et archive les newsletters",
+      "must_include": ["clean_inbox", "read_inbox", "archive_emails"],
+      "must_exclude": ["edit_file", "call_ha_service"]
+    },
+    {
+      "name": "agenda_fr",
+      "query": "Ajoute un rendez-vous dentiste demain à 14h dans mon calendrier",
+      "must_include": ["add_calendar_event", "list_calendar_events"],
+      "must_exclude": ["proxmox_status", "web_scrape"]
+    },
+    {
+      "name": "web_fr",
+      "query": "Cherche sur internet les dernières actualités en intelligence artificielle",
+      "must_include": ["web_search", "web_scrape"],
+      "must_exclude": ["document_autorevise", "run_tests"]
+    },
+    {
+      "name": "redaction_traduction_fr",
+      "query": "Traduis mon roman en anglais, chapitre par chapitre",
+      "must_include": ["document_translate", "document_open"],
+      "must_exclude": ["clean_inbox"]
+    },
+    {
+      "name": "proxmox_fr",
+      "query": "Redémarre la VM 102 sur Proxmox, elle ne répond plus",
+      "must_include": ["proxmox_vm_action", "proxmox_status"],
+      "must_exclude": ["document_translate", "add_calendar_event"]
+    },
+    {
+      "name": "n8n_fr",
+      "query": "Crée un workflow n8n déclenché par un webhook qui m'envoie un résumé",
+      "must_include": ["create_n8n_workflow", "list_n8n_workflows"],
+      "must_exclude": ["delete_calendar_event"]
+    },
+    {
+      "name": "chitchat_aucun_groupe",
+      "query": "Salut, comment vas-tu aujourd'hui ?",
+      "must_include": [],
+      "must_exclude": ["edit_file", "call_ha_service", "web_search", "clean_inbox",
+                       "proxmox_status", "document_translate", "computer_use_action"]
+    },
+    {
+      "name": "vision_ocr_fr",
+      "query": "Lis le texte de cette facture scannée en pièce jointe",
+      "must_include": ["ocr_image", "ocr_document"],
+      "must_exclude": ["git_commit"]
+    },
+    {
+      "name": "transport_fr",
+      "query": "Combien de temps de trajet jusqu'à Strasbourg avec la circulation actuelle ?",
+      "must_include": ["get_driving_route", "get_traffic_incidents"],
+      "must_exclude": ["edit_file", "read_inbox"]
+    }
+  ]
+}

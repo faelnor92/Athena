@@ -617,6 +617,16 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     if skill_name not in existing:
                         effective_tools.append(func)
                         existing.add(skill_name)
+                # Skills en QUARANTAINE (canary) : exposées comme les autres, mais chaque
+                # exécution est comptée → promotion après N succès, éviction sur échecs.
+                try:
+                    from core import skill_quarantine as _sq
+                    for skill_name, func in _sq.load_quarantined().items():
+                        if skill_name not in existing:
+                            effective_tools.append(func)
+                            existing.add(skill_name)
+                except Exception:
+                    pass
                 # Outils MCP (serveurs externes) injectés comme des outils natifs.
                 _mcp_funcs = tools.mcp_manager.mcp_manager.tool_functions()
                 for tool_name, func in _mcp_funcs.items():

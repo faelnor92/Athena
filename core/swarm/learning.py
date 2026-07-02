@@ -282,6 +282,11 @@ class _LearningMixin:
             import tools.skills_manager as sm
             from core.swarm.engine import AVAILABLE_TOOLS   # paresseux : évite l'import circulaire
             existing = set(load_dynamic_skills().keys()) | set(AVAILABLE_TOOLS.keys())
+            try:
+                from core import skill_quarantine as _sq0
+                existing |= set(_sq0.status().keys())  # déjà en canary → pas de doublon
+            except Exception:
+                pass
 
             lines = []
             for m in messages[-12:]:
@@ -302,8 +307,11 @@ class _LearningMixin:
                 "réseau/fichier/système ; imports autorisés uniquement parmi math, datetime, json, re, "
                 "statistics, itertools, collections, functools, typing, decimal, random, string, "
                 "fractions, calendar. Le code doit définir 'def <nom>(...)' avec une docstring.\n"
+                "Fournis AUSSI 2-3 CAS DE TEST (la fonction sera EXÉCUTÉE dessus ; un échec = "
+                "compétence refusée) : entrées simples, résultat attendu EXACT.\n"
                 "Réponds STRICTEMENT en JSON : "
-                '{"skill": true, "name": "<snake_case>", "description": "<courte>", "code": "<python>"} '
+                '{"skill": true, "name": "<snake_case>", "description": "<courte>", "code": "<python>", '
+                '"tests": [{"args": [...], "kwargs": {}, "expected": <valeur>}, ...]} '
                 'OU {"skill": false} si aucune compétence générique pertinente. '
                 "Ne crée PAS de compétence trop spécifique ou triviale."
             )
@@ -331,10 +339,27 @@ class _LearningMixin:
             if not ok:
                 print(f"[\033[93mAUTO-COMPÉTENCE refusée\033[0m] '{name}' : {reason}")
                 return
-            result = sm.save_new_skill(name, code, desc)
+            # SELF-TESTS : la fonction est exécutée sur les cas fournis AVANT toute
+            # adoption (validate_pure_skill garantit imports sûrs + fonction pure →
+            # l'exec de vérification est équivalent à l'import qui suivrait de toute façon).
+            from core import skill_quarantine as sq
+            tests = data.get("tests") or []
+            ns = {}
+            exec(compile(code, f"<skill:{name}>", "exec"), ns)  # nosec B102 — code validé par AST (validate_pure_skill)
+            func = ns.get(name)
+            if not callable(func):
+                print(f"[\033[93mAUTO-COMPÉTENCE refusée\033[0m] '{name}' : fonction introuvable après exec.")
+                return
+            ok, reason = sq.run_self_tests(func, tests)
+            if not ok:
+                print(f"[\033[93mAUTO-COMPÉTENCE refusée\033[0m] '{name}' : self-tests — {reason}")
+                return
+            # QUARANTAINE (canary) : exposée aux agents mais comptée ; promue dans
+            # skills/ après N usages réussis, évincée si elle échoue en réel.
+            result = sq.save_quarantined(name, code, desc, tests)
             if result.startswith("Succès"):
                 steps.append({"type": "skill_learned", "agent": agent.name,
-                              "name": name, "description": desc})
-                print(f"[\033[96mAUTO-COMPÉTENCE\033[0m] Nouvelle compétence acquise : '{name}'.")
+                              "name": name, "description": desc, "quarantined": True})
+                print(f"[\033[96mAUTO-COMPÉTENCE\033[0m] '{name}' acquise (en quarantaine canary).")
         except Exception as e:
             print(f"[\033[91mAuto-compétence erreur\033[0m] {e}")
