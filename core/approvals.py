@@ -27,7 +27,14 @@ auto_approve_var: "contextvars.ContextVar" = contextvars.ContextVar("auto_approv
 
 
 def sensitive_tool_names() -> set:
-    raw = os.getenv("SENSITIVE_TOOLS", _DEFAULT_SENSITIVE)
+    # SENSITIVE_TOOLS="" (vide) = valeur PAR DÉFAUT, pas « aucun outil sensible » :
+    # une ligne vide oubliée dans .env désactivait TOUT le HITL (faille critique de
+    # l'audit 2026-06-22). Désactiver se demande EXPLICITEMENT : SENSITIVE_TOOLS=none.
+    raw = os.getenv("SENSITIVE_TOOLS", "").strip()
+    if not raw:
+        raw = _DEFAULT_SENSITIVE
+    elif raw.lower() == "none":
+        return set()
     return {t.strip() for t in raw.split(",") if t.strip()}
 
 

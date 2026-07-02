@@ -101,7 +101,28 @@ def test_auto_approve_bypass():
     print("OK: canal auto-approuvé exécute sans confirmation")
 
 
+def test_sensitive_tools_vide_ne_desactive_pas_le_hitl():
+    """SENSITIVE_TOOLS="" (ligne vide oubliée dans .env) = défaut, PAS « aucun outil
+    sensible » (faille de l'audit 2026-06-22). Désactivation explicite = "none"."""
+    old = os.environ.get("SENSITIVE_TOOLS")
+    try:
+        os.environ["SENSITIVE_TOOLS"] = ""
+        names = approvals.sensitive_tool_names()
+        assert "execute_bash_command" in names and "write_file" in names, names
+        os.environ["SENSITIVE_TOOLS"] = "none"
+        assert approvals.sensitive_tool_names() == set()
+        os.environ["SENSITIVE_TOOLS"] = "write_file, edit_file"
+        assert approvals.sensitive_tool_names() == {"write_file", "edit_file"}
+    finally:
+        if old is None:
+            os.environ.pop("SENSITIVE_TOOLS", None)
+        else:
+            os.environ["SENSITIVE_TOOLS"] = old
+    print("OK: SENSITIVE_TOOLS vide = défaut ; 'none' = désactivation explicite")
+
+
 if __name__ == "__main__":
     test_outil_sensible_bloque_sans_confirmation()
     test_outil_sensible_execute_si_confirme()
     test_auto_approve_bypass()
+    test_sensitive_tools_vide_ne_desactive_pas_le_hitl()

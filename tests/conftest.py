@@ -98,7 +98,8 @@ def _hermetic_test():
     # influencer la suite (sinon un outil nommé comme un outil sensible, ex. edit_file, part en
     # approbation et un test d'exécution échoue/bloque). On la neutralise ; les tests du gate
     # HITL utilisent l'attribut `_requires_approval` (indépendant de l'env) ou la posent eux-mêmes.
-    os.environ["SENSITIVE_TOOLS"] = ""
+    # NB: "" = liste PAR DÉFAUT depuis le fix HITL (audit 2026-06-22) ; désactiver = "none".
+    os.environ["SENSITIVE_TOOLS"] = "none"
     _wipe_shared_store()  # chaque test démarre avec un store vierge
     try:
         yield

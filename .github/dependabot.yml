@@ -1,0 +1,19 @@
+# Alertes de mise à jour de dépendances (CVE incluses).
+# Les deps sont épinglées dans requirements*.txt : sans ce fichier, rien ne
+# signale un correctif de sécurité publié par fastapi/litellm/cryptography…
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      # Une seule PR pour les bumps mineurs/patch → moins de bruit.
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"

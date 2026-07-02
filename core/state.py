@@ -283,7 +283,15 @@ def _decrypt(data: str) -> str:
     try:
         return _get_fernet().decrypt(data.encode("utf-8")).decode("utf-8")
     except Exception:
-        # Fallback de migration douce : la donnée était en clair
+        # Fallback de migration douce : la donnée était en clair. MAIS si elle
+        # RESSEMBLE à du Fernet (préfixe base64 'gAAAA'), c'est un vrai échec de
+        # déchiffrement (mauvaise DB_ENCRYPTION_KEY après restauration ?) → on
+        # le signale au lieu de renvoyer silencieusement du garbage.
+        if isinstance(data, str) and data.startswith("gAAAA"):
+            import logging
+            logging.getLogger(__name__).warning(
+                "Échec de déchiffrement d'une donnée qui semble chiffrée (Fernet). "
+                "DB_ENCRYPTION_KEY a-t-elle changé (restauration/backup) ?")
         return data
 
 # Gestionnaire de Conversations persistantes
