@@ -2680,3 +2680,8 @@ code[class*="language-"] {
     padding: 8px 12px;
     border: 1px solid rgba(255, 255, 255, 0.04);
 }
+
+/* Hovers ex-inline (onmouseover/onmouseout supprimés pour la CSP stricte).
+   !important : ces boutons portent leur état de base en style inline. */
+#btn-new-chat:hover { background: rgba(255,255,255,0.15) !important; border-color: rgba(255,255,255,0.3) !important; }
+#btn-delete-chat:hover { background: rgba(255,85,85,0.2) !important; border-color: rgba(255,85,85,0.5) !important; }

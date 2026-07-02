@@ -77,7 +77,12 @@ _SECURITY_HEADERS = os.getenv("SECURITY_HEADERS", "true").lower() not in ("false
 # (Régression v0.25.0 : ce défaut avait été vidé, ce qui supprimait la CSP de toute l'app.)
 _DEFAULT_CSP = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+    # PAS de 'unsafe-inline' pour script-src : tout le JS de l'app est externalisé
+    # (boot.js, bindings.js, ide.js, oo_editor.js) et le HTML généré passe par la
+    # délégation data-act (bindings.js) — c'est LA défense principale anti-XSS avec
+    # le token en localStorage (un innerHTML non échappé ne peut plus exécuter de
+    # script). Ne pas réintroduire d'onclick=/onload= ni de <script> inline.
+    "script-src 'self' https://cdnjs.cloudflare.com; "
     "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
     "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
     "img-src 'self' data: blob:; connect-src 'self'; "

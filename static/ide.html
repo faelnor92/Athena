@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!-- Fenêtre IDE d'Athena (popup multi-écran de l'Espace Code).
+     Vraie page statique : l'ancien document.write d'un <script> inline est
+     interdit par la CSP stricte (script-src sans 'unsafe-inline').
+     Le jeton de session est lu depuis localStorage (même origine que l'app) ;
+     le projet vient de ?project=. -->
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <title>Athena — IDE</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+    <style>
+        html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:#0f1320;color:#cfe;}
+        #wrap{display:flex;height:100vh;}
+        #tree{width:240px;flex-shrink:0;overflow:auto;border-right:1px solid #234;padding:6px;font-size:13px;}
+        #main{flex:1;display:flex;flex-direction:column;min-width:0;}
+        #tabs{display:flex;gap:2px;overflow-x:auto;background:#0b0e18;padding:4px 4px 0;}
+        .tab{padding:4px 8px;border-radius:6px 6px 0 0;cursor:pointer;white-space:nowrap;font-size:12px;background:#172033;display:flex;gap:6px;align-items:center;}
+        .tab.act{background:#0d2a33;border:1px solid #0af4;border-bottom:none;}
+        #bar{display:flex;gap:8px;align-items:center;padding:4px 8px;background:#0b0e18;font-size:12px;}
+        #bar button{background:#0af3;color:#fff;border:1px solid #0af6;border-radius:5px;padding:3px 10px;cursor:pointer;}
+        .CodeMirror{flex:1;height:auto;}
+        .f{padding:2px 4px;cursor:pointer;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .f:hover{background:#1c2740;}
+    </style>
+</head>
+<body>
+    <div id="wrap">
+        <div id="tree">…</div>
+        <div id="main">
+            <div id="bar"><strong>🛠️ IDE</strong><span id="proj" style="opacity:.6;"></span><span style="flex:1"></span><span id="stat" style="opacity:.7;"></span><button id="save">💾 Enregistrer (Ctrl+S)</button><button id="refresh">🔄</button></div>
+            <div id="tabs"></div>
+            <div id="host" style="flex:1;display:flex;"></div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/meta.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/shell/shell.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
+    <script src="ide.js?v=20260702_csp1"></script>
+</body>
+</html>

@@ -2770,12 +2770,12 @@ function appendAgentMessage(agentName, content, id = null) {
 
     let actionsHtml = "";
     const artifactBtns = artifactIdx.map(i =>
-        `<button class="btn-artifact" onclick="openArtifact(${i})">👁️ Aperçu</button>`).join("");
+        `<button class="btn-artifact" data-act="open-artifact" data-arg="${i}">👁️ Aperçu</button>`).join("");
     if (id || artifactBtns) {
         actionsHtml = `
         <div class="message-actions">
             ${artifactBtns}
-            ${id ? `<button class="btn-fork-here" onclick="forkConversation('${escapeHtml(id)}')">🌿 Brancher d'ici</button>` : ""}
+            ${id ? `<button class="btn-fork-here" data-act="fork-conv" data-arg="${escapeHtml(id)}">🌿 Brancher d'ici</button>` : ""}
         </div>`;
     }
 
@@ -2835,7 +2835,7 @@ function appendUserMessage(content, id = null) {
     if (id) {
         actionsHtml = `
         <div class="message-actions">
-            <button class="btn-fork-here" onclick="forkConversation('${escapeHtml(id)}')">🌿 Brancher d'ici</button>
+            <button class="btn-fork-here" data-act="fork-conv" data-arg="${escapeHtml(id)}">🌿 Brancher d'ici</button>
         </div>`;
     }
 
@@ -2988,7 +2988,7 @@ function rebuildBranchesTreeView() {
         const textPreview = msg.content ? msg.content.substring(0, 30) + (msg.content.length > 30 ? "..." : "") : "(vide)";
         
         nodeDiv.innerHTML = `
-            <div class="tree-node-content ${activeClass}" onclick="selectTreeNode('${msg.id}')">
+            <div class="tree-node-content ${activeClass}" data-act="select-tree-node" data-arg="${msg.id}">
                 <span class="tree-role-tag ${roleClass}">${roleLabel}</span>
                 <span class="tree-text-preview" title="${msg.content || ''}">${textPreview}</span>
             </div>
@@ -3050,7 +3050,7 @@ async function refreshMemory() {
             item.innerHTML = `
                 <span class="memory-key">${key.replace(/_/g, ' ')}</span>
                 <span class="memory-val">${data[key]}</span>
-                <button class="memory-delete-btn" onclick="deleteMemoryFact('${key}')" title="Supprimer ce fait">×</button>
+                <button class="memory-delete-btn" data-act="delete-memory-fact" data-arg="${escapeHtml(key)}" title="Supprimer ce fait">×</button>
             `;
             memoryGrid.appendChild(item);
         });
@@ -6350,7 +6350,7 @@ async function loadAgendaEvents() {
                     <span style="font-size: 0.75rem; color: var(--success-color); font-weight: 500;">📅 ${e.datetime}</span>
                     ${e.description ? `<p style="margin: 2px 0 0 0; font-size: 0.75rem; opacity: 0.7; line-height: 1.3;">${e.description}</p>` : ''}
                 </div>
-                <button class="btn btn-icon" onclick="deleteAgendaEvent('${e.id}')" title="Supprimer ce rendez-vous" style="padding: 4px 8px; font-size: 0.8rem; color: #ff5555; background: transparent; border: none; cursor: pointer; transition: transform 0.2s;">❌</button>
+                <button class="btn btn-icon" data-act="delete-agenda-event" data-arg="${e.id}" title="Supprimer ce rendez-vous" style="padding: 4px 8px; font-size: 0.8rem; color: #ff5555; background: transparent; border: none; cursor: pointer; transition: transform 0.2s;">❌</button>
             `;
             
             listContainer.appendChild(eventCard);
@@ -6745,11 +6745,11 @@ async function loadListItems() {
             const strikeStyle = item.completed ? "text-decoration: line-through; opacity: 0.5;" : "";
             
             itemRow.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; text-align: left;" onclick="toggleListItem('${item.id}')">
+                <div style="display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; text-align: left;" data-act="toggle-list-item" data-arg="${item.id}">
                     <span style="font-size: 1.1rem; user-select: none;">${checkIcon}</span>
                     <span style="${strikeStyle} font-size: 0.85rem; color: #fff;">${item.text}</span>
                 </div>
-                <button class="btn-icon" style="padding: 2px 6px; font-size: 0.8rem; background: rgba(255,0,0,0.15); border: 1px solid rgba(255,0,0,0.3); color: #ff5555; border-radius: 4px;" onclick="deleteListItem('${item.id}')" title="Supprimer">🗑️</button>
+                <button class="btn-icon" style="padding: 2px 6px; font-size: 0.8rem; background: rgba(255,0,0,0.15); border: 1px solid rgba(255,0,0,0.3); color: #ff5555; border-radius: 4px;" data-act="delete-list-item" data-arg="${item.id}" title="Supprimer">🗑️</button>
             `;
             
             listContainer.appendChild(itemRow);
@@ -9069,7 +9069,7 @@ function _renderMcpCard(srv) {
             <div class="mcp-market-card-desc">${srv.note || ''}</div>
             <div style="font-size: 0.7rem; color: #888; margin-bottom: 12px; font-family: monospace; word-break: break-all;">${tech}</div>
         </div>
-        <button class="mcp-market-card-btn" onclick="installMarketplaceServer('${payload}')">Installer</button>
+        <button class="mcp-market-card-btn" data-act="install-mcp-server" data-arg="${payload}">Installer</button>
     `;
     return card;
 }
@@ -9985,80 +9985,22 @@ async function openConsoleFile(path, projectId) {
 // IDE en VRAIE fenêtre navigateur (multi-écran) avec onglets, arbre et sauvegarde.
 let _ideWin = null;
 function openIdeWindow(projectId) {
-    const token = (typeof sessionToken !== "undefined" && sessionToken) ? sessionToken : "";
-    const api = location.origin;
+    // Vraie page statique (/ide.html + ide.js) : l'ancien document.write d'un <script>
+    // inline est interdit par la CSP stricte. Même origine → ide.js lit le jeton dans
+    // localStorage lui-même ; le projet passe en query string.
     const pid = projectId || (typeof _consoleProjectId === "function" ? _consoleProjectId() : "") || "";
     if (_ideWin && !_ideWin.closed) {
         _ideWin.focus();
-        if (_ideWin.__pid !== pid && typeof _ideWin.setIdeProject === "function") _ideWin.setIdeProject(pid);
+        if (_ideWin.__pid !== pid) {
+            if (typeof _ideWin.setIdeProject === "function") _ideWin.setIdeProject(pid);
+            else setTimeout(() => { try { _ideWin.setIdeProject && _ideWin.setIdeProject(pid); } catch (e) {} }, 600);
+        }
         return _ideWin;
     }
-    _ideWin = window.open("", "athenaIdeWindow", "width=1100,height=760");
+    const url = "/ide.html" + (pid ? "?project=" + encodeURIComponent(pid) : "");
+    _ideWin = window.open(url, "athenaIdeWindow", "width=1100,height=760");
     if (!_ideWin) { alert("La fenêtre IDE a été bloquée — autorise les pop-ups pour ce site."); return null; }
-    const CM = "https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16";
-    const modes = ["mode/meta","mode/python/python","mode/javascript/javascript","mode/xml/xml",
-        "mode/css/css","mode/htmlmixed/htmlmixed","mode/markdown/markdown","mode/shell/shell",
-        "mode/clike/clike","mode/yaml/yaml","addon/edit/closebrackets","addon/edit/matchbrackets",
-        "addon/hint/show-hint","addon/hint/anyword-hint"];
-    const modeScripts = modes.map(m => '<scr'+'ipt src="'+CM+'/'+m+'.min.js"><\/scr'+'ipt>').join("");
-    const html = '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Athena — IDE</title>'
-      + '<link rel="stylesheet" href="'+CM+'/codemirror.min.css">'
-      + '<link rel="stylesheet" href="'+CM+'/theme/material-darker.min.css">'
-      + '<link rel="stylesheet" href="'+CM+'/addon/hint/show-hint.min.css">'
-      + '<style>html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:#0f1320;color:#cfe;}'
-      + '#wrap{display:flex;height:100vh;}#tree{width:240px;flex-shrink:0;overflow:auto;border-right:1px solid #234;padding:6px;font-size:13px;}'
-      + '#main{flex:1;display:flex;flex-direction:column;min-width:0;}'
-      + '#tabs{display:flex;gap:2px;overflow-x:auto;background:#0b0e18;padding:4px 4px 0;}'
-      + '.tab{padding:4px 8px;border-radius:6px 6px 0 0;cursor:pointer;white-space:nowrap;font-size:12px;background:#172033;display:flex;gap:6px;align-items:center;}'
-      + '.tab.act{background:#0d2a33;border:1px solid #0af4;border-bottom:none;}'
-      + '#bar{display:flex;gap:8px;align-items:center;padding:4px 8px;background:#0b0e18;font-size:12px;}'
-      + '#bar button{background:#0af3;color:#fff;border:1px solid #0af6;border-radius:5px;padding:3px 10px;cursor:pointer;}'
-      + '.CodeMirror{flex:1;height:auto;}.f{padding:2px 4px;cursor:pointer;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.f:hover{background:#1c2740;}'
-      + '</style></head><body><div id="wrap"><div id="tree">…</div><div id="main">'
-      + '<div id="bar"><strong>🛠️ IDE</strong><span id="proj" style="opacity:.6;"></span><span style="flex:1"></span><span id="stat" style="opacity:.7;"></span><button id="save">💾 Enregistrer (Ctrl+S)</button><button id="refresh">🔄</button></div>'
-      + '<div id="tabs"></div><div id="host" style="flex:1;display:flex;"></div></div></div>'
-      + '<scr'+'ipt>window.__TOKEN='+JSON.stringify(token)+';window.__API='+JSON.stringify(api)+';window.__PID='+JSON.stringify(pid)+';<\/scr'+'ipt>'
-      + '<scr'+'ipt src="'+CM+'/codemirror.min.js"><\/scr'+'ipt>' + modeScripts
-      + '<scr'+'ipt>' + _ideWindowApp() + '<\/scr'+'ipt></body></html>';
-    _ideWin.document.open(); _ideWin.document.write(html); _ideWin.document.close();
-    _ideWin.__pid = pid;
     return _ideWin;
-}
-
-// Code (chaîne) de l'application éditeur injectée DANS la fenêtre IDE.
-function _ideWindowApp() {
-    return [
-"(function(){",
-"var API=window.__API, TOKEN=window.__TOKEN, PID=window.__PID;",
-"function H(){var h={'Content-Type':'application/json'}; if(TOKEN) h['Authorization']='Bearer '+TOKEN; return h;}",
-"function q(){return PID?('&project_id='+encodeURIComponent(PID)):'';}",
-"function mode(p){var e=(p.split('.').pop()||'').toLowerCase();var m={py:'python',js:'javascript',mjs:'javascript',json:{name:'javascript',json:true},html:'htmlmixed',htm:'htmlmixed',xml:'xml',css:'css',md:'markdown',sh:'shell',bash:'shell',yml:'yaml',yaml:'yaml',c:'text/x-csrc',cpp:'text/x-c++src',h:'text/x-csrc',java:'text/x-java',go:'text/x-go',rs:'text/x-rustsrc'};return m[e]||null;}",
-"var host=document.getElementById('host');",
-"var cm=CodeMirror(host,{lineNumbers:true,theme:'material-darker',autoCloseBrackets:true,matchBrackets:true,indentUnit:4,extraKeys:{'Ctrl-Space':function(c){c.showHint({hint:CodeMirror.hint.anyword,completeSingle:false});},'Ctrl-S':function(){saveActive();},'Cmd-S':function(){saveActive();}}});",
-"cm.setSize('100%','100%');",
-"var cmEl=cm.getWrapperElement();cmEl.style.flex='1';",
-"var prevEl=document.createElement('div');prevEl.style.cssText='flex:1;overflow:auto;display:none;';host.appendChild(prevEl);",
-"function fkind(p){var e=(p.split('.').pop()||'').toLowerCase();if(e==='pdf')return 'pdf';if(['png','jpg','jpeg','gif','webp','svg','bmp','ico'].indexOf(e)>=0)return 'image';if(['zip','tar','gz','tgz','exe','bin','so','dll','o','class','jar','woff','woff2','ttf','otf','mp3','mp4','mov','wav','ogg','webm','wasm'].indexOf(e)>=0)return 'binary';return 'text';}",
-"function renderPrev(p,t){if(t.kind==='image')prevEl.innerHTML='<div style=\"padding:12px;text-align:center;\"><img src=\"'+t._url+'\" style=\"max-width:100%;height:auto;\"></div>';else if(t.kind==='pdf')prevEl.innerHTML='<iframe src=\"'+t._url+'\" style=\"width:100%;height:100%;border:0;background:#fff;\"></iframe>';else prevEl.innerHTML='<div style=\"padding:14px;opacity:.75;\">Fichier binaire — <a style=\"color:#7aa2ff;\" href=\"'+t._url+'\" download=\"'+p.split('/').pop()+'\">télécharger</a></div>';}",
-"function showPreview(p,t){if(t._url){renderPrev(p,t);return;}prevEl.innerHTML='<div style=\"padding:14px;opacity:.6;\">Aperçu…</div>';fetch(API+'/api/workspace/download?path='+encodeURIComponent(p)+q(),{headers:H()}).then(function(r){return r.blob();}).then(function(b){if(t.kind==='image'){var e=(p.split('.').pop()||'').toLowerCase();var mm={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',bmp:'image/bmp',ico:'image/x-icon'}[e];if(mm&&!b.type)b=new Blob([b],{type:mm});}else if(t.kind==='pdf'){b=new Blob([b],{type:'application/pdf'});}if(t._url){try{URL.revokeObjectURL(t._url);}catch(e){}}t._url=URL.createObjectURL(b);if(active!==p)return;renderPrev(p,t);}).catch(function(e){prevEl.innerHTML='<div style=\"padding:14px;color:#ff5b89;\">Aperçu indisponible: '+e+'</div>';});}",
-"var tabs={}, active=null;",
-"cm.on('change',function(){var t=active&&tabs[active]; if(t&&!t._l&&!t.dirty){t.dirty=true; renderTabs();}});",
-"document.getElementById('proj').textContent = PID? ('· projet '+PID) : '· projet courant';",
-"function setStat(s){document.getElementById('stat').textContent=s||''; if(s) setTimeout(function(){document.getElementById('stat').textContent='';},2500);}",
-"function renderTabs(){var bar=document.getElementById('tabs');bar.innerHTML='';Object.keys(tabs).forEach(function(p){var d=document.createElement('div');d.className='tab'+(p===active?' act':'');var n=document.createElement('span');n.textContent=(tabs[p].dirty?'● ':'')+p.split('/').pop();n.onclick=function(){activate(p);};var x=document.createElement('span');x.textContent='×';x.onclick=function(e){e.stopPropagation();closeTab(p);};d.appendChild(n);d.appendChild(x);bar.appendChild(d);});}",
-"function activate(p){var t=tabs[p];if(!t)return;active=p;if(t.kind&&t.kind!=='text'){cmEl.style.display='none';prevEl.style.display='block';showPreview(p,t);renderTabs();return;}prevEl.style.display='none';cmEl.style.display='';t._l=true;cm.swapDoc(t.doc);t._l=false;renderTabs();setTimeout(function(){cm.refresh();},0);}",
-"function closeTab(p){var t=tabs[p];if(t&&t.dirty&&!confirm('Modifs non enregistrées. Fermer ?'))return;if(t&&t._url){try{URL.revokeObjectURL(t._url);}catch(e){}}delete tabs[p];if(active===p){var k=Object.keys(tabs);active=null;if(k.length)activate(k[k.length-1]);else{cm.swapDoc(CodeMirror.Doc(''));renderTabs();}}else renderTabs();}",
-"function openFile(p){if(tabs[p]){activate(p);return;}var k=fkind(p);if(k!=='text'){tabs[p]={kind:k,dirty:false};activate(p);return;}fetch(API+'/api/workspace/file?path='+encodeURIComponent(p)+q(),{headers:H()}).then(function(r){return r.json();}).then(function(d){if(d.detail){setStat('⚠️ '+d.detail);return;}tabs[p]={kind:'text',doc:CodeMirror.Doc(d.content,mode(p)),mtime:d.mtime||0,dirty:false};activate(p);}).catch(function(e){setStat('⚠️ '+e);});}",
-"function saveActive(){if(!active)return;var t=tabs[active];if(t&&t.kind&&t.kind!=='text'){setStat('Aperçu — non éditable');return;}fetch(API+'/api/workspace/file',{method:'POST',headers:H(),body:JSON.stringify({path:active,content:cm.getValue(),project_id:PID||undefined})}).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}).then(function(x){if(x.ok){t.dirty=false;t.mtime=x.d.mtime||t.mtime;renderTabs();setStat('💾 enregistré');}else setStat('❌ '+(x.d.detail||'échec'));}).catch(function(e){setStat('❌ '+e);});}",
-"function loadTree(){fetch(API+'/api/workspace/files'+(PID?('?project_id='+encodeURIComponent(PID)):''),{headers:H()}).then(function(r){return r.json();}).then(function(files){var box=document.getElementById('tree');if(!Array.isArray(files)||!files.length){box.innerHTML='<div style=opacity:.5>Projet vide.</div>';return;}box.innerHTML='';files.forEach(function(f){var d=document.createElement('div');d.className='f';d.textContent='📄 '+f.path;d.title=f.path;d.onclick=function(){openFile(f.path);};box.appendChild(d);});}).catch(function(){});}",
-"document.getElementById('save').onclick=saveActive;",
-"document.getElementById('refresh').onclick=loadTree;",
-"window.openFileInIde=openFile;",
-"window.setIdeProject=function(p){PID=p||'';window.__PID=PID;document.getElementById('proj').textContent=PID?('· projet '+PID):'· projet courant';loadTree();};",
-"loadTree();",
-"setInterval(loadTree,5000);",  // auto-refresh de l'arbre dans la fenêtre IDE
-"})();"
-    ].join("\n");
 }
 
 // Auto-refresh de l'arborescence DANS la console (pendant que la vue console est active).

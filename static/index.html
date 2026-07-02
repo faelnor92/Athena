@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <!-- VERROU AUTH PRÉ-RENDU : si aucune session, on force l'overlay de login AVANT la 1re peinture
          (sinon l'app s'affiche brièvement avant que app.js, en bas du body, ne l'affiche). -->
-    <script>try{if(!localStorage.getItem('athena_session_token'))document.documentElement.classList.add('needs-login');}catch(e){}</script>
+    <script src="boot.js?v=20260702_csp1"></script>
     <style>html.needs-login #login-overlay{display:flex!important}</style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>__APP_NAME__ - Dashboard Multi-Agent & Bureau Virtuel</title>
@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="__APP_NAME__">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
-    <link rel="stylesheet" href="style.css?v=20260616_setD2">
+    <link rel="stylesheet" href="style.css?v=20260702_csp1">
 
     <!-- Open Space 2.0 : bureau isométrique (doit venir après style.css) -->
     <link rel="stylesheet" href="office.css?v=20260609_os6">
@@ -142,7 +142,7 @@
                         </svg>
                     </span>
                     <div class="logo-text">
-                        <h1 class="logo-title" style="cursor:pointer;" title="Retour à l'accueil (Open Space)" onclick="document.getElementById('tab-office')?.click()">__APP_NAME_UPPER__</h1>
+                        <h1 class="logo-title" id="logo-home" style="cursor:pointer;" title="Retour à l'accueil (Open Space)">__APP_NAME_UPPER__</h1>
                         <span class="logo-subtitle">OPEN SPACE • <span id="top-agent-count">5</span> AGENTS</span>
                     </div>
                 </div>
@@ -424,7 +424,7 @@
                                     
                                     <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; margin-top: 12px;">
                                         <h5 style="margin: 0 0 8px 0; color: var(--color-Codeur); font-size: 0.85rem;">➕ Ajouter un Élément</h5>
-                                        <form id="list-item-add-form" onsubmit="event.preventDefault(); submitNewListItem();" style="display: flex; flex-direction: column; gap: 8px;">
+                                        <form id="list-item-add-form" style="display: flex; flex-direction: column; gap: 8px;">
                                             <input type="text" id="list-item-input" required placeholder="ex: Acheter du lait, Bug fix..." class="list-item-textbox">
                                             <button type="submit" class="btn btn-primary" style="padding: 8px; border-radius: 6px; font-weight: bold; margin-top: 4px;">➕ Ajouter</button>
                                         </form>
@@ -728,13 +728,13 @@
             
             <!-- Chat history and active conversation manager -->
             <div class="chat-history-controls" style="display: flex; gap: 8px; margin: 12px 16px 8px 16px; padding: 4px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;">
-                <button id="btn-new-chat" class="glass" style="flex: 1; padding: 8px 6px; font-size: 0.72rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; font-weight: bold; transition: all 0.2s;" title="Nouvelle discussion" onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.borderColor='rgba(255,255,255,0.3)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.borderColor='rgba(255,255,255,0.1)'">
+                <button id="btn-new-chat" class="glass" style="flex: 1; padding: 8px 6px; font-size: 0.72rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; font-weight: bold; transition: all 0.2s;" title="Nouvelle discussion">
                     ➕ Nouveau
                 </button>
                 <select id="select-conversations" style="flex: 2; padding: 8px; font-size: 0.75rem; border-radius: 6px; background: rgba(0,0,0,0.5); color: #fff; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; outline: none; transition: border-color 0.2s;">
                     <option value="default">Discussion principale</option>
                 </select>
-                <button id="btn-delete-chat" class="glass" style="padding: 8px 10px; font-size: 0.72rem; border-radius: 6px; border: 1px solid rgba(255,85,85,0.2); background: rgba(255,85,85,0.05); color: #ff5555; cursor: pointer; transition: all 0.2s;" title="Supprimer cette discussion" onmouseover="this.style.background='rgba(255,85,85,0.2)'; this.style.borderColor='rgba(255,85,85,0.5)'" onmouseout="this.style.background='rgba(255,85,85,0.05)'; this.style.borderColor='rgba(255,85,85,0.2)'">
+                <button id="btn-delete-chat" class="glass" style="padding: 8px 10px; font-size: 0.72rem; border-radius: 6px; border: 1px solid rgba(255,85,85,0.2); background: rgba(255,85,85,0.05); color: #ff5555; cursor: pointer; transition: all 0.2s;" title="Supprimer cette discussion">
                     🗑️
                 </button>
             </div>
@@ -1028,7 +1028,7 @@
                                 <label>Fichier Google Credentials JSON</label>
                                 <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
                                     <input type="file" id="agenda-google-file" accept=".json" style="display: none;">
-                                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('agenda-google-file').click()" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px;">Choisir JSON...</button>
+                                    <button type="button" id="btn-agenda-google-pick" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px;">Choisir JSON...</button>
                                     <span id="agenda-google-status" style="font-size: 0.8rem; opacity: 0.7;">Clé absente ❌</span>
                                 </div>
                             </div>
@@ -1105,8 +1105,8 @@
                             <p style="font-size:0.74rem; opacity:0.6; margin-top:4px;">Indispensable si ton Nextcloud/Home Assistant est sur une IP privée (homelab) : sinon l'anti-SSRF bloque l'accès. Réglage global ; la métadonnée cloud reste toujours bloquée.</p>
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap;">
-                            <button type="button" class="btn btn-primary" style="padding:8px 16px; font-weight:bold;" onclick="saveNextcloudConfig()">Enregistrer Nextcloud</button>
-                            <button type="button" class="btn btn-secondary" style="padding:8px 16px;" onclick="testNextcloudConfig()">Tester la connexion</button>
+                            <button type="button" id="btn-nc-save" class="btn btn-primary" style="padding:8px 16px; font-weight:bold;">Enregistrer Nextcloud</button>
+                            <button type="button" id="btn-nc-test" class="btn btn-secondary" style="padding:8px 16px;">Tester la connexion</button>
                             <span id="nc-status" style="font-size:0.82rem;"></span>
                         </div>
                     </div>
@@ -1549,8 +1549,8 @@
                         </label>
                     </div>
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                        <button type="button" class="btn btn-primary" style="padding:8px 16px;font-weight:bold;" onclick="saveProxmoxConfig()">Enregistrer</button>
-                        <button type="button" class="btn btn-secondary" style="padding:8px 16px;" onclick="testProxmoxConfig()">Tester la connexion</button>
+                        <button type="button" id="btn-px-save" class="btn btn-primary" style="padding:8px 16px;font-weight:bold;">Enregistrer</button>
+                        <button type="button" id="btn-px-test" class="btn btn-secondary" style="padding:8px 16px;">Tester la connexion</button>
                         <span id="px-status" style="font-size:0.82rem;"></span>
                     </div>
                     <p style="font-size:0.74rem;opacity:0.6;margin-top:10px;">⚠️ Proxmox en IP privée : ajoute son hôte à <code>NET_GUARD_ALLOW_HOSTS</code> (onglet Nextcloud) pour l'anti-SSRF. Les actions (démarrer/arrêter) sont toujours soumises à <strong>validation</strong>.</p>
@@ -1589,14 +1589,14 @@
                         <label for="ev-token">Jeton d'ingress (à mettre dans tes outils de supervision)</label>
                         <div style="display:flex;gap:8px;">
                             <input type="text" id="ev-token" placeholder="laisser vide = inchangé" style="flex-grow:1;padding:8px;border-radius:4px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.2);color:#fff;">
-                            <button type="button" class="btn btn-secondary" style="padding:8px 12px;" onclick="document.getElementById('ev-token').value=Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)">🎲 Générer</button>
+                            <button type="button" id="btn-ev-gen" class="btn btn-secondary" style="padding:8px 12px;">🎲 Générer</button>
                         </div>
                         <p style="font-size:0.74rem;opacity:0.6;margin-top:4px;">Tes sources poussent : <code>POST /api/events</code> (en-tête <code>X-Event-Token</code>) avec <code>{type, source, severity, message}</code>.</p>
                     </div>
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                        <button type="button" class="btn btn-primary" style="padding:8px 16px;font-weight:bold;" onclick="saveEventsConfig()">Enregistrer</button>
-                        <button type="button" class="btn btn-secondary" style="padding:8px 16px;" onclick="testEvent()">Émettre un test</button>
-                        <button type="button" class="btn btn-secondary" style="padding:8px 16px;" onclick="loadRecentEvents()">↻ Journal</button>
+                        <button type="button" id="btn-ev-save" class="btn btn-primary" style="padding:8px 16px;font-weight:bold;">Enregistrer</button>
+                        <button type="button" id="btn-ev-test" class="btn btn-secondary" style="padding:8px 16px;">Émettre un test</button>
+                        <button type="button" id="btn-ev-log" class="btn btn-secondary" style="padding:8px 16px;">↻ Journal</button>
                         <span id="ev-status" style="font-size:0.82rem;"></span>
                     </div>
                     <div id="ev-recent" style="margin-top:12px;font-size:0.8rem;display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;"></div>
@@ -1875,28 +1875,28 @@
             
             <div style="display: flex; flex-direction: column; gap: 8px; text-align: left;">
                 <label for="login-username" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4);">Utilisateur <span style="opacity:0.5;">(vide = admin)</span></label>
-                <input type="text" id="login-username" placeholder="nom d'utilisateur" autocomplete="username" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; outline: none; transition: all 0.2s;" onkeydown="if(event.key==='Enter') submitLogin()">
+                <input type="text" id="login-username" placeholder="nom d'utilisateur" autocomplete="username" class="login-enter-submit" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; outline: none; transition: all 0.2s;">
                 <label for="login-password" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4); margin-top: 4px;">Mot de passe</label>
-                <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; outline: none; transition: all 0.2s;" onkeydown="if(event.key==='Enter') submitLogin()">
+                <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" class="login-enter-submit" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; outline: none; transition: all 0.2s;">
             </div>
 
             <div id="login-totp-row" style="display: none; flex-direction: column; gap: 4px;">
                 <label for="login-totp" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.4);">Code 2FA</label>
-                <input type="text" id="login-totp" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="6" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; letter-spacing: 0.2em; text-align: center; outline: none;" onkeydown="if(event.key==='Enter') submitLogin()">
+                <input type="text" id="login-totp" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="6" class="login-enter-submit" style="width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.95rem; letter-spacing: 0.2em; text-align: center; outline: none;">
             </div>
 
             <div id="login-error" style="display: none; color: #ff5555; font-size: 0.8rem; text-align: center; font-weight: 500;">❌ Mot de passe incorrect.</div>
             
-            <button onclick="submitLogin()" class="btn btn-primary" style="width: 100%; padding: 11px; font-size: 0.9rem; border-radius: 6px; font-weight: 600;">
+            <button id="btn-login-submit" class="btn btn-primary" style="width: 100%; padding: 11px; font-size: 0.9rem; border-radius: 6px; font-weight: 600;">
                 Se connecter
             </button>
 
-            <button id="btn-sso-login" onclick="ssoLogin()" style="display: none; width: 100%; padding: 10px; font-size: 0.85rem; border-radius: 6px; margin-top: 6px; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.2); cursor: pointer;">
+            <button id="btn-sso-login" style="display: none; width: 100%; padding: 10px; font-size: 0.85rem; border-radius: 6px; margin-top: 6px; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.2); cursor: pointer;">
                 🔐 Se connecter avec le SSO
             </button>
 
             <div style="text-align: center; font-size: 0.78rem; margin-top: 10px;">
-                <a href="#" onclick="toggleRegister(); return false;" style="color: rgba(255,255,255,0.55); text-decoration: none;">J'ai un code d'invitation →</a>
+                <a href="#" id="link-register-toggle" style="color: rgba(255,255,255,0.55); text-decoration: none;">J'ai un code d'invitation →</a>
             </div>
 
             <div id="register-box" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
@@ -1904,7 +1904,7 @@
                 <input type="text" id="reg-username" placeholder="Nom d'utilisateur souhaité" autocomplete="username" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.9rem; outline: none;">
                 <input type="password" id="reg-password" placeholder="Mot de passe (min. 4)" autocomplete="new-password" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.4); color: #fff; font-size: 0.9rem; outline: none;">
                 <div id="register-error" style="display: none; color: #ff5555; font-size: 0.8rem; text-align: center;"></div>
-                <button onclick="submitRegister()" class="btn btn-primary" style="width: 100%; padding: 9px; font-size: 0.85rem; border-radius: 6px;">Créer mon compte</button>
+                <button id="btn-register-submit" class="btn btn-primary" style="width: 100%; padding: 9px; font-size: 0.85rem; border-radius: 6px;">Créer mon compte</button>
             </div>
         </div>
     </div>
@@ -1958,16 +1958,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260627_satled"></script>
+    <script src="app.js?v=20260702_csp1"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
-    <script>
-        // Enregistrement du service worker (PWA installable).
-        if ("serviceWorker" in navigator) {
-            window.addEventListener("load", () => {
-                navigator.serviceWorker.register("/sw.js").catch(() => {});
-            });
-        }
-    </script>
+    <!-- Câblage des interactions (CSP stricte : plus d'attributs onclick inline).
+         Contient aussi l'enregistrement du service worker (PWA). -->
+    <script src="bindings.js?v=20260702_csp1"></script>
 </body>
 </html>
