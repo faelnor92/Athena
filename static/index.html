@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="__APP_NAME__">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
-    <link rel="stylesheet" href="style.css?v=20260702_csp1">
+    <link rel="stylesheet" href="style.css?v=20260702_ui2">
 
     <!-- Open Space 2.0 : bureau isométrique (doit venir après style.css) -->
     <link rel="stylesheet" href="office.css?v=20260609_os6">
@@ -811,6 +811,9 @@
             
             <div class="modal-layout">
             <div class="modal-tabs">
+                <input type="search" id="settings-global-search" placeholder="🔎 Chercher un réglage…"
+                       title="Cherche dans TOUS les onglets — ceux qui contiennent le terme restent allumés"
+                       style="width: calc(100% - 8px); box-sizing: border-box; margin: 0 4px 8px; padding: 7px 9px; font-size: 0.8rem; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; outline: none;">
                 <div class="modal-tab-group" data-i18n="group.agents">Agents</div>
                 <button class="modal-tab-btn active" id="modal-tab-agents" data-i18n="tab.agents">👤 Agents</button>
                 <div class="modal-tab-group" data-i18n="group.connections">Connexions</div>
@@ -1412,6 +1415,29 @@
                         <div id="tts-voice-status" style="font-size:0.76rem;opacity:0.75;"></div>
                     </div>
 
+                    <!-- Réglages STT (reconnaissance vocale Whisper) -->
+                    <div style="margin: 8px 0 12px; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px;">
+                        <div style="font-weight: 500; margin-bottom: 6px;">Reconnaissance vocale (STT Whisper) <span class="ath-restart-badge" title="Pris en compte au redémarrage du serveur vocal">⟳ redémarrage</span></div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <label style="font-size:0.76rem; opacity:0.8; flex:1; min-width:140px;">Modèle
+                                <select id="stt-model" style="width:100%; margin-top:3px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.15); color:#fff; border-radius:6px; padding:6px;">
+                                    <option value="tiny">tiny (le plus léger)</option><option value="base">base</option>
+                                    <option value="small" selected>small (bon compromis)</option><option value="medium">medium</option>
+                                    <option value="large-v3">large-v3 (le plus précis, GPU conseillé)</option>
+                                </select></label>
+                            <label style="font-size:0.76rem; opacity:0.8; flex:1; min-width:110px;">Matériel
+                                <select id="stt-device" style="width:100%; margin-top:3px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.15); color:#fff; border-radius:6px; padding:6px;">
+                                    <option value="auto" selected>Auto</option><option value="cpu">CPU</option><option value="cuda">GPU (CUDA)</option>
+                                </select></label>
+                            <label style="font-size:0.76rem; opacity:0.8; flex:1; min-width:100px;">Langue
+                                <input id="stt-language" type="text" placeholder="fr (vide = auto)" style="width:100%; box-sizing:border-box; margin-top:3px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.15); color:#fff; border-radius:6px; padding:6px;"></label>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+                            <button type="button" id="btn-stt-save" class="btn btn-primary" style="padding:7px 12px;">💾 Enregistrer le STT</button>
+                            <span id="stt-status" style="font-size:0.76rem;opacity:0.75;"></span>
+                        </div>
+                    </div>
+
                     <details style="margin: 6px 0 12px; font-size: 0.8rem; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px;">
                         <summary style="cursor: pointer; color: var(--accent-cyan);">Comment connecter un ESP (et obtenir la clé) ?</summary>
                         <ol style="margin: 8px 0 0; padding-left: 18px; line-height: 1.5;">
@@ -1672,6 +1698,21 @@
                         <button type="button" id="btn-create-invite" class="btn btn-secondary" style="white-space: nowrap; font-size: 0.8rem;">+ Inviter</button>
                     </div>
                     <div id="invites-list" style="display: flex; flex-direction: column; gap: 6px; margin: 8px 0; max-height: 160px; overflow-y: auto;"></div>
+
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
+                    <div id="oidc-section">
+                        <h5 style="color: var(--accent-cyan); margin: 8px 0;">🌐 Connexion SSO (OIDC)</h5>
+                        <p class="section-desc">Optionnel : bouton « Se connecter avec le SSO » (Google, Keycloak, Authentik…). Il apparaît sur l'écran de connexion dès que l'émetteur + le client sont renseignés. Chez ton fournisseur, déclare cette URL de redirection : <code id="oidc-callback-hint">…/api/auth/oidc/callback</code></p>
+                        <div class="form-group"><label>Émetteur (issuer)</label><input id="oidc-issuer" type="text" placeholder="ex: https://accounts.google.com ou https://kc.exemple/realms/foyer"></div>
+                        <div class="form-group"><label>Client ID</label><input id="oidc-client-id" type="text" placeholder="ID du client OAuth créé chez le fournisseur"></div>
+                        <div class="form-group"><label>Client Secret</label><input id="oidc-client-secret" type="password" placeholder="laisser vide = inchangé"></div>
+                        <div class="form-group"><label>URL de redirection <span style="opacity:.6">(vide = déduite automatiquement)</span></label><input id="oidc-redirect" type="text" placeholder="ex: https://athena.mondomaine.fr/api/auth/oidc/callback"></div>
+                        <div class="form-group"><label>Scopes <span style="opacity:.6">(défaut : openid email profile)</span></label><input id="oidc-scopes" type="text" placeholder="openid email profile"></div>
+                        <div class="form-group"><label>Emails promus administrateur <span style="opacity:.6">(séparés par des virgules)</span></label><input id="oidc-admin-emails" type="text" placeholder="ex: moi@gmail.com"></div>
+                        <div class="form-group"><label>Rôle par défaut des nouveaux comptes SSO</label><select id="oidc-default-role"><option value="user">Utilisateur</option><option value="admin">Administrateur</option></select></div>
+                        <button type="button" id="btn-save-oidc" class="btn btn-primary" style="width: 100%;">💾 Enregistrer le SSO</button>
+                        <div id="oidc-status" style="text-align: center; margin-top: 6px; font-size: 0.8rem; opacity: 0.7;"></div>
+                    </div>
 
                     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 14px 0;">
                     <h5 style="color: var(--accent-cyan); margin: 8px 0;">🔑 Mon mot de passe</h5>
@@ -1969,7 +2010,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260702_runs1"></script>
+    <script src="app.js?v=20260702_ui2"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <!-- Câblage des interactions (CSP stricte : plus d'attributs onclick inline).

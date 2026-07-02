@@ -2685,3 +2685,13 @@ code[class*="language-"] {
    !important : ces boutons portent leur état de base en style inline. */
 #btn-new-chat:hover { background: rgba(255,255,255,0.15) !important; border-color: rgba(255,255,255,0.3) !important; }
 #btn-delete-chat:hover { background: rgba(255,85,85,0.2) !important; border-color: rgba(255,85,85,0.5) !important; }
+
+/* Badge « redémarrage requis » sur les réglages concernés (panneau Comportement). */
+.ath-restart-badge {
+    display: inline-block; font-size: 0.62rem; padding: 1px 6px; border-radius: 8px;
+    background: rgba(255, 184, 108, 0.15); border: 1px solid rgba(255, 184, 108, 0.4);
+    color: #ffb86c; vertical-align: middle; margin-left: 4px; white-space: nowrap;
+}
+
+/* Recherche globale des réglages : onglets sans résultat grisés. */
+.modal-tab-btn.search-miss { opacity: 0.25; }

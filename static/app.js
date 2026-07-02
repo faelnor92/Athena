@@ -3377,6 +3377,42 @@ if (modalTabPricing && panePricing) {
 }
 
 // -------------------------------------------------------------------------
+// RECHERCHE GLOBALE des réglages : cherche dans le CONTENU de tous les onglets
+// (les panneaux sont dans le DOM même masqués) + dans le schéma Comportement
+// (labels/aides/clés .env). Les onglets sans résultat sont grisés ; ouvrir
+// « Comportement » avec une recherche active pré-remplit son filtre local.
+// -------------------------------------------------------------------------
+let _settingsGlobalQuery = "";
+const _settingsGlobalSearch = document.getElementById("settings-global-search");
+if (_settingsGlobalSearch) {
+    _settingsGlobalSearch.addEventListener("input", () => {
+        const q = _settingsGlobalSearch.value.trim().toLowerCase();
+        _settingsGlobalQuery = q;
+        document.querySelectorAll(".modal-tab-btn").forEach(btn => {
+            const paneId = btn.id.replace("modal-tab-", "pane-");
+            const pane = document.getElementById(paneId);
+            let match = !q;
+            if (q) {
+                if (pane && (pane.textContent || "").toLowerCase().includes(q)) match = true;
+                if (!match && (btn.textContent || "").toLowerCase().includes(q)) match = true;
+                // Le panneau Comportement est généré à l'ouverture → on cherche dans son schéma.
+                if (!match && paneId === "pane-behavior") {
+                    match = BEHAVIOR_SCHEMA.some(g => g.fields.some(f =>
+                        (f.label + " " + (f.help || "") + " " + f.key).toLowerCase().includes(q)));
+                }
+            }
+            btn.classList.toggle("search-miss", q && !match);
+        });
+        // Si l'onglet Comportement est déjà ouvert, répercute la recherche sur son filtre local.
+        const localSearch = document.querySelector("#behavior-fields .ath-settings-search");
+        if (localSearch && document.getElementById("pane-behavior")?.style.display !== "none") {
+            localSearch.value = q;
+            localSearch.dispatchEvent(new Event("input"));
+        }
+    });
+}
+
+// -------------------------------------------------------------------------
 // ONGLET : COMPORTEMENT & SÉCURITÉ (réglages data-driven, écrits dans .env)
 // -------------------------------------------------------------------------
 const BEHAVIOR_SCHEMA = [
@@ -3390,14 +3426,38 @@ const BEHAVIOR_SCHEMA = [
     ]},
     { section: "Sécurité", icon: "🔒", fields: [
         { key: "AUTO_APPROVE_SENSITIVE", label: "Auto-approuver les actions sensibles", help: "Si activé, Athena exécute les actions risquées (shell, suppression…) SANS te demander. Déconseillé.", type: "toggle", def: "false" },
-        { key: "SENSITIVE_TOOLS", label: "Liste des outils sensibles", help: "Outils nécessitant une confirmation (séparés par des virgules). Vide = liste par défaut.", type: "text", def: "" },
+        { key: "SENSITIVE_TOOLS", label: "Liste des outils sensibles", help: "Outils nécessitant une confirmation (séparés par des virgules). Vide = liste par défaut sûre ; « none » = tout désactiver (déconseillé).", type: "text", def: "" },
+        { key: "APPROVAL_TIMEOUT", label: "Délai d'approbation (s)", help: "Temps laissé pour confirmer une action sensible (Telegram/web) avant abandon.", type: "number", def: "600" },
+        { key: "APPROVAL_ASYNC", label: "Approbations à distance (Telegram)", help: "Les demandes de confirmation partent aussi sur Telegram/Matrix quand tu n'es pas devant l'écran.", type: "toggle", def: "true" },
+        { key: "ADMIN_ONLY_TOOLS", label: "Outils réservés à l'admin", help: "Outils interdits aux comptes « user » (séparés par des virgules). Vide = aucun.", type: "text", def: "" },
         { key: "ADMIN_PASSWORD", label: "Mot de passe administrateur", help: "Protège l'accès quand Athena est exposée sur le réseau. Vide = pas de mot de passe.", type: "password", def: "" },
-        { key: "HOST", label: "Interface d'écoute", help: "127.0.0.1 = accessible seulement sur cette machine. 0.0.0.0 = accessible depuis le réseau local.", type: "text", def: "0.0.0.0" },
-        { key: "PORT", label: "Port réseau", help: "Port sur lequel Athena répond (défaut 8000).", type: "number", def: "8000" },
+        { key: "HOST", label: "Interface d'écoute", help: "127.0.0.1 = accessible seulement sur cette machine. 0.0.0.0 = accessible depuis le réseau local.", type: "text", def: "0.0.0.0", restart: true },
+        { key: "PORT", label: "Port réseau", help: "Port sur lequel Athena répond (défaut 8000).", type: "number", def: "8000", restart: true },
         { key: "ALLOWED_ORIGINS", label: "Origines web autorisées (CORS)", help: "Sites autorisés à appeler l'API (séparés par des virgules). Vide = usage local.", type: "text", def: "" },
-        { key: "SESSION_TTL_HOURS", label: "Durée d'une connexion", help: "Au bout de combien d'heures il faut se reconnecter.", type: "number", def: "168" },
+        { key: "SESSION_TTL_HOURS", label: "Connexion : fenêtre d'inactivité (h)", help: "La session se prolonge tant que tu utilises Athena ; sans activité pendant N heures, il faut se reconnecter.", type: "number", def: "168", restart: true },
+        { key: "SESSION_ABSOLUTE_HOURS", label: "Connexion : durée maximale (h)", help: "Plafond absolu d'une session depuis le login, même utilisée en continu (défaut 30 jours).", type: "number", def: "720", restart: true },
+        { key: "LOGIN_MAX_FAILS", label: "Anti-brute-force : échecs max", help: "Nombre d'échecs de connexion par IP avant blocage temporaire.", type: "number", def: "8", restart: true },
+        { key: "LOGIN_WINDOW_SECONDS", label: "Anti-brute-force : fenêtre (s)", help: "Durée de la fenêtre de comptage des échecs (et du blocage).", type: "number", def: "300", restart: true },
+        { key: "MIN_PASSWORD_LENGTH", label: "Longueur minimale des mots de passe", help: "Pour les comptes créés/modifiés dans Athena.", type: "number", def: "8", restart: true },
+        { key: "MAX_UPLOAD_MB", label: "Taille max d'un fichier envoyé (Mo)", help: "Limite des uploads (documents, images).", type: "number", def: "50" },
+        { key: "RATE_LIMIT_PER_MIN", label: "Requêtes API max /min/IP", help: "Garde-fou général anti-abus. 0 = désactivé.", type: "number", def: "300", restart: true },
+        { key: "LLM_RATE_LIMIT_PER_MIN", label: "Requêtes IA max /min/compte", help: "Limite les appels qui consomment du LLM (anti déni-de-portefeuille si un compte est compromis). 0 = désactivé.", type: "number", def: "60" },
         { key: "TELEGRAM_REQUIRE_PAIRING", label: "Pairage Telegram obligatoire", help: "Exige une autorisation avant qu'un compte Telegram puisse parler à Athena.", type: "toggle", def: "true" },
         { key: "ACTIVE_WORKSPACE_DIR", label: "Dossier de travail", help: "Où Athena lit/écrit les fichiers. Vide = dossier « workspace/ ».", type: "text", def: "" },
+    ]},
+    { section: "Fiabilité LLM (timeouts, secours, santé des fournisseurs)", icon: "🛟", fields: [
+        { key: "LLM_REQUEST_TIMEOUT", label: "Timeout par requête LLM (s)", help: "Un endpoint lent échoue vite au lieu de bloquer la réponse plusieurs minutes. 0 = sans limite.", type: "number", def: "180" },
+        { key: "LLM_MAX_TOKENS", label: "Longueur max d'une réponse (tokens)", help: "Plafond de génération par appel LLM.", type: "number", def: "4000" },
+        { key: "STREAM_TOKENS", label: "Réponse en direct (streaming)", help: "Affiche la réponse au fil de l'eau (latence minimale).", type: "toggle", def: "true" },
+        { key: "SWARM_MAX_TURNS", label: "Tours max par requête", help: "Nombre maximal d'étapes de réflexion/outils avant conclusion forcée.", type: "number", def: "20" },
+        { key: "SWARM_REPEAT_LIMIT", label: "Anti-répétition d'outil", help: "Nombre max d'exécutions d'un MÊME appel d'outil identique dans une tâche (anti-boucle). 0 = désactivé.", type: "number", def: "2" },
+        { key: "UTILITY_MODEL", label: "Modèle utilitaire (tâches internes)", help: "Petit modèle pour les micro-décisions internes (résumés, extraction). Vide = modèle rapide, sinon modèle de l'agent.", type: "model", def: "", emptyLabel: "⭐ FAST_MODEL / modèle de l'agent" },
+        { key: "LLM_HEALTH_RL_COOLDOWN", label: "Cooldown après un 429 (s)", help: "Un fournisseur saturé (limite de débit) est écarté ce temps-là — Athena part directement sur un modèle de secours sain.", type: "number", def: "90" },
+        { key: "LLM_HEALTH_COOLDOWN", label: "Cooldown après pannes répétées (s)", help: "Fenêtre d'écartement d'un modèle après plusieurs erreurs consécutives.", type: "number", def: "60" },
+        { key: "LLM_HEALTH_FAILS", label: "Pannes avant écartement", help: "Nombre d'erreurs consécutives avant d'écarter temporairement un modèle.", type: "number", def: "3" },
+        { key: "TOOL_ROUTER", label: "Sélection des outils exposés", help: "« Sémantique » comprend toutes les langues et paraphrases (embeddings) ; « mots-clés » = plus simple, FR/EN seulement.", type: "select", options: [["semantic", "Sémantique + mots-clés (recommandé)"], ["keyword", "Mots-clés seulement"]], def: "semantic" },
+        { key: "TOOL_FILTER_ENABLED", label: "Filtrer les outils par pertinence", help: "N'expose au modèle que les outils utiles à la requête (grosse économie de tokens). Un outil masqué reste exécutable.", type: "toggle", def: "true" },
+        { key: "TOOL_FILTER_MIN", label: "Seuil de déclenchement du filtre", help: "Le filtre ne s'active qu'au-delà de N outils disponibles.", type: "number", def: "20" },
     ]},
     { section: "Comportement d'Athena", icon: "🤖", fields: [
         { key: "AUTO_CONTINUE", label: "Agir sans attendre « vas-y »", help: "Quand Athena annonce une action, elle l'exécute directement (sauf si elle te pose une question).", type: "toggle", def: "true" },
@@ -3423,6 +3483,11 @@ const BEHAVIOR_SCHEMA = [
     { section: "Mémoire", icon: "🧠", fields: [
         { key: "MEMORY_MAX_MESSAGES", label: "Compaction de conversation", help: "Au-delà de N messages, la conversation est résumée pour rester rapide. 0 = jamais.", type: "number", def: "40" },
         { key: "MEMORY_KEEP_RECENT", label: "Messages récents gardés intacts", help: "Combien de messages récents sont conservés mot pour mot lors de la compaction.", type: "number", def: "12" },
+        { key: "GRAPH_AUTO_EXTRACT", label: "Mémoire-graphe : apprendre les faits", help: "Athena retient les faits durables des conversations (relations, préférences, lieux…).", type: "toggle", def: "true" },
+        { key: "GRAPH_CONTEXT_INJECT", label: "Mémoire-graphe : utiliser les faits", help: "Injecte « ce que je sais déjà » de pertinent au début de chaque réponse.", type: "toggle", def: "true" },
+        { key: "GRAPH_FACT_TTL_DAYS", label: "Durée de vie d'un fait (jours)", help: "Un fait jamais re-confirmé pendant N jours s'estompe (archivé, plus resurfacé). Les faits ré-évoqués restent vivants.", type: "number", def: "180" },
+        { key: "GRAPH_CONSOLIDATE_HOURS", label: "Nettoyage de la mémoire (heures)", help: "Fréquence de la consolidation (fusion des doublons, faits périmés). 0 = désactivé.", type: "number", def: "24", restart: true },
+        { key: "GRAPH_MEMORY_MAX", label: "Nombre max de faits", help: "Taille maximale de la mémoire-graphe par utilisateur.", type: "number", def: "5000" },
         { key: "EMBEDDING_PROVIDER", label: "Moteur de recherche mémoire", help: "« Local » marche partout sans config. « Endpoint » = meilleure recherche (ex. bge-m3) si tu as un serveur.", type: "select", def: "local",
           options: [["local", "Local intégré (défaut)"], ["http", "Endpoint (meilleur, ex. bge-m3)"]] },
         { key: "EMBEDDING_MODEL", label: "Modèle d'embedding (si endpoint)", help: "Ex. bge-m3 ou qwen3-embedding. Utilisé seulement avec le moteur « Endpoint ».", type: "text", def: "bge-m3" },
@@ -3430,6 +3495,14 @@ const BEHAVIOR_SCHEMA = [
     ]},
     { section: "Voix", icon: "🔊", fields: [
         { key: "VOICE_EMOTION_TAGS", label: "Voix émotionnelle", help: "Athena colore sa voix selon le ton (joie, empathie…). Le serveur TTS et le choix de la voix se règlent dans Réglages → 🛰️ Satellites (contrôles dédiés : liste de voix, vitesse, test).", type: "toggle", def: "true" },
+        { key: "TTS_CACHE_MAX_MB", label: "Cache audio (Mo)", help: "Les phrases déjà synthétisées sont réutilisées (régénérer un livre audio ne refait que les passages modifiés). 0 = purge quasi immédiate.", type: "number", def: "500" },
+        { key: "RUN_COMPLETED_NOTIFY", label: "Notifier la fin des tâches longues", help: "Prévient (Telegram/webhook) quand une tâche lancée hors du chat en direct (routine, API, page fermée) se termine.", type: "toggle", def: "true" },
+        { key: "RUN_COMPLETED_VOICE_MIN_S", label: "Annonce vocale à partir de (s)", help: "Une tâche vocale plus longue que N secondes est annoncée à sa fin sur le satellite.", type: "number", def: "120" },
+    ]},
+    { section: "Compétences auto-apprises (période d'essai)", icon: "🧪", fields: [
+        { key: "SKILL_MIN_TOOL_CALLS", label: "Seuil d'apprentissage", help: "Une compétence n'est envisagée que pour les tâches substantielles (≥ N appels d'outils) — évite le bruit.", type: "number", def: "5" },
+        { key: "SKILL_CANARY_PROMOTE", label: "Succès avant adoption", help: "Une nouvelle compétence est à l'essai : adoptée définitivement après N usages réels réussis.", type: "number", def: "3" },
+        { key: "SKILL_CANARY_MAX_FAILS", label: "Échecs avant retrait", help: "Une compétence à l'essai qui échoue N fois est écartée automatiquement.", type: "number", def: "3" },
     ]},
     { section: "Vision & écran", icon: "👁️", fields: [
         { key: "COMPUTER_USE", label: "Capture d'écran", help: "Permet à Athena de capturer/analyser l'écran. Inutile sur un serveur sans écran.", type: "toggle", def: "false" },
@@ -3454,6 +3527,10 @@ const BEHAVIOR_SCHEMA = [
         { key: "HABIT_MINING", label: "Suggestions de routines (habitudes)", help: "Athena observe tes requêtes récurrentes à heure régulière et propose de créer des routines (« tu demandes la météo chaque matin → routine 8h ? »).", type: "toggle", def: "true" },
         { key: "CODE_REVIEW", label: "Revue auto du code", help: "Après les tests, le Codeur relit ses modifications (sécurité + qualité) et corrige les points avant de conclure.", type: "toggle", def: "true" },
         { key: "SWARM_VERIFY_SOFT_LIMIT", label: "Plafond de tentatives de vérification", help: "Nombre max de tentatives de test/vérif d'un agent dans une tâche avant conclusion forcée (anti-boucle).", type: "number", def: "8" },
+        { key: "SWARM_ROLLBACK_AFTER_FAILS", label: "Échecs de tests avant retour arrière", help: "Après N échecs de tests consécutifs, le Codeur est invité à annuler ses modifications (snapshot automatique pris avant chaque série d'éditions). 0 = jamais.", type: "number", def: "3" },
+        { key: "SWARM_AUTO_ROLLBACK", label: "Retour arrière AUTOMATIQUE", help: "Au seuil ci-dessus, les éditions sont annulées automatiquement (mode autonome) au lieu d'une simple suggestion.", type: "toggle", def: "false" },
+        { key: "SANDBOX_ALLOW_NETWORK", label: "Réseau dans la sandbox jetable", help: "Autorise l'accès réseau au code exécuté en sandbox Docker (pip install…). Désactivé = isolement maximal.", type: "toggle", def: "false" },
+        { key: "DEV_CONTAINER_NETWORK", label: "Réseau du conteneur dev (projets)", help: "Le conteneur persistant de l'Espace Code (git/pip/npm). « bridge » = accès réseau, « none » = coupé.", type: "select", options: [["bridge", "Avec réseau (bridge)"], ["none", "Sans réseau"]], def: "bridge" },
     ]},
 ];
 
@@ -3533,7 +3610,9 @@ async function loadConfigBehaviorPane() {
             const row = document.createElement("div");
             row.className = "ath-setting-row";
             row.dataset.search = (f.label + " " + (f.help || "") + " " + f.key).toLowerCase();
-            row.innerHTML = `<div class="ath-setting-txt"><div class="ath-setting-label">${f.label}</div>`
+            const restartBadge = f.restart
+                ? ' <span class="ath-restart-badge" title="Ce réglage n\'est pris en compte qu\'après un redémarrage du serveur">⟳ redémarrage</span>' : "";
+            row.innerHTML = `<div class="ath-setting-txt"><div class="ath-setting-label">${f.label}${restartBadge}</div>`
                 + (f.help ? `<div class="ath-setting-help">${f.help}</div>` : "")
                 + `</div><div class="ath-setting-ctrl">${_behaviorFieldControl(f, env)}</div>`;
             body.appendChild(row);
@@ -3541,6 +3620,58 @@ async function loadConfigBehaviorPane() {
         card.appendChild(body);
         container.appendChild(card);
     });
+
+    // ── Mode expert : TOUTES les variables du .env non couvertes par les sections
+    // ci-dessus (longue traîne : timeouts fins, chemins, observabilité…). Éditable
+    // en clé/valeur — les secrets restent masqués (valeur « ab...cd » = inchangée).
+    const covered = new Set();
+    BEHAVIOR_SCHEMA.forEach(g => g.fields.forEach(f => covered.add(f.key)));
+    const expertKeys = Object.keys(env).filter(k => !covered.has(k)).sort();
+    const xCard = document.createElement("div");
+    xCard.className = "ath-settings-card collapsed";
+    const xHdr = document.createElement("div");
+    xHdr.className = "ath-settings-sumr";
+    xHdr.innerHTML = `<span>🧪 Mode expert — autres variables (.env) <span style="opacity:.5;font-size:.75rem;">(${expertKeys.length})</span></span><span class="ath-chev">▾</span>`;
+    xHdr.addEventListener("click", () => xCard.classList.toggle("collapsed"));
+    const xBody = document.createElement("div");
+    xBody.className = "ath-settings-body";
+    const xWarn = document.createElement("div");
+    xWarn.className = "ath-setting-help";
+    xWarn.style.cssText = "padding:6px 0 10px;opacity:.75;";
+    xWarn.textContent = "⚠️ Réglages avancés écrits tels quels dans .env — la plupart sont documentés dans .env.example. Une valeur masquée (ab...cd) reste inchangée si tu n'y touches pas. Certains ne sont lus qu'au démarrage.";
+    xBody.appendChild(xWarn);
+    const _mkExpertRow = (k, v) => {
+        const row = document.createElement("div");
+        row.className = "ath-setting-row";
+        row.dataset.search = k.toLowerCase();
+        const vq = String(v ?? "").replace(/"/g, "&quot;");
+        row.innerHTML = `<div class="ath-setting-txt"><div class="ath-setting-label" style="font-family:monospace;font-size:.78rem;">${escapeHtml(k)}</div></div>`
+            + `<div class="ath-setting-ctrl"><input type="text" class="behavior-input ath-ctrl" data-key="${escapeHtml(k)}" data-type="text" data-expert="1" data-initial="${vq}" value="${vq}"></div>`;
+        return row;
+    };
+    expertKeys.forEach(k => xBody.appendChild(_mkExpertRow(k, env[k])));
+    // Ligne d'ajout d'une nouvelle variable.
+    const addRow = document.createElement("div");
+    addRow.className = "ath-setting-row";
+    addRow.innerHTML = `<div class="ath-setting-ctrl" style="display:flex;gap:6px;width:100%;">
+        <input type="text" id="expert-new-key" class="ath-ctrl" placeholder="NOM_DE_LA_VARIABLE" style="flex:1;font-family:monospace;">
+        <input type="text" id="expert-new-val" class="ath-ctrl" placeholder="valeur" style="flex:1;">
+        <button type="button" id="expert-add-btn" class="btn btn-secondary" style="font-size:.75rem;padding:4px 10px;">➕ Ajouter</button></div>`;
+    xBody.appendChild(addRow);
+    addRow.querySelector("#expert-add-btn").addEventListener("click", () => {
+        const k = addRow.querySelector("#expert-new-key").value.trim().toUpperCase();
+        const v = addRow.querySelector("#expert-new-val").value;
+        if (!/^[A-Z][A-Z0-9_]*$/.test(k)) { alert("Nom de variable invalide (MAJUSCULES_ET_UNDERSCORES)."); return; }
+        const newRow = _mkExpertRow(k, v);
+        // Variable NOUVELLE : pas d'état initial → elle sera envoyée à la sauvegarde.
+        newRow.querySelector("input.behavior-input").removeAttribute("data-initial");
+        xBody.insertBefore(newRow, addRow);
+        addRow.querySelector("#expert-new-key").value = "";
+        addRow.querySelector("#expert-new-val").value = "";
+    });
+    xCard.appendChild(xHdr);
+    xCard.appendChild(xBody);
+    container.appendChild(xCard);
 
     // Peuple les sélecteurs de modèle (Vision, Rédaction…) avec la liste dynamique de l'endpoint.
     _populateModelPickers(container);
@@ -3551,7 +3682,7 @@ async function loadConfigBehaviorPane() {
         container.querySelectorAll(".ath-settings-card").forEach(card => {
             let visible = 0;
             card.querySelectorAll(".ath-setting-row").forEach(row => {
-                const match = !q || row.dataset.search.includes(q);
+                const match = !q || (row.dataset.search || "").includes(q);
                 row.style.display = match ? "" : "none";
                 if (match) visible++;
             });
@@ -3559,6 +3690,12 @@ async function loadConfigBehaviorPane() {
             if (q) card.classList.remove("collapsed");  // déplie les sections qui matchent
         });
     });
+
+    // Recherche GLOBALE active (barre du modal) → pré-remplit le filtre local.
+    if (typeof _settingsGlobalQuery === "string" && _settingsGlobalQuery) {
+        search.value = _settingsGlobalQuery;
+        search.dispatchEvent(new Event("input"));
+    }
 }
 
 // Remplit tous les <select data-model-picker> avec les modèles dispo (groupés par fournisseur),
@@ -3596,6 +3733,9 @@ async function saveConfigBehaviorPane() {
     const env = {};
     document.querySelectorAll("#behavior-fields .behavior-input").forEach(el => {
         const key = el.dataset.key, type = el.dataset.type;
+        // Mode expert : n'envoyer QUE ce qui a changé (sinon on écrirait des dizaines
+        // de « CLE= » vides dans le .env pour toutes les variables non définies).
+        if (el.dataset.expert === "1" && el.value === (el.dataset.initial ?? "")) return;
         if (type === "toggle") env[key] = el.checked ? "true" : "false";
         else if (type === "password") { if (el.value) env[key] = el.value; }
         else env[key] = el.value;
@@ -3964,7 +4104,37 @@ function renderSatellitesStatus(status) {
     el.innerHTML = html;
 }
 
+// ── STT Whisper (reconnaissance vocale) : lu/écrit dans .env via /api/config/env.
+async function loadSttSection() {
+    try {
+        const r = await apiFetch("/api/config/env");
+        if (!r.ok) return;
+        const env = await r.json();
+        const m = document.getElementById("stt-model");
+        const dv = document.getElementById("stt-device");
+        const lg = document.getElementById("stt-language");
+        if (m && env["VOICE_STT_MODEL"]) m.value = env["VOICE_STT_MODEL"];
+        if (dv && env["VOICE_STT_DEVICE"]) dv.value = env["VOICE_STT_DEVICE"];
+        if (lg) lg.value = env["VOICE_STT_LANGUAGE"] || "";
+    } catch (e) { /* silencieux */ }
+}
+
+const _btnSttSave = document.getElementById("btn-stt-save");
+if (_btnSttSave) _btnSttSave.addEventListener("click", async () => {
+    const st = document.getElementById("stt-status");
+    const env = {
+        VOICE_STT_MODEL: document.getElementById("stt-model")?.value || "small",
+        VOICE_STT_DEVICE: document.getElementById("stt-device")?.value || "auto",
+        VOICE_STT_LANGUAGE: document.getElementById("stt-language")?.value.trim() || "",
+    };
+    try {
+        const r = await apiFetch("/api/config/env", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ env }) });
+        if (st) st.textContent = r.ok ? "✅ Enregistré — redémarre le serveur pour recharger Whisper." : "❌ Erreur " + r.status;
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+});
+
 async function loadSatellitesPane() {
+    loadSttSection();
     const list = document.getElementById("satellites-list");
     if (!list) return;
     try {
@@ -4993,7 +5163,55 @@ if (_btnKbText) _btnKbText.addEventListener("click", () => {
 // -------------------------------------------------------------------------
 // ONGLET : UTILISATEURS (multi-utilisateur, admin)
 // -------------------------------------------------------------------------
+// ── SSO (OIDC) : configuration depuis l'UI (écrit dans .env via /api/config/env).
+const _OIDC_FIELDS = {
+    "oidc-issuer": "OIDC_ISSUER", "oidc-client-id": "OIDC_CLIENT_ID",
+    "oidc-client-secret": "OIDC_CLIENT_SECRET", "oidc-redirect": "OIDC_REDIRECT_URI",
+    "oidc-scopes": "OIDC_SCOPES", "oidc-admin-emails": "OIDC_ADMIN_EMAILS",
+    "oidc-default-role": "OIDC_DEFAULT_ROLE",
+};
+
+async function loadOidcSection() {
+    const section = document.getElementById("oidc-section");
+    if (!section) return;
+    const hint = document.getElementById("oidc-callback-hint");
+    if (hint) hint.textContent = location.origin + "/api/auth/oidc/callback";
+    try {
+        const r = await apiFetch("/api/config/env");
+        if (r.status === 403) { section.style.display = "none"; return; }  // admin only
+        if (!r.ok) return;
+        const env = await r.json();
+        Object.entries(_OIDC_FIELDS).forEach(([id, key]) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const v = env[key] || "";
+            if (el.type === "password") el.placeholder = v ? "Défini (masqué) — vide = inchangé" : "laisser vide = inchangé";
+            else el.value = v.includes("...") ? "" : v;
+        });
+    } catch (e) { /* silencieux */ }
+}
+
+const _btnSaveOidc = document.getElementById("btn-save-oidc");
+if (_btnSaveOidc) _btnSaveOidc.addEventListener("click", async () => {
+    const st = document.getElementById("oidc-status");
+    const env = {};
+    Object.entries(_OIDC_FIELDS).forEach(([id, key]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el.type === "password") { if (el.value) env[key] = el.value; }
+        else env[key] = el.value.trim();
+    });
+    try {
+        const r = await apiFetch("/api/config/env", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ env }) });
+        const d = await r.json().catch(() => ({}));
+        if (st) st.textContent = r.ok
+            ? "✅ SSO enregistré — le bouton apparaîtra sur l'écran de connexion (rechargez la page)."
+            : "❌ " + (d.detail || "Erreur");
+    } catch (e) { if (st) st.textContent = "❌ " + e; }
+});
+
 async function loadUsersPane() {
+    loadOidcSection();
     const list = document.getElementById("users-list");
     const st = document.getElementById("users-status");
     if (!list) return;
