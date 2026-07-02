@@ -6,6 +6,18 @@ Benvenuto! Se stai leggendo questa guida, è perché hai appena installato **Ath
 
 ---
 
+## ✨ Novità della versione 0.33.0
+
+- **Nulla si perde al riavvio**: le operazioni lunghe (revisione o traduzione di un intero romanzo, grandi lavori degli agenti) ora **riprendono da dove erano rimaste** invece di ricominciare da zero. Anche la sintesi vocale è in cache: rigenerare un audiolibro dopo la correzione di un capitolo ri-sintetizza solo ciò che è cambiato.
+- **Il Programmatore ha una rete di sicurezza**: uno snapshot automatico viene preso prima delle sue modifiche; se i test restano rotti nonostante le correzioni, tutto può essere annullato in un gesto (ritorno allo stato precedente).
+- **Meno guasti IA**: quando un fornitore di modelli è saturo (limite raggiunto), Athena passa a un modello di riserva sano **prima** della chiamata invece di aspettare il fallimento — le tue quote gratuite lavorano insieme.
+- **Competenze auto-apprese sotto sorveglianza**: una nuova competenza viene prima testata, poi messa alla prova (periodo «canary») — adottata solo dopo diversi usi reali riusciti, scartata se fallisce.
+- **Memoria più pulita**: i fatti mai ri-confermati svaniscono col tempo e, in caso di contraddizione (trasloco, nuovo lavoro…), vince il fatto più recente.
+- **Cockpit → «🕒 Ultime esecuzioni»**: clicca su un'esecuzione passata per aprirne la cronologia (strumenti chiamati, passaggi di consegne…) e **ripeterla con un clic**.
+- **Sicurezza rafforzata**: protezione anti-XSS molto più dura, sessioni prolungate con l'uso (niente più disconnessioni durante il lavoro) ma mai eterne, token SSO invisibile nei log, avvisi automatici sulle dipendenze vulnerabili.
+
+---
+
 ## ✨ Novità della versione 0.32.0
 
 - **Briefing con orari di partenza**: per ogni appuntamento con un luogo, Athena calcola quando partire in base al traffico in tempo reale («parti alle 18:26 per il tuo appuntamento delle 19:00»). Imposta il tuo indirizzo (Impostazioni) e un luogo sugli eventi.

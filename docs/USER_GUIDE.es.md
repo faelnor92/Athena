@@ -6,6 +6,18 @@
 
 ---
 
+## ✨ Novedades de la versión 0.33.0
+
+- **Nada se pierde al reiniciar**: las operaciones largas (revisar o traducir una novela entera, grandes tareas de los agentes) ahora **se reanudan donde quedaron** en vez de empezar de cero. La síntesis de voz también se guarda en caché: regenerar un audiolibro tras corregir un capítulo solo re-sintetiza lo que cambió.
+- **El Programador tiene red de seguridad**: se toma una instantánea automática antes de sus modificaciones; si las pruebas siguen fallando pese a sus correcciones, todo puede revertirse de un gesto (vuelta al estado anterior).
+- **Menos fallos de IA**: cuando un proveedor de modelos está saturado (límite alcanzado), Athena cambia a un modelo de respaldo sano **antes** de la llamada, en vez de esperar el fallo — tus cuotas gratuitas trabajan juntas.
+- **Habilidades auto-aprendidas bajo vigilancia**: una nueva habilidad se prueba primero y luego pasa un período de prueba («canary») — se adopta solo tras varios usos reales exitosos, y se descarta si falla.
+- **Memoria más limpia**: los hechos nunca re-confirmados se desvanecen con el tiempo, y en caso de contradicción (mudanza, nuevo trabajo…) gana el hecho más reciente.
+- **Cockpit → «🕒 Últimas ejecuciones»**: haz clic en una ejecución pasada para desplegar su cronología (herramientas llamadas, relevos…) y **repetirla con un clic**.
+- **Seguridad reforzada**: protección anti-XSS mucho más dura, sesiones que se prolongan con el uso (no más desconexiones en pleno trabajo) pero nunca eternas, token SSO invisible en los logs, alertas automáticas sobre dependencias vulnerables.
+
+---
+
 ## ✨ Novedades de la versión 0.32.0
 
 - **Resumen con horas de salida**: para cada cita con ubicación, Athena calcula cuándo salir según el tráfico en tiempo real («sal a las 18:26 para tu cita de las 19:00»). Configura tu dirección (Ajustes) y una ubicación en tus eventos.

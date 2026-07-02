@@ -6,6 +6,18 @@ Bienvenue ! Si vous lisez ce guide, c'est que vous venez d'installer **Athena**,
 
 ---
 
+## ✨ Nouveautés de la version 0.33.0
+
+- **Rien ne se perd au redémarrage** : les opérations longues (révision ou traduction d'un roman entier, gros travaux des agents) reprennent **là où elles en étaient** au lieu de repartir de zéro. Et la synthèse vocale est mise en cache : régénérer un livre audio après correction d'un chapitre ne re-synthétise que ce qui a changé.
+- **Le Codeur a un filet de sécurité** : une sauvegarde automatique est prise avant ses modifications ; si les tests restent cassés malgré ses corrections, tout peut être annulé en un geste (retour à l'état d'avant).
+- **Moins de pannes IA** : quand un fournisseur de modèles est saturé (limite atteinte), Athena bascule **avant** l'appel sur un modèle de secours sain, au lieu d'attendre l'échec — vos quotas gratuits travaillent ensemble.
+- **Compétences auto-apprises sous surveillance** : une nouvelle compétence est d'abord testée, puis mise à l'essai (période « canary ») — adoptée seulement après plusieurs usages réussis, écartée si elle échoue en réel.
+- **Mémoire plus propre** : les faits jamais re-confirmés s'estompent avec le temps, et en cas de contradiction (déménagement, nouveau métier…) le fait le plus récent gagne.
+- **Cockpit → « 🕒 Derniers runs »** : cliquez sur un run passé pour dérouler sa chronologie (outils appelés, passages de relais…) et le **rejouer en un clic**.
+- **Sécurité renforcée** : protection anti-XSS fortement durcie, sessions prolongées à l'usage (plus de déconnexion en plein travail) mais jamais éternelles, jeton SSO invisible des logs, alertes automatiques sur les failles des dépendances.
+
+---
+
 ## ✨ Nouveautés de la version 0.32.0
 
 - **Briefing avec heures de départ** : pour chaque rendez-vous ayant un lieu, Athena calcule quand partir selon le trafic en temps réel (« pars à 18h26 pour ton RDV de 19h »). Renseigne ton adresse (Réglages) et un lieu sur tes rendez-vous.

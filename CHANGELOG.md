@@ -1,5 +1,90 @@
 # Historique des Versions (Changelog)
 
+## [0.33.0] - 2026-07-02
+### Sec — Durcissement complet (revue de sécurité soldée)
+- **CSP stricte** : fin de `'unsafe-inline'` pour `script-src` — la principale défense anti-XSS
+  redevient effective (le combo « token Bearer en localStorage + inline autorisé » l'annulait).
+  Tout le JS inline est externalisé : `boot.js` (verrou de login pré-rendu), `bindings.js`
+  (câblage addEventListener + délégation `data-act`/`data-arg` du HTML généré + service worker),
+  `ide.html`/`ide.js` (la fenêtre IDE devient une vraie page — l'ancien `document.write` d'un
+  `<script>` inline aurait été bloqué), `oo_editor.js`. ⚠️ **Ne plus jamais réintroduire
+  d'attribut `onclick=` ni de `<script>` inline** : passer par le registre d'actions de
+  `bindings.js`. Vérifié en Chromium headless : 0 violation CSP, 0 erreur console.
+- **`sso_token` en fragment d'URL** (`/#sso_token=…`, jamais envoyé au serveur) au lieu de la
+  query string (fuyait dans l'historique navigateur, les logs du reverse proxy et le Referer).
+- **Sessions hashées (sha256) en base** : une fuite du fichier SQLite (backup, snapshot) ne
+  permet plus de rejouer les sessions actives.
+- **Bootstrap admin sans usurpation** : le chemin `ADMIN_PASSWORD` force l'identité `admin`
+  (avant : n'importe quel username, pollution d'audit + contournement de la 2FA du compte visé).
+- **`SENSITIVE_TOOLS=""` ≠ HITL désactivé** : une ligne vide dans `.env` (livrée par
+  `.env.example` !) redonne désormais la liste par défaut ; désactiver se demande explicitement
+  avec `SENSITIVE_TOOLS=none`.
+- **Sessions à expiration GLISSANTE** : `SESSION_TTL_HOURS` devient une fenêtre d'inactivité
+  (l'usage prolonge la session), bornée par un plafond absolu `SESSION_ABSOLUTE_HOURS` (30 j).
+- **Rate-limiting étendu** : anti-brute-force des codes d'invitation (`/api/register`) +
+  throttle des endpoints LLM par compte (`LLM_RATE_LIMIT_PER_MIN`, anti déni-de-portefeuille).
+- **Chaîne d'alerte CVE** : `SECURITY.md` (divulgation privée), Dependabot (pip + actions),
+  workflow CodeQL (python+js), pip-audit **bloquant** en CI dès qu'une CVE a un correctif
+  publié, scan **Trivy** de l'image Docker (bloquant sur CRITICAL corrigeable).
+- **`_decrypt` bruyant** : une donnée au format Fernet qui échoue au déchiffrement logge un
+  warning (mauvaise `DB_ENCRYPTION_KEY` après restauration) au lieu du garbage silencieux.
+
+### Feat — Robustesse des opérations longues (reprise après redémarrage)
+- **Jobs persistants et REPRENABLES** (`core/jobs.py`) : état miroir dans le store SQLite,
+  checkpoints posés par les workers (révision/traduction/cohérence de roman : PAR CHAPITRE —
+  la reprise ne rappelle pas le LLM sur ce qui est fait). Un job tué par un redémarrage
+  apparaît « interrupted » ; `POST /api/redaction/job/{id}/resume` le relance où il en était.
+- **Runs swarm checkpointés par tour** (agent, tour, messages) : `GET /api/runs/interrupted` +
+  `POST /api/runs/{id}/resume` (reprise en job d'arrière-plan).
+- **Cache TTS par segment** : hash(texte+voix+params) → WAV sous `.tts_cache/` (borné par
+  `TTS_CACHE_MAX_MB`, éviction LRU). Régénérer un livre audio après correction d'un chapitre
+  ne resynthétise que ce qui a changé.
+
+### Feat — Scheduler LLM proactif (`core/llm_health.py`)
+- Disjoncteur par modèle : 429/quota → cooldown immédiat (fenêtre Retry-After du fournisseur
+  si annoncée), pannes répétées → cooldown après 3 échecs. Les candidats (principal +
+  `FALLBACK_MODELS`) sont arbitrés **avant** l'appel → pool unifié de quotas gratuits au lieu
+  d'une cascade d'échecs. `GET /api/llm/health`. Fix latent : le failover ré-appliquait
+  l'override de modèle forcé (le fallback rebasculait sur le modèle malade).
+
+### Feat — Codeur : éditions transactionnelles (le « /rewind »)
+- **Snapshot fantôme automatique** avant la 1re mutation de chaque run (dépôt git *shadow*
+  `.athena_shadow/`, git-dir séparé : marche sans dépôt git et ne touche jamais au vrai `.git`).
+- Outils `code_snapshot` / `code_rollback` (sensible/HITL) / `list_snapshots`.
+- Politique moteur : 3 échecs de tests consécutifs → suggestion de rollback dans le résultat
+  d'outil ; `SWARM_AUTO_ROLLBACK=true` = retour arrière automatique (mode autonome).
+
+### Feat — Auto-amélioration sous contrôle (quarantaine canary + evals)
+- **Skills induites** : le LLM fournit des cas de test EXÉCUTÉS immédiatement (échec = refus),
+  puis la skill vit en **quarantaine** (`skills/quarantine/`) : exposée aux agents mais chaque
+  usage réel est compté — promue dans `skills/` après 3 succès, évincée après 3 échecs.
+- **Evals de routage en CI** (`evals/routing_cases.json`) : 12 cas FR/EN déterministes
+  (chemin keyword, zéro LLM) vérifient que le bon sous-ensemble d'outils est exposé —
+  ajouter un cas au JSON suffit.
+
+### Feat — Hygiène de la mémoire-graphe (Chronos)
+- Re-confirmation des faits (`seen`/`last_seen`), **contradictions résolues** sur les relations
+  fonctionnelles (domicile, âge, métier… — le récent gagne, l'ancien est archivé), décroissance
+  des faits jamais re-confirmés (`GRAPH_FACT_TTL_DAYS`, 180 j), fusion des doublons
+  (accents/casse), consolidation périodique (24 h) sur toutes les bases utilisateurs.
+
+### Feat — Divers
+- **Cockpit → « 🕒 Derniers runs »** : timeline chronologique des étapes d'un run passé
+  (outils, handoffs, approbations…) + **rejeu en un clic** (comparaison notifiée).
+- **`run.completed` sur le bus d'événements** + réacteur de notification des runs HORS chat
+  direct (routines, webhooks, vocal long, client déconnecté) — jamais le chat en direct.
+- **Compaction d'historique** : résumé ROULANT incrémental à checkpoints (borné par construction).
+- **Satellites ESP** : wake word microWakeWord valide, BT proxy compatible voix (scan passif),
+  effets LED adressables dans le générateur.
+- **Agents** : tous les outils par défaut (fin des listes explicites figées — le filtre
+  sémantique fait le tri) ; l'orchestrateur restitue le résultat d'une délégation.
+
+### Fix
+- **Bug #3 (routage qui fuit)** : l'orchestrateur ne peut plus coder à la place du spécialiste
+  (bash retiré sans hôte SSH configuré ; zone ambiguë du routeur = indice doux sans restriction).
+- Boutons « Copier » en HTTP (repli execCommand) ; bouton MAJ sur semver strict ; anti-boucle
+  « réponse répétée » sur l'auto-continuation ; Open Space : délégations animées + anti-doublon.
+
 ## [0.32.4] - 2026-06-26
 ### Fix — Connexion / sécurité de l'UI
 - **Popup de login immédiate** : overlay affiché AVANT toute interaction (verrou synchrone +

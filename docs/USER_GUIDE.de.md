@@ -6,6 +6,18 @@ Willkommen! Wenn Sie dieses Handbuch lesen, haben Sie soeben **Athena** installi
 
 ---
 
+## ✨ Neu in Version 0.33.0
+
+- **Beim Neustart geht nichts verloren**: Lange Vorgänge (Überarbeitung oder Übersetzung eines ganzen Romans, große Agenten-Läufe) **setzen dort fort, wo sie unterbrochen wurden**, statt von vorn zu beginnen. Auch die Sprachsynthese wird gecacht: Ein Hörbuch nach der Korrektur eines Kapitels neu zu erzeugen, synthetisiert nur das Geänderte neu.
+- **Der Coder hat ein Sicherheitsnetz**: Vor seinen Änderungen wird automatisch ein Snapshot angelegt; bleiben die Tests trotz Korrekturen rot, lässt sich alles mit einem Griff zurückrollen (zurück zum vorherigen Stand).
+- **Weniger KI-Ausfälle**: Ist ein Modell-Anbieter ausgelastet (Limit erreicht), wechselt Athena **vor** dem Aufruf auf ein gesundes Ersatzmodell, statt auf den Fehler zu warten — die freien Kontingente arbeiten als ein Pool.
+- **Selbstgelernte Fähigkeiten unter Aufsicht**: Eine neue Fähigkeit wird erst getestet, dann auf Probe gestellt („Canary“-Phase) — übernommen erst nach mehreren erfolgreichen Einsätzen, aussortiert, wenn sie versagt.
+- **Sauberere Erinnerung**: Nie erneut bestätigte Fakten verblassen mit der Zeit; bei Widersprüchen (Umzug, neuer Job …) gewinnt der jüngste Fakt.
+- **Cockpit → „🕒 Letzte Läufe“**: Klicke auf einen vergangenen Lauf, um seine Zeitleiste aufzuklappen (aufgerufene Werkzeuge, Übergaben …) und ihn **mit einem Klick erneut abzuspielen**.
+- **Härtere Sicherheit**: deutlich stärkerer XSS-Schutz, Sitzungen verlängern sich bei Nutzung (kein Rauswurf mitten in der Arbeit), sind aber nie endlos; SSO-Token taucht nicht mehr in Logs auf; automatische Warnungen bei verwundbaren Abhängigkeiten.
+
+---
+
 ## ✨ Neu in Version 0.32.0
 
 - **Briefing mit Abfahrtszeiten**: Für jeden Termin mit Ort berechnet Athena anhand des Echtzeit-Verkehrs, wann du losfahren sollst („fahr um 18:26 zu deinem Termin um 19:00“). Hinterlege deine Adresse (Einstellungen) und einen Ort bei deinen Terminen.

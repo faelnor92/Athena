@@ -6,6 +6,18 @@ Welcome! If you're reading this guide, you've just installed **Athena**, your mu
 
 ---
 
+## ✨ What's new in version 0.33.0
+
+- **Nothing is lost on restart**: long operations (revising or translating a whole novel, big agent runs) now **resume where they left off** instead of starting over. Speech synthesis is cached too: regenerating an audiobook after fixing one chapter only re-synthesizes what changed.
+- **The Coder has a safety net**: an automatic snapshot is taken before its edits; if tests stay broken despite its fixes, everything can be rolled back in one move (back to the previous state).
+- **Fewer AI outages**: when a model provider is saturated (rate limit hit), Athena switches to a healthy fallback model **before** the call instead of waiting for the failure — your free quotas work as one pool.
+- **Self-learned skills under supervision**: a new skill is tested first, then put on trial (a "canary" period) — adopted only after several successful real uses, evicted if it fails.
+- **Cleaner memory**: facts that are never re-confirmed fade over time, and on contradiction (a move, a new job…) the most recent fact wins.
+- **Cockpit → "🕒 Recent runs"**: click a past run to unfold its timeline (tools called, handoffs…) and **replay it in one click**.
+- **Hardened security**: much stronger anti-XSS protection, sessions extended while you use them (no more logout mid-work) but never eternal, SSO token kept out of logs, automatic alerts on vulnerable dependencies.
+
+---
+
 ## ✨ What's new in version 0.32.0
 
 - **Briefing with departure times**: for each appointment with a location, Athena computes when to leave based on live traffic ("leave at 6:26pm for your 7pm meeting"). Set your home address (Settings) and a location on your events.
