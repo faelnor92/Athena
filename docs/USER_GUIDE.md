@@ -14,6 +14,7 @@ Bienvenue ! Si vous lisez ce guide, c'est que vous venez d'installer **Athena**,
 - **Compétences auto-apprises sous surveillance** : une nouvelle compétence est d'abord testée, puis mise à l'essai (période « canary ») — adoptée seulement après plusieurs usages réussis, écartée si elle échoue en réel.
 - **Mémoire plus propre** : les faits jamais re-confirmés s'estompent avec le temps, et en cas de contradiction (déménagement, nouveau métier…) le fait le plus récent gagne.
 - **Cockpit → « 🕒 Derniers runs »** : cliquez sur un run passé pour dérouler sa chronologie (outils appelés, passages de relais…) et le **rejouer en un clic**.
+- **Tous les réglages dans l'interface** : plus besoin d'ouvrir le fichier `.env` — Réglages → Comportement expose 30+ nouveaux réglages (fiabilité IA, sécurité, mémoire…), un **mode expert** couvre tout le reste, le **SSO** se configure dans l'onglet Utilisateurs, et une **recherche globale** trouve n'importe quel réglage à travers les onglets.
 - **Sécurité renforcée** : protection anti-XSS fortement durcie, sessions prolongées à l'usage (plus de déconnexion en plein travail) mais jamais éternelles, jeton SSO invisible des logs, alertes automatiques sur les failles des dépendances.
 
 ---

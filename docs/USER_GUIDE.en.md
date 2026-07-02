@@ -14,6 +14,7 @@ Welcome! If you're reading this guide, you've just installed **Athena**, your mu
 - **Self-learned skills under supervision**: a new skill is tested first, then put on trial (a "canary" period) — adopted only after several successful real uses, evicted if it fails.
 - **Cleaner memory**: facts that are never re-confirmed fade over time, and on contradiction (a move, a new job…) the most recent fact wins.
 - **Cockpit → "🕒 Recent runs"**: click a past run to unfold its timeline (tools called, handoffs…) and **replay it in one click**.
+- **Every setting in the UI**: no more editing `.env` by hand — Settings → Behavior exposes 30+ new settings (AI reliability, security, memory…), an **expert mode** covers everything else, **SSO** is configured from the Users tab, and a **global search** finds any setting across tabs.
 - **Hardened security**: much stronger anti-XSS protection, sessions extended while you use them (no more logout mid-work) but never eternal, SSO token kept out of logs, automatic alerts on vulnerable dependencies.
 
 ---

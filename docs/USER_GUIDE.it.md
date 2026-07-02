@@ -14,6 +14,7 @@ Benvenuto! Se stai leggendo questa guida, è perché hai appena installato **Ath
 - **Competenze auto-apprese sotto sorveglianza**: una nuova competenza viene prima testata, poi messa alla prova (periodo «canary») — adottata solo dopo diversi usi reali riusciti, scartata se fallisce.
 - **Memoria più pulita**: i fatti mai ri-confermati svaniscono col tempo e, in caso di contraddizione (trasloco, nuovo lavoro…), vince il fatto più recente.
 - **Cockpit → «🕒 Ultime esecuzioni»**: clicca su un'esecuzione passata per aprirne la cronologia (strumenti chiamati, passaggi di consegne…) e **ripeterla con un clic**.
+- **Tutte le impostazioni nell'interfaccia**: basta modificare `.env` a mano — Impostazioni → Comportamento espone oltre 30 nuove impostazioni (affidabilità IA, sicurezza, memoria…), una **modalità esperto** copre tutto il resto, l'**SSO** si configura dalla scheda Utenti e una **ricerca globale** trova qualsiasi impostazione tra le schede.
 - **Sicurezza rafforzata**: protezione anti-XSS molto più dura, sessioni prolungate con l'uso (niente più disconnessioni durante il lavoro) ma mai eterne, token SSO invisibile nei log, avvisi automatici sulle dipendenze vulnerabili.
 
 ---

@@ -68,6 +68,18 @@
   des faits jamais re-confirmés (`GRAPH_FACT_TTL_DAYS`, 180 j), fusion des doublons
   (accents/casse), consolidation périodique (24 h) sur toutes les bases utilisateurs.
 
+### Feat — Réglages : TOUT dans l'UI
+- **30+ réglages exposés** dans Réglages → Comportement (nouvelles sections : Fiabilité LLM,
+  Compétences auto-apprises/canary, Sécurité étendue — session absolue, anti-brute-force,
+  rate-limits, HITL —, Mémoire long terme, rollback Codeur, réseau sandbox, cache TTS).
+- **Mode expert** : toutes les autres variables du `.env` éditables en clé/valeur (secrets
+  masqués intacts, seules les valeurs MODIFIÉES sont écrites) + ajout de variable.
+- **SSO (OIDC) configurable depuis l'UI** (onglet Utilisateurs) : issuer/client/scopes/
+  admins/rôle, URL de callback affichée, actif sans redémarrage.
+- **Recherche GLOBALE** des réglages (grise les onglets sans résultat, pré-remplit le filtre
+  du panneau Comportement) + badge « ⟳ redémarrage » sur les réglages lus au démarrage.
+- **STT Whisper** (modèle/matériel/langue) dans l'onglet Satellites.
+
 ### Feat — Divers
 - **Cockpit → « 🕒 Derniers runs »** : timeline chronologique des étapes d'un run passé
   (outils, handoffs, approbations…) + **rejeu en un clic** (comparaison notifiée).

@@ -14,6 +14,7 @@ Willkommen! Wenn Sie dieses Handbuch lesen, haben Sie soeben **Athena** installi
 - **Selbstgelernte Fähigkeiten unter Aufsicht**: Eine neue Fähigkeit wird erst getestet, dann auf Probe gestellt („Canary“-Phase) — übernommen erst nach mehreren erfolgreichen Einsätzen, aussortiert, wenn sie versagt.
 - **Sauberere Erinnerung**: Nie erneut bestätigte Fakten verblassen mit der Zeit; bei Widersprüchen (Umzug, neuer Job …) gewinnt der jüngste Fakt.
 - **Cockpit → „🕒 Letzte Läufe“**: Klicke auf einen vergangenen Lauf, um seine Zeitleiste aufzuklappen (aufgerufene Werkzeuge, Übergaben …) und ihn **mit einem Klick erneut abzuspielen**.
+- **Jede Einstellung in der Oberfläche**: kein manuelles Editieren der `.env` mehr — Einstellungen → Verhalten zeigt 30+ neue Einstellungen (KI-Zuverlässigkeit, Sicherheit, Gedächtnis …), ein **Expertenmodus** deckt den Rest ab, **SSO** wird im Benutzer-Tab konfiguriert, und eine **globale Suche** findet jede Einstellung über alle Tabs.
 - **Härtere Sicherheit**: deutlich stärkerer XSS-Schutz, Sitzungen verlängern sich bei Nutzung (kein Rauswurf mitten in der Arbeit), sind aber nie endlos; SSO-Token taucht nicht mehr in Logs auf; automatische Warnungen bei verwundbaren Abhängigkeiten.
 
 ---

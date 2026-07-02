@@ -14,6 +14,7 @@
 - **Habilidades auto-aprendidas bajo vigilancia**: una nueva habilidad se prueba primero y luego pasa un período de prueba («canary») — se adopta solo tras varios usos reales exitosos, y se descarta si falla.
 - **Memoria más limpia**: los hechos nunca re-confirmados se desvanecen con el tiempo, y en caso de contradicción (mudanza, nuevo trabajo…) gana el hecho más reciente.
 - **Cockpit → «🕒 Últimas ejecuciones»**: haz clic en una ejecución pasada para desplegar su cronología (herramientas llamadas, relevos…) y **repetirla con un clic**.
+- **Todos los ajustes en la interfaz**: se acabó editar `.env` a mano — Ajustes → Comportamiento expone más de 30 ajustes nuevos (fiabilidad de la IA, seguridad, memoria…), un **modo experto** cubre todo lo demás, el **SSO** se configura desde la pestaña Usuarios y una **búsqueda global** encuentra cualquier ajuste entre pestañas.
 - **Seguridad reforzada**: protección anti-XSS mucho más dura, sesiones que se prolongan con el uso (no más desconexiones en pleno trabajo) pero nunca eternas, token SSO invisible en los logs, alertas automáticas sobre dependencias vulnerables.
 
 ---
