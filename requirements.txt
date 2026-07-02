@@ -49,7 +49,7 @@ httpx>=0.27          # appels LLM du générateur AthenaDesign (importé au dém
 # openai-whisper==20250625
 
 # --- Automatisation Web (Computer Use RPA) ----------------------------------
-playwright>=1.40.0
+playwright>=1.61.0
 uv>=0.5.0
 
 # --- Intelligence de code : diagnostics LSP après édition (coder/onglet Code) -
