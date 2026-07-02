@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import hashlib
 import tempfile
 import threading
 import contextvars
@@ -152,21 +153,28 @@ def get_model_cost(model_name: str, prompt_tokens: int, completion_tokens: int) 
 # Sessions d'authentification Web — adossées au store SQLite partagé pour rester
 # cohérentes entre workers (un login sur un worker est reconnu par les autres).
 # API dict-like minimale : ACTIVE_SESSIONS[token] = {...} / .get(token) / .pop(token, None).
+# Les jetons sont hashés (sha256) avant stockage : une fuite du fichier SQLite (backup,
+# snapshot) ne permet pas de rejouer les sessions actives.
 class _SessionStore:
     _NS = "sessions"
 
+    @staticmethod
+    def _key(token: str) -> str:
+        return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
     def __setitem__(self, token, value):
         from core import shared_store
-        shared_store.set(self._NS, token, value)
+        shared_store.set(self._NS, self._key(token), value)
 
     def get(self, token, default=None):
         from core import shared_store
-        return shared_store.get(self._NS, token, default)
+        return shared_store.get(self._NS, self._key(token), default)
 
     def pop(self, token, default=None):
         from core import shared_store
-        v = shared_store.get(self._NS, token, default)
-        shared_store.delete(self._NS, token)
+        k = self._key(token)
+        v = shared_store.get(self._NS, k, default)
+        shared_store.delete(self._NS, k)
         return v
 
     def revoke_user(self, username: str, keep_token: str = None) -> int:
@@ -174,8 +182,9 @@ class _SessionStore:
         Appelé au changement/reset de mot de passe → un token volé cesse d'être valide."""
         from core import shared_store
         n = 0
+        keep_key = self._key(keep_token) if keep_token else None
         for tok, sess in shared_store.items(self._NS).items():
-            if tok == keep_token:
+            if tok == keep_key:
                 continue
             if (sess or {}).get("username") == username:
                 shared_store.delete(self._NS, tok)

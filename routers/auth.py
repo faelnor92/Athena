@@ -219,8 +219,11 @@ async def oidc_callback(request: Request, code: str = "", state: str = ""):
     if not any(u["username"] == username for u in user_store.list()):
         user_store.create(username, secrets.token_urlsafe(24), role)
     token = _new_session(username, role)
-    # Renvoie au SPA avec le jeton (le frontend le stocke puis nettoie l'URL).
-    return RedirectResponse(f"/?sso_token={token}", status_code=302)
+    # Renvoie au SPA avec le jeton dans le FRAGMENT (#), jamais en query string :
+    # le fragment n'est jamais envoyé au serveur (ni au reverse proxy, ni dans
+    # un header Referer), contrairement à ?sso_token=... qui finirait dans les
+    # logs et l'historique navigateur.
+    return RedirectResponse(f"/#sso_token={token}", status_code=302)
 
 
 @router.post("/api/login")
@@ -264,8 +267,11 @@ async def login(req: LoginRequest, request: Request):
             return _ok(req.username, role)
 
     # 2. Admin « bootstrap » via ADMIN_PASSWORD (toujours valable pour l'owner).
+    # Username FORCÉ à "admin" (jamais req.username) : sinon quiconque connaît
+    # ADMIN_PASSWORD peut ouvrir une session sous l'identité d'un autre compte,
+    # polluant l'audit et contournant sa 2FA.
     if admin_password and secrets.compare_digest(req.password, admin_password):
-        return _ok(req.username or "admin", "admin")
+        return _ok("admin", "admin")
 
     # 3. Aucune auth configurée.
     if not _auth_active():

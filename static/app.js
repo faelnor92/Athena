@@ -2,18 +2,19 @@
 let sessionToken = localStorage.getItem("athena_session_token") || "";
 let chatClientId = localStorage.getItem("athena_client_id") || "web";
 
-// SSO OIDC : récupère le jeton renvoyé par le callback (?sso_token=) puis nettoie l'URL.
+// SSO OIDC : récupère le jeton renvoyé par le callback (#sso_token=, jamais en query
+// string : le fragment n'est jamais transmis au serveur/reverse proxy/Referer) puis
+// nettoie l'URL.
 try {
-    const _p = new URLSearchParams(window.location.search);
-    const _sso = _p.get("sso_token");
+    const _h = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const _sso = _h.get("sso_token");
     if (_sso) {
         sessionToken = _sso;
         localStorage.setItem("athena_session_token", _sso);
-        _p.delete("sso_token");
-        const _q = _p.toString();
-        window.history.replaceState({}, "", window.location.pathname + (_q ? "?" + _q : ""));
+        window.history.replaceState({}, "", window.location.pathname + window.location.search);
     }
     // Lien d'invitation : ?invite=CODE → pré-remplit le formulaire d'inscription.
+    const _p = new URLSearchParams(window.location.search);
     const _inv = _p.get("invite");
     if (_inv) window._pendingInvite = _inv;
 } catch (e) { /* ignore */ }
