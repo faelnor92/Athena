@@ -132,3 +132,43 @@ def notify(message: str, title: str = None, channel: str = None) -> list:
             print(f"[notif email] {e}")
 
     return sent
+
+
+# --- Réacteur `run.completed` (bus d'événements) -----------------------------
+# Notifie la fin d'un run UNIQUEMENT là où l'utilisateur ne regarde pas la surface
+# d'origine : routines planifiées, runs API/webhook/n8n/pipeline, monitoring (Vigie
+# sans chat Telegram), run web dont le client s'est déconnecté, et runs VOCAUX longs
+# (l'utilisateur est parti pendant la synthèse). JAMAIS le chat en direct
+# (web/CLI/Telegram) : la réponse y est déjà visible → sinon spam.
+_NOTIFY_CHANNEL_BASES = {"routine", "api", "events", "hook", "n8n", "pipeline"}
+
+
+def run_completed_reactor(topic, payload):
+    if (os.getenv("RUN_COMPLETED_NOTIFY", "true").lower() not in ("true", "1", "yes")):
+        return
+    p = payload or {}
+    if p.get("cancelled"):
+        return  # annulé par l'utilisateur : il le sait déjà
+    chan = (p.get("channel") or "").strip()
+    base = chan.split(":", 1)[0].lower()
+    voice_min = int(os.getenv("RUN_COMPLETED_VOICE_MIN_S", "120") or 120)
+    wanted = (
+        bool(p.get("detached"))                       # client web parti avant la fin
+        or base in _NOTIFY_CHANNEL_BASES              # surfaces non interactives
+        or (base == "voice" and (p.get("duration_s") or 0) >= voice_min)  # vocal long
+    )
+    if not wanted:
+        return
+    agent = p.get("agent") or "?"
+    who = f" · {p['user']}" if p.get("user") else ""
+    body = (p.get("error") or p.get("response") or "").strip()
+    if len(body) > 400:
+        body = body[:400] + " …"
+    head = "❌ Run en échec" if p.get("error") else "✅ Run terminé"
+    notify(f"{head} — {agent} (canal {chan or '?'}{who}, {p.get('duration_s', '?')} s)\n{body}")
+
+
+def wire_event_bus():
+    """Abonne le réacteur au bus (appelé au démarrage du serveur)."""
+    from core import event_bus
+    event_bus.subscribe("run.completed", run_completed_reactor)

@@ -460,6 +460,7 @@ async def chat_stream(req: ChatRequest):
         # « Agir en tant que » (locuteur vocal identifié) : posé AVANT copy_context()
         # pour que le worker (agenda/listes/mémoire) tourne sous le bon compte.
         imp_token = _maybe_impersonate(req.as_user)
+        fut = None
         try:
             if not sess.active_agent:
                 yield _sse("error", {"detail": f"{_app_name()} n'est pas initialisé."})
@@ -523,6 +524,10 @@ async def chat_stream(req: ChatRequest):
             yield _sse("error", {"detail": str(e)})
         finally:
             # NB : run_registry.finish() est appelé par _work (il survit à la déconnexion).
+            # Si le client est parti AVANT la fin du run (GeneratorExit sur déconnexion),
+            # on le marque : la fin du run déclenchera une notification (run.completed).
+            if fut is not None and not fut.done():
+                run_registry.mark_detached(run_id)
             current_run_id.reset(token)
             channels.current_channel.reset(chan_token)
             approvals.auto_approve_var.reset(appr_token)

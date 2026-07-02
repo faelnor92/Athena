@@ -308,6 +308,12 @@ try:
         except Exception as _e:
             logger.debug("notif objectif atteint ignorée : %s", _e)
     event_bus.subscribe("goal.completed", _notify_goal)
+
+    # 3) NOTIFICATION de fin de run HORS chat direct (routines, API/webhooks/n8n, client
+    #    web déconnecté, vocal long). Gating dans notifications.run_completed_reactor —
+    #    le chat en direct (web/CLI/Telegram) n'est JAMAIS notifié (réponse déjà visible).
+    from core import notifications as _notifs
+    _notifs.wire_event_bus()
 except Exception as e:
     logger.warning("Abonnement des réacteurs event_bus ignoré : %s", e, exc_info=True)
 

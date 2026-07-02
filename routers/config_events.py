@@ -181,6 +181,8 @@ def _run_vigie(rec: dict):
     except Exception:
         logger.exception("Erreur Vigie sur événement %s", rec.get("id"))
     finally:
+        # finish AVANT le reset du canal : publie run.completed avec le bon contexte.
+        run_registry.finish(rid)
         current_run_id.reset(tok)
         channels.current_channel.reset(chan_tok)
         approvals.auto_approve_var.reset(appr_tok)

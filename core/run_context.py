@@ -12,6 +12,7 @@ ou agents en parallèle) s'écrasaient mutuellement.
 """
 import contextvars
 import threading
+import time
 from typing import Any, Dict, List, Optional
 
 current_run_id: "contextvars.ContextVar[Optional[str]]" = contextvars.ContextVar(
@@ -29,7 +30,8 @@ class RunRegistry:
 
     def start(self, run_id: str):
         with self._lock:
-            self._runs[run_id] = {"steps": [], "running": True, "cancelled": False, "steer": [], "result": None}
+            self._runs[run_id] = {"steps": [], "running": True, "cancelled": False, "steer": [],
+                                  "result": None, "started": time.time(), "detached": False}
             self._order.append(run_id)
             self._last_run_id = run_id
             # Purge des runs live les plus anciens (la persistance durable est en SQLite).
@@ -37,11 +39,49 @@ class RunRegistry:
                 old = self._order.pop(0)
                 self._runs.pop(old, None)
 
-    def finish(self, run_id: str):
+    def mark_detached(self, run_id: str):
+        """Marque que le CLIENT s'est déconnecté pendant que le run tournait (rechargement
+        de page) → la fin du run méritera une notification (l'utilisateur ne la verra pas)."""
         with self._lock:
             run = self._runs.get(run_id)
-            if run is not None:
+            if run is not None and run.get("running"):
+                run["detached"] = True
+
+    def finish(self, run_id: str):
+        """Clôt le run et publie `run.completed` sur le bus d'événements (une seule fois).
+        Appelé DANS le contexte du run (ContextVars canal/utilisateur encore posées)."""
+        payload = None
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is not None and run.get("running"):
                 run["running"] = False
+                res = run.get("result") or {}
+                payload = {
+                    "run_id": run_id,
+                    "agent": res.get("agent"),
+                    "response": res.get("response"),
+                    "error": res.get("error"),
+                    "cancelled": bool(run.get("cancelled")),
+                    "detached": bool(run.get("detached")),
+                    "duration_s": round(time.time() - (run.get("started") or time.time()), 1),
+                }
+        if payload is None:
+            return
+        try:
+            from core import channels
+            payload["channel"] = channels.current_channel.get()
+        except Exception:
+            payload["channel"] = None
+        try:
+            from core.state import _current_username
+            payload["user"] = _current_username.get()
+        except Exception:
+            payload["user"] = None
+        try:
+            from core import event_bus
+            event_bus.publish("run.completed", payload)
+        except Exception:
+            pass  # best-effort : la fin de run n'échoue jamais à cause d'un réacteur
 
     def set_result(self, run_id: str, result: Dict[str, Any]):
         """Stocke le résultat final d'un run (réponse ou erreur) pour qu'il survive à
