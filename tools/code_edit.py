@@ -48,6 +48,14 @@ def _atomic_write(real_path: str, content: str):
         raise
     except Exception:
         pass
+    # TRANSACTIONNALITÉ : commit fantôme de l'état du workspace avant la PREMIÈRE
+    # mutation du run (un seul par run) → code_rollback() peut tout annuler si la
+    # série d'éditions casse les tests. Best-effort (git absent → no-op).
+    try:
+        from tools import code_snapshot
+        code_snapshot.auto_snapshot_before_mutation()
+    except Exception:
+        pass
     directory = os.path.dirname(real_path) or "."
     os.makedirs(directory, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".edit-", suffix=".tmp", dir=directory)

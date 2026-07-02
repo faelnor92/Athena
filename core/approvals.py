@@ -18,7 +18,7 @@ import os
 _DEFAULT_SENSITIVE = (
     "execute_bash_command,run_ssh_command,save_new_skill,trigger_workflow,computer_use_action,"
     "call_ha_service,delete_skill,delete_calendar_event,delete_list_item,"
-    "write_file,edit_file,apply_patch,run_tool_script,self_update,"
+    "write_file,edit_file,apply_patch,code_rollback,run_tool_script,self_update,"
     "nextcloud_write_file,nextcloud_delete_file"
 )
 

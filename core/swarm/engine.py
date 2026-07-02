@@ -60,6 +60,7 @@ import tools.tool_script
 import tools.browser_tools
 import tools.document_tools
 import tools.code_edit
+import tools.code_snapshot
 import tools.dev_tools
 import tools.git_tools
 import tools.code_nav
@@ -275,6 +276,9 @@ AVAILABLE_TOOLS = {
     "run_tests": tools.dev_tools.run_tests,
     "request_code_review": tools.dev_tools.request_code_review,
     "remember_project_note": tools.dev_tools.remember_project_note,
+    "code_snapshot": tools.code_snapshot.code_snapshot,
+    "code_rollback": tools.code_snapshot.code_rollback,
+    "list_snapshots": tools.code_snapshot.list_snapshots,
     "git_status": tools.git_tools.git_status,
     "git_diff": tools.git_tools.git_diff,
     "git_log": tools.git_tools.git_log,
@@ -454,6 +458,13 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
         current_agent = starting_agent
         steps = SwarmStepsList()
         turn = 0
+        # Snapshot transactionnel : remis à zéro à CHAQUE run (le 1er outil mutant du
+        # run en prendra un nouveau) — sinon un contexte réutilisé (CLI) garderait
+        # l'id d'un run précédent et code_rollback reviendrait trop loin.
+        try:
+            tools.code_snapshot.run_snapshot_id.set(None)
+        except Exception:
+            pass
         started_at = time.time()
         tokens_used = 0
         _rag_injected = False     # RAG sobre : on n'injecte les chunks qu'UNE fois par run
@@ -1118,6 +1129,13 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         "Si run_tests échoue à s'exécuter (lanceur indisponible) après 1-2 essais, NE "
                         "boucle PAS : conclus avec tes corrections. La vérification est un PLUS, pas une "
                         "fin en soi — mieux vaut conclure que tourner en rond.\n"
+                    )
+                if "code_rollback" in _tool_names:
+                    system_prompt += (
+                        "- FILET DE SÉCURITÉ : un snapshot de l'état d'avant tes éditions est pris "
+                        "automatiquement. Si les tests restent cassés après plusieurs corrections, "
+                        "appelle **code_rollback()** pour tout annuler et repartir de l'état initial "
+                        "(plutôt que de laisser le projet cassé).\n"
                     )
                 if "request_code_review" in _tool_names:
                     system_prompt += (
@@ -2276,6 +2294,39 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                     result_value = result.value
                 else:
                     result_value = str(result)
+
+                # TRANSACTIONNALITÉ : après SWARM_ROLLBACK_AFTER_FAILS vérifications en
+                # ÉCHEC CONSÉCUTIF (défaut 3) et si un snapshot pré-éditions existe, on
+                # propose le retour arrière — ou on l'EXÉCUTE si SWARM_AUTO_ROLLBACK=true
+                # (mode autonome). Un PASS remet le compteur à zéro.
+                if func_name in ("run_tests", "run_checks"):
+                    if "❌ FAIL" in str(result_value):
+                        _fails = _verify_counts.get("_test_fails", 0) + 1
+                        _verify_counts["_test_fails"] = _fails
+                        _rb_after = int(os.getenv("SWARM_ROLLBACK_AFTER_FAILS", "3") or 3)
+                        try:
+                            from tools import code_snapshot as _snap_mod
+                            _snap_id = _snap_mod.run_snapshot_id.get() or None
+                        except Exception:
+                            _snap_mod, _snap_id = None, None
+                        if _snap_id and _rb_after > 0 and _fails >= _rb_after:
+                            if os.getenv("SWARM_AUTO_ROLLBACK", "false").lower() in ("true", "1", "yes"):
+                                _rb_msg = _snap_mod.code_rollback(_snap_id)
+                                _verify_counts["_test_fails"] = 0
+                                result_value = str(result_value) + (
+                                    f"\n\n{_rb_msg}\n⏪ ROLLBACK AUTOMATIQUE : {_fails} échecs de tests "
+                                    "consécutifs → tes éditions ont été ANNULÉES (retour à l'état "
+                                    "d'avant). Explique le problème à l'utilisateur et propose une "
+                                    "autre approche — ne réapplique pas les mêmes modifications.")
+                                print(f"[\033[93mSWARM\033[0m] rollback automatique après {_fails} échecs de tests")
+                            else:
+                                result_value = str(result_value) + (
+                                    f"\n\n⏪ {_fails} échecs de tests consécutifs depuis tes éditions. "
+                                    f"Si tu ne vois pas de correction ÉVIDENTE, appelle code_rollback() "
+                                    f"pour revenir à l'état d'avant tes modifications (snapshot {_snap_id}), "
+                                    "puis explique le blocage — ne t'acharne pas.")
+                    else:
+                        _verify_counts["_test_fails"] = 0
 
                 messages.append({
                     "role": "tool",
