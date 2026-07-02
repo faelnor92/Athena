@@ -131,6 +131,10 @@ class LoginRequest(BaseModel):
     totp: str | None = None  # code 2FA (si activé pour le compte)
 
 
+# Endpoints qui déclenchent un run LLM (throttlés par compte/IP dans le middleware).
+_LLM_THROTTLED_PREFIXES = ("/api/chat", "/api/structured", "/api/terminal/coder")
+
+
 
 async def auth_middleware(request: Request, call_next):
     # Endpoints PUBLICS (pas de session requise) : login, inscription par invitation,
@@ -176,6 +180,19 @@ async def auth_middleware(request: Request, call_next):
         # Garde-fou d'autorisation : endpoints sensibles réservés aux admins.
         if _is_admin_only(request.method, request.url.path) and sess.get("role") != "admin":
             return JSONResponse(status_code=403, content={"detail": "Réservé à l'administrateur."})
+    # Rate-limit des endpoints qui CONSOMMENT du LLM (anti déni-de-portefeuille sur les
+    # clés API si un compte « user » est compromis, ou bot derrière le reverse proxy).
+    # Par compte authentifié, sinon par IP. LLM_RATE_LIMIT_PER_MIN=0 pour désactiver.
+    llm_limit = int(os.getenv("LLM_RATE_LIMIT_PER_MIN", "60") or 0)
+    if (llm_limit > 0 and request.method == "POST"
+            and any(path == p or path.startswith(p + "/") for p in _LLM_THROTTLED_PREFIXES)):
+        from core import throttle
+        sess = getattr(request.state, "user", None) or {}
+        who = sess.get("username") or audit.client_ip(request)
+        if not throttle.allow("llm", who, llm_limit, 60):
+            audit.log("llm_throttled", actor=who, ip=audit.client_ip(request), detail=path)
+            return JSONResponse(status_code=429,
+                                content={"detail": "Trop de requêtes. Réessayez dans une minute."})
     response = await call_next(request)
     return response
 
@@ -445,12 +462,20 @@ class RegisterRequest(BaseModel):
 @router.post("/api/register")
 async def register(req: RegisterRequest, request: Request):
     """Inscription PUBLIQUE via un code d'invitation valide → crée le compte + connecte."""
+    from core import throttle
     from core.invites import invite_store
+    # Anti-brute-force des CODES D'INVITATION (endpoint public) : même politique que le login.
+    client_ip = audit.client_ip(request)
+    if throttle.too_many("register_fail", client_ip, _LOGIN_MAX_FAILS, _LOGIN_WINDOW):
+        audit.log("register_blocked", actor=req.username or "?", ip=client_ip, detail="throttle brute-force")
+        raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
     username = (req.username or "").strip()
     if not username or len((req.password or "")) < _MIN_PASSWORD_LEN:
         raise HTTPException(status_code=400, detail=f"username requis et mot de passe d'au moins {_MIN_PASSWORD_LEN} caractères.")
     inv = invite_store.check(req.code)
     if not inv:
+        throttle.record("register_fail", client_ip, _LOGIN_WINDOW)
+        audit.log("register_failed", actor=username, ip=client_ip, detail="code d'invitation invalide")
         raise HTTPException(status_code=403, detail="Invitation invalide, expirée ou déjà utilisée.")
     if user_store.verify(username, "") is not None or any(u["username"] == username for u in user_store.list()):
         raise HTTPException(status_code=409, detail="Ce nom d'utilisateur existe déjà.")
@@ -459,6 +484,7 @@ async def register(req: RegisterRequest, request: Request):
         raise HTTPException(status_code=403, detail="Invitation déjà utilisée.")
     if not user_store.create(username, req.password, inv["role"]):
         raise HTTPException(status_code=400, detail="Création du compte impossible.")
+    throttle.clear("register_fail", client_ip)
     token = _new_session(username, inv["role"])
     audit.log("register", actor=username, role=inv["role"], ip=audit.client_ip(request),
               detail=f"invitation de {inv.get('created_by', '?')}")
