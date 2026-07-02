@@ -2,10 +2,11 @@
 # Scan de sécurité d'Athena (local + CI).
 #
 # Deux niveaux :
-#   - INFORMATIF (n'échoue jamais le build) : pip-audit (CVE des deps, souvent transitives/
-#     non corrigeables) + bandit COMPLET (toutes sévérités).
-#   - BLOQUANT (code de sortie ≠ 0) : bandit HIGH sévérité + HIGH confiance, secrets versionnés,
-#     .env suivi par git. → seuil de qualité sans bruit sur les CVE transitives.
+#   - INFORMATIF (n'échoue jamais le build) : CVE de deps SANS correctif publié (rien
+#     d'actionnable) + bandit COMPLET (toutes sévérités).
+#   - BLOQUANT (code de sortie ≠ 0) : CVE de deps AVEC correctif disponible (un bump
+#     suffit → l'ignorer est un choix, pas un oubli), bandit HIGH sévérité + HIGH
+#     confiance, secrets versionnés, .env suivi par git.
 #
 # Usage : bash scripts/security_scan.sh
 # Outils : pip install pip-audit bandit   (outillage dev/CI, non requis au runtime).
@@ -13,11 +14,38 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 block_rc=0   # seules ces alertes font échouer le build
 
-echo "== [informatif] pip-audit (vulnérabilités des dépendances) =="
-if python3 -m pip_audit --version >/dev/null 2>&1; then
-    python3 -m pip_audit -r requirements.txt || echo "  (CVE signalées ci-dessus — informatif, non bloquant)"
-elif command -v pip-audit >/dev/null 2>&1; then
-    pip-audit -r requirements.txt || echo "  (CVE signalées ci-dessus — informatif, non bloquant)"
+echo "== pip-audit (CVE des dépendances) : BLOQUANT si un correctif existe =="
+PIP_AUDIT=""
+if python3 -m pip_audit --version >/dev/null 2>&1; then PIP_AUDIT="python3 -m pip_audit"
+elif command -v pip-audit >/dev/null 2>&1; then PIP_AUDIT="pip-audit"; fi
+if [ -n "$PIP_AUDIT" ]; then
+    # Un seul passage (résolution des deps lente) : sortie JSON, tri en python.
+    # pip_audit sort ≠ 0 dès qu'une CVE existe → on capture sans échouer ici.
+    audit_json=$($PIP_AUDIT -r requirements.txt -f json 2>/dev/null || true)
+    if [ -n "$audit_json" ]; then
+        echo "$audit_json" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+deps = data.get("dependencies", data) if isinstance(data, dict) else data
+fixable, info = [], []
+for dep in deps:
+    for v in dep.get("vulns", []):
+        line = "  %s %s : %s" % (dep.get("name"), dep.get("version"), v.get("id"))
+        fixes = ", ".join(v.get("fix_versions") or [])
+        if fixes:
+            fixable.append(line + " -> corrige en " + fixes)
+        else:
+            info.append(line + " (aucun correctif publie - informatif)")
+for l in info: print(l)
+if fixable:
+    print("  [X] CVE avec correctif disponible (bump requis, ou ignore justifie) :")
+    for l in fixable: print(l)
+    sys.exit(1)
+print("  OK : aucune CVE corrigeable dans les dependances.")
+' || block_rc=1
+    else
+        echo "  (pip-audit n'a rien renvoyé — résolution impossible ? informatif)"
+    fi
 else
     echo "  pip-audit non installé → 'pip install pip-audit'."
 fi

@@ -36,9 +36,10 @@ jobs:
 
   security-scan:
     runs-on: ubuntu-latest
-    # Le job ÉCHOUE désormais sur les alertes BLOQUANTES (bandit HIGH/HIGH, secrets versionnés,
-    # .env suivi) ; pip-audit et bandit toutes-sévérités restent informatifs (cf. security_scan.sh
-    # qui gère lui-même le seuil) → pas de faux échec sur une CVE transitive non corrigeable.
+    # Le job ÉCHOUE sur les alertes BLOQUANTES : CVE de dépendance AVEC correctif publié
+    # (un bump suffit), bandit HIGH/HIGH, secrets versionnés, .env suivi. Les CVE sans
+    # correctif et bandit toutes-sévérités restent informatifs (cf. security_scan.sh) →
+    # pas de faux échec sur une CVE transitive non corrigeable.
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -48,3 +49,27 @@ jobs:
         run: pip install pip-audit bandit
       - name: Dependency & code scan
         run: bash scripts/security_scan.sh
+
+  docker-image-scan:
+    # Scan Trivy de l'image applicative : CVE de l'OS de base (python:3.13-slim) et des
+    # paquets installés, invisibles pour pip-audit. Bloquant sur CRITICAL corrigeable
+    # uniquement (HIGH = informatif) — même philosophie que security_scan.sh.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build image
+        run: docker build -t athena:ci .
+      - name: Trivy — rapport complet (informatif)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: athena:ci
+          format: table
+          exit-code: "0"
+      - name: Trivy — CRITICAL corrigeables (bloquant)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: athena:ci
+          format: table
+          exit-code: "1"
+          severity: CRITICAL
+          ignore-unfixed: true
