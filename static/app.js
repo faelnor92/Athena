@@ -7690,6 +7690,124 @@ async function loadCockpitData() {
     } catch (err) {
         console.error("Erreur de télémétrie Cockpit :", err);
     }
+    loadCockpitRuns();
+}
+
+// ── Timeline des runs passés (debug / replay) ────────────────────────────────
+// Liste GET /api/runs ; clic sur un run → GET /api/runs/{id} et rendu chronologique
+// des steps persistés (core/tracing). Le replay existait déjà côté API — il ne
+// manquait que cette vue.
+const _STEP_ICONS = {
+    message: "💬", tool_call: "🛠️", tool_output: "📤", handoff: "🔀", steer: "🎯",
+    delegation: "📦", usage: "🔢", critic: "🧐", approval_required: "⏸️",
+    approval_pending: "⏸️", approval_resolved: "▶️", skill_learned: "✨",
+    skill_improved: "🔧",
+};
+
+function _stepLine(s) {
+    const icon = _STEP_ICONS[s.type] || "•";
+    let txt = "";
+    if (s.type === "tool_call") txt = `${s.tool || "?"}(${JSON.stringify(s.args || {}).slice(0, 120)})`;
+    else if (s.type === "tool_output") txt = `${s.tool || "?"} → ${String(s.output || "").slice(0, 160)}`;
+    else if (s.type === "handoff") txt = `${s.from || "?"} → ${s.to || "?"}`;
+    else if (s.type === "usage") txt = `${s.prompt_tokens || 0} in / ${s.completion_tokens || 0} out`;
+    else txt = String(s.content || s.output || s.name || "").slice(0, 160);
+    const agent = s.agent ? `[${s.agent}] ` : "";
+    return { icon, text: `${agent}${txt}`, type: s.type };
+}
+
+async function _toggleRunTimeline(runId, holder) {
+    if (holder.dataset.open === "1") {
+        holder.dataset.open = "0";
+        holder.innerHTML = "";
+        return;
+    }
+    holder.dataset.open = "1";
+    holder.innerHTML = "<div style='padding:8px;opacity:.5;font-size:.75rem;'>Chargement de la timeline…</div>";
+    try {
+        const res = await apiFetch(`/api/runs/${encodeURIComponent(runId)}`);
+        if (!res.ok) { holder.innerHTML = "<div style='padding:8px;color:#ff5555;font-size:.75rem;'>Run introuvable (purgé ?).</div>"; return; }
+        const run = await res.json();
+        const steps = run.steps || [];
+        holder.innerHTML = "";
+        const box = document.createElement("div");
+        box.style.cssText = "border-left:2px solid rgba(0,243,255,.35);margin:6px 0 6px 10px;padding-left:10px;display:flex;flex-direction:column;gap:3px;max-height:320px;overflow:auto;";
+        if (!steps.length) {
+            box.innerHTML = "<div style='opacity:.5;font-size:.75rem;'>Aucune étape persistée pour ce run.</div>";
+        }
+        steps.forEach((s) => {
+            const { icon, text, type } = _stepLine(s);
+            const row = document.createElement("div");
+            row.style.cssText = "font-size:.74rem;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" +
+                (type === "handoff" ? "color:#bd93f9;" : type === "tool_call" ? "color:#8be9fd;" :
+                 type === "tool_output" ? "opacity:.75;" : "");
+            row.title = text;
+            row.textContent = `${icon} ${text}`;
+            box.appendChild(row);
+        });
+        // Pied : réponse finale + bouton replay.
+        const foot = document.createElement("div");
+        foot.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:6px;";
+        const replayBtn = document.createElement("button");
+        replayBtn.className = "btn";
+        replayBtn.style.cssText = "padding:2px 10px;font-size:.7rem;background:rgba(189,147,249,.15);border:1px solid rgba(189,147,249,.4);color:#bd93f9;";
+        replayBtn.textContent = "▶️ Rejouer ce run";
+        replayBtn.addEventListener("click", async () => {
+            replayBtn.disabled = true;
+            replayBtn.textContent = "⏳ Rejeu en cours…";
+            try {
+                const r = await apiFetch(`/api/runs/${encodeURIComponent(runId)}/replay`, { method: "POST" });
+                const d = await r.json().catch(() => ({}));
+                if (r.ok) pushNotification("Rejeu terminé", (d.new_response || "").slice(0, 140) || "OK", "success");
+                else pushNotification("Rejeu impossible", d.detail || r.status, "error");
+            } catch (e) { pushNotification("Rejeu impossible", String(e), "error"); }
+            replayBtn.disabled = false;
+            replayBtn.textContent = "▶️ Rejouer ce run";
+        });
+        foot.appendChild(replayBtn);
+        holder.appendChild(box);
+        holder.appendChild(foot);
+    } catch (e) {
+        holder.innerHTML = `<div style='padding:8px;color:#ff5555;font-size:.75rem;'>Erreur : ${escapeHtml(String(e))}</div>`;
+    }
+}
+
+async function loadCockpitRuns() {
+    const list = document.getElementById("cockpit-runs");
+    if (!list) return;
+    try {
+        const res = await apiFetch("/api/runs?limit=15");
+        if (!res.ok) return;
+        const runs = (await res.json()).runs || [];
+        list.innerHTML = "";
+        if (!runs.length) {
+            list.innerHTML = "<div style='text-align:center;padding:12px;opacity:.5;font-size:.75rem;'>Aucun run persisté pour l'instant.</div>";
+            return;
+        }
+        runs.forEach((r) => {
+            const wrap = document.createElement("div");
+            wrap.style.cssText = "border-bottom:1px solid rgba(255,255,255,.05);padding:4px 0;";
+            const head = document.createElement("div");
+            head.style.cssText = "display:flex;gap:8px;align-items:center;cursor:pointer;font-size:.76rem;";
+            head.title = "Cliquer pour dérouler la timeline des étapes";
+            const when = new Date((r.created_at || 0) * 1000);
+            const st = r.status === "error" ? "🔴" : r.status === "replay" ? "🔁" : "🟢";
+            const dur = r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : "";
+            head.innerHTML =
+                `<span>${st}</span>` +
+                `<span style="opacity:.55;font-family:monospace;">${when.toLocaleDateString()} ${when.toLocaleTimeString()}</span>` +
+                `<strong style="color:var(--accent-cyan);">${escapeHtml(r.agent || "?")}</strong>` +
+                `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.8;">${escapeHtml((r.user_message || "").slice(0, 90))}</span>` +
+                `<span style="opacity:.5;font-family:monospace;">${dur} · ${r.total_tokens || 0} tok</span>`;
+            const holder = document.createElement("div");
+            head.addEventListener("click", () => _toggleRunTimeline(r.run_id, holder));
+            wrap.appendChild(head);
+            wrap.appendChild(holder);
+            list.appendChild(wrap);
+        });
+    } catch (e) {
+        console.error("Timeline des runs :", e);
+    }
 }
 
 // Suppression d'une compétence (Skill) depuis l'UI
@@ -8006,6 +8124,11 @@ if (btnRefreshGallery) {
     btnRefreshGallery.onclick = () => {
         loadGalleryMedia();
     };
+}
+
+const btnRefreshRuns = document.getElementById("btn-refresh-runs");
+if (btnRefreshRuns) {
+    btnRefreshRuns.onclick = () => loadCockpitRuns();
 }
 
 // =========================================================================

@@ -239,6 +239,17 @@
                             </div>
                         </div>
                         
+                        <!-- Timeline des runs passés (debug / replay) -->
+                        <div class="glass panel-card-content" style="margin-top: 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <h5>🕒 Derniers runs (timeline)</h5>
+                                <button id="btn-refresh-runs" class="btn" style="padding: 2px 8px; font-size: 0.7rem; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.15);" title="Actualiser la liste des runs">🔄 Runs</button>
+                            </div>
+                            <div class="services-list" id="cockpit-runs" style="flex-direction: column; align-items: stretch;">
+                                <!-- Injecté dynamiquement par JS (clic sur un run → timeline des étapes) -->
+                            </div>
+                        </div>
+
                         <!-- Galerie d'Art Générative -->
                         <div class="glass panel-card-content">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -1958,7 +1969,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
 
     <script src="i18n.js?v=20260608_lang2"></script>
-    <script src="app.js?v=20260702_csp1"></script>
+    <script src="app.js?v=20260702_runs1"></script>
     <!-- Open Space 2.0 : doit venir APRÈS app.js (redéfinit window.rebuildOfficeFloor) -->
     <script src="office.js?v=20260609_os9"></script>
     <!-- Câblage des interactions (CSP stricte : plus d'attributs onclick inline).
