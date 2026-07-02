@@ -437,6 +437,14 @@ async def notify_channels() -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/api/llm/health")
+async def llm_health_snapshot() -> Dict[str, Any]:
+    """Santé des fournisseurs LLM (scheduler proactif) : disjoncteurs ouverts, cooldowns.
+    Vide = tout le monde est sain."""
+    from core import llm_health
+    return {"models": llm_health.snapshot()}
+
+
 @router.get("/api/config/env")
 async def get_config_env() -> Dict[str, str]:
     try:

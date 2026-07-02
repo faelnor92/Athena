@@ -276,11 +276,15 @@ class _CompletionMixin:
                 or os.getenv("FAST_MODEL", "").strip()
                 or default_model)
 
-    def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None, allow_fallback: bool = True, max_tokens=None):
+    def _complete(self, model: str, messages: list, tools_schema=None, allow_continuation: bool = True, on_delta=None, allow_fallback: bool = True, max_tokens=None, _resolved: bool = False):
         """Appel LLM via litellm avec routage clé officielle / endpoint custom.
         Si on_delta est fourni et STREAM_TOKENS actif, diffuse les tokens au fil
         de l'eau (latence minimale) et reconstruit une réponse compatible.
-        En cas d'échec du modèle (après retries), bascule sur FALLBACK_MODELS."""
+        Sélection PROACTIVE du modèle selon la santé des fournisseurs (core.llm_health) :
+        un modèle en cooldown (429/pannes répétées) est écarté AVANT l'appel au profit des
+        FALLBACK_MODELS, au lieu d'attendre l'échec. Failover réactif conservé en filet.
+        `_resolved=True` (interne) : le nom de modèle est déjà arbitré → ne pas ré-appliquer
+        les overrides forcé/utilisateur (sinon un failover rebasculerait sur le modèle malade)."""
         # Config LLM PAR UTILISATEUR : clés/modèle propres au compte courant si définis
         # dans user_config (mêmes noms que les variables d'env), sinon repli sur le global.
         _ucfg = {}
@@ -298,16 +302,43 @@ class _CompletionMixin:
         #  1) modèle FORCÉ pour le run (code/design) → prime sur tout (feature ≠ chat) ;
         #  2) sinon, modèle préféré global de l'utilisateur (LLM_MODEL) ;
         #  3) sinon, le modèle passé en argument (agent/défaut).
-        _fm = None
-        try:
-            from core.state import _forced_model
-            _fm = (_forced_model.get() or "").strip() or None
-        except Exception:
+        if not _resolved:
             _fm = None
-        if _fm:
-            model = _fm
-        elif _ucfg.get("LLM_MODEL"):
-            model = str(_ucfg["LLM_MODEL"]).strip()
+            try:
+                from core.state import _forced_model
+                _fm = (_forced_model.get() or "").strip() or None
+            except Exception:
+                _fm = None
+            if _fm:
+                model = _fm
+            elif _ucfg.get("LLM_MODEL"):
+                model = str(_ucfg["LLM_MODEL"]).strip()
+
+        # --- Scheduler proactif : santé des fournisseurs AVANT l'appel -------------
+        # Le modèle principal en cooldown (429 récent, pannes répétées) est écarté au
+        # profit du premier fallback sain → le pool de quotas gratuits devient un pool
+        # UNIFIÉ au lieu d'une cascade d'échecs. Si tout est en cooldown, on garde
+        # l'ordre de config (on ne refuse jamais de tenter).
+        if allow_fallback:
+            from core import llm_health
+            _fbs = [x.strip() for x in os.getenv("FALLBACK_MODELS", "").split(",") if x.strip()]
+            _cands = llm_health.order_candidates([model] + _fbs)
+            if _cands and _cands[0] != model and not llm_health.available(model):
+                print(f"[\033[96mLLM santé\033[0m] '{model}' en cooldown → départ proactif sur '{_cands[0]}'.")
+            last_err = None
+            for _cand in _cands:
+                try:
+                    resp = self._complete(_cand, messages, tools_schema, allow_continuation,
+                                          on_delta, allow_fallback=False,
+                                          max_tokens=max_tokens, _resolved=True)
+                    llm_health.record_success(_cand)
+                    return resp
+                except Exception as e:
+                    llm_health.record_failure(_cand, e)
+                    last_err = e
+                    if _cand != _cands[-1]:
+                        print(f"[\033[96mLLM failover\033[0m] '{_cand}' indisponible → modèle suivant.")
+            raise last_err
 
         # Plafond de tokens : override ponctuel (ex. génération de design longue) sinon défaut env.
         max_t = int(max_tokens) if max_tokens else int(os.getenv("LLM_MAX_TOKENS", "4000"))
@@ -432,15 +463,6 @@ class _CompletionMixin:
                     print(f"[\033[93mLLM retry\033[0m] tentative {attempt + 1}/{retries} échouée ({e}); nouvelle tentative dans {wait}s")
                     time.sleep(wait)
 
-        # Failover : le modèle principal a échoué → on tente les modèles de secours.
-        if allow_fallback:
-            fallbacks = [m.strip() for m in os.getenv("FALLBACK_MODELS", "").split(",")
-                         if m.strip() and m.strip() != model]
-            for fb in fallbacks:
-                try:
-                    print(f"[\033[96mLLM failover\033[0m] '{model}' indisponible → bascule sur '{fb}'.")
-                    return self._complete(fb, messages, tools_schema, allow_continuation,
-                                          on_delta, allow_fallback=False)
-                except Exception as e:
-                    last_err = e
+        # (Le failover inter-modèles vit plus haut, dans la boucle de candidats du
+        # scheduler proactif — ici on a épuisé les retries du SEUL modèle demandé.)
         raise last_err
