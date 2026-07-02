@@ -582,6 +582,10 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 messages.append({"role": "assistant", "name": current_agent.name, "content": final_text})
                 break
             turn += 1
+            # CHECKPOINT de reprise : (agent, tour, messages) persistés à chaque tour.
+            # Un run long tué par un redémarrage devient REPRENABLE via resume_run(run_id)
+            # (POST /api/runs/{id}/resume). Best-effort, jamais bloquant pour le run.
+            self._checkpoint_run(current_agent, turn, messages)
             # 1. Outils effectifs du tour, calculés LOCALEMENT (on ne mute pas
             #    l'objet Agent partagé : indispensable pour la concurrence).
             effective_tools = list(current_agent.tools)
@@ -2321,4 +2325,75 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
             self._update_user_profile(current_agent, messages, steps)
             self._extract_graph_facts(starting_agent, messages, steps)
 
+        self._checkpoint_finish()  # run terminé normalement → plus rien à reprendre
         return current_agent, messages, steps
+
+    # --- Reprise des runs interrompus (redémarrage serveur) -------------------
+    _CKPT_NS = "swarm_runs"
+
+    def _checkpoint_run(self, agent, turn, messages):
+        """Persiste l'état minimal du run courant (shared_store). Ne lève jamais."""
+        try:
+            rid = run_context.current_run_id.get()
+            if not rid:
+                return
+            from core import shared_store
+            # Sanitize : les messages sont des dicts (model_dump), mais on blinde
+            # contre tout objet exotique glissé par un outil (default=str).
+            safe = json.loads(json.dumps(messages, ensure_ascii=False, default=str))
+            shared_store.set(self._CKPT_NS, rid,
+                             {"agent": agent.name, "turn": turn, "messages": safe,
+                              "updated": time.time()})
+        except Exception:
+            pass
+
+    def _checkpoint_finish(self):
+        """Efface le checkpoint du run courant (terminé → rien à reprendre)."""
+        try:
+            rid = run_context.current_run_id.get()
+            if rid:
+                from core import shared_store
+                shared_store.delete(self._CKPT_NS, rid)
+        except Exception:
+            pass
+
+    def list_interrupted_runs(self) -> list:
+        """Checkpoints de runs interrompus (présents dans le store = jamais terminés).
+        Purge au passage les checkpoints trop vieux (> 48 h, plus personne ne reprendra)."""
+        from core import shared_store
+        out, now = [], time.time()
+        for rid, ck in shared_store.items(self._CKPT_NS).items():
+            if not ck:
+                continue
+            if now - ck.get("updated", 0) > 48 * 3600:
+                shared_store.delete(self._CKPT_NS, rid)
+                continue
+            last_user = next((str(m.get("content", ""))[:120] for m in reversed(ck.get("messages", []))
+                              if m.get("role") == "user"), "")
+            out.append({"run_id": rid, "agent": ck.get("agent"), "turn": ck.get("turn"),
+                        "updated": ck.get("updated"), "last_user": last_user})
+        return sorted(out, key=lambda x: x.get("updated") or 0, reverse=True)
+
+    def resume_run(self, run_id: str, **run_kwargs):
+        """Reprend un run interrompu à partir de son dernier checkpoint : on repart de
+        l'historique sérialisé, sur le même agent. Renvoie (agent, messages, steps) comme
+        run(), ou None si aucun checkpoint. L'état transitoire (RAG injecté, disjoncteurs…)
+        se réamorce naturellement au fil des tours."""
+        from core import shared_store
+        ck = shared_store.get(self._CKPT_NS, run_id)
+        if not ck:
+            return None
+        agent = self.agents.get(ck.get("agent")) or self.agents.get(
+            getattr(self, "orchestrator_name", "Athena"))
+        if agent is None and self.agents:
+            agent = next(iter(self.agents.values()))
+        if agent is None:
+            return None
+        messages = list(ck.get("messages") or [])
+        # Le run repris tourne sous le MÊME run_id : son checkpoint se met à jour, et
+        # il est effacé à la fin comme pour un run normal.
+        token = run_context.current_run_id.set(run_id)
+        try:
+            return self.run(agent, messages, **run_kwargs)
+        finally:
+            run_context.current_run_id.reset(token)

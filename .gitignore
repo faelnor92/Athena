@@ -124,3 +124,4 @@ redaction/
 # Artefacts de test / scratch (ne pas versionner)
 scratch/
 presentation_moderne.pptx
+.tts_cache/

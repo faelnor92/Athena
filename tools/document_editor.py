@@ -625,13 +625,23 @@ def document_autorevise(nextcloud_path: str, instruction: str = "", chapter: str
     return _autorevise_run(nextcloud_path, instruction, chapter, progress=None)
 
 
-def _autorevise_run(nextcloud_path, instruction="", chapter="", progress=None):
+def _autorevise_run(nextcloud_path, instruction="", chapter="", progress=None, checkpoint=None):
     """Cœur de la révision automatique, avec PROGRESSION optionnelle (jobs en arrière-plan).
-    `progress(done, total, message)` est appelé par chapitre. Voir document_autorevise."""
+    `progress(done, total, message)` est appelé par chapitre. Voir document_autorevise.
+    `checkpoint` (reprise après redémarrage) : {"corrections": {titre: [...]}} — les
+    corrections DÉJÀ calculées par le LLM sont ré-appliquées sans le rappeler, puis la
+    boucle continue sur les chapitres restants."""
     def _p(d=None, t=None, m=None):
         if progress:
             try:
                 progress(d, t, m)
+            except Exception:
+                pass
+
+    def _ck(data):
+        if progress and hasattr(progress, "checkpoint"):
+            try:
+                progress.checkpoint(data)
             except Exception:
                 pass
     if not projects.can_write():
@@ -662,17 +672,28 @@ def _autorevise_run(nextcloud_path, instruction="", chapter="", progress=None):
         rev = _Rev()
         done, total_corr = [], 0
         total = len(targets)
-        _p(0, total, f"Révision de {total} chapitre(s)…")
+        # Reprise : corrections déjà calculées lors du run interrompu (LLM = la partie
+        # coûteuse) → ré-appliquées telles quelles sur le document fraîchement rouvert.
+        saved = dict((checkpoint or {}).get("corrections") or {})
+        _p(0, total, f"Révision de {total} chapitre(s)…"
+           + (f" (reprise : {len(saved)} déjà analysés)" if saved else ""))
         for i, title in enumerate(targets, 1):
             _p(i - 1, total, f"Chapitre « {title} »")
-            old = document_read(name, chapter=title)
-            old_body = "\n".join(old.split("\n")[1:]) if old.startswith("# ") else old
-            if not old_body.strip():
-                continue
-            # On demande au LLM la LISTE des corrections ponctuelles (pas une réécriture), puis
-            # on n'applique QUE ces fragments → révision fidèle et fine (phrase/mot), jamais le
-            # chapitre entier barré.
-            corrections = _llm_corrections(model, instruction, old_body)
+            if title in saved:
+                corrections = saved[title]
+            else:
+                old = document_read(name, chapter=title)
+                old_body = "\n".join(old.split("\n")[1:]) if old.startswith("# ") else old
+                if not old_body.strip():
+                    saved[title] = []
+                    _ck({"corrections": saved})
+                    continue
+                # On demande au LLM la LISTE des corrections ponctuelles (pas une réécriture), puis
+                # on n'applique QUE ces fragments → révision fidèle et fine (phrase/mot), jamais le
+                # chapitre entier barré.
+                corrections = _llm_corrections(model, instruction, old_body)
+                saved[title] = corrections
+                _ck({"corrections": saved})
             if not corrections:
                 continue
             n = _apply_corrections_to_chapter(doc, title, corrections, rev)
@@ -739,12 +760,20 @@ def document_check_coherence(nextcloud_path: str, chapter: str = "") -> str:
     return _coherence_run(nextcloud_path, chapter, progress=None)
 
 
-def _coherence_run(nextcloud_path, chapter="", progress=None):
-    """Cœur de la vérification de cohérence, avec PROGRESSION optionnelle (jobs)."""
+def _coherence_run(nextcloud_path, chapter="", progress=None, checkpoint=None):
+    """Cœur de la vérification de cohérence, avec PROGRESSION optionnelle (jobs).
+    `checkpoint` (reprise) : {"done": [titres], "canon": str, "report": [...]}."""
     def _p(d=None, t=None, m=None):
         if progress:
             try:
                 progress(d, t, m)
+            except Exception:
+                pass
+
+    def _ck(data):
+        if progress and hasattr(progress, "checkpoint"):
+            try:
+                progress.checkpoint(data)
             except Exception:
                 pass
     _p(0, 0, "Ouverture du document…")
@@ -765,20 +794,26 @@ def _coherence_run(nextcloud_path, chapter="", progress=None):
         from core.state import swarm as _sw
         model = _doc_model()
 
-        canon = ""
-        report = []
+        ck = dict(checkpoint or {})
+        canon = ck.get("canon") or ""
+        report = list(ck.get("report") or [])
+        done_titles = set(ck.get("done") or [])
         total = len(targets)
-        _p(0, total, f"Analyse de {total} chapitre(s)…")
+        _p(0, total, f"Analyse de {total} chapitre(s)…"
+           + (f" (reprise : {len(done_titles)} déjà analysés)" if done_titles else ""))
         for i, title in enumerate(targets, 1):
+            if title in done_titles:
+                continue
             _p(i - 1, total, f"Chapitre « {title} »")
             txt = document_read(name, chapter=title)
             body = "\n".join(txt.split("\n")[1:]) if txt.startswith("# ") else txt
-            if not body.strip():
-                continue
-            r = _llm_coherence(model, canon, title, body)
-            canon = r["canon"]
-            if r["incoherences"]:
-                report.append(f"\n📍 {title} :\n" + "\n".join(f"   • {i}" for i in r["incoherences"]))
+            if body.strip():
+                r = _llm_coherence(model, canon, title, body)
+                canon = r["canon"]
+                if r["incoherences"]:
+                    report.append(f"\n📍 {title} :\n" + "\n".join(f"   • {i}" for i in r["incoherences"]))
+            done_titles.add(title)
+            _ck({"done": sorted(done_titles), "canon": canon, "report": report})
         _p(total, total, "Terminé")
         if not report:
             return f"✅ Aucune incohérence narrative détectée sur {len(targets)} chapitre(s)."
@@ -835,12 +870,22 @@ def document_translate(nextcloud_path: str, target_language: str, instruction: s
     return _translate_run(nextcloud_path, target_language, instruction, progress=None)
 
 
-def _translate_run(nextcloud_path, target_language, instruction="", progress=None):
-    """Cœur de la traduction vivante, avec PROGRESSION optionnelle (jobs)."""
+def _translate_run(nextcloud_path, target_language, instruction="", progress=None, checkpoint=None):
+    """Cœur de la traduction vivante, avec PROGRESSION optionnelle (jobs).
+    `checkpoint` (reprise) : {"done": n_chapitres, "ops": [["h",lvl,txt]|["p",txt]], "chunks": n}
+    — le document de sortie est REJOUÉ depuis les ops déjà traduites (le .docx en cours ne
+    survit pas au redémarrage), puis la traduction continue au chapitre suivant."""
     def _p(d=None, t=None, m=None):
         if progress:
             try:
                 progress(d, t, m)
+            except Exception:
+                pass
+
+    def _ck(data):
+        if progress and hasattr(progress, "checkpoint"):
+            try:
+                progress.checkpoint(data)
             except Exception:
                 pass
     if not projects.can_write():
@@ -859,20 +904,35 @@ def _translate_run(nextcloud_path, target_language, instruction="", progress=Non
         paras = src.paragraphs
         out = Document()
         _CHUNK = int(os.getenv("DOCUMENT_TRANSLATE_CHUNK", "5000") or 5000)
-        n_chunks = 0
         from core.state import swarm as _sw
         model = _doc_model()
 
+        # Reprise : rejoue les opérations déjà traduites dans le nouveau document.
+        ck = dict(checkpoint or {})
+        ops = list(ck.get("ops") or [])
+        done_ci = int(ck.get("done") or 0)
+        n_chunks = int(ck.get("chunks") or 0)
+        for op in ops:
+            if op and op[0] == "h":
+                out.add_heading(op[2], level=min(int(op[1]), 9))
+            elif op:
+                out.add_paragraph(op[1])
+
         total = len(chaps)
-        _p(0, total, f"Traduction de {total} chapitre(s) en {target_language}…")
+        _p(done_ci, total, f"Traduction de {total} chapitre(s) en {target_language}…"
+           + (f" (reprise au chapitre {done_ci + 1})" if done_ci else ""))
         for ci, (title, a, b) in enumerate(chaps, 1):
+            if ci <= done_ci:
+                continue
             _p(ci - 1, total, f"Chapitre « {title} »")
             seg = paras[a:b]
             idx = 0
             if seg and _is_heading(seg[0]):
                 lvl = _heading_level(seg[0])
                 tt = _translate_block(model, target_language, "", seg[0].text) or seg[0].text
-                out.add_heading(tt.strip().splitlines()[0] if tt.strip() else seg[0].text, level=min(lvl, 9))
+                head = tt.strip().splitlines()[0] if tt.strip() else seg[0].text
+                out.add_heading(head, level=min(lvl, 9))
+                ops.append(["h", lvl, head])
                 idx = 1
             # Corps : on regroupe les paragraphes en lots bornés (contexte) puis on traduit.
             body = [p.text for p in seg[idx:]]
@@ -887,11 +947,13 @@ def _translate_run(nextcloud_path, target_language, instruction="", progress=Non
                 lines = tr.split("\n") if tr else batch
                 for ln in lines:
                     out.add_paragraph(ln)
+                    ops.append(["p", ln])
             for line in body:
                 if blen + len(line) > _CHUNK and batch:
                     _flush(batch); batch, blen = [], 0
                 batch.append(line); blen += len(line) + 1
             _flush(batch)
+            _ck({"done": ci, "ops": ops, "chunks": n_chunks})
 
         # Publication : nouveau fichier « <nom> (<langue>).docx » (à côté de l'original Nextcloud,
         # ou dans le workspace si la source était un upload local).

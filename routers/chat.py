@@ -741,6 +741,38 @@ async def replay_run_endpoint(run_id: str):
     return result
 
 
+@router.get("/api/runs/interrupted")
+async def interrupted_runs_endpoint():
+    """Runs tués par un redémarrage (checkpoint par tour jamais finalisé) — reprenables."""
+    return {"runs": swarm.list_interrupted_runs()}
+
+
+@router.post("/api/runs/{run_id}/resume")
+async def resume_run_endpoint(run_id: str):
+    """Reprend un run interrompu depuis son dernier checkpoint. Long → tourne en JOB
+    d'arrière-plan (core.jobs) : on renvoie un job_id à interroger via
+    GET /api/redaction/job/{job_id} (runner générique)."""
+    from core import jobs
+    from core.state import _current_username
+    ck = [r for r in swarm.list_interrupted_runs() if r["run_id"] == run_id]
+    if not ck:
+        raise HTTPException(status_code=404, detail="Aucun checkpoint pour ce run (terminé ou expiré).")
+
+    def worker(prog):
+        prog(0, 0, f"Reprise du run {run_id} (tour {ck[0].get('turn')})…")
+        res = swarm.resume_run(run_id)
+        if res is None:
+            return "Checkpoint disparu avant la reprise."
+        _agent, msgs, _steps = res
+        final = next((str(m.get("content", "")) for m in reversed(msgs)
+                      if m.get("role") == "assistant" and m.get("content")), "")
+        return final or "(run repris, aucune réponse textuelle)"
+
+    jid = jobs.start(f"Reprise du run {run_id}", worker,
+                     owner=_current_username.get() or "local")
+    return {"job_id": jid, "run_id": run_id}
+
+
 @router.get("/api/chat/tree")
 async def get_chat_tree():
     return {

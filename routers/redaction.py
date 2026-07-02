@@ -38,6 +38,35 @@ def _resolve_ws_file(path: str):
 _OPS = ("autorevise", "translate", "coherence", "repetitions")
 
 
+# --- Reprise après redémarrage : factories (op, params, checkpoint) → worker ---------
+# Les workers posent des checkpoints par chapitre (progress.checkpoint) ; jobs.resume()
+# reconstruit le worker avec le dernier checkpoint et relance là où c'était rendu.
+def _mk_autorevise(params, ck):
+    return lambda prog: de._autorevise_run(params["path"], params.get("instruction", ""),
+                                           params.get("chapter", ""), progress=prog, checkpoint=ck)
+
+
+def _mk_translate(params, ck):
+    return lambda prog: de._translate_run(params["path"], params["target_language"],
+                                          params.get("instruction", ""), progress=prog, checkpoint=ck)
+
+
+def _mk_coherence(params, ck):
+    return lambda prog: de._coherence_run(params["path"], params.get("chapter", ""),
+                                          progress=prog, checkpoint=ck)
+
+
+def _mk_repetitions(params, ck):
+    # Rapide et déterministe : la « reprise » relance simplement l'analyse.
+    return lambda prog: de.document_check_repetitions(params["path"], params.get("chapter", ""))
+
+
+jobs.register_op("autorevise", _mk_autorevise)
+jobs.register_op("translate", _mk_translate)
+jobs.register_op("coherence", _mk_coherence)
+jobs.register_op("repetitions", _mk_repetitions)
+
+
 class ChaptersRequest(BaseModel):
     path: str
 
@@ -104,22 +133,25 @@ async def start_job(req: JobRequest):
     if not path:
         raise HTTPException(status_code=400, detail="Chemin du document manquant.")
 
+    params = {"path": path, "instruction": req.instruction, "chapter": req.chapter,
+              "target_language": req.target_language}
     if op == "autorevise":
         label = f"Révision — {path}"
-        def worker(prog): return de._autorevise_run(path, req.instruction, req.chapter, progress=prog)
+        worker = _mk_autorevise(params, None)
     elif op == "translate":
         if not (req.target_language or "").strip():
             raise HTTPException(status_code=400, detail="Langue cible manquante.")
         label = f"Traduction ({req.target_language}) — {path}"
-        def worker(prog): return de._translate_run(path, req.target_language, req.instruction, progress=prog)
+        worker = _mk_translate(params, None)
     elif op == "coherence":
         label = f"Cohérence — {path}"
-        def worker(prog): return de._coherence_run(path, req.chapter, progress=prog)
+        worker = _mk_coherence(params, None)
     else:  # repetitions (rapide, déterministe)
         label = f"Répétitions — {path}"
-        def worker(prog): return de.document_check_repetitions(path, req.chapter)
+        worker = _mk_repetitions(params, None)
 
-    jid = jobs.start(label, worker, owner=_owner())
+    # op+params rendent le job REPRENABLE après un redémarrage (cf. jobs.resume).
+    jid = jobs.start(label, worker, owner=_owner(), op=op, params=params)
     return {"job_id": jid, "label": label}
 
 
@@ -134,6 +166,21 @@ async def job_status(job_id: str):
 @router.get("/api/redaction/jobs")
 async def jobs_list():
     return {"jobs": jobs.list_jobs(owner=_owner())}
+
+
+@router.post("/api/redaction/job/{job_id}/resume")
+async def job_resume(job_id: str):
+    """Reprend un job interrompu par un redémarrage (ou en erreur) depuis son dernier
+    checkpoint — les chapitres déjà traités ne sont pas refaits."""
+    j = jobs.get(job_id)
+    if not j:
+        raise HTTPException(status_code=404, detail="Job introuvable (expiré ou inexistant).")
+    if j.get("owner") and j.get("owner") != _owner():
+        raise HTTPException(status_code=403, detail="Ce job appartient à un autre utilisateur.")
+    res = jobs.resume(job_id)
+    if isinstance(res, str):
+        raise HTTPException(status_code=409, detail=res)
+    return res
 
 
 # ----------------------------------------------------------------- OnlyOffice

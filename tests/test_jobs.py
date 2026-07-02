@@ -70,9 +70,67 @@ def test_list_jobs_filters_by_owner():
     print("OK test_list_jobs_filters_by_owner")
 
 
+def test_job_persisted_and_interrupted_after_restart():
+    """Un job « running » persisté mais absent de la mémoire (= redémarrage) doit être
+    présenté « interrupted », et reprenable si son op a une factory enregistrée."""
+    from core import shared_store
+
+    def worker(progress):
+        progress(1, 4, "chapitre 1")
+        progress.checkpoint({"done": ["ch1"]})
+        return "ok"
+
+    jid = jobs.start("persist", worker, owner="u1", op="test-op", params={"x": 1})
+    j = _wait(jid)
+    assert j["status"] == "done"
+    assert (shared_store.get("jobs", jid) or {}).get("status") == "done", "le store doit être miroir"
+
+    # Simule un redémarrage : le registre mémoire perd le job, le store garde « running ».
+    rec = shared_store.get("jobs", jid)
+    rec.update(status="running")
+    shared_store.set("jobs", jid, rec)
+    with jobs._LOCK:
+        jobs._JOBS.pop(jid, None)
+    j2 = jobs.get(jid)
+    assert j2 and j2["status"] == "interrupted", j2
+    assert j2["checkpoint"] == {"done": ["ch1"]}, j2
+    assert not j2["resumable"], "op non enregistrée → pas reprenable"
+
+    # Avec la factory enregistrée : reprenable, et resume() repart du checkpoint.
+    seen = {}
+    def factory(params, ck):
+        def w(progress):
+            seen["params"], seen["ck"] = params, ck
+            return "repris"
+        return w
+    jobs.register_op("test-op", factory)
+    try:
+        assert jobs.get(jid)["resumable"] is True
+        res = jobs.resume(jid)
+        assert isinstance(res, dict), res
+        j3 = _wait(jid)
+        assert j3["status"] == "done" and j3["result"] == "repris", j3
+        assert seen["ck"] == {"done": ["ch1"]} and seen["params"] == {"x": 1}, seen
+    finally:
+        jobs._RESUMABLE.pop("test-op", None)
+        shared_store.delete("jobs", jid)
+    print("OK test_job_persisted_and_interrupted_after_restart")
+
+
+def test_resume_refuses_running_or_done():
+    def worker(progress):
+        return 42
+    jid = jobs.start("done-job", worker, owner="u1", op="whatever")
+    _wait(jid)
+    assert jobs.resume(jid) == "Job déjà terminé."
+    print("OK test_resume_refuses_running_or_done")
+
+
 if __name__ == "__main__":
     test_job_runs_reports_progress_and_result()
     test_job_captures_error()
     test_job_propagates_user_context()
     test_list_jobs_filters_by_owner()
+    test_job_persisted_and_interrupted_after_restart()
+    test_resume_refuses_running_or_done()
     print("\nTous les tests jobs passent.")

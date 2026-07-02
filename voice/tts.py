@@ -288,13 +288,83 @@ class TTS:
         except Exception:
             pass
 
+    # --- Cache TTS par segment --------------------------------------------------
+    # hash(texte + voix + params) → fichier WAV. Régénérer un livre audio après la
+    # correction d'un chapitre ne resynthétise que les segments qui ont changé (des
+    # heures de GPU économisées). TTS_CACHE_DIR="" pour désactiver ; taille bornée
+    # par TTS_CACHE_MAX_MB (éviction des plus anciens à l'accès).
+    def _cache_key(self, text: str, emotion: str) -> str:
+        import hashlib
+        parts = "|".join([
+            self.engine, self.piper_model or "",
+            os.getenv("VOICE_TTS_HTTP_URL", ""), os.getenv("VOICE_TTS_MODEL", ""),
+            os.getenv("VOICE_TTS_VOICE", ""), os.getenv("VOICE_TTS_FORMAT", "wav"),
+            str(self._emotion_speed(emotion)), str(self._emotion_gain(emotion)),
+            emotion or "neutral", text,
+        ])
+        return hashlib.sha256(parts.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _cache_dir():
+        d = os.getenv("TTS_CACHE_DIR", os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), ".tts_cache"))
+        if not d:
+            return None
+        try:
+            os.makedirs(d, exist_ok=True)
+            return d
+        except Exception:
+            return None
+
+    @classmethod
+    def _cache_evict(cls, d: str):
+        """Borne la taille du cache (LRU par mtime). Appelé après chaque écriture."""
+        try:
+            cap = int(os.getenv("TTS_CACHE_MAX_MB", "500") or 500) * 1024 * 1024
+            files = [(os.path.join(d, f), os.path.getmtime(os.path.join(d, f)),
+                      os.path.getsize(os.path.join(d, f)))
+                     for f in os.listdir(d) if f.endswith(".wav")]
+            total = sum(sz for _, _, sz in files)
+            for path, _, sz in sorted(files, key=lambda x: x[1]):
+                if total <= cap:
+                    break
+                os.remove(path)
+                total -= sz
+        except Exception:
+            pass
+
     def synth_wav_bytes(self, text: str) -> bytes:
-        """Synthétise et renvoie les octets WAV (pour streaming vers un satellite)."""
+        """Synthétise et renvoie les octets WAV (pour streaming vers un satellite).
+        Mise en cache par segment (voir _cache_key)."""
         emotion, text = split_emotion(text or "")
         text = text.strip()
         text = self._emotion_text(text, emotion)
         if not text:
             return b""
+        cache_dir = self._cache_dir()
+        cache_path = None
+        if cache_dir:
+            cache_path = os.path.join(cache_dir, self._cache_key(text, emotion) + ".wav")
+            try:
+                if os.path.exists(cache_path):
+                    os.utime(cache_path)  # LRU : marque l'accès
+                    with open(cache_path, "rb") as f:
+                        return f.read()
+            except Exception:
+                pass
+        data = self._synth_wav_bytes_uncached(text, emotion)
+        if cache_path and data:
+            try:
+                tmp = cache_path + ".tmp"
+                with open(tmp, "wb") as f:
+                    f.write(data)
+                os.replace(tmp, cache_path)  # atomique : jamais de WAV tronqué servi
+                self._cache_evict(cache_dir)
+            except Exception:
+                pass
+        return data
+
+    def _synth_wav_bytes_uncached(self, text: str, emotion: str) -> bytes:
         if self.engine == "pyttsx3":
             engine = self._ensure_pyttsx()
             self._apply_pyttsx_emotion(engine, emotion)
