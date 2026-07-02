@@ -40,15 +40,17 @@ def test_fonction_absente_rejetee():
 
 
 def test_induction_complete_et_refus():
-    """Le flux _induce_skill enregistre une skill pure et refuse du code dangereux."""
+    """Le flux _induce_skill met une skill pure (avec self-tests VERTS) en QUARANTAINE
+    canary, et refuse le code dangereux, les self-tests faux ou absents."""
     os.environ["SELF_IMPROVE"] = "true"
     os.environ["SELF_IMPROVE_SKILLS"] = "true"
     import core.swarm as cs
     from core.agent import Agent
-    import tools.skills_manager as sm
+    from core import skill_quarantine as sq
 
     saved = {}
-    sm.save_new_skill = lambda n, c, d: saved.update({"name": n}) or "Succès : ok"
+    _orig_quar = sq.save_quarantined
+    sq.save_quarantined = lambda n, c, d, t: saved.update({"name": n, "tests": t}) or "Succès : ok"
     cs.load_dynamic_skills = lambda: {}
 
     s = cs.Swarm.__new__(cs.Swarm)
@@ -63,24 +65,45 @@ def test_induction_complete_et_refus():
         r = _R(); r.choices = [c]
         return r
 
-    # Skill pure valide -> enregistrée
-    s._complete = lambda model, msgs, tools_schema=None: _resp(
-        '{"skill": true, "name": "calc_remise", "description": "remise",'
-        ' "code": "def calc_remise(prix, pct):\\n    \\"r\\"\\n    return round(prix*(1-pct/100), 2)"}')
-    # Tâche SUBSTANTIELLE (garde anti-bruit : ≥ SKILL_MIN_TOOL_CALLS appels) → induction déclenchée.
-    steps = [{"type": "tool_call"} for _ in range(5)]
-    s._induce_skill(agent, [{"role": "user", "content": "remise 10% sur 50"}], steps)
-    assert saved.get("name") == "calc_remise", "la skill pure aurait dû être enregistrée"
-    assert any(st.get("type") == "skill_learned" for st in steps)
+    _CODE = 'def calc_remise(prix, pct):\\n    \\"r\\"\\n    return round(prix*(1-pct/100), 2)'
+    try:
+        # Skill pure valide + self-tests VERTS -> quarantaine (canary)
+        s._complete = lambda model, msgs, tools_schema=None: _resp(
+            '{"skill": true, "name": "calc_remise", "description": "remise",'
+            f' "code": "{_CODE}",'
+            ' "tests": [{"args": [100, 10], "expected": 90.0}]}')
+        # Tâche SUBSTANTIELLE (garde anti-bruit : ≥ SKILL_MIN_TOOL_CALLS appels) → induction déclenchée.
+        steps = [{"type": "tool_call"} for _ in range(5)]
+        s._induce_skill(agent, [{"role": "user", "content": "remise 10% sur 50"}], steps)
+        assert saved.get("name") == "calc_remise", "la skill pure validée doit partir en quarantaine"
+        assert any(st.get("type") == "skill_learned" and st.get("quarantined") for st in steps)
 
-    # Code dangereux -> refusé
-    saved.clear()
-    s._complete = lambda model, msgs, tools_schema=None: _resp(
-        '{"skill": true, "name": "pirate", "description": "x",'
-        ' "code": "import os\\ndef pirate(c):\\n    return os.system(c)"}')
-    s._induce_skill(agent, [{"role": "user", "content": "..."}], [{"type": "tool_call"}])
-    assert not saved, "le code dangereux ne doit JAMAIS être enregistré"
-    print("OK: induction enregistre le pur, refuse le dangereux")
+        # Self-tests FAUX (résultat attendu erroné) -> refusée AVANT toute écriture
+        saved.clear()
+        s._complete = lambda model, msgs, tools_schema=None: _resp(
+            '{"skill": true, "name": "calc_remise2", "description": "remise",'
+            f' "code": "{_CODE.replace("calc_remise", "calc_remise2")}",'
+            ' "tests": [{"args": [100, 10], "expected": 42}]}')
+        s._induce_skill(agent, [{"role": "user", "content": "..."}], [{"type": "tool_call"} for _ in range(5)])
+        assert not saved, "des self-tests en échec doivent refuser la skill"
+
+        # Aucun self-test fourni -> refusée (plus d'adoption aveugle)
+        s._complete = lambda model, msgs, tools_schema=None: _resp(
+            '{"skill": true, "name": "calc_remise3", "description": "remise",'
+            f' "code": "{_CODE.replace("calc_remise", "calc_remise3")}"}}')
+        s._induce_skill(agent, [{"role": "user", "content": "..."}], [{"type": "tool_call"} for _ in range(5)])
+        assert not saved, "sans cas de test la skill doit être refusée"
+
+        # Code dangereux -> refusé par le validateur AST
+        s._complete = lambda model, msgs, tools_schema=None: _resp(
+            '{"skill": true, "name": "pirate", "description": "x",'
+            ' "code": "import os\\ndef pirate(c):\\n    return os.system(c)",'
+            ' "tests": [{"args": ["ls"], "expected": 0}]}')
+        s._induce_skill(agent, [{"role": "user", "content": "..."}], [{"type": "tool_call"} for _ in range(5)])
+        assert not saved, "le code dangereux ne doit JAMAIS être enregistré"
+    finally:
+        sq.save_quarantined = _orig_quar
+    print("OK: induction → quarantaine si self-tests verts ; refus (tests faux/absents, code dangereux)")
 
 
 if __name__ == "__main__":
