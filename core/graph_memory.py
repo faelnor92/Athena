@@ -7,13 +7,43 @@ massive ni de communautés) : juste un graphe de faits reliés, le « 20 % qui d
 PAR UTILISATEUR : chaque utilisateur a ses propres relations (graph_memory_<user>.db),
 résolu à chaque accès via core.user_config.
 """
+import glob as _glob
 import json
 import os
 import sqlite3
 import threading
+import time
+import unicodedata
 from contextlib import closing
 
 _MAX = int(os.getenv("GRAPH_MEMORY_MAX", "5000") or 5000)
+
+# ── Hygiène long terme ─────────────────────────────────────────────────────────
+# Sans consolidation, les faits s'accumulent sans fin et le RAG resurface du bruit :
+# - DÉCROISSANCE : un fait jamais RE-confirmé depuis GRAPH_FACT_TTL_DAYS est ARCHIVÉ
+#   (invisible des requêtes, pas supprimé) ; archivé depuis 2×TTL → purgé.
+# - RE-CONFIRMATION : ré-apprendre un fait existant incrémente son compteur `seen`
+#   et rafraîchit `last_seen` (et le désarchive) → les faits vivants ne meurent pas.
+# - CONTRADICTION : pour une relation FONCTIONNELLE (une seule valeur possible :
+#   domicile, âge, métier…), un nouveau (s, r, o2) ARCHIVE l'ancien (s, r, o1) —
+#   le plus récent gagne, l'ancien reste consultable jusqu'à sa purge.
+_FACT_TTL_DAYS = int(os.getenv("GRAPH_FACT_TTL_DAYS", "180") or 180)
+_FUNCTIONAL_DEFAULT = ("habite,vit a,reside,travaille chez,travaille a,travaille pour,"
+                       "a pour metier,a pour age,est age,a pour email,a pour adresse,"
+                       "a pour telephone,s appelle,est marie,est en couple,"
+                       "a pour anniversaire,est ne,a pour voiture,utilise comme modele")
+
+
+def _fold(x: str) -> str:
+    """Normalisation de comparaison : minuscules + accents retirés + espaces pliés."""
+    x = unicodedata.normalize("NFKD", (x or "")).encode("ascii", "ignore").decode("ascii")
+    return " ".join(x.lower().replace("'", " ").split())
+
+
+def _is_functional(rel: str) -> bool:
+    raw = os.getenv("GRAPH_FUNCTIONAL_RELATIONS", "").strip() or _FUNCTIONAL_DEFAULT
+    rf = _fold(rel)
+    return any(m.strip() and m.strip() in rf for m in raw.split(","))
 
 def _key() -> str:
     from core.user_config import current_user_key
@@ -62,11 +92,28 @@ def _get_conn():
     ''')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_s ON triples(s COLLATE NOCASE)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_o ON triples(o COLLATE NOCASE)')
+    _migrate_columns(conn)
     
     if needs_migration:
         _migrate_from_json(conn, json_file)
         
     return conn
+
+def _migrate_columns(conn):
+    """Migration douce (hygiène long terme) : timestamps + compteur de re-confirmation
+    + archivage. ALTER ignoré si les colonnes existent déjà."""
+    _now = time.time()
+    for coldef, backfill in (
+            ("created_at REAL", f"UPDATE triples SET created_at={_now} WHERE created_at IS NULL"),
+            ("last_seen REAL", f"UPDATE triples SET last_seen={_now} WHERE last_seen IS NULL"),
+            ("seen INTEGER DEFAULT 1", "UPDATE triples SET seen=1 WHERE seen IS NULL"),
+            ("archived INTEGER DEFAULT 0", "UPDATE triples SET archived=0 WHERE archived IS NULL")):
+        try:
+            conn.execute(f"ALTER TABLE triples ADD COLUMN {coldef}")
+            conn.execute(backfill)
+        except sqlite3.OperationalError:
+            pass  # colonne déjà présente
+
 
 def _migrate_from_json(conn, json_file):
     """Migre les données de l'ancien format JSON vers SQLite."""
@@ -87,6 +134,33 @@ def _migrate_from_json(conn, json_file):
 def _norm(x):
     return " ".join((x or "").strip().split())
 
+def _upsert(conn, s, r, o):
+    """Insertion avec hygiène : re-confirmation (seen+1, désarchive) si le fait existe
+    (comparaison PLIÉE accents/casse), résolution de contradiction pour les relations
+    fonctionnelles (l'ancien objet est archivé, le récent gagne)."""
+    now = time.time()
+    # Fait déjà connu (à la casse/aux accents près) → re-confirmation.
+    for tid, es, er, eo in conn.execute("SELECT id, s, r, o FROM triples").fetchall():
+        if _fold(es) == _fold(s) and _fold(er) == _fold(r) and _fold(eo) == _fold(o):
+            conn.execute("UPDATE triples SET seen=COALESCE(seen,1)+1, last_seen=?, archived=0 WHERE id=?",
+                         (now, tid))
+            return True
+    # Contradiction : relation FONCTIONNELLE avec un autre objet → archive l'ancien.
+    if _is_functional(r):
+        for tid, es, er, eo in conn.execute(
+                "SELECT id, s, r, o FROM triples WHERE archived=0").fetchall():
+            if _fold(es) == _fold(s) and _fold(er) == _fold(r) and _fold(eo) != _fold(o):
+                conn.execute("UPDATE triples SET archived=1, last_seen=? WHERE id=?", (now, tid))
+    count = conn.execute("SELECT COUNT(*) FROM triples").fetchone()[0]
+    if count >= _MAX:
+        # Purge en priorité les archivés les plus vieux, sinon le plus vieux tout court.
+        conn.execute("""DELETE FROM triples WHERE id IN (
+            SELECT id FROM triples ORDER BY archived DESC, COALESCE(last_seen, 0) ASC LIMIT 1)""")
+    conn.execute("INSERT OR IGNORE INTO triples (s, r, o, created_at, last_seen, seen, archived) "
+                 "VALUES (?, ?, ?, ?, ?, 1, 0)", (s, r, o, now, now))
+    return True
+
+
 def add_triple(s, r, o):
     s, r, o = _norm(s), _norm(r), _norm(o)
     if not s or not o:
@@ -94,14 +168,7 @@ def add_triple(s, r, o):
     with closing(_get_conn()) as conn:
         with conn:
             try:
-                # Vérifie d'abord la limite MAX (optionnel mais maintient le comportement précédent)
-                count = conn.execute("SELECT COUNT(*) FROM triples").fetchone()[0]
-                if count >= _MAX:
-                    # Supprime le plus vieux (basé sur l'ID)
-                    conn.execute("DELETE FROM triples WHERE id IN (SELECT id FROM triples ORDER BY id ASC LIMIT 1)")
-                
-                conn.execute("INSERT OR IGNORE INTO triples (s, r, o) VALUES (?, ?, ?)", (s, r, o))
-                # sqlite3 cursor.rowcount vaut 0 si ignoré
+                return _upsert(conn, s, r, o)
             except Exception:
                 return False
     return True
@@ -116,10 +183,10 @@ def add_triples(triples):
                     s, r, o = _norm(t[0]), _norm(t[1]), _norm(t[2])
                 elif isinstance(t, dict):
                     s, r, o = _norm(t.get("s")), _norm(t.get("r")), _norm(t.get("o"))
-                
+
                 if s and o:
                     try:
-                        conn.execute("INSERT OR IGNORE INTO triples (s, r, o) VALUES (?, ?, ?)", (s, r, o))
+                        _upsert(conn, s, r, o)
                         n += 1
                     except Exception:
                         pass
@@ -142,7 +209,7 @@ def neighborhood(entity, depth=1):
                 # Recherche des triplets où la frontière est contenue dans le sujet ou l'objet (insensible à la casse)
                 like_pattern = f"%{f}%"
                 rows = conn.execute(
-                    "SELECT s, r, o FROM triples WHERE s LIKE ? OR o LIKE ?", 
+                    "SELECT s, r, o FROM triples WHERE archived=0 AND (s LIKE ? OR o LIKE ?)",
                     (like_pattern, like_pattern)
                 ).fetchall()
                 
@@ -168,7 +235,8 @@ def neighborhood(entity, depth=1):
 def entities():
     """Toutes les entités distinctes (sujets ∪ objets) — pour repérer celles citées dans un texte."""
     with closing(_get_conn()) as conn:
-        rows = conn.execute("SELECT s FROM triples UNION SELECT o FROM triples").fetchall()
+        rows = conn.execute("SELECT s FROM triples WHERE archived=0 "
+                            "UNION SELECT o FROM triples WHERE archived=0").fetchall()
     return [r[0] for r in rows]
 
 
@@ -199,5 +267,92 @@ def relevant_triples(text, limit=12, min_len=3):
 
 def stats():
     with closing(_get_conn()) as conn:
-        count = conn.execute("SELECT COUNT(*) FROM triples").fetchone()[0]
-        return {"triples": count}
+        count = conn.execute("SELECT COUNT(*) FROM triples WHERE archived=0").fetchone()[0]
+        archived = conn.execute("SELECT COUNT(*) FROM triples WHERE archived=1").fetchone()[0]
+        return {"triples": count, "archived": archived}
+
+
+# ── Consolidation périodique (job d'hygiène) ───────────────────────────────────
+def consolidate(db_file: str = None) -> dict:
+    """Passe d'hygiène sur UNE base (celle de l'utilisateur courant par défaut) :
+    - archive les faits jamais re-confirmés depuis GRAPH_FACT_TTL_DAYS (décroissance) ;
+    - purge définitivement les archivés depuis plus de 2×TTL ;
+    - fusionne les doublons à la normalisation près (accents/casse) : le plus confirmé
+      absorbe les compteurs des autres.
+    Renvoie {"archived": n, "purged": n, "merged": n}."""
+    now = time.time()
+    ttl = _FACT_TTL_DAYS * 86400
+    out = {"archived": 0, "purged": 0, "merged": 0}
+    conn = sqlite3.connect(db_file, check_same_thread=False) if db_file else _get_conn()
+    with closing(conn):
+        if db_file:
+            _migrate_columns(conn)  # base d'un autre utilisateur, peut-être pré-migration
+        with conn:
+            # Fusion des doublons pliés (ex. « Habite à » / « habite a »).
+            rows = conn.execute("SELECT id, s, r, o, COALESCE(seen,1), COALESCE(last_seen,0), "
+                                "COALESCE(created_at,0), archived FROM triples").fetchall()
+            groups = {}
+            for row in rows:
+                groups.setdefault((_fold(row[1]), _fold(row[2]), _fold(row[3])), []).append(row)
+            for _key_f, grp in groups.items():
+                if len(grp) < 2:
+                    continue
+                grp.sort(key=lambda x: (-x[4], -x[5]))  # le plus confirmé/récent absorbe
+                keep = grp[0]
+                total_seen = sum(g[4] for g in grp)
+                last_seen = max(g[5] for g in grp)
+                created = min(g[6] for g in grp) or keep[6]
+                arch = 0 if any(g[7] == 0 for g in grp) else 1
+                conn.execute("UPDATE triples SET seen=?, last_seen=?, created_at=?, archived=? WHERE id=?",
+                             (total_seen, last_seen, created, arch, keep[0]))
+                ids = [str(g[0]) for g in grp[1:]]
+                conn.execute(f"DELETE FROM triples WHERE id IN ({','.join(ids)})")
+                out["merged"] += len(ids)
+            # Décroissance : jamais re-confirmé (seen ≤ 1) et pas vu depuis TTL → archivé.
+            cur = conn.execute(
+                "UPDATE triples SET archived=1 WHERE archived=0 AND COALESCE(seen,1) <= 1 "
+                "AND COALESCE(last_seen, 0) < ?", (now - ttl,))
+            out["archived"] = cur.rowcount
+            # Purge : archivé et plus revu depuis 2×TTL → suppression définitive.
+            cur = conn.execute(
+                "DELETE FROM triples WHERE archived=1 AND COALESCE(last_seen, 0) < ?",
+                (now - 2 * ttl,))
+            out["purged"] = cur.rowcount
+    return out
+
+
+def consolidate_all() -> dict:
+    """Consolide TOUTES les bases utilisateurs (graph_memory_*.db) — pour le job périodique."""
+    base = _base_path()
+    root, _ = os.path.splitext(base)
+    total = {"archived": 0, "purged": 0, "merged": 0, "dbs": 0}
+    for db_file in _glob.glob(f"{root}_*.db"):
+        try:
+            r = consolidate(db_file)
+            total["dbs"] += 1
+            for k in ("archived", "purged", "merged"):
+                total[k] += r[k]
+        except Exception as e:
+            print(f"[graph_memory] consolidation de {os.path.basename(db_file)} échouée : {e}")
+    return total
+
+
+def start_consolidation_thread():
+    """Job périodique d'hygiène (défaut : toutes les 24 h, 1re passe 5 min après le boot).
+    GRAPH_CONSOLIDATE_HOURS=0 pour désactiver."""
+    hours = float(os.getenv("GRAPH_CONSOLIDATE_HOURS", "24") or 24)
+    if hours <= 0:
+        return
+
+    def _loop():
+        time.sleep(300)  # laisser le serveur démarrer tranquillement
+        while True:
+            try:
+                r = consolidate_all()
+                if r["archived"] or r["purged"] or r["merged"]:
+                    print(f"[graph_memory] consolidation : {r}")
+            except Exception as e:
+                print(f"[graph_memory] consolidation échouée : {e}")
+            time.sleep(hours * 3600)
+
+    threading.Thread(target=_loop, name="graph-consolidation", daemon=True).start()

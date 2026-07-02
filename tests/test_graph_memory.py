@@ -51,3 +51,58 @@ if __name__ == "__main__":
     import shutil
     shutil.rmtree(_TMP, ignore_errors=True)
     print("\n✅ test_graph_memory OK")
+
+
+def test_reconfirmation_et_contradiction():
+    """Hygiène : ré-apprendre un fait le RE-confirme (seen+1) ; une relation
+    FONCTIONNELLE avec un nouvel objet ARCHIVE l'ancien (le récent gagne)."""
+    import sqlite3
+    graph_memory.add_triple("Gaëtan", "habite à", "Strasbourg")
+    graph_memory.add_triple("Gaëtan", "habite à", "Strasbourg")  # re-confirmation
+    with sqlite3.connect(graph_memory._db_path()) as c:
+        seen = c.execute("SELECT seen FROM triples WHERE o='Strasbourg'").fetchone()[0]
+    assert seen == 2, f"re-confirmation attendue, seen={seen}"
+
+    graph_memory.add_triple("Gaëtan", "habite à", "Colmar")  # déménagement
+    trs = graph_memory.neighborhood("Gaëtan")
+    objs = {t["o"] for t in trs if "habite" in t["r"]}
+    assert objs == {"Colmar"}, f"l'ancien domicile doit être archivé : {objs}"
+    with sqlite3.connect(graph_memory._db_path()) as c:
+        arch = c.execute("SELECT archived FROM triples WHERE o='Strasbourg'").fetchone()[0]
+    assert arch == 1, "Strasbourg archivé (pas supprimé)"
+    # Relation NON fonctionnelle : pas de contradiction (multi-valuée).
+    graph_memory.add_triple("Gaëtan", "aime", "la fantasy")
+    graph_memory.add_triple("Gaëtan", "aime", "les échecs")
+    objs = {t["o"] for t in graph_memory.neighborhood("Gaëtan") if t["r"] == "aime"}
+    assert objs == {"la fantasy", "les échecs"}, objs
+    print("OK: re-confirmation + contradiction fonctionnelle (archive, jamais multi-valué)")
+
+
+def test_consolidation_decroissance_et_fusion():
+    """Consolidation : faits jamais re-confirmés > TTL archivés ; doublons pliés
+    (accents/casse) fusionnés ; archivés > 2×TTL purgés."""
+    import sqlite3
+    import time as _t
+    ttl = graph_memory._FACT_TTL_DAYS * 86400
+    now = _t.time()
+    with sqlite3.connect(graph_memory._db_path()) as c:
+        graph_memory._migrate_columns(c)
+        # Fait périmé (jamais re-confirmé, vu il y a TTL+1j) et fait archivé très vieux.
+        c.execute("INSERT INTO triples (s, r, o, created_at, last_seen, seen, archived) "
+                  "VALUES ('Vieux','concerne','Fait périmé',?,?,1,0)", (now - ttl - 86400,) * 2)
+        c.execute("INSERT INTO triples (s, r, o, created_at, last_seen, seen, archived) "
+                  "VALUES ('Ancien','concerne','Fait purgeable',?,?,1,1)", (now - 3 * ttl,) * 2)
+        # Doublons à la normalisation près.
+        c.execute("INSERT INTO triples (s, r, o, created_at, last_seen, seen, archived) "
+                  "VALUES ('Athéna','Utilise','ChromaDB',?,?,2,0)", (now,) * 2)
+        c.execute("INSERT INTO triples (s, r, o, created_at, last_seen, seen, archived) "
+                  "VALUES ('athena','utilise','chromadb',?,?,1,0)", (now,) * 2)
+        c.commit()
+    r = graph_memory.consolidate(graph_memory._db_path())
+    assert r["archived"] >= 1, r
+    assert r["purged"] >= 1, r
+    assert r["merged"] >= 1, r
+    with sqlite3.connect(graph_memory._db_path()) as c:
+        n = c.execute("SELECT COUNT(*), MAX(seen) FROM triples WHERE s LIKE 'ath%'").fetchone()
+    assert n[0] == 1 and n[1] == 3, f"fusion : 1 survivant avec seen cumulé, obtenu {n}"
+    print("OK: consolidation (décroissance, purge, fusion des doublons pliés)")

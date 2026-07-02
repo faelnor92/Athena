@@ -279,6 +279,15 @@ try:
 except Exception as e:
     logger.warning("Démarrage du moniteur Proxmox ignoré : %s", e, exc_info=True)
 
+# Hygiène de la mémoire-graphe (Chronos) : consolidation périodique (décroissance des
+# faits non re-confirmés, fusion des doublons, purge des archivés) — toutes les bases
+# utilisateurs. GRAPH_CONSOLIDATE_HOURS=0 pour désactiver.
+try:
+    from core import graph_memory
+    graph_memory.start_consolidation_thread()
+except Exception as e:
+    logger.warning("Consolidation mémoire-graphe non démarrée : %s", e, exc_info=True)
+
 # Bus d'événements (core.event_bus) : réacteurs DÉCOUPLÉS. On branche ici des réactions aux
 # événements de cycle de vie sans toucher aux producteurs. NB : HITL→Telegram et Vigie→Telegram
 # sont DÉJÀ câblés en direct (engine._push_approval_notice, _run_vigie) → on ne les redouble pas.
