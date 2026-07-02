@@ -57,7 +57,7 @@ uv>=0.5.0
 # pour la boucle de feedback de l'agent ET le lint de l'onglet Code de l'UI. Embarque son
 # propre runtime Node (nodejs-wheel) → aucune dépendance système. Repli compile/ast + ruff
 # si absent. Voir tools/lsp_client.py.
-basedpyright>=1.39
+basedpyright>=1.39.9
 
 # --- Durcissement sécurité ---------------------------------------------------
 # Parsing XML sûr (anti-XXE/entity-expansion) des réponses WebDAV/CalDAV/CardDAV Nextcloud.
