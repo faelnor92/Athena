@@ -16,7 +16,7 @@
 faster-whisper>=1.0.0      # STT local (CTranslate2, INT8) — moteur de transcription par défaut (voix + dictée + réunions)
 sounddevice>=0.4.6         # capture/lecture audio (PortAudio)
 numpy>=1.24                # traitement audio
-pyttsx3>=2.90              # TTS de repli (si Piper indisponible)
+pyttsx3>=2.99              # TTS de repli (si Piper indisponible)
 
 # Wake word « openwakeword » : INSTALLÉ À PART par setup_wizard.py (backend ONNX), car son
 # `install_requires` force `tflite-runtime` qui n'a PAS de wheel pour Python ≥3.10 (dont 3.13).
