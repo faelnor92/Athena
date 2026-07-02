@@ -39,6 +39,35 @@ def test_purge_expired_sessions():
     assert ACTIVE_SESSIONS.get("dead") is None
 
 
+def test_sliding_session_extension():
+    """Expiration glissante : l'usage prolonge la session (fenêtre d'inactivité),
+    mais jamais au-delà du plafond absolu depuis le login."""
+    import routers.auth as a
+    from core.state import ACTIVE_SESSIONS
+    now = time.time()
+    # Session à mi-fenêtre → prolongée jusqu'à now + TTL.
+    ACTIVE_SESSIONS["slide"] = {"username": "s", "role": "user",
+                                "exp": now + a._SESSION_TTL * 0.5, "created": now}
+    assert a.maybe_extend_session("slide", ACTIVE_SESSIONS.get("slide"), now=now)
+    assert abs(ACTIVE_SESSIONS.get("slide")["exp"] - (now + a._SESSION_TTL)) < 2
+    # Session fraîche (>90 % du TTL restant) → PAS de réécriture du store.
+    ACTIVE_SESSIONS["fresh"] = {"username": "s", "role": "user",
+                                "exp": now + a._SESSION_TTL * 0.95, "created": now}
+    assert not a.maybe_extend_session("fresh", ACTIVE_SESSIONS.get("fresh"), now=now)
+    # Session proche du plafond absolu → prolongation ÉCRÊTÉE au plafond, jamais au-delà.
+    old_created = now - (a._SESSION_ABSOLUTE - 3600)  # plafond dans 1 h
+    ACTIVE_SESSIONS["capped"] = {"username": "s", "role": "user",
+                                 "exp": now + 1800, "created": old_created}
+    a.maybe_extend_session("capped", ACTIVE_SESSIONS.get("capped"), now=now)
+    assert ACTIVE_SESSIONS.get("capped")["exp"] <= old_created + a._SESSION_ABSOLUTE + 1
+    # Session legacy (sans "created") : prolongée quand même (plafond estimé prudent).
+    ACTIVE_SESSIONS["legacy"] = {"username": "s", "role": "user",
+                                 "exp": now + a._SESSION_TTL * 0.2}
+    assert a.maybe_extend_session("legacy", ACTIVE_SESSIONS.get("legacy"), now=now)
+    for t in ("slide", "fresh", "capped", "legacy"):
+        ACTIVE_SESSIONS.pop(t, None)
+
+
 def test_login_throttle_is_shared():
     import routers.auth as a
     ip = "203.0.113.7"

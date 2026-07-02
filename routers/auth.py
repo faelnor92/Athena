@@ -13,6 +13,10 @@ from core import audit
 router = APIRouter(tags=["Auth"])
 
 _SESSION_TTL = int(os.getenv("SESSION_TTL_HOURS", "168") or 168) * 3600
+# Plafond ABSOLU d'une session depuis le login (expiration glissante : l'usage régulier
+# prolonge la session dans la limite de ce plafond — un jeton volé n'est jamais éternel).
+_SESSION_ABSOLUTE = max(
+    int(os.getenv("SESSION_ABSOLUTE_HOURS", "720") or 720) * 3600, _SESSION_TTL)
 
 # Anti-brute-force du login : IP -> [timestamps des échecs récents].
 _LOGIN_MAX_FAILS = int(os.getenv("LOGIN_MAX_FAILS", "8") or 8)
@@ -74,10 +78,34 @@ def _auth_active() -> bool:
 
 
 def _new_session(username: str, role: str) -> str:
-    """Crée un jeton de session horodaté (expire après _SESSION_TTL)."""
+    """Crée un jeton de session horodaté (fenêtre d'inactivité _SESSION_TTL,
+    prolongée à l'usage jusqu'au plafond absolu _SESSION_ABSOLUTE)."""
     token = secrets.token_hex(24)
-    ACTIVE_SESSIONS[token] = {"username": username, "role": role, "exp": time.time() + _SESSION_TTL}
+    now = time.time()
+    ACTIVE_SESSIONS[token] = {"username": username, "role": role,
+                              "exp": now + _SESSION_TTL, "created": now}
     return token
+
+
+def maybe_extend_session(token: str, sess: dict, now: float = None) -> bool:
+    """Expiration GLISSANTE : le TTL est une fenêtre d'INACTIVITÉ — chaque requête
+    authentifiée repousse l'expiration, dans la limite du plafond absolu depuis le
+    login. Le store n'est réécrit que si ≥10 % du TTL est consommé (amortit les
+    écritures SQLite : au plus ~10 écritures par fenêtre, pas une par requête).
+    Renvoie True si la session a été prolongée."""
+    now = time.time() if now is None else now
+    exp = sess.get("exp", 0)
+    if exp - now >= _SESSION_TTL * 0.9:
+        return False
+    # Sessions d'avant la migration (sans "created") : on estime le login au début
+    # de la fenêtre courante — prudent (jamais plus permissif que le plafond réel).
+    hard_cap = sess.get("created", exp - _SESSION_TTL) + _SESSION_ABSOLUTE
+    new_exp = min(now + _SESSION_TTL, hard_cap)
+    if new_exp <= exp:
+        return False
+    sess["exp"] = new_exp
+    ACTIVE_SESSIONS[token] = sess
+    return True
 
 
 # --- Autorisation par rôle : endpoints réservés à l'administrateur -----------
@@ -174,6 +202,7 @@ async def auth_middleware(request: Request, call_next):
         if sess.get("exp", 0) < time.time():
             ACTIVE_SESSIONS.pop(token, None)
             return JSONResponse(status_code=401, content={"detail": "Session expirée. Reconnectez-vous."})
+        maybe_extend_session(token, sess)  # expiration glissante (bornée par le plafond absolu)
         request.state.user = sess
         _current_username.set(sess.get("username"))
         _current_role.set(sess.get("role"))
