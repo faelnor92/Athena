@@ -462,6 +462,7 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
         skill_failures = []  # échecs de compétences dynamiques → réparées en fin de run
         _route_done = False   # routeur de délégation : décidé une seule fois par run
         _route_target = None  # spécialiste ciblé (nom) | "" (aucun) | None (non décidé)
+        _route_hints = []     # zone AMBIGUË du routeur : top-candidats (indice doux, sans restreindre)
         _auto_continue = 0    # relances auto sur « intention annoncée mais non exécutée »
         _ac_last = ""         # contenu du dernier tour auto-continué (anti-boucle « réponse répétée »)
         _toolcall_fix = 0     # auto-correction : relances sur outil décrit en texte mais non appelé
@@ -849,6 +850,13 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                 if not _route_done:
                     _route_done = True
                     _route_target = self._route_target(current_agent, messages)
+                    if _route_target is None:
+                        # Zone ambiguë : récupérer les top-candidats pour un indice doux.
+                        try:
+                            from core import agent_router as _ar
+                            _route_hints = _ar.last_candidates()
+                        except Exception:
+                            _route_hints = []
                 if _route_target == "":
                     # Aucun spécialiste pertinent → l'orchestrateur répond lui-même : on retire
                     # les outils de délégation (il garde ses propres outils).
@@ -865,11 +873,17 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         tgt_tools = {f.__name__ for f in tgt.tools}
                         _orch_keep = {"query_agent", "debate_between_agents", "memorize_fact",
                                       "store_document", "search_memory", "send_notification",
-                                      "make_plan", "update_plan_step", "create_agent", "run_tool_script",
-                                      # SSH/système : auto-injectés à l'orchestrateur quand un hôte est
-                                      # configuré → il doit les GARDER même si le routeur vise le Codeur
-                                      # (sinon il perd execute_bash_command et boucle sur run_tool_script).
-                                      "execute_bash_command", "list_ssh_hosts"}
+                                      "make_plan", "update_plan_step", "create_agent", "run_tool_script"}
+                        # SSH/système : auto-injectés à l'orchestrateur quand un hôte distant est
+                        # configuré (« connecte-toi à Prod ») → dans CE cas il doit les garder même
+                        # si le routeur vise le Codeur. SANS hôte SSH, les garder = LA fuite du
+                        # bug #3 : l'orchestrateur codait lui-même via bash au lieu de déléguer.
+                        try:
+                            from tools import ssh_hosts as _ssh
+                            if _ssh.list_hosts():
+                                _orch_keep |= {"execute_bash_command", "list_ssh_hosts"}
+                        except Exception:
+                            pass
                         effective_tools = [f for f in effective_tools
                                            if f.__name__.startswith("transfer_to_")
                                            or f.__name__ not in tgt_tools
@@ -1370,6 +1384,14 @@ class Swarm(_CompletionMixin, _LearningMixin, _AgentsMixin, _ContextMixin):
                         f"Confie-lui ensuite MAINTENANT — par défaut `delegate_to_{_route_target}(…)` (tu gardes "
                         f"la main et synthétises), ou `transfer_to_{_route_target}` si l'utilisateur veut basculer "
                         f"durablement dans ce métier — ne la traite pas toi-même.\n")
+                elif _route_hints:
+                    # Routeur indécis entre 2 spécialistes pertinents : indice DOUX (aucun outil
+                    # retiré) — pousse la délégation au lieu de traiter soi-même (bug #3).
+                    _noms = " ou ".join(f"« {n} »" for n in _route_hints)
+                    system_prompt += (
+                        f"\n➡️ AIGUILLAGE : cette demande semble relever du métier de {_noms}. "
+                        f"Choisis le plus pertinent et confie-la-lui (`delegate_to_<Agent>(…)`) "
+                        f"plutôt que de la traiter toi-même.\n")
 
             # Si l'agent peut analyser des documents ET qu'un fichier est joint dans la
             # conversation, lui rappeler de l'analyser avec analyze_document (jamais le web).

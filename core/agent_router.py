@@ -22,6 +22,13 @@ from core import tool_router
 
 _lock = threading.Lock()
 _agent_vecs = {}   # nom agent -> (texte_source, vecteur) ; le texte sert à invalider le cache
+_tls = threading.local()  # candidats de la DERNIÈRE décision ambiguë (par thread de run)
+
+
+def last_candidates() -> list:
+    """Top-candidats de la dernière décision AMBIGUË de `route()` sur ce thread (ou []).
+    Permet au moteur d'injecter un indice doux (« relève de X ou Y ») sans restreindre."""
+    return list(getattr(_tls, "candidates", []) or [])
 
 
 def _agent_desc(agent) -> str:
@@ -34,6 +41,7 @@ def _agent_desc(agent) -> str:
 
 def route(agents: dict, orch_name: str, messages: list):
     """Renvoie le nom de l'agent cible, "" (aucun), ou None (indécis/indispo). Voir module."""
+    _tls.candidates = []
     if os.getenv("DELEGATION_ROUTER", "true").lower() not in ("true", "1", "yes"):
         return None
     specialists = {n: a for n, a in agents.items() if n != orch_name}
@@ -98,4 +106,6 @@ def route(agents: dict, orch_name: str, messages: list):
     # Zone AMBIGUË (pertinent mais pas de vainqueur net, ex. deux agents techniques) : on NE
     # restreint PAS → l'orchestrateur garde ses outils delegate_to_/transfer_to_ et tranche
     # lui-même (un LLM distingue « débugge » → Codeur mieux que l'écart d'embeddings).
+    # On mémorise les top-candidats : le moteur les injecte en indice doux dans le préambule.
+    _tls.candidates = [n for n, s in ordered[:2] if s >= general]
     return None
