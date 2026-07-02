@@ -60,13 +60,13 @@ jobs:
       - name: Build image
         run: docker build -t athena:ci .
       - name: Trivy — rapport complet (informatif)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: athena:ci
           format: table
           exit-code: "0"
       - name: Trivy — CRITICAL corrigeables (bloquant)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: athena:ci
           format: table
