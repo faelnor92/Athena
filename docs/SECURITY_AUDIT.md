@@ -4,13 +4,15 @@ Audit complet : scans automatiques (bandit, pip-audit, secrets) + revue manuelle
 critiques (auth/authz, exécution code/shell/SSH, SSRF, path traversal, injection SQL, XXE, SSE,
 secrets) et du code récent (LSP, event bus, design tokens, streaming AthenaDesign, import-code).
 
-## 🔴 Critique — à traiter par l'opérateur (CONFIG, pas code)
-- **`SENSITIVE_TOOLS=""` dans `.env` désactive TOUTE confirmation HITL.** Avec cet override vide,
-  `approvals.sensitive_tool_names()` est vide → `execute_bash_command`, `run_ssh_command`,
-  `write_file`/`edit_file`/`apply_patch`, etc. s'exécutent **sans validation** (même si
+## 🔴 Critique — ~~à traiter par l'opérateur~~ **corrigé dans le code (2026-07-02)**
+- **`SENSITIVE_TOOLS=""` dans `.env` désactivait TOUTE confirmation HITL.** Avec cet override vide,
+  `approvals.sensitive_tool_names()` était vide → `execute_bash_command`, `run_ssh_command`,
+  `write_file`/`edit_file`/`apply_patch`, etc. s'exécutaient **sans validation** (même si
   `AUTO_APPROVE_SENSITIVE=false`). Risque réel en cas d'injection de prompt (mail/web/MCP).
-  **Correctif** : supprimer/commenter la ligne `SENSITIVE_TOOLS=""` pour rétablir le défaut sûr,
-  ou y mettre une liste explicite. Atténué ici par `HOST=127.0.0.1` (non exposé).
+  **Correctif (code)** : `SENSITIVE_TOOLS` vide ou absent = **liste par défaut** (sûre) ; la
+  désactivation totale se demande désormais **explicitement** avec `SENSITIVE_TOOLS=none`
+  (déconseillé hors instance 100 % locale de confiance). Test :
+  `tests/test_approvals.py::test_sensitive_tools_vide_ne_desactive_pas_le_hitl`.
 
 ## 🟠 Corrigé (code) — durcissements
 | Faille | Lieu | Correctif |
